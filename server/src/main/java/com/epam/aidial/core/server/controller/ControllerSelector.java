@@ -216,7 +216,7 @@ public class ControllerSelector {
 
         post(RouteTemplate.TOOL_SET_CREDENTIALS, (proxy, context, pathMatcher) -> {
             String operation = pathMatcher.group(1);
-            ToolSetCredentialsController controller = new ToolSetCredentialsController(proxy, context);
+            ResourceCredentialsController controller = new ResourceCredentialsController(proxy, context);
 
             return switch (operation) {
                 case "signin" -> controller::signIn;

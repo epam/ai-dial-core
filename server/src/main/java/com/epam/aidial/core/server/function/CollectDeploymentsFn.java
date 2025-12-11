@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceType;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.List;
@@ -37,7 +38,8 @@ public class CollectDeploymentsFn extends BaseRequestFunction<ObjectNode> {
                 String resourceUrl = deployment.getUrl();
                 if (sourceApiKeyData.getAttachedDeployments().containsKey(resourceUrl) || accessService.hasReadAccess(deployment, context)) {
                     destApiKeyData.getAttachedDeployments().put(resourceUrl, new AutoSharedData(ResourceAccessType.READ_ONLY));
-                    attachDeploymentCredentials(accessService, destApiKeyData, resourceUrl);
+                    ResourceType resourceType = deployment.getType();
+                    attachDeploymentCredentials(accessService, destApiKeyData, resourceUrl, resourceType);
                 } else {
                     throw new HttpException(HttpStatus.FORBIDDEN, "Access denied to the deployment %s".formatted(resourceUrl));
                 }
@@ -48,8 +50,9 @@ public class CollectDeploymentsFn extends BaseRequestFunction<ObjectNode> {
 
     private void attachDeploymentCredentials(AccessService accessService,
                                              ApiKeyData destApiKeyData,
-                                             String toolSetUrl) {
-        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(toolSetUrl, context);
+                                             String resourceUrl,
+                                             ResourceType resourceType) {
+        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resourceUrl, context, resourceType);
         List<ResourceDescriptor> credentialsResourceDescriptors = credentialsLocator.getUniqueCredentialsDescriptors().stream()
                 .map(CredentialsDescriptor::toResourceDescriptor)
                 .filter(credentialsDescriptor -> accessService.hasReadAccess(credentialsDescriptor, context))

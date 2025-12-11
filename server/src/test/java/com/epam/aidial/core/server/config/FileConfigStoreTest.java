@@ -5,7 +5,6 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -14,6 +13,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Set;
 import javax.annotation.Nullable;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @ExtendWith(MockitoExtension.class)
 public class FileConfigStoreTest {
@@ -32,7 +33,7 @@ public class FileConfigStoreTest {
         Config config = fileConfigStore.get();
 
         Set<String> actualUserRoles = config.getModels().get("testModel").getUserRoles();
-        Assertions.assertEquals(expectedUserRoles, actualUserRoles);
+        assertEquals(expectedUserRoles, actualUserRoles);
     }
 
     @Test
@@ -43,7 +44,7 @@ public class FileConfigStoreTest {
         Config config = fileConfigStore.get();
 
         Set<String> actualUserRoles = config.getModels().get("testModel").getUserRoles();
-        Assertions.assertEquals(expectedUserRoles, actualUserRoles);
+        assertEquals(expectedUserRoles, actualUserRoles);
     }
 
     @Test
@@ -54,7 +55,19 @@ public class FileConfigStoreTest {
         Config config = fileConfigStore.get();
 
         Set<String> actualUserRoles = config.getModels().get("testModel").getUserRoles();
-        Assertions.assertEquals(expectedUserRoles, actualUserRoles);
+        assertEquals(expectedUserRoles, actualUserRoles);
+    }
+
+    @Test
+    public void testLoad_OnlyValidToolSets() {
+        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(null), apiKeyStore);
+        Set<String> expectedToolSetNames = Set.of("toolset-1_2");
+
+        Config config = fileConfigStore.get();
+
+        Set<String> actualToolSetNames = config.getToolsets().keySet();
+        assertEquals(1, actualToolSetNames.size());
+        assertEquals(expectedToolSetNames, actualToolSetNames);
     }
 
     private static JsonObject prepareSettings(@Nullable Boolean overwriteArrays) {

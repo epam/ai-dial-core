@@ -3,16 +3,13 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ToolSet;
-import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.exception.EncryptionException;
-import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ToolSetData;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
-import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -33,8 +30,6 @@ public class ToolSetController {
 
     private final ToolSetService toolSetService;
 
-    private final ResourceAuthSettingsService resourceAuthSettingsService;
-
     private final AsyncTaskExecutor taskExecutor;
 
     public ToolSetController(ProxyContext context) {
@@ -42,17 +37,14 @@ public class ToolSetController {
         this.taskExecutor = context.getProxy().getTaskExecutor();
         this.deploymentService = context.getProxy().getDeploymentService();
         this.toolSetService = context.getProxy().getToolSetService();
-        this.resourceAuthSettingsService = context.getProxy().getResourceAuthSettingsService();
     }
 
     public Future<?> getToolSet(String toolSetId) {
         taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
             if (deployment instanceof ToolSet toolSet) {
-                CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(UrlUtil.encodePath(toolSetId), context);
-                resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator,
-                        toolSet.getAuthSettings(), context.getUserSub());
-                toolSet.clearAuthSettings();
+                String encodedToolSetId = UrlUtil.encodePath(toolSetId);
+                toolSetService.setResourceAuthStatuses(context, toolSet, encodedToolSetId);
                 return toolSet;
             }
             throw new ResourceNotFoundException("Toolset is not found: " + toolSetId);
@@ -69,6 +61,7 @@ public class ToolSetController {
             List<ToolSet> list = new ArrayList<>();
             for (ToolSet toolSet : config.getToolsets().values()) {
                 if (toolSet.hasAccess(context.getUserRoles())) {
+                    toolSetService.setResourceAuthStatuses(context, toolSet, toolSet.getName());
                     list.add(toolSet);
                 }
             }
@@ -84,8 +77,8 @@ public class ToolSetController {
             @Override
             public ToolSet extract(ResourceDescriptor resource, ProxyContext context) {
                 try {
-                    ToolSet toolSet = toolSetService.getToolSet(context, resource).getValue();
-                    toolSet.clearAuthSettings();
+                    ToolSet toolSet = toolSetService.getToolSet(resource).getValue();
+                    toolSetService.setResourceAuthStatuses(context, toolSet, resource.getUrl());
                     return toolSet;
                 } catch (EncryptionException ex) {
                     // If a toolset can't be decrypted, it means the encryption method has changed. Let's assume for now that the toolset was not found.

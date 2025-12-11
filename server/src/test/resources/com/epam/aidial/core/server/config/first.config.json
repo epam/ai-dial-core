@@ -5,5 +5,23 @@
         "first_role1"
       ]
     }
+  },
+  "toolsets": {
+    "toolset-1_2": {
+      "endpoint": "https://toolset-1/mcp/",
+      "transport": "HTTP",
+      "auth_settings" : {
+        "authentication_type" : "API_KEY",
+        "api_key_header" : "Authorization"
+      }
+    },
+    "toolset 2": {
+      "endpoint": "https://toolset-2/mcp/",
+      "transport": "HTTP",
+      "auth_settings" : {
+        "authentication_type" : "API_KEY",
+        "api_key_header" : "Authorization"
+      }
+    }
   }
 }

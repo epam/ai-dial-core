@@ -60,6 +60,10 @@ public class Config {
         return interceptors.get(deploymentId);
     }
 
+    public boolean isDeploymentExists(String deploymentId) {
+        return selectDeployment(deploymentId) != null;
+    }
+
     @JsonIgnore
     public String getCustomApplicationSchema(URI schemaId) {
         if (schemaId == null) {

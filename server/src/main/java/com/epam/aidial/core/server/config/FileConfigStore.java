@@ -27,6 +27,7 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -115,11 +116,18 @@ public final class FileConfigStore implements ConfigStore {
                 log.debug("Loading {}", interceptor);
             }
 
-            for (Map.Entry<String, ToolSet> entry : config.getToolsets().entrySet()) {
+            Iterator<Map.Entry<String, ToolSet>> iterator = config.getToolsets().entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, ToolSet> entry = iterator.next();
                 String name = entry.getKey();
-                ToolSet toolSet = entry.getValue();
-                toolSet.setName(name);
-                log.debug("Loading {}", toolSet);
+                if (isValidResourceKey(name)) {
+                    ToolSet toolSet = entry.getValue();
+                    toolSet.setName(name);
+                    log.debug("Loading {}", entry.getValue());
+                } else {
+                    log.warn("Invalid ToolSet name: {}", name);
+                    iterator.remove();
+                }
             }
 
             this.config = config;
@@ -133,6 +141,10 @@ public final class FileConfigStore implements ConfigStore {
             log.warn("Failed to reload config: {}", e.getMessage());
         }
         return null;
+    }
+
+    private boolean isValidResourceKey(String resourceKey) {
+        return resourceKey.matches("^[A-Za-z0-9-_]+$");
     }
 
     private Config loadConfig() throws Exception {

@@ -29,6 +29,7 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -104,7 +105,7 @@ public class ToolSetProxyController implements Controller {
         this.apiKeyStore = proxy.getApiKeyStore();
         this.tokenStatsTracker = proxy.getTokenStatsTracker();
         this.toolSetId = toolSetId;
-        this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(UrlUtil.encodePath(toolSetId), context);
+        this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(UrlUtil.encodePath(toolSetId), context, ResourceTypes.TOOL_SET);
         this.consentService = proxy.getConsentService();
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
     }
