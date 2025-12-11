@@ -97,7 +97,7 @@ public class ApplicationRouteController extends BaseRouteController {
                 ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
                 var fn = new CollectResponseCustomAttachmentsFn(proxy, context);
                 return fn.apply(tree);
-            } catch (IOException e) {
+            } catch (Throwable e) {
                 log.warn("Can't parse JSON response body. Error:", e);
                 return Future.failedFuture(e);
             }
