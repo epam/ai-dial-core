@@ -322,7 +322,7 @@ public class ShareService {
             ResourceDescriptor resource = getResourceFromLink(sharedResource.getUrl());
             if (CREDS_SHARABLE_RESOURCE_TYPES.contains(resource.getType()) && sharedResource.isShareCredentials()) {
                 log.debug("Credential sharing started - User: {}, Resource: {}.", context.getUserSub(), sharedResource.getUrl());
-                CredentialsDescriptor globalCredentialsDescriptor = getGlobalCredentialsDescriptor(resource, context);
+                CredentialsDescriptor globalCredentialsDescriptor = getGlobalCredentialsDescriptor(resource, context, resource.getType());
                 ResourceCredentials globalResourceCredentials =
                         resourceCredentialsService.getResourceCredentials(globalCredentialsDescriptor);
 
@@ -538,7 +538,7 @@ public class ShareService {
             if (CREDS_SHARABLE_RESOURCE_TYPES.contains(resource.getType())
                     && permissionsToRemove.contains(ResourceAccessType.READ)) {
                 log.debug("Credential revocation started - User: {}, Resource: {}", context.getUserSub(), resource.getUrl());
-                CredentialsDescriptor globalCredentialsDescriptor = getGlobalCredentialsDescriptor(resource, context);
+                CredentialsDescriptor globalCredentialsDescriptor = getGlobalCredentialsDescriptor(resource, context, resource.getType());
                 ResourceCredentials globalResourceCredentials = resourceCredentialsService.getResourceCredentials(globalCredentialsDescriptor);
                 if (globalResourceCredentials != null) {
                     ResourceDescriptor resourceDescriptor = globalCredentialsDescriptor.toResourceDescriptor();
@@ -552,8 +552,9 @@ public class ShareService {
     }
 
     private CredentialsDescriptor getGlobalCredentialsDescriptor(ResourceDescriptor resourceDescriptor,
-                                                                 ProxyContext context) {
-        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resourceDescriptor.getUrl(), context);
+                                                                 ProxyContext context,
+                                                                 ResourceType resourceType) {
+        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resourceDescriptor.getUrl(), context, resourceType);
         return credentialsLocator.getCredentialsDescriptors().get(CredentialsLevel.GLOBAL);
     }
 

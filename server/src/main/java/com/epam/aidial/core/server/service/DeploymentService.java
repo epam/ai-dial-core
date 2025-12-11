@@ -1,10 +1,8 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.AccessService;
@@ -71,7 +69,7 @@ public class DeploymentService {
         ResourceType resourceType = deploymentDescriptor.getType();
         return switch (resourceType) {
             case APPLICATION -> applicationService.getApplication(deploymentDescriptor).getValue();
-            case TOOL_SET -> toolSetService.getToolSet(context, deploymentDescriptor).getValue();
+            case TOOL_SET -> toolSetService.getToolSet(deploymentDescriptor).getValue();
             default -> throw new IllegalArgumentException("Unknown resource type: " + resourceType);
         };
     }

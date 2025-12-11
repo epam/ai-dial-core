@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
@@ -44,7 +45,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class ToolSetCredentialsControllerTest {
+class ResourceCredentialsControllerTest {
 
     @Mock
     private ProxyContext context;
@@ -65,7 +66,7 @@ class ToolSetCredentialsControllerTest {
     @Mock
     private ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
 
-    private ToolSetCredentialsController controller;
+    private ResourceCredentialsController controller;
 
     @BeforeEach
     void setup() {
@@ -75,6 +76,7 @@ class ToolSetCredentialsControllerTest {
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
         when(proxy.getDeploymentService()).thenReturn(deploymentService);
         when(proxy.getResourceAuthSettingsEncryptionService()).thenReturn(resourceAuthSettingsEncryptionService);
+        when(context.getConfig()).thenReturn(mock(Config.class));
 
         doAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
@@ -85,7 +87,7 @@ class ToolSetCredentialsControllerTest {
             }
         }).when(taskExecutor).submit(any(Callable.class));
 
-        controller = new ToolSetCredentialsController(proxy, context);
+        controller = new ResourceCredentialsController(proxy, context);
     }
 
     private static Stream<Arguments> testDataForTestSignIn() {
@@ -123,13 +125,13 @@ class ToolSetCredentialsControllerTest {
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
         when(context.getRequest()).thenReturn(request);
         when(context.getProxy()).thenReturn(proxy);
+        when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
 
         ToolSet mockToolSet = mock(ToolSet.class);
         when(mockToolSet.getAuthSettings()).thenReturn(new ResourceAuthSettings());
 
         String resourceId = "toolsets/encrypted-user-bucket/%s".formatted(resourceName);
-        when(deploymentService.findDeployment(context, resourceId))
-                .thenReturn(mockToolSet);
+        when(deploymentService.findDeployment(context, resourceId)).thenReturn(mockToolSet);
         when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
         when(context.getUserSub()).thenReturn("userSub");
 
@@ -152,14 +154,14 @@ class ToolSetCredentialsControllerTest {
                         CredentialsLevel.GLOBAL,
                         Set.of(ResourceAccessType.READ),
                         HttpStatus.FORBIDDEN,
-                        "No read and write access to ToolSet resource"),
+                        "No read and write access to Resource"),
 
                 Arguments.of(
                         "toolset-1",
                         CredentialsLevel.USER,
                         Set.of(),
                         HttpStatus.FORBIDDEN,
-                        "No read access to ToolSet resource")
+                        "No read access to Resource")
         );
     }
 
@@ -235,7 +237,6 @@ class ToolSetCredentialsControllerTest {
                 .getBytes(StandardCharsets.UTF_8);
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
         when(context.getRequest()).thenReturn(request);
-        when(context.getProxy()).thenReturn(proxy);
 
         ToolSet mockToolSet = mock(ToolSet.class);
         when(mockToolSet.getAuthSettings()).thenReturn(new ResourceAuthSettings());
@@ -285,8 +286,7 @@ class ToolSetCredentialsControllerTest {
         when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
         when(context.getUserSub()).thenReturn("userSub");
 
-        ApiKeyData apiKeyData = mock(ApiKeyData.class);
-        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
 
         ResourceDescriptor resourceDescriptor = createResourceDescriptor(resourceName);
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = Map.of(resourceDescriptor, userPermissions);
@@ -308,14 +308,14 @@ class ToolSetCredentialsControllerTest {
                         CredentialsLevel.GLOBAL,
                         Set.of(ResourceAccessType.READ),
                         HttpStatus.FORBIDDEN,
-                        "No read and write access to ToolSet resource"),
+                        "No read and write access to Resource"),
 
                 Arguments.of(
                         "toolset-1",
                         CredentialsLevel.USER,
                         Set.of(),
                         HttpStatus.FORBIDDEN,
-                        "No read access to ToolSet resource")
+                        "No read access to Resource")
         );
     }
 
@@ -338,6 +338,7 @@ class ToolSetCredentialsControllerTest {
                 .getBytes(StandardCharsets.UTF_8);
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
         when(context.getRequest()).thenReturn(request);
+        when(context.getConfig()).thenReturn(mock(Config.class));
         when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
 
         ResourceDescriptor resourceDescriptor = createResourceDescriptor(resourceName);

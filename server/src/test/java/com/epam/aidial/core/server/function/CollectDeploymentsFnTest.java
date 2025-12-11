@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.function;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.Proxy;
@@ -48,6 +49,9 @@ public class CollectDeploymentsFnTest {
     @Mock
     private AccessService accessService;
 
+    @Mock
+    private Config config;
+
     @InjectMocks
     private CollectDeploymentsFn fn;
 
@@ -72,6 +76,7 @@ public class CollectDeploymentsFnTest {
     public void testApply_WithToolSets() {
         Application application = new Application();
         when(context.getProxy()).thenReturn(proxy);
+        when(context.getConfig()).thenReturn(config);
         when(context.getDeployment()).thenReturn(application);
         when(context.getUserSub()).thenReturn("userSub");
         when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
@@ -106,6 +111,7 @@ public class CollectDeploymentsFnTest {
         when(context.getProxy()).thenReturn(proxy);
         when(context.getDeployment()).thenReturn(application);
         when(context.getUserSub()).thenReturn("userSub");
+        when(context.getConfig()).thenReturn(config);
         when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
         when(encryptionService.encrypt("Users/userSub/")).thenReturn("encryptedBucket");

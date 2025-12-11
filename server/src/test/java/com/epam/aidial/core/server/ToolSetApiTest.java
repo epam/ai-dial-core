@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.http.HttpMethod;
@@ -52,6 +53,138 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     }
                 }
                 """;
+
+    private static final String TOOLSETS_LIST_ADMIN_RESPONSE = """
+                  {
+                   "data" : [ {
+                     "id" : "git",
+                     "toolset" : "git",
+                     "display_name" : "git",
+                     "description" : "Git remote tool set",
+                     "reference" : "git",
+                     "owner" : "organization-owner",
+                     "object" : "toolset",
+                     "status" : "succeeded",
+                     "created_at" : 1672534800,
+                     "updated_at" : 1672534800,
+                     "features" : {
+                           "rate" : false,
+                           "tokenize" : false,
+                           "truncate_prompt" : false,
+                           "configuration" : false,
+                           "system_prompt" : true,
+                           "tools" : false,
+                           "seed" : false,
+                           "url_attachments" : false,
+                           "folder_attachments" : false,
+                           "allow_resume" : true,
+                           "accessible_by_per_request_key" : true,
+                           "content_parts" : false,
+                           "temperature" : true,
+                           "cache" : false,
+                           "auto_caching" : false,
+                           "parallel_tool_calls" : true,
+                           "assistant_attachments_in_request": false
+                      },
+                     "description_keywords" : [ ],
+                     "max_retry_attempts" : 1,
+                     "transport" : "HTTP",
+                     "allowed_tools" : [ "branch", "remote" ],
+                     "auth_settings" : {
+                        "authentication_type" : "NONE",
+                        "global_auth_status": "SIGNED_OUT",
+                        "user_level_auth_status": "SIGNED_OUT"
+                     }
+                   },
+                    {
+                        "id" : "my-toolset_2",
+                        "toolset" : "my-toolset_2",
+                        "display_name" : "my toolset 2",
+                        "reference" : "my-toolset_2",
+                        "owner" : "organization-owner",
+                        "object" : "toolset",
+                        "status" : "succeeded",
+                        "created_at" : 1672534800,
+                        "updated_at" : 1672534800,
+                        "features" : {
+                          "rate" : false,
+                          "tokenize" : false,
+                          "truncate_prompt" : false,
+                          "configuration" : false,
+                          "system_prompt" : true,
+                          "tools" : false,
+                          "seed" : false,
+                          "url_attachments" : false,
+                          "folder_attachments" : false,
+                          "allow_resume" : true,
+                          "accessible_by_per_request_key" : true,
+                          "content_parts" : false,
+                          "temperature" : true,
+                          "cache" : false,
+                          "auto_caching" : false,
+                          "parallel_tool_calls" : true,
+                          "assistant_attachments_in_request" : false
+                        },
+                        "description_keywords" : [ ],
+                        "max_retry_attempts" : 1,
+                        "auth_settings" : {
+                          "authentication_type" : "API_KEY",
+                          "api_key_header" : "Authorization",
+                          "global_auth_status" : "SIGNED_OUT",
+                          "user_level_auth_status" : "SIGNED_OUT"
+                        },
+                        "transport" : "HTTP",
+                        "allowed_tools" : [ ]
+                      } ],
+                   "object" : "list"
+                 }
+            """;
+
+    private static final String TOOLSETS_LIST_USER_RESPONSE = """
+                  {
+                   "data" : [ {
+                     "id" : "git",
+                     "toolset" : "git",
+                     "display_name" : "git",
+                     "description" : "Git remote tool set",
+                     "reference" : "git",
+                     "owner" : "organization-owner",
+                     "object" : "toolset",
+                     "status" : "succeeded",
+                     "created_at" : 1672534800,
+                     "updated_at" : 1672534800,
+                     "features" : {
+                           "rate" : false,
+                           "tokenize" : false,
+                           "truncate_prompt" : false,
+                           "configuration" : false,
+                           "system_prompt" : true,
+                           "tools" : false,
+                           "seed" : false,
+                           "url_attachments" : false,
+                           "folder_attachments" : false,
+                           "allow_resume" : true,
+                           "accessible_by_per_request_key" : true,
+                           "content_parts" : false,
+                           "temperature" : true,
+                           "cache" : false,
+                           "auto_caching" : false,
+                           "parallel_tool_calls" : true,
+                           "assistant_attachments_in_request": false
+                      },
+                     "description_keywords" : [ ],
+                     "max_retry_attempts" : 1,
+                     "transport" : "HTTP",
+                     "allowed_tools" : [ "branch", "remote" ],
+                     "auth_settings" : {
+                        "authentication_type" : "NONE",
+                        "global_auth_status": "SIGNED_OUT",
+                        "user_level_auth_status": "SIGNED_OUT"
+                     }
+                   } ],
+                   "object" : "list"
+                 }
+            """;
 
     @Test
     void testToolsetCreation() {
@@ -118,51 +251,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
     @Test
     void testToolSetListing() {
-
         Response response = send(HttpMethod.GET, "/openai/toolsets");
-        verifyJsonNotExact(response, 200, """
-                {
-                   "data" : [ {
-                     "id" : "git",
-                     "toolset" : "git",
-                     "display_name" : "git",
-                     "description" : "Git remote tool set",
-                     "reference" : "git",
-                     "owner" : "organization-owner",
-                     "object" : "toolset",
-                     "status" : "succeeded",
-                     "created_at" : 1672534800,
-                     "updated_at" : 1672534800,
-                     "features" : {
-                           "rate" : false,
-                           "tokenize" : false,
-                           "truncate_prompt" : false,
-                           "configuration" : false,
-                           "system_prompt" : true,
-                           "tools" : false,
-                           "seed" : false,
-                           "url_attachments" : false,
-                           "folder_attachments" : false,
-                           "allow_resume" : true,
-                           "accessible_by_per_request_key" : true,
-                           "content_parts" : false,
-                           "temperature" : true,
-                           "cache" : false,
-                           "auto_caching" : false,
-                           "parallel_tool_calls" : true,
-                           "assistant_attachments_in_request": false
-                      },
-                     "description_keywords" : [ ],
-                     "max_retry_attempts" : 1,
-                     "transport" : "HTTP",
-                     "allowed_tools" : [ "branch", "remote" ],
-                     "auth_settings" : {
-                        "authentication_type" : "NONE"
-                     }
-                   } ],
-                   "object" : "list"
-                 }
-                """);
+        verifyJsonNotExact(response, 200, TOOLSETS_LIST_USER_RESPONSE);
 
         response = send(HttpMethod.PUT, "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset", null, """
                 {
@@ -267,22 +357,24 @@ public class ToolSetApiTest extends ResourceBaseTest {
                       "transport" : "HTTP",
                       "allowed_tools" : [ "branch", "remote" ],
                       "auth_settings" : {
-                        "authentication_type" : "NONE"
+                        "authentication_type" : "NONE",
+                        "global_auth_status" : "SIGNED_OUT",
+                        "user_level_auth_status" : "SIGNED_OUT"
                      }
                     }, {
-                      "id" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset",
-                      "toolset" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset",
-                      "display_name" : "My Toolset",
-                      "display_version" : "1.0",
-                      "icon_url" : "http://toolset/icon.svg",
-                      "description" : "My toolset Description",
-                      "reference": "@ignore",
-                      "owner" : "EPM-RTC-GPT",
-                      "object" : "toolset",
-                      "status" : "succeeded",
-                      "created_at" : "@ignore",
-                      "updated_at" : "@ignore",
-                      "features" : {
+                        "id" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset",
+                        "toolset" : "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20toolset",
+                        "display_name" : "My Toolset",
+                        "display_version" : "1.0",
+                        "icon_url" : "http://toolset/icon.svg",
+                        "description" : "My toolset Description",
+                        "reference": "@ignore",
+                        "owner" : "EPM-RTC-GPT",
+                        "object" : "toolset",
+                        "status" : "succeeded",
+                        "created_at" : "@ignore",
+                        "updated_at" : "@ignore",
+                        "features" : {
                             "rate" : false,
                             "tokenize" : false,
                             "truncate_prompt" : false,
@@ -301,20 +393,19 @@ public class ToolSetApiTest extends ResourceBaseTest {
                             "parallel_tool_calls" : true,
                             "assistant_attachments_in_request": false
                           },
-                      "description_keywords" : [ ],
-                      "max_retry_attempts" : 1,
-                      "transport" : "HTTP",
-                      "allowed_tools" : [ "tool1", "tool2" ],
-                      "auth_settings" : {
-                        "authentication_type" : "NONE",
-                        "global_auth_status" : "SIGNED_OUT",
-                        "user_level_auth_status" : "SIGNED_OUT"
-                     }
+                        "description_keywords" : [ ],
+                        "max_retry_attempts" : 1,
+                        "transport" : "HTTP",
+                        "allowed_tools" : [ "tool1", "tool2" ],
+                        "auth_settings" : {
+                            "authentication_type" : "NONE",
+                            "global_auth_status" : "SIGNED_OUT",
+                            "user_level_auth_status" : "SIGNED_OUT"
+                        }
                     } ],
                     "object" : "list"
                   }
                 """);
-
     }
 
     @Test
@@ -786,5 +877,92 @@ public class ToolSetApiTest extends ResourceBaseTest {
             assertEquals(502, response.status());
             assertEquals("Cannot connect to http://localhost:9999/mcp", response.body());
         }
+    }
+
+    @Test
+    void testProxyMcpCallWithToolSetFromConfig() throws JsonProcessingException {
+        // getting list of toolsets (ignoring toolsets with invalid key in config)
+        Response response = send(HttpMethod.GET, "/openai/toolsets", null, null,  "authorization", "admin");
+        verifyJsonNotExact(response, 200, TOOLSETS_LIST_ADMIN_RESPONSE);
+
+        String globalSignInRequestJson = """
+                {
+                    "url": "my-toolset_2",
+                    "credentialsLevel": "GLOBAL",
+                    "authenticationType": "API_KEY",
+                    "api_key": "Bearer api_key"
+                }
+                """;
+
+        // non-admin user can't sign in with Global creds
+        response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, globalSignInRequestJson, "authorization", "user");
+        verify(response, 403, "Forbidden deployment: my-toolset_2");
+
+        // admin can sign in with Global creds
+        response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, globalSignInRequestJson, "authorization", "admin");
+        verify(response, 200, "true");
+
+        // getting list of toolsets with changed auth status after sign in
+        response = send(HttpMethod.GET, "/openai/toolsets", null, null, "authorization", "admin");
+        String expectedResponseJson = replaceValueInJsonArray(
+                TOOLSETS_LIST_ADMIN_RESPONSE,
+                "data",
+                "id",
+                "my-toolset_2",
+                "auth_settings",
+                "global_auth_status",
+                "SIGNED_IN"
+        );
+        assertEquals(200, response.status());
+        verifyJsonNotExact(expectedResponseJson, response.body());
+
+        TestWebServer.Handler handler = request -> new MockResponse().setBody(MCP_TOOL_CALL_RESPONSE).setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            ApiKeyData apiKey = createAdminAppKey();
+            apiKeyStore.assignPerRequestApiKey(apiKey);
+
+            Response resp = send(HttpMethod.POST, "/v1/toolset/my-toolset_2/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+
+            assertEquals(200, resp.status());
+            assertEquals(MCP_TOOL_CALL_RESPONSE, resp.body());
+        }
+
+        String globalSignOutRequestJson = """
+                {
+                    "url": "my-toolset_2",
+                    "credentialsLevel": "GLOBAL",
+                    "authenticationType": "API_KEY"
+                }
+                """;
+
+        // non-admin user can't sign out with Global creds
+        response = send(HttpMethod.POST, "/v1/ops/toolset/signout", null, globalSignOutRequestJson, "authorization", "user");
+        verify(response, 403, "Forbidden deployment: my-toolset_2");
+
+        // admin can sign out with Global creds
+        response = send(HttpMethod.POST, "/v1/ops/toolset/signout", null, globalSignOutRequestJson, "authorization", "admin");
+        verify(response, 200, "true");
+    }
+
+    private String replaceValueInJsonArray(
+            String originalJson,
+            String arrayFieldName,
+            String matchField,
+            String matchValue,
+            String targetObjectField,
+            String fieldToUpdate,
+            String newValue
+    ) throws JsonProcessingException {
+        ObjectNode root = (ObjectNode) ProxyUtil.MAPPER.readTree(originalJson);
+        ArrayNode arrayNode = (ArrayNode) root.get(arrayFieldName);
+        for (JsonNode item : arrayNode) {
+            if (matchValue.equals(item.get(matchField).asText())) {
+                ObjectNode targetObject = (ObjectNode) item.get(targetObjectField);
+                targetObject.put(fieldToUpdate, newValue);
+                break;
+            }
+        }
+        return ProxyUtil.MAPPER.writeValueAsString(root);
     }
 }

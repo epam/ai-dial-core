@@ -35,17 +35,15 @@ public class ToolSetService {
     private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
     private final ResourceCredentialsService resourceCredentialsService;
 
-    public Pair<ResourceItemMetadata, ToolSet> getToolSet(ProxyContext context, ResourceDescriptor resource) {
-        return getToolSet(context, resource, EtagHeader.ANY);
+    public Pair<ResourceItemMetadata, ToolSet> getToolSet(ResourceDescriptor resource) {
+        return getToolSet(resource, EtagHeader.ANY);
     }
 
-    public Pair<ResourceItemMetadata, ToolSet> getToolSet(ProxyContext context, ResourceDescriptor resource, EtagHeader etagHeader) {
+    public Pair<ResourceItemMetadata, ToolSet> getToolSet(ResourceDescriptor resource, EtagHeader etagHeader) {
         Pair<ResourceItemMetadata, ToolSet> result = getToolSet(resource, false, etagHeader);
         ToolSet toolSet = result.getValue();
         ResourceItemMetadata meta = result.getKey();
 
-        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resource.getUrl(), context);
-        resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator, toolSet.getAuthSettings(), context.getUserSub());
         toolSet.setAuthor(meta.getAuthor());
         toolSet.setCreatedAt(meta.getCreatedAt());
         toolSet.setUpdatedAt(meta.getUpdatedAt());
@@ -149,6 +147,12 @@ public class ToolSetService {
         }
     }
 
+    public void setResourceAuthStatuses(ProxyContext context, ToolSet toolSet, String encodedToolSetId) {
+        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedToolSetId, context, ResourceTypes.TOOL_SET);
+        resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator, toolSet.getAuthSettings(), context.getUserSub());
+        toolSet.clearAuthSettings();
+    }
+
     private boolean copyCredentials(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,
                                     CredentialsLevel credentialsLevel, boolean overwrite) {
         CredentialsDescriptor sourceCredentialDescriptor =
@@ -163,7 +167,7 @@ public class ToolSetService {
 
         // TODO: support removal all USER and APP credentials for public toolsets
         // TODO: support removal all USER and APP credentials for shared toolsets (?)
-        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resource.getUrl(), context);
+        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(resource.getUrl(), context, ResourceTypes.TOOL_SET);
         resourceCredentialsService.deleteResourceCredentials(credentialsLocator);
 
         return resourceService.deleteResource(resource, etag);
