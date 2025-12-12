@@ -1,7 +1,9 @@
 package com.epam.aidial.core.server;
 
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 public class ApplicationRouteApiTest extends ResourceBaseTest {
@@ -204,6 +206,121 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
 
             verify(appResponse, 200, responseBody);
         }
+    }
+
+    @Test
+    public void testAppRoute_WhenAutoShareFiles() {
+        // user file
+        Response response = upload(HttpMethod.PUT, "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/test_file1.txt", null, "Test");
+        Assertions.assertEquals(200, response.status());
+        // create a public app
+        response = send(HttpMethod.PUT, "/v1/applications/public/my%20custom%20application", null, """
+                {
+                "endpoint": "http://localhost:4848/v1/completions",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description",
+                "routes": {
+                        "index-search": {
+                          "paths": ["/v1/index(/[^/]+)*$"],
+                          "rewritePath": true,
+                          "methods": ["POST", "PUT", "DELETE"],
+                          "upstreams": [{"endpoint": "http://localhost:4848"}],
+                          "permissions": ["READ"],
+                          "attachmentPaths": {
+                            "requestBody": ["$.attachments[*].url"],
+                            "responseBody": ["$.result.attachedFiles"]
+                          }
+                      }
+                  }
+                }
+                """, "authorization", "admin");
+        verifyJsonNotExact(response, 200, """
+                {
+                "name":"my custom application",
+                "parentPath":null,
+                "bucket":"public",
+                "url":"applications/public/my%20custom%20application",
+                "nodeType":"ITEM",
+                "resourceType":"APPLICATION",
+                "createdAt": "@ignore",
+                "updatedAt":"@ignore",
+                "etag":"@ignore"
+                }
+                """);
+        String responseBody = """
+                {
+                 "content": "some result",
+                 "result": {
+                  "attachedFiles": ["%s"]
+                  }
+                }
+                """;
+        try (TestWebServer server = new TestWebServer(4848)) {
+            // app route handler
+            TestWebServer.Handler handler = request -> {
+                try {
+                    // check access to the attached file from the request
+                    var res = send(HttpMethod.GET, "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/test_file1.txt",
+                            null, null, "api-key", request.getHeader("api-key"));
+                    if (res.ok()) {
+                        res = send(HttpMethod.GET, "/v1/bucket", null, "", "api-key", request.getHeader("api-key"));
+                        verify(res, 200);
+                        String bucket = new JsonObject(res.body()).getString("bucket");
+                        res = upload(HttpMethod.PUT, "/v1/files/%s/folder/output.txt".formatted(bucket),
+                                null, "result", "api-key", request.getHeader("api-key"));
+                        verify(res, 200);
+                        MockResponse mockResponse = new MockResponse();
+                        mockResponse.setResponseCode(200);
+                        mockResponse.setBody(responseBody.formatted("files/%s/folder/output.txt".formatted(bucket)));
+                        return mockResponse;
+                    } else {
+                        return new MockResponse().setResponseCode(res.status());
+                    }
+                } catch (Throwable e) {
+                    return new MockResponse().setResponseCode(500);
+                }
+            };
+            // app chat completion handler
+            server.map(HttpMethod.POST, "/v1/completions", request -> {
+                try {
+                    String requestBody = """
+                            {
+                             "payload": "some content",
+                             "attachments": [{"url": "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/test_file1.txt"}]
+                            }
+                            """;
+                    String appPath = "/v1/deployments/applications/public/my%20custom%20application/route/v1/index/search";
+                    ResourceBaseTest.Response appResponse = send(HttpMethod.POST, appPath, null, requestBody, "api-key", request.getHeader("api-key"));
+
+                    verify(appResponse, 200);
+                    // check access to the attached file from the response
+                    String url = new JsonObject(appResponse.body()).getJsonObject("result").getJsonArray("attachedFiles").getString(0);
+                    var res = send(HttpMethod.GET, "/v1/" + url,
+                            null, null, "api-key", request.getHeader("api-key"));
+                    verify(res, 200);
+                    return new MockResponse().setResponseCode(200).setBody(responseBody);
+                } catch (Throwable e) {
+                    return new MockResponse().setResponseCode(500);
+                }
+            });
+            server.map(HttpMethod.POST, "/v1/index/search", handler);
+
+            response = send(HttpMethod.POST, "/openai/deployments/applications/public/my%20custom%20application/chat/completions", null, """
+                    {
+                         "messages": [
+                            {"role": "user", "content": "Repeat me!",
+                          "custom_content": {
+                            "attachments": [{"url": "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/test_file1.txt"}]
+                          }
+                          }
+                          ]
+                    }
+                    """, "content-type", "application/json");
+            verify(response, 200);
+        }
+
     }
 
 }

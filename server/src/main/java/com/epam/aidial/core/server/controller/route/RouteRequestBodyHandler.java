@@ -55,6 +55,8 @@ class RouteRequestBodyHandler {
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setRequestBody(requestBody);
 
+        controller.setupProxyApiKeyData();
+
         controller.setupEnhancementFunctions();
 
         if (!controller.enhancementFunctions.isEmpty()) {
@@ -79,6 +81,8 @@ class RouteRequestBodyHandler {
                 return;
             }
         }
+
+        proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
         sendRequest();
     }
 

@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller.route;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -40,9 +41,22 @@ class RouteWebSocketHandler {
     private final BaseRouteController controller;
 
     public Future<Void> handle() {
-        Future<ServerWebSocket> future = context.getRequest().toWebSocket();
-        return future.compose(this::handleWebSocket)
+        return assignPerRequestKeyIfNeeded()
+                .compose(ignore -> context.getRequest().toWebSocket())
+                .compose(this::handleWebSocket)
                 .onFailure(this::handleWebSocketFailure);
+    }
+
+    private Future<Void> assignPerRequestKeyIfNeeded() {
+        ApiKeyData proxyApiKeyData = controller.setupProxyApiKeyData();
+        if (proxyApiKeyData == null) {
+            return Future.succeededFuture();
+        } else {
+            return proxy.getTaskExecutor().submit(() -> {
+                proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+                return null;
+            });
+        }
     }
 
     private void handleWebSocketFailure(Throwable error) {

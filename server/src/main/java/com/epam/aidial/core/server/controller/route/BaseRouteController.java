@@ -109,7 +109,6 @@ abstract class BaseRouteController implements Controller {
     private Future<?> handleRateLimitSuccess() {
         if (context.getResponseBody() == null) {
             return proxy.getTokenStatsTracker().startSpan(context)
-                    .compose(ignore -> assignPerRequestKeyIfNeeded())
                     .compose(ignore -> {
                         if (isWebSocketUpgrade(context.getRequest())) {
                             RouteWebSocketHandler handler = new RouteWebSocketHandler(context, proxy, this);
@@ -131,18 +130,6 @@ abstract class BaseRouteController implements Controller {
         return Strings.CI.contains(upgradeHeader, "websocket");
     }
 
-    private Future<Void> assignPerRequestKeyIfNeeded() {
-        ApiKeyData proxyApiKeyData = setupProxyApiKeyData();
-        if (proxyApiKeyData == null) {
-            return Future.succeededFuture();
-        } else {
-            return proxy.getTaskExecutor().submit(() -> {
-                proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
-                return null;
-            });
-        }
-    }
-
     protected abstract Future<Boolean> hasRequiredPermissions(Set<ResourceAccessType> permissions);
 
     protected boolean hasAccessByUserRoles(Route route) {
@@ -159,7 +146,7 @@ abstract class BaseRouteController implements Controller {
     }
 
     @Nullable
-    private ApiKeyData setupProxyApiKeyData() {
+    ApiKeyData setupProxyApiKeyData() {
         Upstream upstream = context.getUpstreamRoute().get();
         if (upstream != null && upstream.getKey() != null) {
             return null;
