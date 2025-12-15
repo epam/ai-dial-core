@@ -24,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.Map;
+import java.util.function.Consumer;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -98,6 +99,15 @@ public class ToolSetService {
         return Pair.of(meta, toolSet);
     }
 
+    public void copyToolSet(ProxyContext context,
+                            ResourceDescriptor source,
+                            ResourceDescriptor destination,
+                            @Nullable String author,
+                            boolean overwrite,
+                            Map<CredentialsLevel, Boolean> credentialsToCopy) {
+        copyToolSet(context, source, destination, author, overwrite, credentialsToCopy, toolSet -> {});
+    }
+
     /**
      * @param credentialsToCopy a map defining which credential levels should be copied
      *                          and whether they are required:
@@ -111,7 +121,8 @@ public class ToolSetService {
                             ResourceDescriptor destination,
                             @Nullable String author,
                             boolean overwrite,
-                            Map<CredentialsLevel, Boolean> credentialsToCopy) {
+                            Map<CredentialsLevel, Boolean> credentialsToCopy,
+                            Consumer<ToolSet> consumer) {
 
         verifyToolSet(source);
         verifyToolSet(destination);
@@ -131,6 +142,7 @@ public class ToolSetService {
                 new BucketInfo(destination.getBucketName(), destination.getBucketLocation()),
                 toolSet.getAuthSettings());
 
+        consumer.accept(toolSet);
         String json = ProxyUtil.convertToString(toolSet);
         resourceService.putResource(destination, json, etag, author);
 

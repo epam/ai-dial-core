@@ -691,7 +691,8 @@ public class PublicationService {
                 });
             } else if (from.getType() == ResourceTypes.TOOL_SET) {
                 Map<CredentialsLevel, Boolean> credentialsToCopy = getCredentialsLevelsToCopy(resource);
-                toolSetService.copyToolSet(context, from, to, null, false, credentialsToCopy);
+                toolSetService.copyToolSet(context, from, to, null, false, credentialsToCopy,
+                        toolSet -> toolSet.setIconUrl(replaceLink(replacementLinks, toolSet.getIconUrl())));
             } else if (!resourceService.copyResource(from, to)) {
                 throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
             }
@@ -736,7 +737,7 @@ public class PublicationService {
             } else if (from.getType() == ResourceTypes.TOOL_SET) {
                 Map<CredentialsLevel, Boolean> credentialsToCopy = getCredentialsLevelsToCopy(resource);
                 toolSetService.copyToolSet(context, from, to, publication.getDisplayAuthor(), false,
-                        credentialsToCopy);
+                        credentialsToCopy, toolSet -> toolSet.setIconUrl(replaceLink(replacementLinks, toolSet.getIconUrl())));
             } else {
                 UserMetadata userMetadata = new UserMetadata();
                 ResourceItemMetadata metadata = resourceService.getResourceMetadata(from);
