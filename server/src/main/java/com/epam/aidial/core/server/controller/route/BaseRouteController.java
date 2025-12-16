@@ -52,7 +52,7 @@ abstract class BaseRouteController implements Controller {
 
     protected Future<?> handleRoute(Route route) {
         if (route == null) {
-            respond(HttpStatus.BAD_GATEWAY, "No route");
+            respond(HttpStatus.NOT_FOUND, "Route is not found");
             log.warn("RouteController can't find a route to proceed the request: {}", getRequestUri());
             return Future.succeededFuture();
         }
