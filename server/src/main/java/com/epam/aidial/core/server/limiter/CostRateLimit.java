@@ -88,13 +88,13 @@ public class CostRateLimit {
                 limits.add("daily");
             }
             if (minuteTotal.compareTo(costLimit.getMinute()) >= 0) {
-                limits.add("minutely");
+                limits.add("minute");
             }
             
             for (int i = 0; i < limits.size(); i++) {
                 if (i > 0) {
                     if (i == limits.size() - 1) {
-                        displayError.append(" and ");
+                        displayError.append(" and");
                     } else {
                         displayError.append(',');
                     }
