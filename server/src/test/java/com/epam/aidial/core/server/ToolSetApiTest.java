@@ -434,6 +434,26 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testProxyMcp_TerminateSession() {
+        String mcpRequest = """                
+                """;
+        String mcpResponse = """                
+                """;
+        TestWebServer.Handler handler = request -> {
+            assertEquals(mcpRequest, request.getBody().readString(StandardCharsets.UTF_8));
+            assertNotNull(request.getHeader("Mcp-Session-Id"));
+            assertNotNull(request.getHeader(Proxy.HEADER_API_KEY));
+            return new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "text/event-stream");
+        };
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response resp = send(HttpMethod.DELETE, "/v1/toolset/git/mcp", null, mcpRequest, "Mcp-Session-Id", "123");
+
+            assertEquals(200, resp.status());
+            assertEquals(mcpResponse, resp.body());
+        }
+    }
+
+    @Test
     void testProxyMcpPostCall_EmptyPayload() {
         TestWebServer.Handler handler = request -> {
             assertEquals("", request.getBody().readString(StandardCharsets.UTF_8));
