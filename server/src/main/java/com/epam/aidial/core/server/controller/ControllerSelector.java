@@ -298,6 +298,10 @@ public class ControllerSelector {
             InvitationController controller = new InvitationController(proxy, context);
             return () -> controller.deleteInvitation(invitationId);
         });
+        delete(RouteTemplate.TOOL_SET_PROXY, ((proxy, context, pathMatcher) -> {
+            String toolSetId = UrlUtil.decodePath(pathMatcher.group(1));
+            return new ToolSetProxyController(proxy, context, toolSetId);
+        }));
         // PUT routes
         put(RouteTemplate.FILES, (proxy, context, pathMatcher) -> {
             UploadFileController controller = new UploadFileController(proxy, context);
