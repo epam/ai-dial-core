@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
@@ -36,6 +37,7 @@ import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 @Slf4j
@@ -72,7 +74,7 @@ public class ResourceCredentialsController {
                             String encodedResourceUrl = UrlUtil.encodePath(resourceId);
                             ResourceAuthSettings resourceAuthSettings = toolSet.getAuthSettings();
                             CredentialsLevel credentialsLevel = resourceSignInRequest.getCredentialsLevel();
-
+                            validateAuthType(resourceAuthSettings.getAuthenticationType(), resourceSignInRequest.getAuthenticationType());
                             if (context.getConfig().isDeploymentExists(deployment.getName())) {
                                 verifyAccess(toolSet, credentialsLevel);
                             } else {
@@ -108,6 +110,8 @@ public class ResourceCredentialsController {
                     if (context.getConfig().isDeploymentExists(encodedResourceUrl)) {
                         Deployment deployment = deploymentService.findDeployment(context, encodedResourceUrl);
                         if (deployment instanceof ToolSet toolSet) {
+                            ResourceAuthSettings resourceAuthSettings = toolSet.getAuthSettings();
+                            validateAuthType(resourceAuthSettings.getAuthenticationType(), resourceSignOutRequest.getAuthenticationType());
                             verifyAccess(toolSet, credentialsLevel);
                         } else {
                             throw new ResourceNotFoundException("Toolset is not found: " + encodedResourceUrl);
@@ -160,6 +164,14 @@ public class ResourceCredentialsController {
         ResourceDescriptor toolSetResourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(encodedResourceUrl, encryptionService);
         BucketInfo toolSetBucketInfo = new BucketInfo(toolSetResourceDescriptor.getBucketName(), toolSetResourceDescriptor.getBucketLocation());
         resourceAuthSettingsEncryptionService.decrypt(toolSetResourceDescriptor.getUrl(), toolSetBucketInfo, resourceAuthSettings);
+    }
+
+    private void validateAuthType(AuthenticationType resourceAuthenticationType,
+                                  AuthenticationType requestAuthenticationType) {
+        if (!Objects.equals(resourceAuthenticationType, requestAuthenticationType)) {
+            throw new IllegalArgumentException("Wrong authentication_type. Expected type: %s, provided: %s"
+                    .formatted(resourceAuthenticationType, requestAuthenticationType));
+        }
     }
 
     private void respondError(String message, Throwable error) {
