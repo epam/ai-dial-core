@@ -107,17 +107,17 @@ public class ResourceCredentialsController {
                     CredentialsLevel credentialsLevel = resourceSignOutRequest.getCredentialsLevel();
                     ValidationUtil.validate(resourceSignOutRequest);
 
-                    if (context.getConfig().isDeploymentExists(encodedResourceUrl)) {
-                        Deployment deployment = deploymentService.findDeployment(context, encodedResourceUrl);
-                        if (deployment instanceof ToolSet toolSet) {
-                            ResourceAuthSettings resourceAuthSettings = toolSet.getAuthSettings();
-                            validateAuthType(resourceAuthSettings.getAuthenticationType(), resourceSignOutRequest.getAuthenticationType());
+                    Deployment deployment = deploymentService.findDeployment(context, encodedResourceUrl);
+                    if (deployment instanceof ToolSet toolSet) {
+                        ResourceAuthSettings resourceAuthSettings = toolSet.getAuthSettings();
+                        validateAuthType(resourceAuthSettings.getAuthenticationType(), resourceSignOutRequest.getAuthenticationType());
+                        if (context.getConfig().isDeploymentExists(encodedResourceUrl)) {
                             verifyAccess(toolSet, credentialsLevel);
                         } else {
-                            throw new ResourceNotFoundException("Toolset is not found: " + encodedResourceUrl);
+                            verifyAccess(encodedResourceUrl, credentialsLevel);
                         }
                     } else {
-                        verifyAccess(encodedResourceUrl, credentialsLevel);
+                        throw new ResourceNotFoundException("Toolset is not found: " + encodedResourceUrl);
                     }
 
                     CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceUrl, context, ResourceTypes.TOOL_SET);
