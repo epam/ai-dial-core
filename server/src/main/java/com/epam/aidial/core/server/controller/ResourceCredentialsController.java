@@ -6,7 +6,6 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.SecuredResource;
-import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
@@ -70,13 +69,13 @@ public class ResourceCredentialsController {
                     String resourceId = resourceSignInRequest.getUrl();
                     return taskExecutor.submit(() -> {
                         Deployment deployment = deploymentService.findDeployment(context, resourceId);
-                        if (deployment instanceof ToolSet toolSet) {
+                        if (deployment instanceof SecuredResource securedResource) {
                             String encodedResourceUrl = UrlUtil.encodePath(resourceId);
-                            ResourceAuthSettings resourceAuthSettings = toolSet.getAuthSettings();
+                            ResourceAuthSettings resourceAuthSettings = securedResource.getAuthSettings();
                             CredentialsLevel credentialsLevel = resourceSignInRequest.getCredentialsLevel();
                             validateAuthType(resourceAuthSettings.getAuthenticationType(), resourceSignInRequest.getAuthenticationType());
                             if (context.getConfig().isDeploymentExists(deployment.getName())) {
-                                verifyAccess(toolSet, credentialsLevel);
+                                verifyAccess(securedResource, credentialsLevel);
                             } else {
                                 verifyAccess(encodedResourceUrl, credentialsLevel);
                                 decryptAuthSettings(encodedResourceUrl, resourceAuthSettings);
@@ -108,16 +107,16 @@ public class ResourceCredentialsController {
                     ValidationUtil.validate(resourceSignOutRequest);
 
                     Deployment deployment = deploymentService.findDeployment(context, encodedResourceUrl);
-                    if (deployment instanceof ToolSet toolSet) {
-                        ResourceAuthSettings resourceAuthSettings = toolSet.getAuthSettings();
+                    if (deployment instanceof SecuredResource securedResource) {
+                        ResourceAuthSettings resourceAuthSettings = securedResource.getAuthSettings();
                         validateAuthType(resourceAuthSettings.getAuthenticationType(), resourceSignOutRequest.getAuthenticationType());
                         if (context.getConfig().isDeploymentExists(encodedResourceUrl)) {
-                            verifyAccess(toolSet, credentialsLevel);
+                            verifyAccess(securedResource, credentialsLevel);
                         } else {
                             verifyAccess(encodedResourceUrl, credentialsLevel);
                         }
                     } else {
-                        throw new ResourceNotFoundException("Toolset is not found: " + encodedResourceUrl);
+                        throw new ResourceNotFoundException("Resource is not found: " + encodedResourceUrl);
                     }
 
                     CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceUrl, context, ResourceTypes.TOOL_SET);
@@ -161,9 +160,9 @@ public class ResourceCredentialsController {
     }
 
     private void decryptAuthSettings(String encodedResourceUrl, ResourceAuthSettings resourceAuthSettings) {
-        ResourceDescriptor toolSetResourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(encodedResourceUrl, encryptionService);
-        BucketInfo toolSetBucketInfo = new BucketInfo(toolSetResourceDescriptor.getBucketName(), toolSetResourceDescriptor.getBucketLocation());
-        resourceAuthSettingsEncryptionService.decrypt(toolSetResourceDescriptor.getUrl(), toolSetBucketInfo, resourceAuthSettings);
+        ResourceDescriptor resourceDescriptor = ResourceDescriptorFactory.fromAnyUrl(encodedResourceUrl, encryptionService);
+        BucketInfo resourceBucketInfo = new BucketInfo(resourceDescriptor.getBucketName(), resourceDescriptor.getBucketLocation());
+        resourceAuthSettingsEncryptionService.decrypt(resourceDescriptor.getUrl(), resourceBucketInfo, resourceAuthSettings);
     }
 
     private void validateAuthType(AuthenticationType resourceAuthenticationType,
