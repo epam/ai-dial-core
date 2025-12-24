@@ -25,8 +25,9 @@ An object containing parameters for each [toolset](#toolsets).
 * `transport`: A transport supported by MCP server. The available options are: `HTTP` or `SSE`.
 * `allowedTools`: A list of available tools in the MCP server.
 * `forwardPerRequestKey`: Set this flag to `true` if you want a [per request API key](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/3.per-request-keys.md) to be forwarded to the toolset endpoint allowing a toolset to access files in the DIAL storage. **Note**: it is not allowed to creaete toolsets with `authType.API_KEY` and `forwardPerRequestKey=true`.
+* `authSettings`: An object with MCP the authentication settings. Used for configuring authentication to MCP. Defaults to 'None' auth type if not configured. Refer to [authSettings](#toolsetstoolset_nameauthSettings).
 
-**Example:**
+**Example with no authentication:**
 
 ```json
 "toolsets": {
@@ -38,3 +39,53 @@ An object containing parameters for each [toolset](#toolsets).
         }
     },
 ```
+
+#### toolsets.<toolset_name>.authSettings
+
+An object configures authentication for a DIAL Toolset. It determines how the toolset authenticates requests to its MCP endpoint. 
+If not specified, authentication defaults to NONE.
+
+An object contains parameters for each toolset.
+
+* `authentication_type`: The authentication method for the toolset. Supported values: OAUTH, API_KEY, NONE. Refer to [authenticationType](#toolsetstoolset_nameauthsettingsauthenticationType) for more details.
+* `client_id`: (OAUTH only) OAuth client ID.
+* `client_secret`: (OAUTH only) OAuth client secret.
+* `redirect_uri`: (OAUTH only) OAuth redirect URI.
+* `authorization_endpoint`: (OAUTH only) OAuth authorization endpoint.
+* `token_endpoint`: (OAUTH only) OAuth token endpoint.
+* `scopes_supported`: (OAUTH only) List of OAuth scopes required for the toolset.
+* `api_key_header`: (API_KEY only) The HTTP header name used to pass the API key (e.g., Authorization).
+
+**Example with API_KEY authentication:**
+
+```json
+"auth_settings": {
+    "authentication_type": "API_KEY",
+    "api_key_header": "Authorization"
+}
+```
+
+**Example with OAUTH authentication:**
+
+```json
+"auth_settings": {
+    "authentication_type": "OAUTH",
+    "redirect_uri": "https://example.com/auth/toolset-signin",
+    "client_id": "your-client-id",
+    "client_secret": "your-client-id",
+    "authorization_endpoint": "https://login.microsoftonline.com/your-tenant-id/oauth2/v2.0/authorize",
+    "token_endpoint": "https://login.microsoftonline.com/your-tenant-id/oauth2/v2.0/token",
+    "scopes_supported": [
+        "scope1",
+        "scope2"
+    ]
+}
+```
+
+#### toolsets.<toolset_name>.authSettings.authenticationType
+
+Supported authentication types:
+
+* `OAUTH`: For OAuth 2.0 authentication using static client registration.
+* `API_KEY`: For API key-based authentication.
+* `NONE`: For toolsets that do not require authentication.
