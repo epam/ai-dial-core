@@ -102,24 +102,25 @@ public class ResourceCredentialsController {
                 .body()
                 .compose(body -> taskExecutor.submit(() -> {
                     ResourceSignOutRequest resourceSignOutRequest = ProxyUtil.convertToObject(body, ResourceSignOutRequest.class);
-                    String encodedResourceUrl = UrlUtil.encodePath(resourceSignOutRequest.getUrl());
+                    String resourceId = resourceSignOutRequest.getUrl();
+                    String encodedResourceId = UrlUtil.encodePath(resourceId);
                     CredentialsLevel credentialsLevel = resourceSignOutRequest.getCredentialsLevel();
                     ValidationUtil.validate(resourceSignOutRequest);
 
-                    Deployment deployment = deploymentService.findDeployment(context, encodedResourceUrl);
+                    Deployment deployment = deploymentService.findDeployment(context, resourceId);
                     if (deployment instanceof SecuredResource securedResource) {
                         ResourceAuthSettings resourceAuthSettings = securedResource.getAuthSettings();
                         validateAuthType(resourceAuthSettings.getAuthenticationType(), resourceSignOutRequest.getAuthenticationType());
-                        if (context.getConfig().isDeploymentExists(encodedResourceUrl)) {
+                        if (context.getConfig().isDeploymentExists(encodedResourceId)) {
                             verifyAccess(securedResource, credentialsLevel);
                         } else {
-                            verifyAccess(encodedResourceUrl, credentialsLevel);
+                            verifyAccess(encodedResourceId, credentialsLevel);
                         }
                     } else {
-                        throw new ResourceNotFoundException("Resource is not found: " + encodedResourceUrl);
+                        throw new ResourceNotFoundException("Resource is not found: " + encodedResourceId);
                     }
 
-                    CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceUrl, context, ResourceTypes.TOOL_SET);
+                    CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceId, context, ResourceTypes.TOOL_SET);
                     return resourceCredentialsService.deleteResourceCredentials(
                             credentialsLocator,
                             resourceSignOutRequest,
