@@ -8,7 +8,7 @@ jobs:
     steps:
       - name: Slash Command Dispatch
         id: scd
-        uses: peter-evans/slash-command-dispatch@e1b4e266bc781656359bb7e462e228daf68c04f6 # v5.0.0
+        uses: peter-evans/slash-command-dispatch@5c11dc7efead556e3bdabf664302212f79eb26fa # v5.0.1
         with:
           token: ${{ secrets.ACTIONS_BOT_TOKEN }}
           reaction-token: ${{ secrets.ACTIONS_BOT_TOKEN }}
