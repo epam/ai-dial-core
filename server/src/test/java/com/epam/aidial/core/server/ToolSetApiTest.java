@@ -965,6 +965,34 @@ public class ToolSetApiTest extends ResourceBaseTest {
         verify(response, 200, "true");
     }
 
+    @Test
+    void testSignInWithIncorrectAuthType() {
+        String globalSignInRequestJson = """
+                {
+                    "url": "my-toolset_2",
+                    "credentialsLevel": "GLOBAL",
+                    "authenticationType": "OAUTH",
+                    "code": "some-auth-code"
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, globalSignInRequestJson, "authorization", "admin");
+        verify(response, 400, "Wrong authentication_type. Expected type: API_KEY, provided: OAUTH");
+    }
+
+    @Test
+    void testSignOutWithIncorrectAuthType() {
+        String globalSignOutRequestJson = """
+                {
+                    "url": "my-toolset_2",
+                    "credentialsLevel": "GLOBAL",
+                    "authenticationType": "OAUTH"
+                }
+                """;
+
+        Response response = send(HttpMethod.POST, "/v1/ops/toolset/signout", null, globalSignOutRequestJson, "authorization", "admin");
+        verify(response, 400, "Wrong authentication_type. Expected type: API_KEY, provided: OAUTH");
+    }
+
     private String replaceValueInJsonArray(
             String originalJson,
             String arrayFieldName,
