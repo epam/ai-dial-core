@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAccessType;
@@ -37,11 +38,13 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.stream.Stream;
 
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -76,7 +79,6 @@ class ResourceCredentialsControllerTest {
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
         when(proxy.getDeploymentService()).thenReturn(deploymentService);
         when(proxy.getResourceAuthSettingsEncryptionService()).thenReturn(resourceAuthSettingsEncryptionService);
-        when(context.getConfig()).thenReturn(mock(Config.class));
 
         doAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
@@ -113,31 +115,16 @@ class ResourceCredentialsControllerTest {
                     Set<ResourceAccessType> userPermissions,
                     HttpStatus expectedResponseStatus) {
         // Given
-        byte[] requestBody = """
-                {
-                    "url": "toolsets/encrypted-user-bucket/%s",
-                    "credentialsLevel": "%s",
-                    "authenticationType": "OAUTH"
-                }
-                """
-                .formatted(resourceName, credentialsLevel)
-                .getBytes(StandardCharsets.UTF_8);
-        when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
-        when(context.getRequest()).thenReturn(request);
-        when(context.getProxy()).thenReturn(proxy);
+        mockRequest(resourceName, credentialsLevel, AuthenticationType.OAUTH);
+
         when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
-
-        ToolSet mockToolSet = mock(ToolSet.class);
-        when(mockToolSet.getAuthSettings()).thenReturn(new ResourceAuthSettings());
-
-        String resourceId = "toolsets/encrypted-user-bucket/%s".formatted(resourceName);
-        when(deploymentService.findDeployment(context, resourceId)).thenReturn(mockToolSet);
         when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
         when(context.getUserSub()).thenReturn("userSub");
+        when(context.getConfig()).thenReturn(mock(Config.class));
+        when(context.getProxy()).thenReturn(proxy);
 
-        ResourceDescriptor resourceDescriptor = createResourceDescriptor(resourceName);
-        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = Map.of(resourceDescriptor, userPermissions);
-        when(accessService.lookupPermissions(any(), eq(context))).thenReturn(permissions);
+        mockToolset();
+        setPermissions(resourceName, userPermissions);
 
         // When
         controller.signIn();
@@ -173,33 +160,43 @@ class ResourceCredentialsControllerTest {
                                      HttpStatus expectedResponseStatus,
                                      String expectedResponseBody) {
         // Given
-        byte[] requestBody = """
-                {
-                    "url": "toolsets/encrypted-user-bucket/%s",
-                    "credentialsLevel": "%s",
-                    "authenticationType": "OAUTH"
-                }
-                """
-                .formatted(resourceName, credentialsLevel)
-                .getBytes(StandardCharsets.UTF_8);
-        when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
-        when(context.getRequest()).thenReturn(request);
+        mockRequest(resourceName, credentialsLevel, AuthenticationType.OAUTH);
 
-        ToolSet mockToolSet = mock(ToolSet.class);
-        String resourceId = "toolsets/encrypted-user-bucket/%s".formatted(resourceName);
-        when(deploymentService.findDeployment(context, resourceId))
-                .thenReturn(mockToolSet);
         when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
+        when(context.getConfig()).thenReturn(mock(Config.class));
 
-        ResourceDescriptor resourceDescriptor = createResourceDescriptor(resourceName);
-        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = Map.of(resourceDescriptor, userPermissions);
-        when(accessService.lookupPermissions(any(), eq(context))).thenReturn(permissions);
+        mockToolset();
+        setPermissions(resourceName, userPermissions);
 
         // When
         controller.signIn();
 
         // Then
         verify(context).respond(expectedResponseStatus, expectedResponseBody);
+    }
+
+    @Test
+    void testSignIn_EncryptionException() {
+        // Given
+        String resourceName = "toolset-1";
+        mockRequest(resourceName, CredentialsLevel.GLOBAL, AuthenticationType.OAUTH);
+
+        when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
+        when(context.getConfig()).thenReturn(mock(Config.class));
+
+        mockToolset();
+        setPermissions(resourceName, ResourceAccessType.ALL);
+
+        doAnswer(invocation -> {
+            throw new EncryptionException("Failed to decrypt auth settings");
+        }).when(resourceAuthSettingsEncryptionService)
+                .decrypt(any(), any(), any());
+
+        // When
+        controller.signIn();
+
+        // Then
+        verify(context).respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to decrypt auth settings");
     }
 
     private static Stream<Arguments> testDataForTestSignOut() {
@@ -220,77 +217,24 @@ class ResourceCredentialsControllerTest {
         );
     }
 
-    @Test
-    void testSignIn_EncryptionException() {
-        // Given
-        String resourceName = "toolset-1";
-        CredentialsLevel credentialsLevel = CredentialsLevel.GLOBAL;
-
-        byte[] requestBody = """
-                {
-                    "url": "toolsets/encrypted-user-bucket/%s",
-                    "credentialsLevel": "%s",
-                    "authenticationType": "OAUTH"
-                }
-                """
-                .formatted(resourceName, credentialsLevel)
-                .getBytes(StandardCharsets.UTF_8);
-        when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
-        when(context.getRequest()).thenReturn(request);
-
-        ToolSet mockToolSet = mock(ToolSet.class);
-        when(mockToolSet.getAuthSettings()).thenReturn(new ResourceAuthSettings());
-
-        String resourceId = "toolsets/encrypted-user-bucket/%s".formatted(resourceName);
-        when(deploymentService.findDeployment(context, resourceId))
-                .thenReturn(mockToolSet);
-        when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
-
-        ResourceDescriptor resourceDescriptor = createResourceDescriptor(resourceName);
-        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = Map.of(resourceDescriptor, ResourceAccessType.ALL);
-        when(accessService.lookupPermissions(any(), eq(context))).thenReturn(permissions);
-
-        doAnswer(invocation -> {
-            throw new EncryptionException("Failed to decrypt auth settings");
-        }).when(resourceAuthSettingsEncryptionService)
-                .decrypt(any(), any(), any());
-
-        // When
-        controller.signIn();
-
-        // Then
-        verify(context).respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to decrypt auth settings");
-    }
-
     @ParameterizedTest
     @MethodSource("testDataForTestSignOut")
     void testSignOut(String resourceName,
                      CredentialsLevel credentialsLevel,
                      Set<ResourceAccessType> userPermissions,
                      HttpStatus expectedResponseStatus,
-                     boolean expextedResonse) {
+                     boolean expectedResponse) {
         // Given
-        byte[] requestBody = """
-                {
-                    "url": "toolsets/encrypted-user-bucket/%s",
-                    "credentialsLevel": "%s",
-                    "authenticationType": "OAUTH"
-                }
-                """
-                .formatted(resourceName, credentialsLevel)
-                .getBytes(StandardCharsets.UTF_8);
-        when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
-        when(context.getRequest()).thenReturn(request);
-        when(context.getProxy()).thenReturn(proxy);
+        mockRequest(resourceName, credentialsLevel, AuthenticationType.OAUTH);
 
+        when(context.getProxy()).thenReturn(proxy);
         when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
         when(context.getUserSub()).thenReturn("userSub");
-
         when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
+        when(context.getConfig()).thenReturn(mock(Config.class));
 
-        ResourceDescriptor resourceDescriptor = createResourceDescriptor(resourceName);
-        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = Map.of(resourceDescriptor, userPermissions);
-        when(accessService.lookupPermissions(any(), eq(context))).thenReturn(permissions);
+        mockToolset();
+        setPermissions(resourceName, userPermissions);
 
         when(resourceCredentialsService.deleteResourceCredentials(any(), any(), any())).thenReturn(true);
 
@@ -298,7 +242,7 @@ class ResourceCredentialsControllerTest {
         controller.signOut();
 
         // Then
-        verify(context).respond(expectedResponseStatus, expextedResonse);
+        verify(context).respond(expectedResponseStatus, expectedResponse);
     }
 
     private static Stream<Arguments> testDataForTestSignOutPermissionDenied() {
@@ -327,23 +271,13 @@ class ResourceCredentialsControllerTest {
                                       HttpStatus expectedResponseStatus,
                                       String expectedResponseBody) {
         // Given
-        byte[] requestBody = """
-                {
-                    "url": "toolsets/encrypted-user-bucket/%s",
-                    "credentialsLevel": "%s",
-                    "authenticationType": "OAUTH"
-                }
-                """
-                .formatted(resourceName, credentialsLevel)
-                .getBytes(StandardCharsets.UTF_8);
-        when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
-        when(context.getRequest()).thenReturn(request);
+        mockRequest(resourceName, credentialsLevel, AuthenticationType.OAUTH);
+
         when(context.getConfig()).thenReturn(mock(Config.class));
         when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
 
-        ResourceDescriptor resourceDescriptor = createResourceDescriptor(resourceName);
-        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = Map.of(resourceDescriptor, userPermissions);
-        when(accessService.lookupPermissions(any(), eq(context))).thenReturn(permissions);
+        mockToolset();
+        setPermissions(resourceName, userPermissions);
 
         // When
         controller.signOut();
@@ -352,9 +286,65 @@ class ResourceCredentialsControllerTest {
         verify(context).respond(expectedResponseStatus, expectedResponseBody);
     }
 
+    @Test
+    void testSignIn_WrongAuthenticationType() {
+        // Given
+        mockRequest("toolset 1", CredentialsLevel.USER, AuthenticationType.API_KEY);
+        mockToolset();
+
+        // When
+        controller.signIn();
+
+        // Then
+        verifyNoInteractions(resourceCredentialsService);
+        verify(context).respond(HttpStatus.BAD_REQUEST, "Wrong authentication_type. Expected type: OAUTH, provided: API_KEY");
+    }
+
+    @Test
+    void testSignOut_WrongAuthenticationType() {
+        // Given
+        mockRequest("toolset 1", CredentialsLevel.USER, AuthenticationType.API_KEY);
+        mockToolset();
+
+        // When
+        controller.signOut();
+
+        // Then
+        verifyNoInteractions(resourceCredentialsService);
+        verify(context).respond(HttpStatus.BAD_REQUEST, "Wrong authentication_type. Expected type: OAUTH, provided: API_KEY");
+    }
+
     private ResourceDescriptor createResourceDescriptor(String resourceName) {
         return new ResourceDescriptor(ResourceTypes.TOOL_SET, resourceName, List.of(),
                 "encrypted-user-bucket", "Users/userSub/", false);
+    }
+
+    private void setPermissions(String resourceName, Set<ResourceAccessType> userPermissions) {
+        ResourceDescriptor resourceDescriptor = createResourceDescriptor(resourceName);
+        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = Map.of(resourceDescriptor, userPermissions);
+        when(accessService.lookupPermissions(any(), eq(context))).thenReturn(permissions);
+    }
+
+    private void mockToolset() {
+        ToolSet mockToolSet = mock(ToolSet.class);
+        ResourceAuthSettings resourceAuthSettings = mock(ResourceAuthSettings.class);
+        when(resourceAuthSettings.getAuthenticationType()).thenReturn(AuthenticationType.OAUTH);
+        when(mockToolSet.getAuthSettings()).thenReturn(resourceAuthSettings);
+        when(deploymentService.findDeployment(eq(context), anyString())).thenReturn(mockToolSet);
+    }
+
+    private void mockRequest(String resourceName, CredentialsLevel credentialsLevel, AuthenticationType authenticationType) {
+        byte [] requestBody = """
+                {
+                    "url": "toolsets/encrypted-user-bucket/%s",
+                    "credentialsLevel": "%s",
+                    "authenticationType": "%s"
+                }
+                """
+                .formatted(resourceName, credentialsLevel, authenticationType)
+                .getBytes(StandardCharsets.UTF_8);
+        when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer(requestBody)));
+        when(context.getRequest()).thenReturn(request);
     }
 
 }
