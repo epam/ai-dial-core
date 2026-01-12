@@ -1,6 +1,9 @@
 package com.epam.aidial.core.config;
 
+import com.epam.aidial.core.config.databind.IpAddressRangeDeserializer;
+import com.epam.aidial.core.config.databind.JsonToStringDeserializer;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import lombok.Data;
 import lombok.ToString;
 
@@ -15,6 +18,8 @@ public class Key {
     private String role;
     private boolean secured;
     private List<String> roles;
+    @JsonDeserialize(using = IpAddressRangeDeserializer.class)
+    private IpAddressRanges allowedIpAddressRanges;
 
     @JsonIgnore
     public List<String> getMergedRoles() {

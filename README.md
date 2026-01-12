@@ -123,6 +123,7 @@ Priority order:
 | perRequestApiKey.ttl                |        1800        |    No    | The TTL in seconds of per request API key                                                                                                                                                |
 | asyncTaskExecutor.useVirtualThreads |        true        |    No    | The flag determines if virtual threads are used to run blocking tasks or platform threads.                                                                                               |
 | config.jsonMergeStrategy.overwriteArrays      |  false  |    No    | Specifies a merging strategy for JSON arrays. If it's set to `true`, arrays will be overwritten. Otherwise, they will be concatenated.                                                   |
+| apiKeyValidation.ipAddressClientHeader| null | No | Specifies a name of HTTP header containing the original IP address of a client | 
 
 
 <details> 

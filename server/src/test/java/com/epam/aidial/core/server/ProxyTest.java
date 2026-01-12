@@ -19,6 +19,7 @@ import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpConnection;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -57,6 +58,7 @@ import static com.epam.aidial.core.storage.http.HttpStatus.UNAUTHORIZED;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -108,6 +110,8 @@ public class ProxyTest {
         when(request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD)).thenReturn(null);
         when(request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS)).thenReturn(null);
         when(response.setStatusCode(anyInt())).thenReturn(response);
+        HttpConnection httpConnection = mock(HttpConnection.class);
+        when(request.connection()).thenReturn(httpConnection);
 
         // Mock params() to avoid NullPointerException in error handling
         MultiMap params = mock(MultiMap.class);
@@ -222,7 +226,7 @@ public class ProxyTest {
 
         Config config = new Config();
         when(configStore.get()).thenReturn(config);
-        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Unknown API key")));
+        when(apiKeyStore.getApiKeyData(anyString(), isNull())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Unknown API key")));
 
         proxy.handle(request);
 
@@ -244,7 +248,7 @@ public class ProxyTest {
         Config config = new Config();
         when(configStore.get()).thenReturn(config);
         ApiKeyData apiKeyData = new ApiKeyData();
-        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture(apiKeyData));
+        when(apiKeyStore.getApiKeyData(anyString(), isNull())).thenReturn(Future.succeededFuture(apiKeyData));
 
         proxy.handle(request);
 
@@ -277,7 +281,7 @@ public class ProxyTest {
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
         apiKeyData.setPerRequestKey("per-request-key");
-        when(apiKeyStore.getApiKeyData("per-request-key")).thenReturn(Future.succeededFuture(apiKeyData));
+        when(apiKeyStore.getApiKeyData("per-request-key", null)).thenReturn(Future.succeededFuture(apiKeyData));
 
         proxy.handle(request);
 
@@ -314,7 +318,7 @@ public class ProxyTest {
         apiKeyData.setInterceptorIndex(1);
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
-        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.succeededFuture(apiKeyData));
+        when(apiKeyStore.getApiKeyData(anyString(), isNull())).thenReturn(Future.succeededFuture(apiKeyData));
 
         proxy.handle(request);
 
@@ -334,7 +338,7 @@ public class ProxyTest {
         Config config = new Config();
         config.setKeys(Map.of("key1", new Key()));
         when(configStore.get()).thenReturn(config);
-        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Api key is not found")));
+        when(apiKeyStore.getApiKeyData(anyString(), isNull())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Api key is not found")));
 
         when(request.response()).thenReturn(response);
         when(response.ended()).thenReturn(false);
@@ -373,7 +377,7 @@ public class ProxyTest {
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
         when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new RuntimeException()));
-        when(apiKeyStore.getApiKeyData("key1")).thenReturn(Future.succeededFuture(apiKeyData));
+        when(apiKeyStore.getApiKeyData("key1", null)).thenReturn(Future.succeededFuture(apiKeyData));
 
         proxy.handle(request);
 
@@ -414,7 +418,7 @@ public class ProxyTest {
         proxy.handle(request);
 
         verify(response).setStatusCode(OK.getCode());
-        verify(apiKeyStore, never()).getApiKeyData(anyString());
+        verify(apiKeyStore, never()).getApiKeyData(anyString(), anyString());
     }
 
     @Test
@@ -445,7 +449,7 @@ public class ProxyTest {
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
         when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new RuntimeException()));
-        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Unknown API key")));
+        when(apiKeyStore.getApiKeyData(anyString(), isNull())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Unknown API key")));
 
         proxy.handle(request);
 
@@ -468,7 +472,7 @@ public class ProxyTest {
         config.setKeys(Map.of("key1", new Key()));
         when(configStore.get()).thenReturn(config);
         when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Bad Authorization header")));
-        when(apiKeyStore.getApiKeyData(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Unknown API key")));
+        when(apiKeyStore.getApiKeyData(anyString(), isNull())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Unknown API key")));
         when(request.response()).thenReturn(response);
         when(response.ended()).thenReturn(false);
 
@@ -502,7 +506,7 @@ public class ProxyTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
-        when(apiKeyStore.getApiKeyData("key1")).thenReturn(Future.succeededFuture(apiKeyData));
+        when(apiKeyStore.getApiKeyData("key1", null)).thenReturn(Future.succeededFuture(apiKeyData));
 
         proxy.handle(request);
 
@@ -535,7 +539,7 @@ public class ProxyTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
-        when(apiKeyStore.getApiKeyData("key1")).thenReturn(Future.succeededFuture(apiKeyData));
+        when(apiKeyStore.getApiKeyData("key1", null)).thenReturn(Future.succeededFuture(apiKeyData));
 
         proxy.handle(request);
 
