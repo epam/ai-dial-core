@@ -35,9 +35,9 @@ public class AzureCredentialProvider implements CredentialProvider {
         } else {
             this.now = OffsetDateTime::now;
             HttpClientOptions clientOptions = new HttpClientOptions();
-            clientOptions.responseTimeout(Duration.ofSeconds(10));
-            clientOptions.setConnectTimeout(Duration.ofSeconds(3));
-            clientOptions.setReadTimeout(Duration.ofSeconds(10));
+            clientOptions.responseTimeout(Duration.ofSeconds(30));
+            clientOptions.setConnectTimeout(Duration.ofSeconds(10));
+            clientOptions.setReadTimeout(Duration.ofSeconds(30));
             HttpClient httpClient = HttpClient.createDefault(clientOptions);
             defaultCredential = new DefaultAzureCredentialBuilder().httpClient(httpClient).build();
             tokenRequestContext = (new TokenRequestContext()).addScopes("https://storage.azure.com/.default");
