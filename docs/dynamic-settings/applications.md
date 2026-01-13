@@ -31,6 +31,7 @@ An object containing parameters for each [application](#applications).
 * `iconUrl`: A string with URL of the icon to display for the app in the UI.
 * `description`: A string with a brief description of the application.
 * `displayName`: A string with the app's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs for identification purposes.
+* `displayVersion`: A string with the app's version.
 * `inputAttachmentTypes`: A list of allowed [MIME types](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types) for the input attachments.
 * `maxInputAttachments`: Maximum number of input attachments. If `inputAttachmentTypes` is not set, this value is zero. Otherwise, if not specified, the default is unlimited.
 * `forwardAuthToken`: A boolean parameter to determine whether the Auth Token should be forwarded from the caller's session to the upstream API call. This enables multi-tenant scenarios or pass-through authentication for downstream services. If this flag is set to `true`, the Http header with authorization token is forwarded to the chat completion endpoint of the application.
