@@ -14,6 +14,9 @@ public class IpAddressRanges {
 
     @SneakyThrows
     public boolean isAddressInRange(String clientIpAddress) {
+        if (clientIpAddress == null) {
+            return true;
+        }
         byte[] ipBytes = InetAddress.getByName(clientIpAddress).getAddress();
         for (IpAddressRange range : ranges) {
             if (range.isAddressInRange(ipBytes)) {
