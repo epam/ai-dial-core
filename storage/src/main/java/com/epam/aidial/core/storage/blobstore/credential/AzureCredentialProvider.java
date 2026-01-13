@@ -2,12 +2,15 @@ package com.epam.aidial.core.storage.blobstore.credential;
 
 import com.azure.core.credential.AccessToken;
 import com.azure.core.credential.TokenRequestContext;
+import com.azure.core.http.HttpClient;
+import com.azure.core.util.HttpClientOptions;
 import com.azure.identity.DefaultAzureCredential;
 import com.azure.identity.DefaultAzureCredentialBuilder;
 import com.google.common.annotations.VisibleForTesting;
 import lombok.extern.slf4j.Slf4j;
 import org.jclouds.domain.Credentials;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.function.Supplier;
 
@@ -31,7 +34,12 @@ public class AzureCredentialProvider implements CredentialProvider {
             this.credentials = new Credentials(identity, secret);
         } else {
             this.now = OffsetDateTime::now;
-            defaultCredential = new DefaultAzureCredentialBuilder().build();
+            HttpClientOptions clientOptions = new HttpClientOptions();
+            clientOptions.responseTimeout(Duration.ofSeconds(10));
+            clientOptions.setConnectTimeout(Duration.ofSeconds(3));
+            clientOptions.setReadTimeout(Duration.ofSeconds(10));
+            HttpClient httpClient = HttpClient.createDefault(clientOptions);
+            defaultCredential = new DefaultAzureCredentialBuilder().httpClient(httpClient).build();
             tokenRequestContext = (new TokenRequestContext()).addScopes("https://storage.azure.com/.default");
         }
     }
