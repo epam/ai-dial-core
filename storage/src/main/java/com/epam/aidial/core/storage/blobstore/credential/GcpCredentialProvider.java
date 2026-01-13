@@ -5,6 +5,7 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.io.Files;
 import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 import org.jclouds.domain.Credentials;
 import org.jclouds.googlecloud.GoogleCredentialsFromJson;
 
@@ -15,13 +16,14 @@ import java.util.function.LongSupplier;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+@Slf4j
 public class GcpCredentialProvider implements CredentialProvider {
 
     private static final long EXPIRATION_WINDOW_IN_MS = 10_000;
 
     private Credentials credentials;
 
-    private AccessToken accessToken;
+    private volatile AccessToken accessToken;
 
     private GoogleCredentials googleCredentials;
 
@@ -62,10 +64,12 @@ public class GcpCredentialProvider implements CredentialProvider {
     }
 
     @SneakyThrows
-    private synchronized Credentials getTemporaryCredentials() {
+    private Credentials getTemporaryCredentials() {
         Date date = Date.from(Instant.ofEpochMilli(clock.getAsLong() + EXPIRATION_WINDOW_IN_MS));
         if (accessToken == null || date.after(accessToken.getExpirationTime())) {
+            log.debug("Start requesting temporary token from GCP Identity");
             accessToken = googleCredentials.refreshAccessToken();
+            log.debug("Received temporary token from GCP Identity");
         }
         return new Credentials("", accessToken.getTokenValue());
     }
