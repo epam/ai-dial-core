@@ -21,8 +21,10 @@ import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.net.SocketAddress;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -346,5 +348,24 @@ public class ProxyUtil {
 
     public String generateReference() {
         return UUID.randomUUID().toString();
+    }
+
+    @Nullable
+    public String getClientIpAddress(HttpServerRequest request) {
+        String val = request.getHeader("X-Forwarded-For");
+        if (StringUtils.isEmpty(val)) {
+            return getClientRemoteAddress(request);
+        }
+        String[] parts = val.split(",");
+        return parts[0].trim();
+    }
+
+    @Nullable
+    private String getClientRemoteAddress(HttpServerRequest request) {
+        SocketAddress socketAddress = request.connection().remoteAddress();
+        if (socketAddress == null || !socketAddress.isInetSocket()) {
+            return null;
+        }
+        return socketAddress.host();
     }
 }
