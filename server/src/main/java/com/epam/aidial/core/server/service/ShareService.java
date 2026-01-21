@@ -71,12 +71,12 @@ public class ShareService {
     private final ResourceCredentialsService resourceCredentialsService;
 
     private static final Map<ResourceType, ShareResourceLimit> DEFAULT_LIMITS = Map.of(
-            ResourceTypes.APPLICATION, new ShareResourceLimit(10, TimeUnit.HOURS.toSeconds(72)),
-            ResourceTypes.CONVERSATION, new ShareResourceLimit(TimeUnit.HOURS.toSeconds(72)),
-            ResourceTypes.FILE, new ShareResourceLimit(TimeUnit.HOURS.toSeconds(72)),
-            ResourceTypes.PROMPT, new ShareResourceLimit(TimeUnit.HOURS.toSeconds(72)),
-            ResourceTypes.TOOL_SET, new ShareResourceLimit(10, TimeUnit.HOURS.toSeconds(72)),
-            ResourceTypes.CREDENTIALS, new ShareResourceLimit(10, TimeUnit.HOURS.toSeconds(72)));
+            ResourceTypes.APPLICATION, new ShareResourceLimit(10, 72),
+            ResourceTypes.CONVERSATION, new ShareResourceLimit(Integer.MAX_VALUE, 72),
+            ResourceTypes.FILE, new ShareResourceLimit(Integer.MAX_VALUE, 72),
+            ResourceTypes.PROMPT, new ShareResourceLimit(Integer.MAX_VALUE, 72),
+            ResourceTypes.TOOL_SET, new ShareResourceLimit(10, 72),
+            ResourceTypes.CREDENTIALS, new ShareResourceLimit(10, 72));
 
     private static final Set<ResourceType> CREDS_SHARABLE_RESOURCE_TYPES = Set.of(ResourceTypes.TOOL_SET);
 
@@ -293,6 +293,7 @@ public class ShareService {
     private ShareResourceLimit getLimit(ProxyContext context, ResourceType resourceType) {
         List<String> userRoles = context.getUserRoles();
         Map<String, Role> roles = context.getConfig().getRoles();
+        ShareResourceLimit defaultLimit = DEFAULT_LIMITS.get(resourceType);
         ShareResourceLimit limit = null;
         for (String userRole : userRoles) {
             ShareResourceLimit candidate = Optional.ofNullable(roles.get(userRole)).map(Role::getShare).map(limits -> limits.get(resourceType.name())).orElse(null);
@@ -303,12 +304,17 @@ public class ShareService {
                     limit.setInvitationTtl(Math.max(limit.getInvitationTtl(), candidate.getInvitationTtl()));
                     limit.setMaxAcceptedUsers(Math.max(limit.getMaxAcceptedUsers(), candidate.getMaxAcceptedUsers()));
                 }
+                if (limit.getMaxAcceptedUsers() == -1) {
+                    limit.setMaxAcceptedUsers(defaultLimit.getMaxAcceptedUsers());
+                }
+                if (limit.getInvitationTtl() == -1) {
+                    limit.setInvitationTtl(defaultLimit.getInvitationTtl());
+                }
             }
         }
         if (limit != null) {
             return limit;
         }
-        ShareResourceLimit defaultLimit = DEFAULT_LIMITS.get(resourceType);
         if (defaultLimit == null) {
             throw new IllegalArgumentException("Unsupported resource type: " + resourceType);
         }
