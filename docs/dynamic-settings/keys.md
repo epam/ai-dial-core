@@ -19,6 +19,7 @@ An object containing properties an each [API key](#keys).
 * `role`: A role assigned to a specific key. **Note**: At least one of `role`, `roles` must be provided. **Required**
 * `roles`: A list of roles assigned to a specific key. **Note**: At least one of `role`, `roles` must be provided. **Required**
 * `secured`: A boolean flag that indicates if the key is a secured key. If it's set to `true`, user request and deployment response won't be saved to the prompt log storage. Refer to [Secured Keys](https://docs.dialx.ai/platform/core/privacy#applications-audit-logs) for more details.
+* `allowedIpAddressRanges`: A list of IP address ranges to a specific key. If the list is set to `null` or undefined then any client can have access. If the list is empty then noone have access. Otherwise, only clients with IP address within the given ranges may have access. IP address could be IPv4 or IPv6.
 
 
 ## Configuration Example
@@ -29,6 +30,7 @@ An object containing properties an each [API key](#keys).
     "proxyKey1": { //API key
         "project": "Project1",
         "role": "basic" // the name of the role
+        "allowedIpAddressRanges": ["198.51.100.14/24", "2002::1234:abcd:ffff:c0a8:101/64"]
     }
 },
 "models": {
