@@ -55,18 +55,21 @@ public class UploadFileController extends AccessControlBaseController {
                                 })
                                 .onFailure(error -> {
                                     writeStream.abortUpload(error);
-                                    context.respond(error, "Failed to upload file: " + resource.getUrl());
-                                    log.warn("Failed to upload file: {}", resource.getUrl(), error);
+                                    handleError(error, resource);
                                 });
-                    });
+                    }).exceptionHandler(error -> handleError(error, resource));
 
             return Future.succeededFuture();
         })
                 .otherwise(error -> {
-                    context.respond(error, "Failed to upload file: " + resource.getUrl());
-                    log.warn("Failed to upload file: {}", resource.getUrl(), error);
+                    handleError(error, resource);
                     return null;
                 });
+    }
+
+    private void handleError(Throwable error, ResourceDescriptor resource) {
+        context.respond(error, "Failed to upload file: " + resource.getUrl());
+        log.warn("Failed to upload file: {}", resource.getUrl(), error);
     }
 
     private EtagHeader validateRequest(HttpServerRequest request, ResourceDescriptor resource) {
