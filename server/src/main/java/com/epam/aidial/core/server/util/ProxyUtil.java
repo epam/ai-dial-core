@@ -357,7 +357,7 @@ public class ProxyUtil {
             return getRealClientRemoteAddress(request);
         }
         String[] ips = val.split(",");
-        int index = ips.length - proxyCount - 1;
+        int index = ips.length - proxyCount;
         if (index < 0) {
             return getRealClientRemoteAddress(request);
         }
