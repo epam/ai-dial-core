@@ -351,18 +351,22 @@ public class ProxyUtil {
     }
 
     @Nullable
-    public String getClientIpAddress(HttpServerRequest request) {
+    public String getClientIpAddress(HttpServerRequest request, int proxyCount) {
         String val = request.getHeader("X-Forwarded-For");
-        if (StringUtils.isEmpty(val)) {
-            return getClientRemoteAddress(request);
+        if (StringUtils.isEmpty(val) || proxyCount == 0) {
+            return getRealClientRemoteAddress(request);
         }
-        String[] parts = val.split(",");
-        return parts[0].trim();
+        String[] ips = val.split(",");
+        int index = ips.length - proxyCount - 1;
+        if (index < 0) {
+            return getRealClientRemoteAddress(request);
+        }
+        return ips[index];
     }
 
     @Nullable
-    private String getClientRemoteAddress(HttpServerRequest request) {
-        SocketAddress socketAddress = request.connection().remoteAddress();
+    private String getRealClientRemoteAddress(HttpServerRequest request) {
+        SocketAddress socketAddress = request.connection().remoteAddress(true);
         if (socketAddress == null || !socketAddress.isInetSocket()) {
             return null;
         }

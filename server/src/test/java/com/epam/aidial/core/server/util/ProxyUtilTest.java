@@ -21,6 +21,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -514,32 +515,42 @@ public class ProxyUtilTest {
     public void testGetClientIpAddress() {
         HttpServerRequest request = Mockito.mock(HttpServerRequest.class);
         when(request.getHeader("X-Forwarded-For")).thenReturn("203.0.113.195, 2001:db8:85a3:8d3:1319:8a2e:370:7348");
-        assertEquals("203.0.113.195", ProxyUtil.getClientIpAddress(request));
-
-        Mockito.reset(request);
-        when(request.getHeader("X-Forwarded-For")).thenReturn("203.0.113.195");
-        assertEquals("203.0.113.195", ProxyUtil.getClientIpAddress(request));
+        assertEquals("203.0.113.195", ProxyUtil.getClientIpAddress(request, 1));
 
         Mockito.reset(request);
         HttpConnection connection = mock(HttpConnection.class);
         when(request.connection()).thenReturn(connection);
-        Assertions.assertNull(ProxyUtil.getClientIpAddress(request));
+        when(request.getHeader("X-Forwarded-For")).thenReturn("203.0.113.195");
+        assertNull(ProxyUtil.getClientIpAddress(request, 0));
 
         Mockito.reset(request, connection);
-        connection = mock(HttpConnection.class);
+        when(request.connection()).thenReturn(connection);
+        Assertions.assertNull(ProxyUtil.getClientIpAddress(request, 0));
+
+        Mockito.reset(request, connection);
         when(request.connection()).thenReturn(connection);
         SocketAddress socketAddress = mock(SocketAddress.class);
-        when(connection.remoteAddress()).thenReturn(socketAddress);
+        when(connection.remoteAddress(true)).thenReturn(socketAddress);
         when(socketAddress.isInetSocket()).thenReturn(false);
-        Assertions.assertNull(ProxyUtil.getClientIpAddress(request));
+        Assertions.assertNull(ProxyUtil.getClientIpAddress(request, 0));
 
         Mockito.reset(request, connection, socketAddress);
         connection = mock(HttpConnection.class);
         when(request.connection()).thenReturn(connection);
         socketAddress = mock(SocketAddress.class);
-        when(connection.remoteAddress()).thenReturn(socketAddress);
+        when(connection.remoteAddress(true)).thenReturn(socketAddress);
         when(socketAddress.isInetSocket()).thenReturn(true);
         when(socketAddress.host()).thenReturn("203.0.113.195");
-        assertEquals("203.0.113.195", ProxyUtil.getClientIpAddress(request));
+        assertEquals("203.0.113.195", ProxyUtil.getClientIpAddress(request, 0));
+
+        Mockito.reset(request, connection, socketAddress);
+        when(request.getHeader("X-Forwarded-For")).thenReturn("100.0.113.200, 2001:db8:85a3:8d3:1319:8a2e:370:7348");
+        connection = mock(HttpConnection.class);
+        when(request.connection()).thenReturn(connection);
+        socketAddress = mock(SocketAddress.class);
+        when(connection.remoteAddress(true)).thenReturn(socketAddress);
+        when(socketAddress.isInetSocket()).thenReturn(true);
+        when(socketAddress.host()).thenReturn("203.0.113.195");
+        assertEquals("203.0.113.195", ProxyUtil.getClientIpAddress(request, 2));
     }
 }

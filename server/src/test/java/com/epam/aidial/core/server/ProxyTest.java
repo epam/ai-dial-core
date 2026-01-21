@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.controller.HealthCheckController;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.ApiKeyValidation;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
@@ -96,6 +97,9 @@ public class ProxyTest {
 
     @Mock
     private HttpServerResponse response;
+
+    @Mock
+    private ApiKeyValidation apiKeyValidation;
 
     @InjectMocks
     private Proxy proxy;
