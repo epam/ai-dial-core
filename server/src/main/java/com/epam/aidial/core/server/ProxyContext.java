@@ -225,7 +225,8 @@ public class ProxyContext {
 
     public boolean hasNextInterceptor() {
         // initial call to the deployment or the interceptor calls another deployment
-        if (apiKeyData.getInterceptors() == null || !deployment.getName().equals(getInitialDeployment())) {
+        String decodedName = UrlUtil.decodePath(deployment.getName());
+        if (apiKeyData.getInterceptors() == null || !decodedName.equals(getInitialDeployment())) {
             return !interceptors.isEmpty();
         } else { // make sure if a next interceptor is available from the list
             return apiKeyData.getInterceptorIndex() + 1 < apiKeyData.getInterceptors().size();

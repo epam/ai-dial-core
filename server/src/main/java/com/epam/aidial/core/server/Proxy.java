@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.controller.ControllerTemplate;
 import com.epam.aidial.core.server.controller.HealthCheckController;
 import com.epam.aidial.core.server.controller.WellKnownResourceMetadataController;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.ApiKeyValidation;
 import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
@@ -103,6 +104,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     private final Vertx vertx;
     private final HttpClientOptions clientOptions;
+    private final ApiKeyValidation apiKeyValidation;
     private final HttpClient client;
     private final WebSocketClient webSocketClient;
     private final ConfigStore configStore;
@@ -274,6 +276,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
         log.debug("Authorization header: {}", authorization);
 
+        String clientIpAddress = ProxyUtil.getClientIpAddress(request, apiKeyValidation.getProxyCount());
         if (apiKey == null && authorization == null) {
             Map<String, String> headers = Map.of();
             if ((request.method() == HttpMethod.GET || request.method() == HttpMethod.POST) && TOOLSET_PROXY_PATTERN.matcher(request.path()).matches()) {
@@ -285,7 +288,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
 
         if (apiKey != null && authorization == null) {
-            return apiKeyStore.getApiKeyData(apiKey)
+            return apiKeyStore.getApiKeyData(apiKey, clientIpAddress)
                     .map(apiKeyData -> new AuthorizationResult(apiKeyData, null));
         }
 
@@ -300,7 +303,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         // see https://github.com/epam/ai-dial-core/issues/675
         if ("Bearer".equalsIgnoreCase(authorization.trim())) {
-            return apiKeyStore.getApiKeyData(apiKey)
+            return apiKeyStore.getApiKeyData(apiKey, clientIpAddress)
                     .map(apiKeyData -> new AuthorizationResult(apiKeyData, null));
         }
 
@@ -309,10 +312,11 @@ public class Proxy implements Handler<HttpServerRequest> {
             // we try if it's access token the first and then API key
             return tokenValidator.extractClaims(authorization)
                     .compose(claims -> Future.succeededFuture(new AuthorizationResult(new ApiKeyData(), claims)),
-                            error -> apiKeyStore.getApiKeyData(apiKey).map(apiKeyData -> new AuthorizationResult(apiKeyData, null)));
+                            error -> apiKeyStore.getApiKeyData(apiKey, clientIpAddress)
+                                    .map(apiKeyData -> new AuthorizationResult(apiKeyData, null)));
         }
         // assume authentication is done by per-request key
-        return apiKeyStore.getApiKeyData(apiKey)
+        return apiKeyStore.getApiKeyData(apiKey, clientIpAddress)
                 .compose(apiKeyData -> {
                     // allow authentication by per-request key and accept authorization header
                     if (apiKeyData.getPerRequestKey() != null) {

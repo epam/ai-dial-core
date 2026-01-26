@@ -2194,7 +2194,7 @@ public class ShareApiTest extends ResourceBaseTest {
 
     @Test
     void testPerRequestKeyCannotBeUsed() {
-        ApiKeyData originalKey = apiKeyStore.getApiKeyData("proxyKey1").result();
+        ApiKeyData originalKey = apiKeyStore.getApiKeyData("proxyKey1", null).result();
         ApiKeyData perRequestKey = new ApiKeyData();
         perRequestKey.setOriginalKey(originalKey.getOriginalKey());
         apiKeyStore.assignPerRequestApiKey(perRequestKey);

@@ -1,13 +1,15 @@
 package com.epam.aidial.core.server.security;
 
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.junit.jupiter.api.AfterAll;
@@ -24,15 +26,16 @@ import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -119,13 +122,13 @@ public class ApiKeyStoreTest {
         store.addProjectKeys(projectKeys2);
 
         // old key must be removed
-        assertNull(store.getApiKeyData("key1").result());
+        assertNull(store.getApiKeyData("key1", null).result());
         // new key must be accessed
-        Future<ApiKeyData> res1 = store.getApiKeyData("key2");
+        Future<ApiKeyData> res1 = store.getApiKeyData("key2", null);
         assertNotNull(res1.result());
         assertEquals(key2, res1.result().getOriginalKey());
         // existing per request key must be accessed
-        assertNotNull(store.getApiKeyData(apiKeyData.getPerRequestKey()).result());
+        assertNotNull(store.getApiKeyData(apiKeyData.getPerRequestKey(), null).result());
 
     }
 
@@ -141,11 +144,77 @@ public class ApiKeyStoreTest {
             return Future.succeededFuture(callable.call());
         });
 
-        Future<ApiKeyData> res1  = store.getApiKeyData(apiKeyData.getPerRequestKey());
+        Future<ApiKeyData> res1  = store.getApiKeyData(apiKeyData.getPerRequestKey(), null);
         assertNotNull(res1);
         assertEquals(apiKeyData, res1.result());
 
-        assertTrue(store.getApiKeyData("unknown-key").failed());
+        assertTrue(store.getApiKeyData("unknown-key", null).failed());
+    }
+
+    @Test
+    public void testRestrictApiKeyData() {
+        String json = """
+                {
+                  "keys": {
+                        "restrictedKey": {
+                             "project": "test",
+                             "role": "default",
+                             "allowedIpAddressRanges": ["198.51.100.14/24", "2002::1234:abcd:ffff:c0a8:101/64"]
+                        },
+                        "key": {
+                             "project": "test",
+                             "role": "default"
+                        },
+                        "forbiddenKey": {
+                             "project": "test",
+                             "role": "default",
+                             "allowedIpAddressRanges": []
+                        }
+                  }
+                }
+                """;
+        Config config = ProxyUtil.convertToObject(json, Config.class);
+        assertNotNull(config);
+        store.addProjectKeys(config.getKeys());
+
+        List<String> allowedIpAddresses = List.of("198.51.100.25", "2002:0000:0000:1234:0030:1500:0340:0000");
+        List<String> forbiddenIpAddresses = List.of("198.51.99.14", "2002:0000:0000:1233:0000:FB00:0000:0000");
+
+        for (String ip : allowedIpAddresses) {
+            Future<ApiKeyData> res = store.getApiKeyData("restrictedKey", ip);
+            assertNotNull(res);
+            assertTrue(res.succeeded());
+            assertEquals("restrictedKey", res.result().getOriginalKey().getKey());
+        }
+
+        for (String ip : forbiddenIpAddresses) {
+            Future<ApiKeyData> res = store.getApiKeyData("restrictedKey", ip);
+            assertNotNull(res);
+            assertTrue(res.failed());
+            HttpException exception = (HttpException) res.cause();
+            assertEquals(HttpStatus.FORBIDDEN, exception.getStatus());
+            assertTrue(exception.getMessage().contains(ip));
+        }
+
+        List<String> allIps = Stream.concat(allowedIpAddresses.stream(), forbiddenIpAddresses.stream()).toList();
+
+        // no restrictions applied to the key `key`
+        for (String ip : allIps) {
+            Future<ApiKeyData> res = store.getApiKeyData("key", ip);
+            assertNotNull(res);
+            assertTrue(res.succeeded());
+            assertEquals("key", res.result().getOriginalKey().getKey());
+        }
+
+        // the key is forbidden for any client
+        for (String ip : allIps) {
+            Future<ApiKeyData> res = store.getApiKeyData("forbiddenKey", ip);
+            assertNotNull(res);
+            assertTrue(res.failed());
+            HttpException exception = (HttpException) res.cause();
+            assertEquals(HttpStatus.FORBIDDEN, exception.getStatus());
+            assertTrue(exception.getMessage().contains(ip));
+        }
     }
 
     @Test
@@ -161,7 +230,7 @@ public class ApiKeyStoreTest {
 
         store.invalidatePerRequestApiKey(apiKeyData);
 
-        assertTrue(store.getApiKeyData(apiKeyData.getPerRequestKey()).failed());
+        assertTrue(store.getApiKeyData(apiKeyData.getPerRequestKey(), null).failed());
     }
 
     @Test
@@ -183,7 +252,7 @@ public class ApiKeyStoreTest {
             return ProxyUtil.convertToString(current);
         });
 
-        Future<ApiKeyData> res1  = store.getApiKeyData(apiKeyData.getPerRequestKey());
+        Future<ApiKeyData> res1  = store.getApiKeyData(apiKeyData.getPerRequestKey(), null);
         assertNotNull(res1);
         assertEquals(ref.getValue(), res1.result());
     }
