@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.security;
 
+import com.epam.aidial.core.config.IpAddressRanges;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -104,10 +105,10 @@ public class ApiKeyStore {
      * @param key API key could be either project or per request key.
      * @return the future of data associated with the given key.
      */
-    public Future<ApiKeyData> getApiKeyData(String key) {
+    public Future<ApiKeyData> getApiKeyData(String key, String clientIpAddress) {
         ApiKeyData apiKeyData = keys.get(key);
         if (apiKeyData != null) {
-            return Future.succeededFuture(apiKeyData);
+            return validateIpAddressRange(apiKeyData, clientIpAddress);
         }
         String redisKey = toRedisKey(key);
         return taskExecutor.submit(() -> {
@@ -120,6 +121,15 @@ public class ApiKeyStore {
             }
             return Future.succeededFuture(result);
         });
+    }
+
+    private static Future<ApiKeyData> validateIpAddressRange(ApiKeyData apiKeyData, String clientIpAddress) {
+        IpAddressRanges ranges = apiKeyData.getOriginalKey().getAllowedIpAddressRanges();
+        if (ranges == null || ranges.isAddressInRange(clientIpAddress)) {
+            return Future.succeededFuture(apiKeyData);
+        }
+        return Future.failedFuture(new HttpException(HttpStatus.FORBIDDEN,
+                String.format("Access is forbidden from IP address: %s", clientIpAddress)));
     }
 
     /**

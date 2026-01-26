@@ -33,6 +33,7 @@ import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
 import com.epam.aidial.core.server.controller.HealthCheckController;
 import com.epam.aidial.core.server.controller.WellKnownResourceMetadataController;
+import com.epam.aidial.core.server.data.ApiKeyValidation;
 import com.epam.aidial.core.server.http.HttpProxySelector;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.GfLogStore;
@@ -238,7 +239,9 @@ public class AiDial {
             WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(wellKnownResourceMetadataService);
             PerRequestPermissionService perRequestPermissionService = new PerRequestPermissionService(apiKeyStore, accessService, encryptionService);
 
-            proxy = new Proxy(vertx, clientOptions, client, webSocketClient, configStore, logStore,
+            ApiKeyValidation apiKeyValidation = Json.decodeValue(settings("apiKeyValidation").toBuffer(), ApiKeyValidation.class);
+
+            proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,

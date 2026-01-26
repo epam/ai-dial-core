@@ -14,7 +14,7 @@ public class DialFileFormat implements Format {
 
     // Updated regex: allows trailing slash for folders
     private static final Pattern PATTERN = Pattern.compile(
-            "^files/[a-zA-Z0-9]+(?:/[a-zA-Z0-9()_\\-.~'%]+)*+/?$"
+            "^files/[a-zA-Z0-9]+/.*$"
     );
     private static final int MAX_LENGTH = 4096;
 
