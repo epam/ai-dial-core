@@ -19,7 +19,6 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.InputStream;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Implementation of vertx {@link io.vertx.core.streams.WriteStream} that handles data chunks (from {@link io.vertx.core.streams.ReadStream}) and writes them to the blob storage.
@@ -41,16 +40,16 @@ public class BlobWriteStream implements WriteStream<Buffer> {
 
     private final Buffer chunkBuffer = Buffer.buffer();
     private volatile int chunkSize = MIN_PART_SIZE_BYTES;
-    private final AtomicInteger position = new AtomicInteger(0);
+    private int position;
     private volatile ResourceUpload resourceUpload;
     @Getter
-    private volatile FileMetadata metadata;
+    private FileMetadata metadata;
 
-    private volatile Throwable exception;
+    private Throwable exception;
 
     private volatile Handler<Throwable> errorHandler;
 
-    private volatile boolean isBufferFull;
+    private boolean isBufferFull;
 
     public BlobWriteStream(AsyncTaskExecutor taskExecutor,
                            ResourceService resourceService,
@@ -97,11 +96,9 @@ public class BlobWriteStream implements WriteStream<Buffer> {
         }
 
         int length = data.length();
-        chunkBuffer.setBuffer(position.get(), data);
-        position.addAndGet(length);
-        if (position.get() > chunkSize) {
-            isBufferFull = true;
-        }
+        chunkBuffer.setBuffer(position, data);
+        position += length;
+        isBufferFull = position > chunkSize;
 
         handler.handle(Future.succeededFuture());
     }
@@ -113,19 +110,20 @@ public class BlobWriteStream implements WriteStream<Buffer> {
                 throw new RuntimeException(exception);
             }
 
-            ByteBuf lastChunk = chunkBuffer.slice(0, position.get()).getByteBuf();
-            if (resourceUpload == null) {
+            ByteBuf lastChunk = chunkBuffer.slice(0, position).getByteBuf();
+            ResourceUpload uploader = resourceUpload;
+            if (uploader == null) {
                 log.info("Resource is too small for multipart upload, sending as a regular blob");
                 try (InputStream chunkStream = new ByteBufInputStream(lastChunk)) {
                     metadata = resourceService.putFile(resource, chunkStream.readAllBytes(), etag, contentType, author);
                 }
             } else {
-                if (position.get() != 0) {
-                    resourceUpload.addChunk(lastChunk);
+                if (position != 0) {
+                    uploader.addChunk(lastChunk);
                 }
 
-                metadata = resourceService.finishFileUpload(resource, resourceUpload, etag);
-                log.info("Multipart upload committed, bytes handled {}", resourceUpload.getContentLength());
+                metadata = resourceService.finishFileUpload(resource, uploader, etag);
+                log.info("Multipart upload committed, bytes handled {}", uploader.getContentLength());
             }
             return null;
         });
@@ -150,13 +148,15 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     public WriteStream<Buffer> drainHandler(Handler<Void> handler) {
         taskExecutor.submit(() -> {
             try {
-                if (resourceUpload == null) {
-                    resourceUpload = resourceService.initFileUpload(resource, contentType, etag, author);
+                ResourceUpload uploader = resourceUpload;
+                if (uploader == null) {
+                    uploader = resourceService.initFileUpload(resource, contentType, etag, author);
+                    resourceUpload = uploader;
                 }
 
-                ByteBuf chunk = chunkBuffer.slice(0, position.get()).getByteBuf();
-                resourceUpload.addChunk(chunk);
-                position.set(0);
+                ByteBuf chunk = chunkBuffer.slice(0, position).getByteBuf();
+                uploader.addChunk(chunk);
+                position = 0;
                 isBufferFull = false;
             } catch (Throwable ex) {
                 exception = ex;
@@ -171,12 +171,13 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     }
 
     public void abortUpload(Throwable ex) {
-        if (resourceUpload != null) {
-            resourceUpload.abort();
+        ResourceUpload uploader = resourceUpload;
+        if (uploader != null) {
+            uploader.abort();
         }
-
-        if (errorHandler != null) {
-            errorHandler.handle(ex);
+        Handler<Throwable> handler = errorHandler;
+        if (handler != null) {
+            handler.handle(ex);
         }
 
         log.warn("Multipart upload aborted", ex);
