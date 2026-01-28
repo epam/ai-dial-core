@@ -219,7 +219,8 @@ class RouteApiTest extends ResourceBaseTest {
                 Arguments.of(HttpMethod.GET, "/v1/forbidden", "vstore_admin_key", 403, "Forbidden route"),
                 Arguments.of(HttpMethod.GET, "/unexpected", "vstore_user_key", 404, "Route is not found"),
                 Arguments.of(HttpMethod.POST, "/v1/rate", "vstore_user_key", 200, "OK"),
-                Arguments.of(HttpMethod.POST, "/v1/rate?k1=v1&k2=v2", "vstore_user_key", 200, "OK")
+                Arguments.of(HttpMethod.POST, "/v1/rate?k1=v1&k2=v2", "vstore_user_key", 200, "OK"),
+                Arguments.of(HttpMethod.POST, "/tasks/task1", "vstore_user_key", 200, "/tasks/task1")
         );
     }
 }
