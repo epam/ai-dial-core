@@ -13,13 +13,13 @@ import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
-import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.streams.WriteStream;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.InputStream;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Implementation of vertx {@link io.vertx.core.streams.WriteStream} that handles data chunks (from {@link io.vertx.core.streams.ReadStream}) and writes them to the blob storage.
@@ -37,21 +37,20 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     private final ResourceDescriptor resource;
     private final EtagHeader etag;
     private final String contentType;
+    private final String author;
 
     private final Buffer chunkBuffer = Buffer.buffer();
-    private int chunkSize = MIN_PART_SIZE_BYTES;
-    private int position;
-    private ResourceUpload resourceUpload;
+    private volatile int chunkSize = MIN_PART_SIZE_BYTES;
+    private final AtomicInteger position = new AtomicInteger(0);
+    private volatile ResourceUpload resourceUpload;
     @Getter
-    private FileMetadata metadata;
+    private volatile FileMetadata metadata;
 
-    private Throwable exception;
+    private volatile Throwable exception;
 
-    private Handler<Throwable> errorHandler;
+    private volatile Handler<Throwable> errorHandler;
 
-    private boolean isBufferFull;
-
-    private final String author;
+    private volatile boolean isBufferFull;
 
     public BlobWriteStream(AsyncTaskExecutor taskExecutor,
                            ResourceService resourceService,
@@ -76,20 +75,20 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     }
 
     @Override
-    public synchronized WriteStream<Buffer> exceptionHandler(Handler<Throwable> handler) {
+    public WriteStream<Buffer> exceptionHandler(Handler<Throwable> handler) {
         this.errorHandler = handler;
         return this;
     }
 
     @Override
-    public synchronized Future<Void> write(Buffer data) {
+    public Future<Void> write(Buffer data) {
         Promise<Void> promise = Promise.promise();
         write(data, promise);
         return promise.future();
     }
 
     @Override
-    public synchronized void write(Buffer data, Handler<AsyncResult<Void>> handler) {
+    public void write(Buffer data, Handler<AsyncResult<Void>> handler) {
         // exception might be thrown during drain handling, if so we need to stop processing chunks
         // upload abortion will be handled in the end
         if (exception != null) {
@@ -98,9 +97,9 @@ public class BlobWriteStream implements WriteStream<Buffer> {
         }
 
         int length = data.length();
-        chunkBuffer.setBuffer(position, data);
-        position += length;
-        if (position > chunkSize) {
+        chunkBuffer.setBuffer(position.get(), data);
+        position.addAndGet(length);
+        if (position.get() > chunkSize) {
             isBufferFull = true;
         }
 
@@ -110,28 +109,25 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     @Override
     public void end(Handler<AsyncResult<Void>> handler) {
         Future<Void> result = taskExecutor.submit(() -> {
-            synchronized (BlobWriteStream.this) {
-                if (exception != null) {
-                    throw new RuntimeException(exception);
-                }
-
-                ByteBuf lastChunk = chunkBuffer.slice(0, position).getByteBuf();
-                if (resourceUpload == null) {
-                    log.info("Resource is too small for multipart upload, sending as a regular blob");
-                    try (InputStream chunkStream = new ByteBufInputStream(lastChunk)) {
-                        metadata = resourceService.putFile(resource, chunkStream.readAllBytes(), etag, contentType, author);
-                    }
-                } else {
-                    if (position != 0) {
-                        resourceUpload.addChunk(lastChunk);
-                    }
-
-                    metadata = resourceService.finishFileUpload(resource, resourceUpload, etag);
-                    log.info("Multipart upload committed, bytes handled {}", resourceUpload.getContentLength());
-                }
-
-                return null;
+            if (exception != null) {
+                throw new RuntimeException(exception);
             }
+
+            ByteBuf lastChunk = chunkBuffer.slice(0, position.get()).getByteBuf();
+            if (resourceUpload == null) {
+                log.info("Resource is too small for multipart upload, sending as a regular blob");
+                try (InputStream chunkStream = new ByteBufInputStream(lastChunk)) {
+                    metadata = resourceService.putFile(resource, chunkStream.readAllBytes(), etag, contentType, author);
+                }
+            } else {
+                if (position.get() != 0) {
+                    resourceUpload.addChunk(lastChunk);
+                }
+
+                metadata = resourceService.finishFileUpload(resource, resourceUpload, etag);
+                log.info("Multipart upload committed, bytes handled {}", resourceUpload.getContentLength());
+            }
+            return null;
         });
         if (handler != null) {
             result.onComplete(handler);
@@ -139,45 +135,42 @@ public class BlobWriteStream implements WriteStream<Buffer> {
     }
 
     @Override
-    public synchronized WriteStream<Buffer> setWriteQueueMaxSize(int maxSize) {
+    public WriteStream<Buffer> setWriteQueueMaxSize(int maxSize) {
         assert maxSize > MIN_PART_SIZE_BYTES;
         chunkSize = maxSize;
         return this;
     }
 
     @Override
-    public synchronized boolean writeQueueFull() {
+    public boolean writeQueueFull() {
         return isBufferFull;
     }
 
     @Override
     public WriteStream<Buffer> drainHandler(Handler<Void> handler) {
         taskExecutor.submit(() -> {
-            synchronized (BlobWriteStream.this) {
-                try {
-                    if (resourceUpload == null) {
-                        resourceUpload = resourceService.initFileUpload(resource, contentType, etag, author);
-                    }
+            try {
+                if (resourceUpload == null) {
+                    resourceUpload = resourceService.initFileUpload(resource, contentType, etag, author);
+                }
 
-                    ByteBuf chunk = chunkBuffer.slice(0, position).getByteBuf();
-                    resourceUpload.addChunk(chunk);
-                    position = 0;
-                    isBufferFull = false;
-                } catch (Throwable ex) {
-                    exception = ex;
-                } finally {
-                    if (handler != null) {
-                        handler.handle(null);
-                    }
+                ByteBuf chunk = chunkBuffer.slice(0, position.get()).getByteBuf();
+                resourceUpload.addChunk(chunk);
+                position.set(0);
+                isBufferFull = false;
+            } catch (Throwable ex) {
+                exception = ex;
+            } finally {
+                if (handler != null) {
+                    handler.handle(null);
                 }
             }
             return null;
         });
-
         return this;
     }
 
-    public synchronized void abortUpload(Throwable ex) {
+    public void abortUpload(Throwable ex) {
         if (resourceUpload != null) {
             resourceUpload.abort();
         }
