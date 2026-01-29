@@ -7,8 +7,15 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.http.HttpMethod;
+import okhttp3.mockwebserver.MockResponse;
+import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
+import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
+import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.net.URI;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -1272,4 +1279,79 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         Assertions.assertEquals(200, response.status());
     }
 
+
+    @SuppressWarnings("checkstyle:LineLength")
+    @DialConfigLocation("dial-config/global-interceptor-config.json")
+    @Test
+    void testAccessCustomApplicationWithGlobalInterceptor() throws IOException {
+        Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
+                {
+                "endpoint": "http://localhost:4848/chat/completions",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description"
+                }
+                """);
+        verify(response, 200);
+
+        String responseBody = """
+                data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"this is a"}}],"usage":null}\r
+                data: {"id":"chatcmpl-2","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"very long long"}}],"usage":null}\r
+                data: {"id":"chatcmpl-3","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"answer"}}],"usage":null}\r
+                data: {"id":"chatcmpl-4","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":"stop","delta":{}}], "usage":{"completion_tokens": 20, "prompt_tokens": 20, "total_tokens": 40}}\r
+                data: [DONE]\r
+                """;
+        try (TestWebServer server = new TestWebServer(4848)) {
+            TestWebServer.Handler chatCompletionHandler = request -> {
+                MockResponse mockResponse = new MockResponse();
+                mockResponse.setResponseCode(200);
+                mockResponse.setChunkedBody(responseBody, 200);
+                return mockResponse;
+            };
+            TestWebServer.Handler interceptorHandler = request -> {
+                try {
+                    var nextInterceptorRequest = createHttpUriRequest(serverPort,
+                            "interceptor", request.getHeader("api-key"));
+                    var appResponse = client.execute(nextInterceptorRequest, ResourceBaseTest::toResponse);
+                    MockResponse mockResponse = new MockResponse();
+                    mockResponse.setResponseCode(appResponse.status());
+                    mockResponse.setChunkedBody(appResponse.body(), 200);
+                    return mockResponse;
+                } catch (Throwable error) {
+                    MockResponse mockResponse = new MockResponse();
+                    mockResponse.setResponseCode(500);
+                    mockResponse.setBody(error.getMessage());
+                    return mockResponse;
+                }
+            };
+            server.map(HttpMethod.POST, "/chat/completions", chatCompletionHandler);
+            server.map(HttpMethod.POST, "/interceptor/handle", interceptorHandler);
+            var request = createHttpUriRequest(serverPort,
+                    "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", "proxyKey1");
+            response = client.execute(request, ResourceBaseTest::toResponse);
+            verify(response, 200);
+        }
+    }
+
+    private HttpUriRequest createHttpUriRequest(int port, String deployment, String apiKey) {
+        String uri = "http://127.0.0.1:" + port + "/openai/deployments/" + deployment + "/chat/completions";
+        String requestBody = """
+                {
+                   "model": "gpt-3-turbo",
+                   "stream": true,
+                   "messages": [
+                     {
+                       "content": "how are you?",
+                       "role": "user"
+                     }
+                   ]
+                 }
+                """;
+        HttpUriRequest httpUriRequest = new HttpUriRequestBase(HttpMethod.POST.name(), URI.create(uri));
+        httpUriRequest.setHeader("api-key", apiKey);
+        httpUriRequest.setHeader("content-type", "application/json");
+        httpUriRequest.setEntity(new StringEntity(requestBody));
+        return httpUriRequest;
+    }
 }
