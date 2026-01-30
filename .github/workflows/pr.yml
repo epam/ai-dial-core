@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   run_tests:
-    uses: epam/ai-dial-ci/.github/workflows/java_pr.yml@becc5804ad760e98b87009cf7878cae45290828f
+    uses: epam/ai-dial-ci/.github/workflows/java_pr.yml@317b262f2f055643de54287d6b8c90651b32921f
     secrets: inherit
     with:
       platforms: "linux/amd64,linux/arm64"
