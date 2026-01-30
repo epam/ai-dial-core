@@ -283,8 +283,8 @@ public class AccessService {
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesByInterceptorAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        List<String> interceptors = context.getInterceptors();
-        if (interceptors == null) {
+        List<String> path = context.getApiKeyData().getExecutionPath();
+        if (path == null || path.isEmpty() || !context.getConfig().getInterceptors().containsKey(path.getLast())) {
             return Map.of();
         }
         String location = BucketBuilder.buildInitiatorBucket(context);
