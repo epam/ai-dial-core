@@ -7,6 +7,7 @@ import lombok.experimental.UtilityClass;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 @UtilityClass
@@ -22,20 +23,16 @@ public class RuleMatcher {
             return true;
         }
 
-        ExtractedClaims claims = context.getExtractedClaims();
-        if (claims == null) {
-            return false;
-        }
-
-        Map<String, List<String>> userClaims = claims.userClaims();
+        Map<String, List<String>> userClaims = Optional.ofNullable(context.getExtractedClaims())
+                .map(ExtractedClaims::userClaims).orElse(null);
 
         for (Rule rule : rules) {
             String targetClaim = rule.getSource();
             List<String> sources;
             if (targetClaim.equals("roles")) {
-                sources = claims.userRoles();
+                sources = context.getUserRoles();
             } else {
-                sources = userClaims.get(targetClaim);
+                sources = userClaims == null ? null : userClaims.get(targetClaim);
             }
 
             if (sources == null) {
