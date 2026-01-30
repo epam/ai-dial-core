@@ -8,6 +8,31 @@
         "body": "OK"
       }
     },
+    "tasks": {
+      "rewritePath": true,
+      "paths": [
+        "/tasks(/[^/]+)*$"
+      ],
+      "methods": [
+        "DELETE",
+        "POST",
+        "GET"
+      ],
+      "upstreams": [
+        {
+          "endpoint": "http://localhost:9876",
+          "key": "123456789",
+          "weight": 1,
+          "tier": 0
+        }
+      ],
+      "maxRetryAttempts": 1,
+      "permissions": [],
+      "attachmentPaths": {
+        "requestBody": [],
+        "responseBody": []
+      }
+    },
     "forbidden" : {
       "paths": ["/v1/forbidden"],
       "methods": ["GET"],

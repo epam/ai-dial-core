@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -43,8 +44,18 @@ class RouteRequestBodyHandler {
                 .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
                     handleRequestBody(body);
                     return null;
-                }));
+                }).onFailure(this::handleError));
         return Future.succeededFuture();
+    }
+
+    private void handleError(Throwable error) {
+        if (error instanceof HttpException httpException) {
+            controller.respond(httpException);
+        } else {
+            String errorMsg = "Error occurred on processing route request: %s".formatted(context.getRequest().path());
+            controller.respond(HttpStatus.INTERNAL_SERVER_ERROR, errorMsg);
+            log.error(errorMsg, error);
+        }
     }
 
     private void handleRequestBody(Buffer requestBody) {
@@ -55,7 +66,7 @@ class RouteRequestBodyHandler {
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setRequestBody(requestBody);
 
-        controller.setupProxyApiKeyData();
+        ApiKeyData apiKeyData = controller.setupProxyApiKeyData();
 
         controller.setupEnhancementFunctions();
 
@@ -81,8 +92,9 @@ class RouteRequestBodyHandler {
                 return;
             }
         }
-
-        proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
+        if (apiKeyData != null) {
+            proxy.getApiKeyStore().assignPerRequestApiKey(apiKeyData);
+        }
         sendRequest();
     }
 
