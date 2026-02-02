@@ -53,7 +53,6 @@ public class AccessService {
 
     private final List<PermissionRule> permissionRules = List.of(
             AccessService::getOwnResourcesAccess,
-            AccessService::getOwnResourcesByInterceptorAccess,
             this::getAdminAccess,
             AccessService::getAutoSharedAccess,
             AccessService::getPerRequestPermissions,
@@ -271,23 +270,6 @@ public class AccessService {
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
         String location = BucketBuilder.buildUserBucket(context);
-        Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
-        for (ResourceDescriptor resource : resources) {
-            if (resource.getBucketLocation().equals(location)) {
-                result.put(resource, ResourceAccessType.ALL);
-            }
-        }
-
-        return result;
-    }
-
-    private static Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesByInterceptorAccess(
-            Set<ResourceDescriptor> resources, ProxyContext context) {
-        List<String> path = context.getApiKeyData().getExecutionPath();
-        if (path == null || path.isEmpty() || !context.getConfig().getInterceptors().containsKey(path.getLast())) {
-            return Map.of();
-        }
-        String location = BucketBuilder.buildInitiatorBucket(context);
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceDescriptor resource : resources) {
             if (resource.getBucketLocation().equals(location)) {
