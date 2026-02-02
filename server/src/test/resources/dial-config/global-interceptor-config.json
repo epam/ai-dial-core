@@ -1,0 +1,14 @@
+{
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    }
+  },
+  "interceptors": {
+    "global": {
+      "endpoint": "http://localhost:4848/interceptor/handle"
+    }
+  },
+  "globalInterceptors": ["global"]
+}
