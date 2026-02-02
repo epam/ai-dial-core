@@ -311,8 +311,7 @@ public class AccessServiceTest {
     public void testGetAdminAccess_WhenPublicResource() {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "public/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("admin"), "hash", Map.of(), null, "userName");
-        when(context.getExtractedClaims()).thenReturn(extractedClaims);
+        when(context.getUserRoles()).thenReturn(List.of("admin"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
                 applicationSchemaService,
@@ -335,8 +334,7 @@ public class AccessServiceTest {
         String reviewLocation = "/Users/sub/publications/123/";
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", reviewLocation, false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("admin"), "hash", Map.of(), null, "userName");
-        when(context.getExtractedClaims()).thenReturn(extractedClaims);
+        when(context.getUserRoles()).thenReturn(List.of("admin"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
                 applicationSchemaService,
@@ -380,8 +378,7 @@ public class AccessServiceTest {
     public void testGetAdminAccess_WhenSourceFolderOfCodeApp() {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "app.py", List.of(), "bucket", "public/deployments/123/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("admin"), "hash", Map.of(), null, "userName");
-        when(context.getExtractedClaims()).thenReturn(extractedClaims);
+        when(context.getUserRoles()).thenReturn(List.of("admin"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
                 applicationSchemaService,
