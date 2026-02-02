@@ -16,6 +16,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import javax.annotation.Nullable;
 
+/**
+ * The function auto shares an initial deployment and their dependent resources like files in the interceptor execution flow.
+ */
 public class AutoShareDeploymentFn extends BaseRequestFunction<ObjectNode> {
 
     public AutoShareDeploymentFn(Proxy proxy, ProxyContext context) {
