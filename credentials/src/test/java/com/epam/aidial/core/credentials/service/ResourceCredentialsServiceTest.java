@@ -231,7 +231,7 @@ class ResourceCredentialsServiceTest {
         when(credentialsLocator.getCredentialsDescriptors()).thenReturn(descriptors);
 
         ResourceCredentials resourceCredentials = createCredentials(CredentialsLevel.USER);
-        resourceCredentials.setUserSub("userSub");
+        resourceCredentials.setUserId("userSub");
         byte[] resourceCredentialsBytes = JsonMapperUtil.convertToString(resourceCredentials).getBytes();
 
         ResourceDescriptor resourceDescriptor = Mockito.mock(ResourceDescriptor.class);
@@ -267,7 +267,7 @@ class ResourceCredentialsServiceTest {
         when(credentialsLocator.getCredentialsDescriptors()).thenReturn(descriptors);
 
         ResourceCredentials resourceCredentials = createCredentials(CredentialsLevel.USER);
-        resourceCredentials.setUserSub("userSub-1");
+        resourceCredentials.setUserId("userSub-1");
         byte[] resourceCredentialsBytes = JsonMapperUtil.convertToString(resourceCredentials).getBytes();
 
         ResourceDescriptor resourceDescriptor = Mockito.mock(ResourceDescriptor.class);

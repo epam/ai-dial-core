@@ -208,15 +208,15 @@ public class ToolSetProxyController implements Controller {
         try {
             ToolSet toolSet = (ToolSet) context.getDeployment();
             ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
-                    credentialsLocator, toolSet.getAuthSettings(), context.getUserSub()
+                    credentialsLocator, toolSet.getAuthSettings(), context.getUserId()
             );
 
             if (resourceCredentials != null) {
                 log.debug("Credentials found: User: {}, Resource: {}, CredentialsLevel: {}",
-                        context.getUserSub(), toolSetId, resourceCredentials.getCredentialsLevel());
+                        context.getUserId(), toolSetId, resourceCredentials.getCredentialsLevel());
                 addAuthorizationHeader(proxyRequest, resourceCredentials);
             } else {
-                log.debug("Credentials not found - User: {}, Resource: {}", context.getUserSub(), toolSetId);
+                log.debug("Credentials not found - User: {}, Resource: {}", context.getUserId(), toolSetId);
             }
 
             if (toolSet.isForwardPerRequestKey()) {
@@ -232,7 +232,7 @@ public class ToolSetProxyController implements Controller {
                                         ResourceCredentials resourceCredentials) {
         AuthorizationHeader authorizationHeader = authorizationHeaderProvider.createAuthorizationHeader(resourceCredentials);
         if (authorizationHeader != null) {
-            log.debug("AuthorizationHeader added: User: {}, Resource: {}", context.getUserSub(), toolSetId);
+            log.debug("AuthorizationHeader added: User: {}, Resource: {}", context.getUserId(), toolSetId);
             proxyRequest.putHeader(authorizationHeader.getHeaderName(), authorizationHeader.getHeaderValue());
         }
     }

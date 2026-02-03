@@ -22,6 +22,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHeaders;
 
 import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -42,6 +44,8 @@ import static java.util.Collections.EMPTY_LIST;
 
 @Slf4j
 public class IdentityProvider {
+
+    public static final String USER_SUB = "sub";
 
     // path(s) to the claim of user roles in JWT
     private final List<String[]> rolePaths = new ArrayList<>();
@@ -95,12 +99,17 @@ public class IdentityProvider {
      */
     private final String[] userDisplayName;
 
-    public IdentityProvider(JsonObject settings, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
+    /**
+     * The path to the claim to extract user ID
+     */
+    private final String[] userIdPath;
+
+    IdentityProvider(JsonObject settings, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
                             Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory) {
         this(settings, vertx, taskExecutor, client, new HttpClientOptions(), jwkProviderSupplier, factory);
     }
 
-    public IdentityProvider(JsonObject settings, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client, HttpClientOptions clientOptions,
+    IdentityProvider(JsonObject settings, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client, HttpClientOptions clientOptions,
                             Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory) {
         if (settings == null) {
             throw new IllegalArgumentException("Identity provider settings are missed");
@@ -130,8 +139,8 @@ public class IdentityProvider {
             }
         } else {
             try {
-                userInfoUrl = new URL(userinfoEndpoint);
-            } catch (MalformedURLException e) {
+                userInfoUrl = (new URI(userinfoEndpoint)).toURL();
+            } catch (MalformedURLException | URISyntaxException e) {
                 throw new IllegalArgumentException(e);
             }
         }
@@ -153,7 +162,7 @@ public class IdentityProvider {
             rolePaths.add(rolePath.split("\\."));
         }
 
-        projectPath = getClaimPath(settings, "projectPath");
+        projectPath = getClaimPath(settings, "projectPath", null);
         rolesDelimiter = settings.getString("rolesDelimiter");
 
         loggingKey = settings.getString("loggingKey");
@@ -172,14 +181,16 @@ public class IdentityProvider {
 
         audience = settings.getString("audience", null);
 
-        userDisplayName = getClaimPath(settings, "userDisplayName");
+        userDisplayName = getClaimPath(settings, "userDisplayName", null);
+
+        userIdPath = getClaimPath(settings, "userIdPath", new String[]{USER_SUB});
 
         long period = Math.min(negativeCacheExpirationMs, positiveCacheExpirationMs);
         vertx.setPeriodic(0, period, event -> evictExpiredJwks());
     }
 
-    private static String[] getClaimPath(JsonObject settings, String claimName) {
-        return settings.containsKey(claimName) ? settings.getString(claimName).split("\\.") : null;
+    private static String[] getClaimPath(JsonObject settings, String claimName, String[] defaultPath) {
+        return settings.containsKey(claimName) ? settings.getString(claimName).split("\\.") : defaultPath;
     }
 
     private void evictExpiredJwks() {
@@ -270,10 +281,6 @@ public class IdentityProvider {
         }
     }
 
-    private static String extractUserSub(Map<String, Object> userContext) {
-        return (String) userContext.get("sub");
-    }
-
     private static String extractStringClaim(Map<String, Object> claims, String[] path) {
         if (path == null) {
             return null;
@@ -329,7 +336,7 @@ public class IdentityProvider {
             Object claimValue = entry.getValue();
             if (claimValue instanceof String stringClaimValue) {
                 userClaims.put(claimName, List.of(stringClaimValue));
-            } else if (claimValue instanceof List<?> list && (list.isEmpty() || list.get(0) instanceof String)) {
+            } else if (claimValue instanceof List<?> list && (list.isEmpty() || list.getFirst() instanceof String)) {
                 userClaims.put(claimName, (List<String>) claimValue);
             } else {
                 // if claim value doesn't match supported type - add claim with empty value
@@ -376,7 +383,7 @@ public class IdentityProvider {
                 }).onFailure(promise::fail);
             });
         });
-        return promise.future().onFailure(error -> log.warn(String.format("Can't extract claims from user info endpoint '%s':", userInfoUrl), error));
+        return promise.future().onFailure(error -> log.warn("Can't extract claims from user info endpoint '{}':", userInfoUrl, error));
     }
 
     private ExtractedClaims from(DecodedJWT jwt) {
@@ -385,7 +392,7 @@ public class IdentityProvider {
         for (Map.Entry<String, Claim> e : jwt.getClaims().entrySet()) {
             map.put(e.getKey(), e.getValue().as(Object.class));
         }
-        return new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey),
+        return new ExtractedClaims(extractStringClaim(map, userIdPath), extractUserRoles(map), extractUserHash(userKey),
                 extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
     }
 
@@ -394,13 +401,13 @@ public class IdentityProvider {
         Map<String, Object> map = userInfo.getMap();
         if (getUserRoleFn != null) {
             getUserRoleFn.apply(accessToken, map).onFailure(promise::fail).onSuccess(roles -> {
-                ExtractedClaims extractedClaims = new ExtractedClaims(extractUserSub(map), roles, extractUserHash(userKey),
+                ExtractedClaims extractedClaims = new ExtractedClaims(extractStringClaim(map, userIdPath), roles, extractUserHash(userKey),
                         extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
                 promise.complete(extractedClaims);
             });
         } else {
             ExtractedClaims extractedClaims =
-                    new ExtractedClaims(extractUserSub(map), extractUserRoles(map), extractUserHash(userKey),
+                    new ExtractedClaims(extractStringClaim(map, userIdPath), extractUserRoles(map), extractUserHash(userKey),
                             extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
             promise.complete(extractedClaims);
         }

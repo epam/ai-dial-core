@@ -50,7 +50,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 
@@ -327,7 +326,7 @@ public class ShareService {
         for (SharedResource sharedResource : request.getResources()) {
             ResourceDescriptor resource = getResourceFromLink(sharedResource.getUrl());
             if (CREDS_SHARABLE_RESOURCE_TYPES.contains(resource.getType()) && sharedResource.isShareCredentials()) {
-                log.debug("Credential sharing started - User: {}, Resource: {}.", context.getUserSub(), sharedResource.getUrl());
+                log.debug("Credential sharing started - User: {}, Resource: {}.", context.getUserId(), sharedResource.getUrl());
                 CredentialsDescriptor globalCredentialsDescriptor = getGlobalCredentialsDescriptor(resource, context, resource.getType());
                 ResourceCredentials globalResourceCredentials =
                         resourceCredentialsService.getResourceCredentials(globalCredentialsDescriptor);
@@ -341,7 +340,7 @@ public class ShareService {
                 } else {
                     throw new IllegalArgumentException("Global credentials for resource: %s not found".formatted(sharedResource.getUrl()));
                 }
-                log.debug("Credential sharing finished - User: {}, Resource: {}.", context.getUserSub(), sharedResource.getUrl());
+                log.debug("Credential sharing finished - User: {}, Resource: {}.", context.getUserId(), sharedResource.getUrl());
             }
         }
         request.setResources(newSharedResources);
@@ -543,14 +542,14 @@ public class ShareService {
         permissionsToRevoke.forEach((resource, permissionsToRemove) -> {
             if (CREDS_SHARABLE_RESOURCE_TYPES.contains(resource.getType())
                     && permissionsToRemove.contains(ResourceAccessType.READ)) {
-                log.debug("Credential revocation started - User: {}, Resource: {}", context.getUserSub(), resource.getUrl());
+                log.debug("Credential revocation started - User: {}, Resource: {}", context.getUserId(), resource.getUrl());
                 CredentialsDescriptor globalCredentialsDescriptor = getGlobalCredentialsDescriptor(resource, context, resource.getType());
                 ResourceCredentials globalResourceCredentials = resourceCredentialsService.getResourceCredentials(globalCredentialsDescriptor);
                 if (globalResourceCredentials != null) {
                     ResourceDescriptor resourceDescriptor = globalCredentialsDescriptor.toResourceDescriptor();
                     newPermissionsToRevoke.put(resourceDescriptor, ResourceAccessType.ALL);
                 }
-                log.debug("Credential revocation finished - User: {}, Resource: {}", context.getUserSub(), resource.getUrl());
+                log.debug("Credential revocation finished - User: {}, Resource: {}", context.getUserId(), resource.getUrl());
             }
         });
 

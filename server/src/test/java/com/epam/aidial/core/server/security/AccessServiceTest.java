@@ -50,7 +50,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(context.getUserSub()).thenReturn("user");
+        when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("source");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, null, List.of(), "bucket", "Users/user/", true);
 
@@ -65,7 +65,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(context.getUserSub()).thenReturn("user");
+        when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("source");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, null, List.of("folder"), "bucket", "Users/user/", true);
 
@@ -80,7 +80,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(context.getUserSub()).thenReturn("user");
+        when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("source");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
 
@@ -95,7 +95,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(context.getUserSub()).thenReturn("user");
+        when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("app");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of("appdata", "app"), "bucket", "Users/user/", false);
 
@@ -111,7 +111,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(context.getUserSub()).thenReturn("user");
+        when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("app");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, "app", List.of("appdata"), "bucket", "Users/user/", true);
 
@@ -127,7 +127,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(context.getUserSub()).thenReturn("user");
+        when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("test app");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of("appdata", "test app"), "bucket", "Users/user/", false);
 

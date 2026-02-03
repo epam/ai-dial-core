@@ -171,7 +171,7 @@ class ToolSetServiceTest {
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
         when(context.getConfig()).thenReturn(mock(Config.class));
         when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
-        when(context.getUserSub()).thenReturn("user-123");
+        when(context.getUserId()).thenReturn("user-123");
         when(encryptionService.encrypt("Users/user-123/")).thenReturn("encrypted-user-123");
 
         // When

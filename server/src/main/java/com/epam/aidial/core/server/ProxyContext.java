@@ -72,7 +72,7 @@ public class ProxyContext {
     private final String decodedSourceDeployment;
 
     private Deployment deployment;
-    private String userSub;
+    private String userId;
     private List<String> userRoles;
     private String userProject;
     private String userHash;
@@ -135,7 +135,7 @@ public class ProxyContext {
         if (extractedClaims != null) {
             this.userRoles = extractedClaims.userRoles();
             this.userHash = extractedClaims.userHash();
-            this.userSub = extractedClaims.sub();
+            this.userId = extractedClaims.userId();
             this.userProject = extractedClaims.project();
             this.userDisplayName = extractedClaims.userDisplayName();
         } else {
