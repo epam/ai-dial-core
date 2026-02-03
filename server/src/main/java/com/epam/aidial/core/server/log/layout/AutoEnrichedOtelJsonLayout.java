@@ -92,7 +92,7 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         ProxyContext proxyContext = ContextManager.getProxyContext();
         if (proxyContext != null) {
             attributes.put("user.project", proxyContext.getProject());
-            attributes.put("user.sub", proxyContext.getUserSub());
+            attributes.put("user.id", proxyContext.getUserId());
             if (proxyContext.getRequest() != null) {
                 attributes.put("request.method", proxyContext.getRequest().method().name());
                 attributes.put("request.uri", proxyContext.getRequest().uri());

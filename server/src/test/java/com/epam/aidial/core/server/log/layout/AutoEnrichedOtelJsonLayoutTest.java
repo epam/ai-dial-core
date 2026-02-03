@@ -112,7 +112,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         when(response.ended()).thenReturn(true);
 
         when(proxyContext.getProject()).thenReturn("test-project");
-        when(proxyContext.getUserSub()).thenReturn("test-user");
+        when(proxyContext.getUserId()).thenReturn("test-user");
         when(proxyContext.getRequest()).thenReturn(request);
         when(proxyContext.getResponse()).thenReturn(response);
         
@@ -134,7 +134,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         JsonNode attributes = jsonNode.get("Attributes");
         assertNotNull(attributes);
         assertEquals("test-project", attributes.get("user.project").asText());
-        assertEquals("test-user", attributes.get("user.sub").asText());
+        assertEquals("test-user", attributes.get("user.id").asText());
         assertEquals("/v1/test", attributes.get("request.uri").asText());
         assertEquals("POST", attributes.get("request.method").asText());
         assertEquals(200, attributes.get("response.status.code").asInt());
@@ -154,7 +154,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         when(response.ended()).thenReturn(false); // Response not ended yet
         
         when(proxyContext.getProject()).thenReturn("proxy-project");
-        when(proxyContext.getUserSub()).thenReturn("proxy-user");
+        when(proxyContext.getUserId()).thenReturn("proxy-user");
         when(proxyContext.getRequest()).thenReturn(request);
         when(proxyContext.getResponse()).thenReturn(response);
         
@@ -176,7 +176,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         JsonNode attributes = jsonNode.get("Attributes");
         assertNotNull(attributes);
         assertEquals("proxy-project", attributes.get("user.project").asText());
-        assertEquals("proxy-user", attributes.get("user.sub").asText());
+        assertEquals("proxy-user", attributes.get("user.id").asText());
         assertEquals("/v1/chat/completions", attributes.get("request.uri").asText());
         assertEquals("POST", attributes.get("request.method").asText());
         // response.status.code is not set in ProxyContext, so it shouldn't be in attributes
@@ -223,7 +223,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         when(response.ended()).thenReturn(true);
 
         when(proxyContext.getProject()).thenReturn("proxy-project");
-        when(proxyContext.getUserSub()).thenReturn("proxy-user");
+        when(proxyContext.getUserId()).thenReturn("proxy-user");
         when(proxyContext.getRequest()).thenReturn(request);
         when(proxyContext.getResponse()).thenReturn(response);
 
@@ -245,7 +245,7 @@ class AutoEnrichedOtelJsonLayoutTest {
         JsonNode attributes = jsonNode.get("Attributes");
         assertNotNull(attributes);
         assertEquals("proxy-project", attributes.get("user.project").asText()); // From ProxyContext
-        assertEquals("proxy-user", attributes.get("user.sub").asText()); // From ProxyContext
+        assertEquals("proxy-user", attributes.get("user.id").asText()); // From ProxyContext
         assertEquals("/v1/models", attributes.get("request.uri").asText()); // From ProxyContext
         assertEquals("GET", attributes.get("request.method").asText()); // From ProxyContext
         assertEquals(502, attributes.get("response.status.code").asInt()); // From Vertx context

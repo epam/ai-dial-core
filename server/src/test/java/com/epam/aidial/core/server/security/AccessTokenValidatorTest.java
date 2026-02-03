@@ -129,7 +129,7 @@ public class AccessTokenValidatorTest {
             assertTrue(res.succeeded());
             ExtractedClaims claims = res.result();
             assertNotNull(claims);
-            assertEquals("sub", claims.sub());
+            assertEquals("sub", claims.userId());
             assertEquals(Collections.emptyList(), claims.userRoles());
             assertEquals("hash", claims.userHash());
         });
@@ -153,7 +153,7 @@ public class AccessTokenValidatorTest {
             assertTrue(res.succeeded());
             ExtractedClaims claims = res.result();
             assertNotNull(claims);
-            assertEquals("sub", claims.sub());
+            assertEquals("sub", claims.userId());
             assertEquals(Collections.emptyList(), claims.userRoles());
             assertEquals("hash", claims.userHash());
             verify(provider, never()).match(any(DecodedJWT.class));
@@ -208,7 +208,7 @@ public class AccessTokenValidatorTest {
             assertTrue(res.succeeded());
             ExtractedClaims claims = res.result();
             assertNotNull(claims);
-            assertEquals("sub", claims.sub());
+            assertEquals("sub", claims.userId());
             assertEquals(List.of("role1"), claims.userRoles());
             assertEquals("hash", claims.userHash());
             assertEquals("project1", claims.project());

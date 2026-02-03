@@ -78,7 +78,7 @@ public class CollectDeploymentsFnTest {
         when(context.getProxy()).thenReturn(proxy);
         when(context.getConfig()).thenReturn(config);
         when(context.getDeployment()).thenReturn(application);
-        when(context.getUserSub()).thenReturn("userSub");
+        when(context.getUserId()).thenReturn("userSub");
         when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
         when(encryptionService.encrypt(anyString())).thenReturn("bucket/");
@@ -110,7 +110,7 @@ public class CollectDeploymentsFnTest {
         Application application = new Application();
         when(context.getProxy()).thenReturn(proxy);
         when(context.getDeployment()).thenReturn(application);
-        when(context.getUserSub()).thenReturn("userSub");
+        when(context.getUserId()).thenReturn("userSub");
         when(context.getConfig()).thenReturn(config);
         when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
         when(proxy.getEncryptionService()).thenReturn(encryptionService);

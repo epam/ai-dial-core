@@ -68,7 +68,7 @@ public class CredentialsLocatorFactoryTest {
     public void fromAnyUrl_withUserSub(String resourceId, String expectedGlobalBucket, String expectedGlobalLocation) {
         // Given
         when(encryptionService.encrypt(eq(USER_SUB_LOCATION))).thenReturn(USER_BUCKET);
-        when(proxyContext.getUserSub()).thenReturn(USER_SUB);
+        when(proxyContext.getUserId()).thenReturn(USER_SUB);
         when(proxyContext.getConfig()).thenReturn(config);
         if (resourceId.contains(RESOURCE_OWNER_BUCKET)) {
             when(encryptionService.decrypt(eq(RESOURCE_OWNER_BUCKET))).thenReturn(RESOURCE_OWNER_BUCKET_LOCATION);
@@ -118,7 +118,7 @@ public class CredentialsLocatorFactoryTest {
         // Given
         String resourceId = "my-toolset";
         when(encryptionService.encrypt(USER_SUB_LOCATION)).thenReturn(USER_BUCKET);
-        when(proxyContext.getUserSub()).thenReturn(USER_SUB);
+        when(proxyContext.getUserId()).thenReturn(USER_SUB);
         when(proxyContext.getConfig()).thenReturn(config);
         when(config.isDeploymentExists(resourceId)).thenReturn(true);
 

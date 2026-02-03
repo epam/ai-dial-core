@@ -315,7 +315,7 @@ public class IdentityProviderTest {
             ExtractedClaims claims = res.result();
             assertNotNull(claims);
             assertEquals(List.of("role"), claims.userRoles());
-            assertEquals("sub", claims.sub());
+            assertEquals("sub", claims.userId());
             assertNotNull(claims.userHash());
         });
     }
@@ -347,7 +347,7 @@ public class IdentityProviderTest {
             ExtractedClaims claims = res.result();
             assertNotNull(claims);
             assertEquals(List.of("role"), claims.userRoles());
-            assertEquals("sub", claims.sub());
+            assertEquals("sub", claims.userId());
             assertNotNull(claims.userHash());
             Map<String, List<String>> userClaims = claims.userClaims();
             // assert user claim
@@ -392,7 +392,7 @@ public class IdentityProviderTest {
             ExtractedClaims claims = res.result();
             assertNotNull(claims);
             assertEquals(List.of("role"), claims.userRoles());
-            assertEquals("sub", claims.sub());
+            assertEquals("sub", claims.userId());
             assertNotNull(claims.userHash());
             Map<String, List<String>> userClaims = claims.userClaims();
             // assert user claim
@@ -878,6 +878,33 @@ public class IdentityProviderTest {
     }
 
     @Test
+    public void testExtractClaims_32() throws JwkException {
+        settings.put("userIdPath", "oid");
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory);
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        String token = JWT.create().withHeader(Map.of("kid", "kid1"))
+                .withClaim("roles", List.of("manager")).withClaim("oid", "123").sign(algorithm);
+        Jwk jwk = mock(Jwk.class);
+        when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
+        when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            ExtractedClaims claims = res.result();
+            assertNotNull(claims);
+            assertEquals("123", claims.userId());
+        });
+    }
+
+    @Test
     public void testExtractClaims_FromUserInfo_01() {
         settings.remove("jwksUrl");
         settings.put("userInfoEndpoint", "http://host/userinfo");
@@ -940,7 +967,7 @@ public class IdentityProviderTest {
             ExtractedClaims claims = res.result();
             assertNotNull(claims);
             assertEquals(List.of("role1"), claims.userRoles());
-            assertEquals("sub", claims.sub());
+            assertEquals("sub", claims.userId());
             assertNotNull(claims.userHash());
         });
     }
@@ -980,7 +1007,7 @@ public class IdentityProviderTest {
             ExtractedClaims claims = res.result();
             assertNotNull(claims);
             assertEquals(List.of("role1"), claims.userRoles());
-            assertEquals("sub", claims.sub());
+            assertEquals("sub", claims.userId());
             assertNotNull(claims.userHash());
         });
     }

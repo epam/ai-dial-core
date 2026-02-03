@@ -94,7 +94,7 @@ public class ConsentServiceTest {
                 """;
         Config config = buildConfig(jsonConfig);
         when(context.getConfig()).thenReturn(config);
-        when(context.getUserSub()).thenReturn("user-sub");
+        when(context.getUserId()).thenReturn("user-sub");
         when(deploymentService.findDeployment(eq(context), anyString())).thenCallRealMethod();
 
         ReviewConsentResponse response = service.buildConsent(context, "A");
@@ -157,7 +157,7 @@ public class ConsentServiceTest {
                 """;
         Config config = buildConfig(jsonConfig);
         when(context.getConfig()).thenReturn(config);
-        when(context.getUserSub()).thenReturn("user-sub");
+        when(context.getUserId()).thenReturn("user-sub");
         when(deploymentService.findDeployment(eq(context), anyString())).thenCallRealMethod();
         when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("""
                {
@@ -242,7 +242,7 @@ public class ConsentServiceTest {
                 """;
         Config config = buildConfig(jsonConfig);
         when(context.getConfig()).thenReturn(config);
-        when(context.getUserSub()).thenReturn("user-sub");
+        when(context.getUserId()).thenReturn("user-sub");
         when(deploymentService.findDeployment(eq(context), anyString())).thenCallRealMethod();
         when(resourceService.getResource(any(ResourceDescriptor.class))).thenReturn("""
                {
@@ -311,7 +311,7 @@ public class ConsentServiceTest {
 
     @Test
     public void testAcceptConsent() {
-        when(context.getUserSub()).thenReturn("sub");
+        when(context.getUserId()).thenReturn("sub");
 
         service.acceptConsent(context, "id", new Consent());
 
@@ -334,7 +334,7 @@ public class ConsentServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         when(context.getApiKeyData()).thenReturn(apiKeyData);
 
-        when(context.getUserSub()).thenReturn("sub");
+        when(context.getUserId()).thenReturn("sub");
 
         assertThrows(PermissionDeniedException.class, () -> service.verifyUserConsent(context, application));
     }
@@ -352,7 +352,7 @@ public class ConsentServiceTest {
         apiKeyData.setExecutionPath(List.of("A", "B"));
         when(context.getApiKeyData()).thenReturn(apiKeyData);
 
-        when(context.getUserSub()).thenReturn("sub");
+        when(context.getUserId()).thenReturn("sub");
 
         assertThrows(PermissionDeniedException.class, () -> service.verifyUserConsent(context, application));
     }
@@ -365,7 +365,7 @@ public class ConsentServiceTest {
         features.setConsentRequired(true);
         application.setFeatures(features);
 
-        when(context.getUserSub()).thenReturn("sub");
+        when(context.getUserId()).thenReturn("sub");
 
         ApiKeyData apiKeyData = new ApiKeyData();
         when(context.getApiKeyData()).thenReturn(apiKeyData);
@@ -405,7 +405,7 @@ public class ConsentServiceTest {
         features.setConsentRequired(true);
         application.setFeatures(features);
 
-        when(context.getUserSub()).thenReturn("sub");
+        when(context.getUserId()).thenReturn("sub");
 
         String jsonConsent = """
                {
@@ -445,7 +445,7 @@ public class ConsentServiceTest {
         features.setConsentRequired(true);
         application.setFeatures(features);
 
-        when(context.getUserSub()).thenReturn("sub");
+        when(context.getUserId()).thenReturn("sub");
 
         String jsonConsent = """
                {
@@ -485,7 +485,7 @@ public class ConsentServiceTest {
         features.setConsentRequired(true);
         application.setFeatures(features);
 
-        when(context.getUserSub()).thenReturn("sub");
+        when(context.getUserId()).thenReturn("sub");
 
         String jsonConsent = """
                {

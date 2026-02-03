@@ -44,14 +44,14 @@ public class ResourceCredentialsService {
     public void addResourceCredentials(CredentialsDescriptor credentialsDescriptor,
                                        ResourceAuthSettings resourceAuthSettings,
                                        ResourceSignInRequest resourceSignInRequest,
-                                       String userSub) {
+                                       String userId) {
         log.debug("Adding resource credentials for resourceId={}, bucket={}, credentialsLevel={}",
                 credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName(), resourceSignInRequest.getCredentialsLevel());
         ResourceCredentialsFactory factory = resourceCredentialsFactoryProvider.getFactory(resourceSignInRequest.getAuthenticationType());
         ResourceCredentials resourceCredentials = factory.createCredentials(resourceSignInRequest.getUrl(), resourceAuthSettings, resourceSignInRequest);
 
         if (resourceSignInRequest.getCredentialsLevel().equals(CredentialsLevel.USER)) {
-            resourceCredentials.setUserSub(userSub);
+            resourceCredentials.setUserId(userId);
         }
 
         byte[] encryptedBody = encrypt(credentialsDescriptor, resourceCredentials);
@@ -154,7 +154,7 @@ public class ResourceCredentialsService {
 
     private void validateDeleteOperation(ResourceCredentials existingCredentials,
                                          CredentialsLevel credentialsLevel,
-                                         String userSub) {
+                                         String userId) {
         CredentialsLevel existingResourceCredentialsLevel = existingCredentials.getCredentialsLevel();
         Objects.requireNonNull(existingResourceCredentialsLevel, "Invalid saved credentials: missing CredentialsLevel");
 
@@ -163,9 +163,9 @@ public class ResourceCredentialsService {
         }
 
         if (credentialsLevel.equals(CredentialsLevel.USER)) {
-            String existingCredentialsUserSub = existingCredentials.getUserSub();
-            Objects.requireNonNull(existingCredentialsUserSub, "Invalid saved credentials: missing userSub");
-            if (!existingCredentialsUserSub.equals(userSub)) {
+            String existingCredentialsUserId = existingCredentials.getUserId();
+            Objects.requireNonNull(existingCredentialsUserId, "Invalid saved credentials: missing userSub");
+            if (!existingCredentialsUserId.equals(userId)) {
                 throw new IllegalArgumentException("Can't delete other user's personal credentials");
             }
         }
@@ -185,7 +185,7 @@ public class ResourceCredentialsService {
             );
             if (userCredentials != null
                     && userCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
-                    && userCredentials.getUserSub().equals(userSub)) {
+                    && userCredentials.getUserId().equals(userSub)) {
                 return userCredentials;
             }
         } catch (ResourceNotFoundException e) {

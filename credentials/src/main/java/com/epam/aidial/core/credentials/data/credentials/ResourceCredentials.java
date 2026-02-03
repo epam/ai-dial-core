@@ -2,6 +2,7 @@ package com.epam.aidial.core.credentials.data.credentials;
 
 import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import lombok.Builder;
 import lombok.Data;
 import lombok.extern.jackson.Jacksonized;
@@ -21,5 +22,6 @@ public class ResourceCredentials {
     private long createdAt;
     private long updatedAt;
     private Long expiresInSeconds;
-    private String userSub;
+    @JsonAlias({"userSub", "userId"})
+    private String userId;
 }
