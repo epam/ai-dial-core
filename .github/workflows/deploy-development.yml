@@ -16,7 +16,7 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'development')
     uses: epam/ai-dial-ci/.github/workflows/deploy-development.yml@3.1.1
     with:
-      gitlab-project-id: "1826"
+      gitlab-project-id: "2966"
       gitlab-project-ref: "master"
     secrets:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
