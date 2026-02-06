@@ -375,11 +375,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         context.setResponseStream(responseStream);
 
         HttpServerResponse response = context.getResponse();
-
-        response.setChunked(true);
-        response.setStatusCode(proxyResponse.statusCode());
-
-        ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
+        ProxyUtil.handleChunkedResponse(response, proxyResponse);
         response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(upstreamRoute.getAttemptCount()));
 
         responseStream.pipe()

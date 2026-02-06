@@ -151,10 +151,7 @@ public class InterceptorController extends BaseDeploymentPostController {
 
         HttpServerResponse response = context.getResponse();
 
-        response.setChunked(true);
-        response.setStatusCode(proxyResponse.statusCode());
-
-        ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
+        ProxyUtil.handleChunkedResponse(response, proxyResponse);
 
         responseStream.pipe()
                 .endOnFailure(false)
