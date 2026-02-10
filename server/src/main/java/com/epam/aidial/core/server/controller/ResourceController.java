@@ -216,7 +216,7 @@ public class ResourceController extends AccessControlBaseController {
         try {
             checkCreateCodeApp(application);
             if (application.getApplicationProperties() != null) {
-                List<ResourceDescriptor> files = proxy.getApplicationSchemaService().getFiles(application);
+                List<ResourceDescriptor> files = proxy.getApplicationSchemaService().getFiles(application, true);
                 files.stream().filter(resource -> !(accessService.hasReadAccess(resource, context)))
                         .findAny().ifPresent(file -> {
                             throw new HttpException(FORBIDDEN, "No read access to file: " + file.getUrl());
