@@ -21,10 +21,12 @@ import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.net.SocketAddress;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -371,5 +373,16 @@ public class ProxyUtil {
             return null;
         }
         return socketAddress.host();
+    }
+
+    public void handleChunkedResponse(HttpServerResponse response, HttpClientResponse proxyResponse) {
+        response.setChunked(true);
+        int responseStatusCode = proxyResponse.statusCode();
+        response.setStatusCode(responseStatusCode);
+        copyHeaders(proxyResponse.headers(), response.headers());
+        String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
+        if (Strings.CI.contains(contentType, "text/event-stream")) {
+            response.putHeader("X-Accel-Buffering", "no");
+        }
     }
 }
