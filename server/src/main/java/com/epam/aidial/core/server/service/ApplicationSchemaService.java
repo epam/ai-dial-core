@@ -184,7 +184,7 @@ public class ApplicationSchemaService {
         }
         JsonNode tree = ProxyUtil.MAPPER.readTree(body);
         if (!tree.isObject()) {
-            throw new IllegalArgumentException("Application schema is not JSON object");
+            throw new ApplicationTypeSchemaProcessingException("Application schema is not JSON object");
         }
         return (ObjectNode) tree;
     }
