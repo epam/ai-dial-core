@@ -6,19 +6,24 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.IOException;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -28,6 +33,7 @@ import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -42,7 +48,9 @@ public class ApplicationSchemaServiceTest {
     @Mock
     private EncryptionService encryptionService;
 
-    @InjectMocks
+    @Mock
+    private HttpClient httpClient;
+
     private ApplicationSchemaService service;
 
     private final String schema = """
@@ -143,9 +151,122 @@ public class ApplicationSchemaServiceTest {
 
     @BeforeEach
     void setUp() {
+        service = new ApplicationSchemaService(resourceService, configStore, encryptionService, httpClient);
         customProperties.putAll(clientProperties);
         customProperties.putAll(serverProperties);
         application = new Application();
+    }
+
+    @Test
+    public void getCustomApplicationSchemaOrThrow_WithForceReload() throws IOException, InterruptedException {
+        when(configStore.get()).thenReturn(config);
+        URI schemaId = URI.create("schemaId");
+        application.setApplicationTypeSchemaId(schemaId);
+        String schema = """
+                  {
+                "$schema" : "https://dial.epam.com/application_type_schemas/schema#",
+                "$id" : "https://mydial.epam.com/custom_application_schemas/specific_application_type",
+                "dial:applicationTypeEditorUrl" : "https://mydial.epam.com/specific_application_type_editor",
+                "dial:applicationTypeDisplayName" : "Specific Application Type",
+                "dial:applicationTypeCompletionEndpoint" : "http://specific_application_service/opeani/v1/completion",
+                "dial:applicationTypeAssistantAttachmentsInRequestSupported": true,
+                "dial:applicationTypeSchemaEndpoint": "http://mydial.epam.com/schema"
+                }
+                  """;
+        when(config.getCustomApplicationSchema(schemaId)).thenReturn(schema);
+        HttpResponse<String> response = mock(HttpResponse.class);
+        when(httpClient.send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString()))).thenReturn(response);
+        String appSchema = """
+                {
+                  "properties" : {
+                      "clientFile" : {
+                           "type" : "string",
+                            "format" : "dial-file-encoded",
+                            "dial:meta" : {
+                                "dial:propertyKind" : "client",
+                                "dial:propertyOrder" : 1
+                            },
+                            "dial:file" : true
+                      },
+                      "serverFile" : {
+                            "type" : "string",
+                            "format" : "dial-file-encoded",
+                            "dial:meta" : {
+                                "dial:propertyKind" : "server",
+                                "dial:propertyOrder" : 2
+                            },
+                            "dial:file" : true
+                      }
+                   }
+                }
+                """;
+        when(response.body()).thenReturn(appSchema);
+        when(response.statusCode()).thenReturn(200);
+
+        String result = service.getCustomApplicationSchemaOrThrow(application, true);
+
+        JsonNode expectedResult = ProxyUtil.MAPPER.createObjectNode();
+        expectedResult = ProxyUtil.MAPPER.readerForUpdating(expectedResult).readTree(schema);
+        expectedResult = ProxyUtil.MAPPER.readerForUpdating(expectedResult).readTree(appSchema);
+        JsonNode actualResult = ProxyUtil.MAPPER.readTree(result);
+
+        Assertions.assertEquals(expectedResult, actualResult);
+    }
+
+    @Test
+    public void getCustomApplicationSchemaOrThrow_WithoutForceReload() throws IOException, InterruptedException {
+        when(configStore.get()).thenReturn(config);
+        URI schemaId = URI.create("schemaId");
+        application.setApplicationTypeSchemaId(schemaId);
+        String schema = """
+                  {
+                "$schema" : "https://dial.epam.com/application_type_schemas/schema#",
+                "$id" : "https://mydial.epam.com/custom_application_schemas/specific_application_type",
+                "dial:applicationTypeEditorUrl" : "https://mydial.epam.com/specific_application_type_editor",
+                "dial:applicationTypeDisplayName" : "Specific Application Type",
+                "dial:applicationTypeCompletionEndpoint" : "http://specific_application_service/opeani/v1/completion",
+                "dial:applicationTypeAssistantAttachmentsInRequestSupported": true,
+                "dial:applicationTypeSchemaEndpoint": "http://mydial.epam.com/schema"
+                }
+                  """;
+        when(config.getCustomApplicationSchema(schemaId)).thenReturn(schema);
+        HttpResponse<String> response = mock(HttpResponse.class);
+        when(httpClient.send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString()))).thenReturn(response);
+        String appSchema = """
+                {
+                  "properties" : {
+                      "clientFile" : {
+                           "type" : "string",
+                            "format" : "dial-file-encoded",
+                            "dial:meta" : {
+                                "dial:propertyKind" : "client",
+                                "dial:propertyOrder" : 1
+                            },
+                            "dial:file" : true
+                      },
+                      "serverFile" : {
+                            "type" : "string",
+                            "format" : "dial-file-encoded",
+                            "dial:meta" : {
+                                "dial:propertyKind" : "server",
+                                "dial:propertyOrder" : 2
+                            },
+                            "dial:file" : true
+                      }
+                   }
+                }
+                """;
+        when(response.body()).thenReturn(appSchema);
+        when(response.statusCode()).thenReturn(200);
+
+        String result = service.getCustomApplicationSchemaOrThrow(application, false);
+
+        JsonNode expectedResult = ProxyUtil.MAPPER.createObjectNode();
+        expectedResult = ProxyUtil.MAPPER.readerForUpdating(expectedResult).readTree(schema);
+        expectedResult = ProxyUtil.MAPPER.readerForUpdating(expectedResult).readTree(appSchema);
+        JsonNode actualResult = ProxyUtil.MAPPER.readTree(result);
+
+        Assertions.assertEquals(expectedResult, actualResult);
     }
 
     @Test
@@ -153,11 +274,11 @@ public class ApplicationSchemaServiceTest {
         when(configStore.get()).thenReturn(config);
         URI schemaId = URI.create("schemaId");
         application.setApplicationTypeSchemaId(schemaId);
-        when(config.getCustomApplicationSchema(schemaId)).thenReturn("schema");
+        when(config.getCustomApplicationSchema(schemaId)).thenReturn("{}");
 
-        String result = service.getCustomApplicationSchemaOrThrow(application);
+        String result = service.getCustomApplicationSchemaOrThrow(application, false);
 
-        Assertions.assertEquals("schema", result);
+        Assertions.assertEquals("{}", result);
     }
 
     @Test
@@ -168,14 +289,14 @@ public class ApplicationSchemaServiceTest {
         when(config.getCustomApplicationSchema(schemaId)).thenReturn(null);
 
         assertThrows(ApplicationTypeSchemaValidationException.class, () ->
-                service.getCustomApplicationSchemaOrThrow(application));
+                service.getCustomApplicationSchemaOrThrow(application, false));
     }
 
     @Test
     public void getCustomApplicationSchemaOrThrow_returnsNull_whenSchemaIdIsNull() {
         application.setApplicationTypeSchemaId(null);
 
-        String result = service.getCustomApplicationSchemaOrThrow(application);
+        String result = service.getCustomApplicationSchemaOrThrow(application, false);
 
         Assertions.assertNull(result);
     }

@@ -188,7 +188,7 @@ public class AiDial {
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
             ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
-            ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(resourceService, configStore, encryptionService);
+            ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(resourceService, configStore, encryptionService, httpProxySelector);
 
             TimeProvider timeProvider = new TimeProvider();
             TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);

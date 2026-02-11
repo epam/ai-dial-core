@@ -13,6 +13,11 @@
   "definitions": {
     "dialRootSchema": {
       "properties": {
+        "dial:applicationTypeSchemaEndpoint": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the application JSON schema endpoint of the custom application of given type"
+        },
         "dial:applicationTypeEditorUrl": {
           "type": "string",
           "format": "uri",
