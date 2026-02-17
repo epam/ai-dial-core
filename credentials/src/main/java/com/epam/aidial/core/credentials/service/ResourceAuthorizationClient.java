@@ -3,6 +3,7 @@ package com.epam.aidial.core.credentials.service;
 import com.epam.aidial.core.credentials.service.metadata.HttpHeadersHandler;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.google.common.annotations.VisibleForTesting;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -91,6 +92,8 @@ public class ResourceAuthorizationClient {
                 }
             }
 
+            checkOAuthError(body, request.uri());
+
             return JsonMapperUtil.convertToObject(body, responseType);
         } catch (ConnectException e) {
             if (hasUnresolvedAddressException(e)) {
@@ -113,5 +116,24 @@ public class ResourceAuthorizationClient {
 
     private java.time.Duration createRequestConfig() {
         return java.time.Duration.ofSeconds(30);
+    }
+
+    /**
+     * Some OAuth Authorization Servers return HTTP 200 with an error payload
+     * instead of a proper error status code. Detect and handle this case.
+     */
+    private static void checkOAuthError(String body, URI uri) {
+        if (body == null || body.isBlank()) {
+            return;
+        }
+        var node = JsonMapperUtil.convertToObject(body, java.util.Map.class);
+        if (node != null && node.containsKey("error")) {
+            String error = String.valueOf(node.get("error"));
+            String description = node.containsKey("error_description")
+                    ? String.valueOf(node.get("error_description"))
+                    : "no description";
+            log.debug("OAuth error in 200 response from {}: error={}, description={}", uri, error, description);
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Authorization server returned error: %s (%s)".formatted(error, description));
+        }
     }
 }

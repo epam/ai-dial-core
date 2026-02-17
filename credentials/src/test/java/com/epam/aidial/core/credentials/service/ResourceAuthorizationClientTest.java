@@ -226,6 +226,87 @@ class ResourceAuthorizationClientTest {
         assertEquals("Cannot connect to https://example.com/resource", exception.getMessage());
     }
 
+    @Test
+    void testExecuteGet_OAuthErrorInSuccessResponse() throws Exception {
+        // Given
+        String url = "https://example.com/token";
+        String errorResponse = "{\"error\":\"invalid_grant\",\"error_description\":\"The authorization code has expired\"}";
+        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(200);
+        when(httpResponseMock.body()).thenReturn(errorResponse);
+
+        // When
+        HttpException exception = assertThrows(HttpException.class,
+                () -> resourceAuthorizationClient.executeGet(url, TestResponse.class));
+
+        // Then
+        assertEquals(502, exception.getStatus().getCode());
+        assertTrue(exception.getMessage().contains("invalid_grant"));
+        assertTrue(exception.getMessage().contains("The authorization code has expired"));
+    }
+
+    @Test
+    void testExecutePost_OAuthErrorInSuccessResponse() throws Exception {
+        // Given
+        String url = "https://example.com/token";
+        TestRequest requestPayload = new TestRequest("testValue");
+        String errorResponse = "{\"error\":\"invalid_client\",\"error_description\":\"Invalid redirect_uri\"}";
+        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(200);
+        when(httpResponseMock.body()).thenReturn(errorResponse);
+
+        // When
+        HttpException exception = assertThrows(HttpException.class,
+                () -> resourceAuthorizationClient.executePost(url, requestPayload,
+                        ContentType.APPLICATION_JSON.toString(), TestResponse.class));
+
+        // Then
+        assertEquals(502, exception.getStatus().getCode());
+        assertTrue(exception.getMessage().contains("invalid_client"));
+        assertTrue(exception.getMessage().contains("Invalid redirect_uri"));
+    }
+
+    @Test
+    void testExecutePost_OAuthErrorWithoutDescription() throws Exception {
+        // Given
+        String url = "https://example.com/token";
+        TestRequest requestPayload = new TestRequest("testValue");
+        String errorResponse = "{\"error\":\"server_error\"}";
+        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(200);
+        when(httpResponseMock.body()).thenReturn(errorResponse);
+
+        // When
+        HttpException exception = assertThrows(HttpException.class,
+                () -> resourceAuthorizationClient.executePost(url, requestPayload,
+                        ContentType.APPLICATION_JSON.toString(), TestResponse.class));
+
+        // Then
+        assertEquals(502, exception.getStatus().getCode());
+        assertTrue(exception.getMessage().contains("server_error"));
+        assertTrue(exception.getMessage().contains("no description"));
+    }
+
+    @Test
+    void testExecuteGet_ValidResponseNotTreatedAsOAuthError() throws Exception {
+        String url = "https://example.com/resource";
+        String jsonResponse = "{\"key\":\"value\"}";
+        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(200);
+        when(httpResponseMock.body()).thenReturn(jsonResponse);
+
+        // When
+        TestResponse actualResponse = resourceAuthorizationClient.executeGet(url, TestResponse.class);
+
+        // Then
+        assertNotNull(actualResponse);
+        assertEquals("value", actualResponse.getKey());
+    }
+
     @Data
     @AllArgsConstructor
     @NoArgsConstructor

@@ -5,6 +5,7 @@ import com.epam.aidial.core.credentials.data.credentials.RefreshTokenRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.TokenRequest;
 import com.epam.aidial.core.credentials.data.credentials.TokenResponse;
+
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,11 +29,7 @@ public class TokenService {
                 .redirectUri(resourceAuthSettings.getRedirectUri())
                 .build();
 
-        TokenResponse tokenResponse = resourceAuthorizationClient.executePost(
-                resourceAuthSettings.getTokenEndpoint(),
-                tokenRequest.buildFormData(),
-                "application/x-www-form-urlencoded",
-                TokenResponse.class);
+        TokenResponse tokenResponse = doTokenCall(resourceAuthSettings.getTokenEndpoint(), tokenRequest.buildFormData());
         log.debug("Finished Resource {} token retrieval", resourceId);
         return tokenResponse;
     }
@@ -48,12 +45,15 @@ public class TokenService {
                 .refreshToken(refreshToken)
                 .build();
 
-        TokenResponse tokenResponse = resourceAuthorizationClient.executePost(
-                resourceAuthSettings.getTokenEndpoint(),
-                tokenRequest.buildFormData(),
-                "application/x-www-form-urlencoded",
-                TokenResponse.class);
+        TokenResponse tokenResponse = doTokenCall(resourceAuthSettings.getTokenEndpoint(), tokenRequest.buildFormData());
         log.debug("Finished Resource {} refresh token retrieval", resourceId);
         return tokenResponse;
+    }
+
+    private TokenResponse doTokenCall(String tokenEndpoint, String tokenRequest) {
+        return resourceAuthorizationClient.executePost(
+                tokenEndpoint, tokenRequest,
+                "application/x-www-form-urlencoded",
+                TokenResponse.class);
     }
 }
