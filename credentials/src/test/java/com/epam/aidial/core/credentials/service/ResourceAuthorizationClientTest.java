@@ -227,7 +227,7 @@ class ResourceAuthorizationClientTest {
     }
 
     @Test
-    void testExecuteGet_OAuthErrorInSuccessResponse() throws Exception {
+    void testExecuteGet_OauthErrorInSuccessResponse() throws Exception {
         // Given
         String url = "https://example.com/token";
         String errorResponse = "{\"error\":\"invalid_grant\",\"error_description\":\"The authorization code has expired\"}";
@@ -247,7 +247,7 @@ class ResourceAuthorizationClientTest {
     }
 
     @Test
-    void testExecutePost_OAuthErrorInSuccessResponse() throws Exception {
+    void testExecutePost_OauthErrorInSuccessResponse() throws Exception {
         // Given
         String url = "https://example.com/token";
         TestRequest requestPayload = new TestRequest("testValue");
@@ -269,7 +269,7 @@ class ResourceAuthorizationClientTest {
     }
 
     @Test
-    void testExecutePost_OAuthErrorWithoutDescription() throws Exception {
+    void testExecutePost_OauthErrorWithoutDescription() throws Exception {
         // Given
         String url = "https://example.com/token";
         TestRequest requestPayload = new TestRequest("testValue");
@@ -291,7 +291,7 @@ class ResourceAuthorizationClientTest {
     }
 
     @Test
-    void testExecuteGet_ValidResponseNotTreatedAsOAuthError() throws Exception {
+    void testExecuteGet_ValidResponseNotTreatedAsOauthError() throws Exception {
         String url = "https://example.com/resource";
         String jsonResponse = "{\"key\":\"value\"}";
         HttpResponse<String> httpResponseMock = mock(HttpResponse.class);

@@ -92,7 +92,7 @@ public class ResourceAuthorizationClient {
                 }
             }
 
-            checkOAuthError(body, request.uri());
+            checkOauthError(body, request.uri());
 
             return JsonMapperUtil.convertToObject(body, responseType);
         } catch (ConnectException e) {
@@ -122,7 +122,7 @@ public class ResourceAuthorizationClient {
      * Some OAuth Authorization Servers return HTTP 200 with an error payload
      * instead of a proper error status code. Detect and handle this case.
      */
-    private static void checkOAuthError(String body, URI uri) {
+    private static void checkOauthError(String body, URI uri) {
         if (body == null || body.isBlank()) {
             return;
         }
