@@ -8,7 +8,7 @@ public interface ResourceType {
     boolean requireCompression();
 
     /**
-     * @return TTL in seconds.
+     * @return TTL in milliseconds.
      */
     long ttl();
 }
