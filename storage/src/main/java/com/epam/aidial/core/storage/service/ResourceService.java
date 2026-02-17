@@ -609,7 +609,7 @@ public class ResourceService implements AutoCloseable {
 
             redisPut(redisKey, Result.DELETED_NOT_SYNCED);
             blobDelete(blobKey(descriptor));
-            redisSync(redisKey, Result.DELETED_NOT_SYNCED.resourceType);
+            redisSync(redisKey);
 
             publishEvent(descriptor, ResourceEvent.Action.DELETE, time(), null);
             return true;
@@ -707,8 +707,7 @@ public class ResourceService implements AutoCloseable {
             long ttl = map.remainTimeToLive();
             // according to the documentation, -1 means expiration is not set
             if (ttl == -1) {
-                String resourceType = result == null ? null : result.resourceType;
-                Duration expiration = getExpiration(resourceType);
+                Duration expiration = getExpiration(redisKey);
                 map.expire(expiration);
             }
             redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).remove(redisKey);
@@ -725,7 +724,7 @@ public class ResourceService implements AutoCloseable {
             blobDelete(blobKey);
         }
 
-        return redisSync(redisKey, result.resourceType);
+        return redisSync(redisKey);
     }
 
     private boolean blobExists(String key) {
@@ -874,16 +873,16 @@ public class ResourceService implements AutoCloseable {
         map.putAll(fields);
 
         if (result.synced) { // cleanup because it is already synced
-            Duration expiration = getExpiration(result.resourceType);
+            Duration expiration = getExpiration(key);
             map.expire(expiration);
             set.remove(key);
         }
     }
 
-    private RMap<String, byte[]> redisSync(String key, @Nullable String resourceType) {
+    private RMap<String, byte[]> redisSync(String key) {
         RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
         map.put(SYNCED_ATTRIBUTE, RedisUtil.BOOLEAN_TRUE_ARRAY);
-        Duration expiration = getExpiration(resourceType);
+        Duration expiration = getExpiration(key);
         map.expire(expiration);
 
         RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
@@ -958,10 +957,8 @@ public class ResourceService implements AutoCloseable {
         return (etag == null) ? meta.getETag() : EtagHeader.quoteIfNeeded(etag);
     }
 
-    private Duration getExpiration(@Nullable String resourceType) {
-        if (resourceType == null) {
-            return cacheExpiration;
-        }
+    private Duration getExpiration(String redisKey) {
+        String resourceType = RedisUtil.getResourceType(redisKey);
         Long ttl = resourceTypeExpiration.get(resourceType);
         if (ttl == null) {
             return cacheExpiration;
