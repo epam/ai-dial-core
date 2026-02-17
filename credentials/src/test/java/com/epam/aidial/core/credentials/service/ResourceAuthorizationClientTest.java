@@ -241,7 +241,7 @@ class ResourceAuthorizationClientTest {
                 () -> resourceAuthorizationClient.executeGet(url, TestResponse.class));
 
         // Then
-        assertEquals(502, exception.getStatus().getCode());
+        assertEquals(400, exception.getStatus().getCode());
         assertTrue(exception.getMessage().contains("invalid_grant"));
         assertTrue(exception.getMessage().contains("The authorization code has expired"));
     }
@@ -263,7 +263,7 @@ class ResourceAuthorizationClientTest {
                         ContentType.APPLICATION_JSON.toString(), TestResponse.class));
 
         // Then
-        assertEquals(502, exception.getStatus().getCode());
+        assertEquals(400, exception.getStatus().getCode());
         assertTrue(exception.getMessage().contains("invalid_client"));
         assertTrue(exception.getMessage().contains("Invalid redirect_uri"));
     }
@@ -285,7 +285,7 @@ class ResourceAuthorizationClientTest {
                         ContentType.APPLICATION_JSON.toString(), TestResponse.class));
 
         // Then
-        assertEquals(502, exception.getStatus().getCode());
+        assertEquals(400, exception.getStatus().getCode());
         assertTrue(exception.getMessage().contains("server_error"));
         assertTrue(exception.getMessage().contains("no description"));
     }
