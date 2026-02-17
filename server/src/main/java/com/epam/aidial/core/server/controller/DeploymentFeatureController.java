@@ -196,6 +196,7 @@ public class DeploymentFeatureController {
         if (deployment instanceof Model model && !model.getUpstreams().isEmpty()) {
             Upstream upstream = model.getUpstreams().getFirst();
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getEndpoint());
+            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey());
         }
 
         Buffer requestBody = context.getRequestBody();
