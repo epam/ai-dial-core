@@ -69,6 +69,7 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.cache.CacheClientFactory;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
@@ -182,7 +183,7 @@ public class AiDial {
 
             LockService lockService = new LockService(redis, storage.getPrefix());
             TimerService timerService = new VertxTimerService(vertx, taskExecutor);
-            ResourceService.Settings resourceServiceSettings = Json.decodeValue(settings("resources").toBuffer(), ResourceService.Settings.class);
+            ResourceService.Settings resourceServiceSettings = getResourceSettings();
             resourceService = new ResourceService(timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
@@ -258,6 +259,17 @@ public class AiDial {
             stop();
             throw e;
         }
+    }
+
+    private ResourceService.Settings getResourceSettings() {
+        ResourceService.Settings resourceServiceSettings = Json.decodeValue(settings("resources").toBuffer(), ResourceService.Settings.class);
+        Map<String, Long> resourceTypeExpiration = resourceServiceSettings.getResourceTypesExpiration();
+        for (ResourceTypes resourceType : ResourceTypes.values()) {
+            if (!resourceTypeExpiration.containsKey(resourceType.name())) {
+                resourceTypeExpiration.put(resourceType.name(), resourceType.ttl());
+            }
+        }
+        return resourceServiceSettings;
     }
 
     private static HttpProxySelector createHttpProxySelector(HttpClientOptions options) {

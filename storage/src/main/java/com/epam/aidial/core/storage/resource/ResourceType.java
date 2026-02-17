@@ -6,4 +6,9 @@ public interface ResourceType {
     String group();
 
     boolean requireCompression();
+
+    /**
+     * @return TTL in seconds.
+     */
+    long ttl();
 }
