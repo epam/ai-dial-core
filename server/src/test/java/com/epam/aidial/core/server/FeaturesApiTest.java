@@ -114,6 +114,7 @@ public class FeaturesApiTest extends ResourceBaseTest {
                 String path = request.getPath();
                 if (path.endsWith("model_config")) {
                     assertEquals("http://localhost:7001", request.getHeader(Proxy.HEADER_UPSTREAM_ENDPOINT));
+                    assertEquals("modelKey1", request.getHeader(Proxy.HEADER_UPSTREAM_KEY));
                 }
                 if (path.endsWith("rate_response")) {
                     return handleRateResponse(request, responseHeaders);
