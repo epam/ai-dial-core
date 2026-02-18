@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import lombok.Builder;
+import lombok.Data;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -108,6 +109,7 @@ public class ResourceService implements AutoCloseable {
     private final int compressionMinSize;
     private final String prefix;
     private final String resourceQueue;
+    private final Map<String, Long> resourceTypeExpiration;
 
     public ResourceService(TimerService timerService,
                            RedissonClient redis,
@@ -120,14 +122,14 @@ public class ResourceService implements AutoCloseable {
         this.lockService = lockService;
         this.topic = new ResourceTopic(redis, "resource:" + BlobStorageUtil.toStoragePath(prefix, "topic"));
         this.maxSize = settings.maxSize;
-        this.maxSizeToCache = settings.maxSizeToCache();
+        this.maxSizeToCache = settings.maxSizeToCache;
         this.syncDelay = settings.syncDelay;
         this.syncBatch = settings.syncBatch;
         this.cacheExpiration = Duration.ofMillis(settings.cacheExpiration);
         this.compressionMinSize = settings.compressionMinSize;
         this.prefix = prefix;
         this.resourceQueue = "resource:" + BlobStorageUtil.toStoragePath(prefix, "queue");
-
+        this.resourceTypeExpiration = Objects.requireNonNullElseGet(settings.resourceTypesExpiration, Map::of);
         this.syncTimer = timerService.scheduleWithFixedDelay(settings.syncPeriod, settings.syncPeriod, this::sync);
     }
 
@@ -705,7 +707,8 @@ public class ResourceService implements AutoCloseable {
             long ttl = map.remainTimeToLive();
             // according to the documentation, -1 means expiration is not set
             if (ttl == -1) {
-                map.expire(cacheExpiration);
+                Duration expiration = getExpiration(redisKey);
+                map.expire(expiration);
             }
             redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).remove(redisKey);
             return map;
@@ -870,7 +873,8 @@ public class ResourceService implements AutoCloseable {
         map.putAll(fields);
 
         if (result.synced) { // cleanup because it is already synced
-            map.expire(cacheExpiration);
+            Duration expiration = getExpiration(key);
+            map.expire(expiration);
             set.remove(key);
         }
     }
@@ -878,7 +882,8 @@ public class ResourceService implements AutoCloseable {
     private RMap<String, byte[]> redisSync(String key) {
         RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
         map.put(SYNCED_ATTRIBUTE, RedisUtil.BOOLEAN_TRUE_ARRAY);
-        map.expire(cacheExpiration);
+        Duration expiration = getExpiration(key);
+        map.expire(expiration);
 
         RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
         set.remove(key);
@@ -952,6 +957,15 @@ public class ResourceService implements AutoCloseable {
         return (etag == null) ? meta.getETag() : EtagHeader.quoteIfNeeded(etag);
     }
 
+    private Duration getExpiration(String redisKey) {
+        String resourceType = RedisUtil.getResourceType(redisKey);
+        Long ttl = resourceTypeExpiration.get(resourceType);
+        if (ttl == null) {
+            return cacheExpiration;
+        }
+        return Duration.ofMillis(ttl);
+    }
+
     @Builder
     private record Result(
             byte[] body,
@@ -1003,23 +1017,53 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    /**
-     * @param maxSize            - max allowed size in bytes for a resource.
-     * @param maxSizeToCache     - max size in bytes to cache resource in Redis.
-     * @param syncPeriod         - period in milliseconds, how frequently check for resources to sync.
-     * @param syncDelay          - delay in milliseconds for a resource to be written back in object storage after last modification.
-     * @param syncBatch          - how many resources to sync in one go.
-     * @param cacheExpiration    - expiration in milliseconds for synced resources in Redis.
-     * @param compressionMinSize - compress resources with gzip if their size in bytes more or equal to this value.
-     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Settings(
-            int maxSize,
-            int maxSizeToCache,
-            long syncPeriod,
-            long syncDelay,
-            int syncBatch,
-            long cacheExpiration,
-            int compressionMinSize) {
+    @Data
+    public static class Settings {
+        /**
+         * Max allowed size in bytes for a resource.
+         */
+        private int maxSize;
+        /**
+         * Max size in bytes to cache resource in Redis.
+         */
+        private int maxSizeToCache;
+        /**
+         * Period in milliseconds, how frequently check for resources to sync.
+         */
+        private int syncPeriod;
+        /**
+         * Delay in milliseconds for a resource to be written back in object storage after last modification.
+         */
+        private long syncDelay;
+        /**
+         * How many resources to sync in one go.
+         */
+        private int syncBatch;
+        /**
+         * Default expiration in milliseconds for synced resources in Redis.
+         */
+        private long cacheExpiration;
+        /**
+         * Compress resources with gzip if their size in bytes more or equal to this value.
+         */
+        private int compressionMinSize;
+        /**
+         * Expiration in milliseconds per resource type.
+         */
+        private Map<String, Long> resourceTypesExpiration = new HashMap<>();
+
+        public Settings() {
+        }
+
+        public Settings(int maxSize, int maxSizeToCache, int syncPeriod, long syncDelay, int syncBatch, long cacheExpiration, int compressionMinSize) {
+            this.maxSize = maxSize;
+            this.maxSizeToCache = maxSizeToCache;
+            this.syncPeriod = syncPeriod;
+            this.syncDelay = syncDelay;
+            this.syncBatch = syncBatch;
+            this.cacheExpiration = cacheExpiration;
+            this.compressionMinSize = compressionMinSize;
+        }
     }
 }
