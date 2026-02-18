@@ -72,7 +72,7 @@ class ShareServiceTest {
         when(encryptionService.decrypt(anyString())).thenReturn("decryptedBucket/");
 
         ProxyContext context = mock(ProxyContext.class, RETURNS_DEEP_STUBS);
-        when(context.getUserSub()).thenReturn("userSub");
+        when(context.getUserId()).thenReturn("userSub");
         when(context.getUserDisplayName()).thenReturn("userDisplayName");
 
         Invitation invitation = new Invitation();
@@ -114,7 +114,7 @@ class ShareServiceTest {
 
         ProxyContext proxyContext = mock(ProxyContext.class, RETURNS_DEEP_STUBS);
         Proxy proxy = mock(Proxy.class);
-        when(proxyContext.getUserSub()).thenReturn("userSub");
+        when(proxyContext.getUserId()).thenReturn("userSub");
         when(proxyContext.getUserDisplayName()).thenReturn("userDisplayName");
         when(proxyContext.getProxy()).thenReturn(proxy);
         when(proxy.getEncryptionService()).thenReturn(encryptionService);

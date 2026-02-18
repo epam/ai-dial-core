@@ -119,7 +119,7 @@ class ResourceCredentialsControllerTest {
 
         when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
         when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
-        when(context.getUserSub()).thenReturn("userSub");
+        when(context.getUserId()).thenReturn("userSub");
         when(context.getConfig()).thenReturn(mock(Config.class));
         when(context.getProxy()).thenReturn(proxy);
 
@@ -229,7 +229,7 @@ class ResourceCredentialsControllerTest {
 
         when(context.getProxy()).thenReturn(proxy);
         when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
-        when(context.getUserSub()).thenReturn("userSub");
+        when(context.getUserId()).thenReturn("userSub");
         when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
         when(context.getConfig()).thenReturn(mock(Config.class));
 

@@ -461,7 +461,7 @@ class ResourceAuthSettingsServiceTest {
         ResourceCredentials credentials = Mockito.mock(ResourceCredentials.class);
         when(credentials.getCredentialsLevel()).thenReturn(level);
         when(credentials.getAuthenticationType()).thenReturn(authenticationType);
-        when(credentials.getUserSub()).thenReturn(userSub);
+        when(credentials.getUserId()).thenReturn(userSub);
         return credentials;
     }
 

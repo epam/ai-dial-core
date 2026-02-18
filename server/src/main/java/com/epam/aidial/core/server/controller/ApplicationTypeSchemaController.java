@@ -115,6 +115,9 @@ public class ApplicationTypeSchemaController {
                 if (schemaNode.has(MetaSchemaHolder.DIAL_APPLICATION_TYPE_BUCKET_COPY)) {
                     filteredNode.set(MetaSchemaHolder.DIAL_APPLICATION_TYPE_BUCKET_COPY, schemaNode.get(MetaSchemaHolder.DIAL_APPLICATION_TYPE_BUCKET_COPY));
                 }
+                if (schemaNode.has(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT)) {
+                    filteredNode.set(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT, schemaNode.get(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT));
+                }
 
                 filteredSchemas.add(filteredNode);
             }

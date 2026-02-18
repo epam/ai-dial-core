@@ -59,7 +59,7 @@ public class BucketControllerTest {
     @Test
     public void handle_RootInitiatorUser() {
         ApiKeyData apiKeyData = new ApiKeyData();
-        when(context.getUserSub()).thenReturn("sub");
+        when(context.getUserId()).thenReturn("sub");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         when(encryptionService.encrypt(anyString())).thenReturn("enc-sub");
 
@@ -103,7 +103,7 @@ public class BucketControllerTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getSourceDeployment()).thenReturn("app");
-        when(context.getUserSub()).thenReturn("sub");
+        when(context.getUserId()).thenReturn("sub");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         when(encryptionService.encrypt(anyString())).thenAnswer(invocation -> {
             String arg = invocation.getArgument(0);

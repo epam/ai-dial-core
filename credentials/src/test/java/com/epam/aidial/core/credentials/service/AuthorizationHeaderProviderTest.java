@@ -154,7 +154,7 @@ class AuthorizationHeaderProviderTest {
                 .accessToken(accessToken)
                 .apiKeyHeader(apiKeyHeader)
                 .apiKey(apiKey)
-                .userSub(userSub)
+                .userId(userSub)
                 .build();
     }
 

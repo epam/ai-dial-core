@@ -33,7 +33,7 @@ class ToolSetProxyControllerTest {
         context = mock(ProxyContext.class, RETURNS_DEEP_STUBS);
         when(context.getProxy()).thenReturn(proxy);
         when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
-        when(context.getUserSub()).thenReturn("userSub");
+        when(context.getUserId()).thenReturn("userSub");
     }
 
     @ParameterizedTest

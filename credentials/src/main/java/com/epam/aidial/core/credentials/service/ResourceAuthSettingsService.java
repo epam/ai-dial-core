@@ -118,20 +118,20 @@ public class ResourceAuthSettingsService {
 
     public void setResourceAuthStatuses(CredentialsLocator credentialsLocator,
                                         ResourceAuthSettings resourceAuthSettings,
-                                        String userSub) {
+                                        String userId) {
         List<ResourceCredentials> allResourceCredentials = resourceCredentialsService.getAllResourceCredentials(credentialsLocator);
-        setUserAuthStatus(resourceAuthSettings, allResourceCredentials, userSub);
+        setUserAuthStatus(resourceAuthSettings, allResourceCredentials, userId);
         setGlobalAuthStatus(resourceAuthSettings, allResourceCredentials);
     }
 
     private void setUserAuthStatus(ResourceAuthSettings resourceAuthSettings,
                                    List<ResourceCredentials> resourceCredentialsList,
-                                   String userSub) {
+                                   String userId) {
         Optional<ResourceCredentials> userResourceCredentials = resourceCredentialsList.stream()
                 .filter(resourceCredentials -> resourceCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
                     && tokenRefreshStrategyFactory.getTokenValidatorStrategy(resourceCredentials.getAuthenticationType())
                         .hasUnexpiredToken(resourceCredentials)
-                        && userSub.equals(resourceCredentials.getUserSub()))
+                        && userId.equals(resourceCredentials.getUserId()))
                 .findFirst();
         if (userResourceCredentials.isPresent()) {
             resourceAuthSettings.setUserLevelAuthStatus(ResourceAuthStatus.SIGNED_IN);

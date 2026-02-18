@@ -182,9 +182,7 @@ class RouteRequestBodyHandler {
         context.setResponseStream(proxyResponseStream);
 
         HttpServerResponse response = context.getResponse();
-        response.setChunked(true);
-        response.setStatusCode(responseStatusCode);
-        ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
+        ProxyUtil.handleChunkedResponse(response, proxyResponse);
 
         proxyResponseStream.pipe()
                 .endOnFailure(false)

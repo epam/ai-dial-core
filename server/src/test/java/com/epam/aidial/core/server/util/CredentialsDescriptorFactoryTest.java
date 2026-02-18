@@ -49,7 +49,7 @@ public class CredentialsDescriptorFactoryTest {
         // Given: The user context is defined by a user subscription
         ApiKeyData apiKeyData = mock(ApiKeyData.class);
         when(proxyContext.getApiKeyData()).thenReturn(apiKeyData);
-        when(proxyContext.getUserSub()).thenReturn(USER_SUB);
+        when(proxyContext.getUserId()).thenReturn(USER_SUB);
         when(encryptionService.encrypt(eq(USER_SUB_LOCATION))).thenReturn(USER_BUCKET);
 
         // When: We request credentials at the USER level

@@ -2,6 +2,8 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -190,6 +192,12 @@ public class DeploymentFeatureController {
 
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
+
+        if (deployment instanceof Model model && !model.getUpstreams().isEmpty()) {
+            Upstream upstream = model.getUpstreams().getFirst();
+            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getEndpoint());
+            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey());
+        }
 
         Buffer requestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));

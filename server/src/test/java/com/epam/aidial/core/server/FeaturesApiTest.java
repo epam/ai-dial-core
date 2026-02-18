@@ -15,6 +15,8 @@ import java.util.Map;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 public class FeaturesApiTest extends ResourceBaseTest {
 
     private static String[] convertHeadersToFlatArray(Headers headers) {
@@ -48,6 +50,13 @@ public class FeaturesApiTest extends ResourceBaseTest {
                 }
                 """;
         testUpstreamEndpoint(inboundPath, upstream, HttpMethod.POST, body);
+    }
+
+    @Test
+    void testConfigurationEndpointModel() {
+        String inboundPath = "/v1/deployments/chat-gpt-35-turbo/configuration";
+        String upstream = "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/model_config";
+        testUpstreamEndpoint(inboundPath, upstream, HttpMethod.GET);
     }
 
     @Test
@@ -102,7 +111,12 @@ public class FeaturesApiTest extends ResourceBaseTest {
         try (TestWebServer server = new TestWebServer(uri.getPort())) {
             server.map(method, uri.getPath(), request -> {
                 Headers responseHeaders = filterHeaders(request.getHeaders(), requestExtraHeaders);
-                if (request.getPath().endsWith("rate_response")) {
+                String path = request.getPath();
+                if (path.endsWith("model_config")) {
+                    assertEquals("http://localhost:7001", request.getHeader(Proxy.HEADER_UPSTREAM_ENDPOINT));
+                    assertEquals("modelKey1", request.getHeader(Proxy.HEADER_UPSTREAM_KEY));
+                }
+                if (path.endsWith("rate_response")) {
                     return handleRateResponse(request, responseHeaders);
                 } else {
                     return TestWebServer.createResponse(200, "PONG", convertHeadersToFlatArray(responseHeaders));

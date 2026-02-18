@@ -50,7 +50,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(context.getUserSub()).thenReturn("user");
+        when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("source");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, null, List.of(), "bucket", "Users/user/", true);
 
@@ -65,7 +65,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(context.getUserSub()).thenReturn("user");
+        when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("source");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, null, List.of("folder"), "bucket", "Users/user/", true);
 
@@ -80,7 +80,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(context.getUserSub()).thenReturn("user");
+        when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("source");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
 
@@ -95,7 +95,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(context.getUserSub()).thenReturn("user");
+        when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("app");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of("appdata", "app"), "bucket", "Users/user/", false);
 
@@ -111,7 +111,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(context.getUserSub()).thenReturn("user");
+        when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("app");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, "app", List.of("appdata"), "bucket", "Users/user/", true);
 
@@ -127,7 +127,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(context.getUserSub()).thenReturn("user");
+        when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("test app");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of("appdata", "test app"), "bucket", "Users/user/", false);
 
@@ -311,8 +311,7 @@ public class AccessServiceTest {
     public void testGetAdminAccess_WhenPublicResource() {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "public/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("admin"), "hash", Map.of(), null, "userName");
-        when(context.getExtractedClaims()).thenReturn(extractedClaims);
+        when(context.getUserRoles()).thenReturn(List.of("admin"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
                 applicationSchemaService,
@@ -335,8 +334,7 @@ public class AccessServiceTest {
         String reviewLocation = "/Users/sub/publications/123/";
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", reviewLocation, false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("admin"), "hash", Map.of(), null, "userName");
-        when(context.getExtractedClaims()).thenReturn(extractedClaims);
+        when(context.getUserRoles()).thenReturn(List.of("admin"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
                 applicationSchemaService,
@@ -380,8 +378,7 @@ public class AccessServiceTest {
     public void testGetAdminAccess_WhenSourceFolderOfCodeApp() {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "app.py", List.of(), "bucket", "public/deployments/123/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("admin"), "hash", Map.of(), null, "userName");
-        when(context.getExtractedClaims()).thenReturn(extractedClaims);
+        when(context.getUserRoles()).thenReturn(List.of("admin"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
                 applicationSchemaService,

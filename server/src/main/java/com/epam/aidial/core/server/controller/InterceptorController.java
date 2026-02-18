@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.function.AutoShareDeploymentFn;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectRequestDataFn;
@@ -36,7 +37,8 @@ public class InterceptorController extends BaseDeploymentPostController {
         super(proxy, context);
         this.enhancementFunctions = List.of(new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new CollectRequestChatCompletionAttachmentsFn(proxy, context),
-                new CollectRequestDataFn(proxy, context));
+                new CollectRequestDataFn(proxy, context),
+                new AutoShareDeploymentFn(proxy, context));
     }
 
     public Future<?> handle() {
@@ -149,10 +151,7 @@ public class InterceptorController extends BaseDeploymentPostController {
 
         HttpServerResponse response = context.getResponse();
 
-        response.setChunked(true);
-        response.setStatusCode(proxyResponse.statusCode());
-
-        ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
+        ProxyUtil.handleChunkedResponse(response, proxyResponse);
 
         responseStream.pipe()
                 .endOnFailure(false)

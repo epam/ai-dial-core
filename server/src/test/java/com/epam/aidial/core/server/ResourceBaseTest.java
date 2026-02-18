@@ -18,6 +18,7 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.Json;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
@@ -26,6 +27,7 @@ import org.apache.hc.client5.http.entity.mime.HttpMultipartMode;
 import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
+import org.apache.hc.core5.http.ClassicHttpResponse;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
@@ -33,12 +35,14 @@ import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestInfo;
 import org.mockito.Mockito;
 import redis.embedded.RedisServer;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -121,7 +125,7 @@ public class ResourceBaseTest {
     AccessTokenValidator validator = Mockito.mock(AccessTokenValidator.class);
 
     @BeforeEach
-    void init() throws Exception {
+    void init(TestInfo info) throws Exception {
         try {
             testDir = FileUtil.baseTestPath(ResourceApiTest.class);
             FileUtil.createDir(testDir.resolve("test"));
@@ -178,6 +182,15 @@ public class ResourceBaseTest {
 
             JsonObject settings = AiDial.settings()
                     .mergeIn(new JsonObject(overrides), true);
+            DialConfigLocation configLocation = (DialConfigLocation) info.getTestMethod()
+                    .flatMap(method -> Arrays.stream(method.getDeclaredAnnotations())
+                            .filter(an -> an instanceof DialConfigLocation).findAny()).orElse(null);
+            if (configLocation != null) {
+                JsonObject config = settings.getJsonObject("config");
+                JsonArray files = new JsonArray();
+                files.add(configLocation.value());
+                config.put("files", files);
+            }
 
             Mockito.when(validator.extractClaims(Mockito.any()))
                     .thenAnswer(invocation -> {
@@ -346,17 +359,20 @@ public class ResourceBaseTest {
             request.setEntity(new StringEntity(body));
         }
 
-        return client.execute(request, response -> {
-            int status = response.getCode();
-            String answer = (response.getEntity() == null) ? null : EntityUtils.toString(response.getEntity());
-            Map<String, String> responseHeaders = new HashMap<>();
+        return client.execute(request, ResourceBaseTest::toResponse);
+    }
 
-            for (Header header : response.getHeaders()) {
-                responseHeaders.put(header.getName(), header.getValue());
-            }
+    @SneakyThrows
+    static Response toResponse(ClassicHttpResponse response) {
+        int status = response.getCode();
+        String answer = (response.getEntity() == null) ? null : EntityUtils.toString(response.getEntity());
+        Map<String, String> responseHeaders = new HashMap<>();
 
-            return new Response(status, answer, responseHeaders);
-        });
+        for (Header header : response.getHeaders()) {
+            responseHeaders.put(header.getName(), header.getValue());
+        }
+
+        return new Response(status, answer, responseHeaders);
     }
 
     @SneakyThrows
