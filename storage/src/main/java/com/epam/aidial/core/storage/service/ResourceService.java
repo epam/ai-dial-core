@@ -11,7 +11,6 @@ import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.ResourceUpload;
 import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.util.Base58;
 import com.epam.aidial.core.storage.util.Compression;
 import com.epam.aidial.core.storage.util.EtagBuilder;
@@ -62,7 +61,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
@@ -108,6 +106,7 @@ public class ResourceService implements AutoCloseable {
             ByteArrayCodec.INSTANCE);
 
     private static final int BATCH_SIZE = 50;
+    private static final int PAGE_SIZE = 1000;
 
     private static final ExecutorService VIRTUAL_THREAD_PER_TASK_EXECUTOR;
 
@@ -249,92 +248,106 @@ public class ResourceService implements AutoCloseable {
     }
 
     @SneakyThrows
-    public List<String> listContentResources(ResourceDescriptor resource, Consumer<ResourceFolderMetadata> filter) {
-        if (!resource.isFolder()) {
-            throw new IllegalArgumentException("Invalid deployment folder: " + resource.getUrl());
+    public List<Pair<ResourceItemMetadata, String>> listResources(ResourceDescriptor resourceFolder, Consumer<ResourceFolderMetadata> filter) {
+        if (!resourceFolder.isFolder()) {
+            throw new IllegalArgumentException("Invalid deployment folder: " + resourceFolder.getUrl());
         }
         String nextToken = null;
-        ResourceType resourceType = resource.getType();
-        List<String> result = new ArrayList<>();
+        List<Pair<ResourceItemMetadata, String>> result = new ArrayList<>();
         do {
-            ResourceFolderMetadata folder = getFolderMetadata(resource, nextToken, 1000, true);
+            ResourceFolderMetadata folder = getFolderMetadata(resourceFolder, nextToken, PAGE_SIZE, true);
             if (folder == null) {
                 break;
             }
 
             filter.accept(folder);
 
-            List<? extends MetadataBase> items = folder.getItems();
-            final int size = items.size();
-            int batches = size / BATCH_SIZE;
-            int rem = size % BATCH_SIZE;
-            int cur = 0;
+            List<ResourceItemMetadata> items = folder.getItems().stream()
+                    .filter(item -> item.getNodeType() == NodeType.ITEM)
+                    .map(item -> (ResourceItemMetadata) item).toList();
 
-            List<Future<List<String>>> futures = new ArrayList<>();
-            for (int i = 0; i < batches; i++) {
-                int end = cur + BATCH_SIZE;
-                int start = cur;
-                Future<List<String>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR.submit(() -> runReadBatch(start, end, items, resourceType));
-                futures.add(future);
-                cur = end;
-            }
-            if (rem > 0) {
-                int end = cur + rem;
-                int start = cur;
-                Future<List<String>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR.submit(() -> runReadBatch(start, end, items, resourceType));
-                futures.add(future);
-            }
-
-            for (Future<List<String>> future : futures) {
-                result.addAll(future.get());
-            }
+            load(items, result);
             nextToken = folder.getNextToken();
+
         } while (nextToken != null);
 
         return result;
     }
 
+    /**
+     * Loads content of resource metadata into the result.
+     */
     @SneakyThrows
-    private List<String> runReadBatch(int start, int end, List<? extends MetadataBase> items, ResourceType resourceType) {
-        RBatch batch = redis.createBatch();
+    public void load(List<ResourceItemMetadata> items, List<Pair<ResourceItemMetadata, String>> result) {
+        final int size = items.size();
+        int batches = size / BATCH_SIZE;
+        int rem = size % BATCH_SIZE;
+        int cur = 0;
+
+        List<Future<List<Pair<ResourceItemMetadata, String>>>> futures = new ArrayList<>();
+        for (int i = 0; i < batches; i++) {
+            int end = cur + BATCH_SIZE;
+            int start = cur;
+            Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
+                    .submit(() -> runReadBatch(start, end, items));
+            futures.add(future);
+            cur = end;
+        }
+        if (rem > 0) {
+            int end = cur + rem;
+            int start = cur;
+            Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
+                    .submit(() -> runReadBatch(start, end, items));
+            futures.add(future);
+        }
+
+        for (Future<List<Pair<ResourceItemMetadata, String>>> future : futures) {
+            result.addAll(future.get());
+        }
+    }
+
+    @SneakyThrows
+    private List<Pair<ResourceItemMetadata, String>> runReadBatch(int start, int end, List<ResourceItemMetadata> items) {
         if (end - start <= 0) {
             return List.of();
         }
-        List<ResourceDescriptor> resources = new ArrayList<>();
-        List<String> result = new ArrayList<>();
+        RBatch batch = redis.createBatch();
+        List<Pair<ResourceItemMetadata, String>> result = new ArrayList<>();
+        List<String> redisKeys = new ArrayList<>();
         for (int i = start; i < end; i++) {
-            MetadataBase meta = items.get(i);
-            if (meta.getNodeType() == NodeType.ITEM && meta.getResourceType() == resourceType) {
-                ResourceDescriptor item = meta.getDescriptor();
-                resources.add(item);
-                result.add(null);
-                String redisKey = redisKey(item);
-                RMapAsync<String, byte[]> map = batch.getMap(redisKey, REDIS_MAP_CODEC);
-                map.getAllAsync(Set.of(BODY_ATTRIBUTE));
-            }
+            ResourceItemMetadata meta = items.get(i);
+            String redisKey = redisKey(meta.getDescriptor());
+            redisKeys.add(redisKey);
+            RMapAsync<String, byte[]> map = batch.getMap(redisKey, REDIS_MAP_CODEC);
+            map.getAllAsync(REDIS_FIELDS);
         }
         BatchResult<?> batchResult = batch.execute();
-        List<Pair<ResourceDescriptor, Integer>> missed = new ArrayList<>();
+        List<ResourceItemMetadata> missed = new ArrayList<>();
         List<?> responses = batchResult.getResponses();
         for (int j = 0; j < responses.size(); j++) {
             Map<String, byte[]> fields = (Map<String, byte[]>) responses.get(j);
-            ResourceDescriptor resource = resources.get(j);
-            if (fields.isEmpty()) {
-                missed.add(Pair.of(resource, j));
-                continue;
+            String redisKey = redisKeys.get(j);
+            Result redisResult = toResult(fields, redisKey);
+            ResourceItemMetadata metadata = items.get(j);
+            if (redisResult == null) {
+                missed.add(metadata);
+            } else {
+                Pair<ResourceItemMetadata, String> pair = Pair.of(toResourceItemMetadata(metadata.getDescriptor(), redisResult),
+                        new String(redisResult.body, StandardCharsets.UTF_8));
+                result.add(pair);
             }
-            byte[] body = fields.getOrDefault(BODY_ATTRIBUTE, ArrayUtils.EMPTY_BYTE_ARRAY);
-            result.set(j, new String(body, StandardCharsets.UTF_8));
         }
-        List<Future<String>> futures = new ArrayList<>();
-        for (Pair<ResourceDescriptor, Integer> pair : missed) {
-            Future<String> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR.submit(() -> getResource(pair.getKey()));
+        List<Future<Pair<ResourceItemMetadata, String>>> futures = new ArrayList<>();
+        for (ResourceItemMetadata metadata : missed) {
+            Future<Pair<ResourceItemMetadata, String>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
+                    .submit(() -> getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, false));
             futures.add(future);
         }
-        for (int j = 0; j < futures.size(); j++) {
-            int index = missed.get(j).getValue();
-            String val = futures.get(j).get();
-            result.set(index, val);
+        for (Future<Pair<ResourceItemMetadata, String>> future : futures) {
+            Pair<ResourceItemMetadata, String> res = future.get();
+            if (res != null) {
+                result.add(res);
+            }
         }
         return result;
     }
@@ -931,7 +944,11 @@ public class ResourceService implements AutoCloseable {
     private Result redisGet(String key, boolean withBody) {
         RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
         Map<String, byte[]> fields = map.getAll(withBody ? REDIS_FIELDS : REDIS_FIELDS_NO_BODY);
+        return toResult(fields, key);
+    }
 
+    @Nullable
+    private Result toResult(Map<String, byte[]> fields, String key) {
         if (fields.isEmpty()) {
             return null;
         }

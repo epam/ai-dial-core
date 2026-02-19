@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -18,6 +19,7 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,28 +58,68 @@ public class ToolSetController {
 
     public Future<?> getToolSets() {
         Config config = context.getConfig();
-
-        return taskExecutor.submit(() -> {
-            List<ToolSet> list = new ArrayList<>();
-            for (ToolSet toolSet : config.getToolsets().values()) {
-                if (toolSet.hasAccess(context.getUserRoles())) {
-                    toolSetService.setResourceAuthStatuses(context, toolSet, toolSet.getName());
-                    list.add(toolSet);
-                }
-            }
-            list.addAll(getResourceToolSets());
-            return list.stream().map(ToolSetData::toData).toList();
-        }).onSuccess(toolSets -> context.respond(HttpStatus.OK, new ListData<>(toolSets)))
+        return taskExecutor.submit(this::getResourceToolSets)
+                .compose(this::enrichToolsets)
+                .compose(toolsets -> taskExecutor.submit(() -> mergeToolsets(toolsets, config)))
+                .map(toolsets -> toolsets.stream().map(ToolSetData::toData).toList())
+                .onSuccess(toolSets -> context.respond(HttpStatus.OK, new ListData<>(toolSets)))
                 .onFailure(this::respondError);
+    }
+
+    private List<ToolSet> mergeToolsets(List<ToolSet> resourceToolsets, Config config) {
+        List<ToolSet> list = new ArrayList<>();
+        for (ToolSet toolSet : config.getToolsets().values()) {
+            if (toolSet.hasAccess(context.getUserRoles())) {
+                toolSetService.setResourceAuthStatuses(context, toolSet, toolSet.getName());
+                list.add(toolSet);
+            }
+        }
+        list.addAll(resourceToolsets);
+        return list;
+    }
+
+    private Future<List<ToolSet>> enrichToolsets(List<ToolSet> toolSets) {
+        int size = toolSets.size();
+        int batchSize = 50;
+        int batches = size / batchSize;
+        int rem = size % batchSize;
+        int cur = 0;
+        List<Future<Void>> futures = new ArrayList<>();
+        for (int i = 0; i < batches; i++) {
+            int end = cur + batchSize;
+            int start = cur;
+            Future<Void> future = taskExecutor.submit(() -> updateAuthStatus(start, end, toolSets));
+            futures.add(future);
+            cur = end;
+        }
+        if (rem > 0) {
+            int end = cur + rem;
+            int start = cur;
+            Future<Void> future = taskExecutor.submit(() -> updateAuthStatus(start, end, toolSets));
+            futures.add(future);
+        }
+        return Future.all(futures).map(res -> toolSets);
+    }
+
+    private Void updateAuthStatus(int start, int end, List<ToolSet> toolSets) {
+        if (end - start <= 0) {
+            return null;
+        }
+        for (int i = start; i < end; i++) {
+            ToolSet toolSet = toolSets.get(i);
+            toolSetService.setResourceAuthStatuses(context, toolSet, toolSet.getName());
+        }
+        return null;
     }
 
     private List<ToolSet> getResourceToolSets() {
         return deploymentService.listDeployments(context, ResourceTypes.TOOL_SET, new DeploymentService.DeploymentExtractor() {
             @SuppressWarnings("unchecked")
             @Override
-            public ToolSet extract(ResourceDescriptor resource, ProxyContext context) {
+            public ToolSet extract(String content, ResourceItemMetadata metadata, ProxyContext context) {
+                ResourceDescriptor resource = metadata.getDescriptor();
                 try {
-                    ToolSet toolSet = toolSetService.getToolSet(resource).getValue();
+                    ToolSet toolSet = toolSetService.extractFrom(content, metadata);
                     toolSetService.setResourceAuthStatuses(context, toolSet, resource.getUrl());
                     return toolSet;
                 } catch (EncryptionException ex) {

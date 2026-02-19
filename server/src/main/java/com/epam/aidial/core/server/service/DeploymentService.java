@@ -10,7 +10,6 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
-import com.epam.aidial.core.storage.data.NodeType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -20,6 +19,7 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,8 +31,6 @@ import static com.epam.aidial.core.storage.resource.ResourceTypes.TOOL_SET;
 
 @Slf4j
 public class DeploymentService {
-
-    private static final int PAGE_SIZE = 1000;
 
     private final EncryptionService encryptionService;
 
@@ -129,33 +127,8 @@ public class DeploymentService {
             throw new IllegalArgumentException("Invalid deployment folder: " + resource.getUrl());
         }
 
-        List<T> deployments = new ArrayList<>();
-        String nextToken = null;
-
-        do {
-            ResourceFolderMetadata folder = resourceService.getFolderMetadata(resource, nextToken, PAGE_SIZE, true);
-            if (folder == null) {
-                break;
-            }
-
-            filter.accept(folder);
-
-            for (MetadataBase meta : folder.getItems()) {
-                if (meta.getNodeType() == NodeType.ITEM && meta.getResourceType() == resourceType) {
-                    try {
-                        ResourceDescriptor item = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
-                        T deployment = extractor.extract(item, ctx);
-                        deployments.add(deployment);
-                    } catch (ResourceNotFoundException ignore) {
-                        // deleted while fetching
-                    }
-                }
-            }
-
-            nextToken = folder.getNextToken();
-        } while (nextToken != null);
-
-        return deployments;
+        return resourceService.listResources(resource, filter)
+                .stream().map(item -> extractor.<T>extract(item.getValue(), item.getKey(), ctx)).toList();
     }
 
     private <T extends  Deployment> List<T> getSharedDeployments(ProxyContext context, ResourceTypes resourceType, DeploymentExtractor extractor) {
@@ -170,23 +143,21 @@ public class DeploymentService {
         Set<MetadataBase> metadata = response.getResources();
 
         List<T> list = new ArrayList<>();
-
-        for (MetadataBase meta : metadata) {
-            ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(meta.getUrl(), encryptionService);
-
-            if (meta instanceof ResourceItemMetadata) {
-                try {
-                    T deployment = extractor.extract(resource, context);
-                    list.add(deployment);
-                } catch (ResourceNotFoundException ignore) {
-                    // skip shared app which might be deleted incidentally
-                    log.warn("Shared deployment is not found: {}", meta.getUrl());
-                }
-            } else {
-                list.addAll(getDeployments(resource, context, resourceType, extractor));
-            }
+        List<ResourceItemMetadata> deployments = metadata.stream()
+                .filter(meta -> meta instanceof ResourceItemMetadata).map(meta -> (ResourceItemMetadata) meta).toList();
+        List<Pair<ResourceItemMetadata, String>> deploymentContent = new ArrayList<>();
+        resourceService.load(deployments, deploymentContent);
+        for (Pair<ResourceItemMetadata, String> item : deploymentContent) {
+            T deployment = extractor.extract(item.getValue(), item.getKey(), context);
+            list.add(deployment);
         }
 
+        List<MetadataBase> folders = metadata.stream()
+                .filter(meta -> meta instanceof ResourceFolderMetadata).toList();
+        for (MetadataBase folder : folders) {
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(folder.getUrl(), encryptionService);
+            list.addAll(getDeployments(resource, context, resourceType, extractor));
+        }
         return list;
     }
 
@@ -197,8 +168,7 @@ public class DeploymentService {
     }
 
     public interface DeploymentExtractor {
-        <T extends Deployment> T extract(ResourceDescriptor resource, ProxyContext context);
-
+        <T extends  Deployment> T extract(String content, ResourceItemMetadata metadata, ProxyContext context);
     }
 
     public List<String> getInterceptors(ProxyContext context, Deployment deployment) {
