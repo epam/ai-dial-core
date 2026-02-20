@@ -328,7 +328,7 @@ public class ResourceService implements AutoCloseable {
             Map<String, byte[]> fields = (Map<String, byte[]>) responses.get(j);
             String redisKey = redisKeys.get(j);
             Result redisResult = toResult(fields, redisKey);
-            ResourceItemMetadata metadata = items.get(j);
+            ResourceItemMetadata metadata = items.get(start + j);
             if (redisResult == null) {
                 missed.add(metadata);
             } else {

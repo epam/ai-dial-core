@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ToolSet;
-import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ToolSetData;
@@ -14,12 +13,10 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -117,15 +114,7 @@ public class ToolSetController {
             @SuppressWarnings("unchecked")
             @Override
             public ToolSet extract(String content, ResourceItemMetadata metadata, ProxyContext context) {
-                ResourceDescriptor resource = metadata.getDescriptor();
-                try {
-                    ToolSet toolSet = toolSetService.extractFrom(content, metadata);
-                    toolSetService.setResourceAuthStatuses(context, toolSet, resource.getUrl());
-                    return toolSet;
-                } catch (EncryptionException ex) {
-                    // If a toolset can't be decrypted, it means the encryption method has changed. Let's assume for now that the toolset was not found.
-                    throw new ResourceNotFoundException("Failed to decrypt toolset: " + resource.getUrl(), ex);
-                }
+                return toolSetService.extractFrom(content, metadata);
             }
         });
     }

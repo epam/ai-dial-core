@@ -23,6 +23,7 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -128,7 +129,14 @@ public class DeploymentService {
         }
 
         return resourceService.listResources(resource, filter)
-                .stream().map(item -> extractor.<T>extract(item.getValue(), item.getKey(), ctx)).toList();
+                .stream().map(item -> {
+                    try {
+                        return extractor.<T>extract(item.getValue(), item.getKey(), ctx);
+                    } catch (Exception e) {
+                        log.warn("Can't extract deployment {} due to the error", item.getKey().getUrl(), e);
+                        return null;
+                    }
+                }).filter(Objects::nonNull).toList();
     }
 
     private <T extends  Deployment> List<T> getSharedDeployments(ProxyContext context, ResourceTypes resourceType, DeploymentExtractor extractor) {
@@ -148,8 +156,12 @@ public class DeploymentService {
         List<Pair<ResourceItemMetadata, String>> deploymentContent = new ArrayList<>();
         resourceService.load(deployments, deploymentContent);
         for (Pair<ResourceItemMetadata, String> item : deploymentContent) {
-            T deployment = extractor.extract(item.getValue(), item.getKey(), context);
-            list.add(deployment);
+            try {
+                T deployment = extractor.extract(item.getValue(), item.getKey(), context);
+                list.add(deployment);
+            } catch (Exception e) {
+                log.warn("Can't extract deployment {} due to the error", item.getKey().getUrl(), e);
+            }
         }
 
         List<MetadataBase> folders = metadata.stream()
