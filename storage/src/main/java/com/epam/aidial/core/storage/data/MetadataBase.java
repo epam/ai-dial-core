@@ -1,7 +1,9 @@
 package com.epam.aidial.core.storage.data;
 
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -18,6 +20,8 @@ import java.util.Set;
 public abstract class MetadataBase {
     public static final String MIME_TYPE = "application/vnd.dial.metadata+json";
 
+    @JsonIgnore
+    private ResourceDescriptor descriptor;
     private String name;
     private String parentPath;
     private String bucket;

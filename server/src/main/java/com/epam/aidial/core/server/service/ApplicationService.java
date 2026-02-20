@@ -151,6 +151,17 @@ public class ApplicationService {
         return Pair.of(meta, application);
     }
 
+    public Application extractFrom(String content, ResourceItemMetadata meta) {
+        Application application = ProxyUtil.convertToObject(content, Application.class);
+        if (application == null) {
+            throw new IllegalArgumentException("Application content is missed");
+        }
+        application.setAuthor(meta.getAuthor());
+        application.setCreatedAt(meta.getCreatedAt());
+        application.setUpdatedAt(meta.getUpdatedAt());
+        return application;
+    }
+
     public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author, Application application) {
         prepareApplication(resource, application);
 

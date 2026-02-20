@@ -26,11 +26,11 @@ public class ResourceItemMetadata extends MetadataBase {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String author;
 
-    public ResourceItemMetadata(ResourceType type, String bucket, String name, String path, String url) {
-        super(name, path, bucket, url, NodeType.ITEM, type, null, null, null);
+    private ResourceItemMetadata(ResourceDescriptor descriptor, ResourceType type, String bucket, String name, String path, String url) {
+        super(descriptor, name, path, bucket, url, NodeType.ITEM, type, null, null, null);
     }
 
     public ResourceItemMetadata(ResourceDescriptor resource) {
-        this(resource.getType(), resource.getBucketName(), resource.getName(), resource.getParentPath(), resource.getUrl());
+        this(resource, resource.getType(), resource.getBucketName(), resource.getName(), resource.getParentPath(), resource.getUrl());
     }
 }
