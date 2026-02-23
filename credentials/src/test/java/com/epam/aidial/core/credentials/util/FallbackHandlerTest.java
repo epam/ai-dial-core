@@ -75,6 +75,25 @@ class FallbackHandlerTest {
 
     @Test
     @SuppressWarnings("unchecked")
+    void testValidationFailsFallsThrough() {
+        Set<String> endpoints = new LinkedHashSet<>();
+        endpoints.add("endpoint1");
+        endpoints.add("endpoint2");
+
+        Function<String, String> fetchFunction = endpoint -> "data";
+        BiConsumer<String, String> validationFunction = (endpoint, result) -> {
+            if (endpoint.equals("endpoint1")) {
+                throw new IllegalArgumentException("Validation failed");
+            }
+        };
+
+        String result = FallbackHandler.executeWithFallback(endpoints, fetchFunction, validationFunction);
+
+        assertEquals("data", result);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void testNullResultFromFetchFunction() {
         Set<String> endpoints = new LinkedHashSet<>();
         endpoints.add("endpoint1");

@@ -35,6 +35,8 @@ public class FallbackHandler {
                 }
             } catch (HttpException e) {
                 log.debug("Failed to fetch data from endpoint: {}. HttpStatus: {}. Proceeding to next fallback.", endpoint, e.getStatus());
+            } catch (IllegalArgumentException e) {
+                log.debug("Validation failed for endpoint: {}. Reason: {}. Proceeding to next fallback.", endpoint, e.getMessage());
             }
         }
         log.debug("All endpoints failed. Returning null.");
