@@ -13,8 +13,6 @@ class AuthorizationServerMetadataValidatorTest {
 
     private final AuthorizationServerMetadataValidator validator = new AuthorizationServerMetadataValidator();
 
-    private static final String RESOURCE_ENDPOINT = "https://example.com/.well-known/oauth-authorization-server";
-
     @Test
     void testValidMetadata() {
         AuthorizationServerMetadata metadata = AuthorizationServerMetadata.builder()
@@ -23,7 +21,7 @@ class AuthorizationServerMetadataValidatorTest {
                 .tokenEndpoint("https://example.com/token")
                 .build();
 
-        assertDoesNotThrow(() -> validator.validate(metadata, RESOURCE_ENDPOINT));
+        assertDoesNotThrow(() -> validator.validate(metadata));
     }
 
     @Test
@@ -34,7 +32,7 @@ class AuthorizationServerMetadataValidatorTest {
                 .tokenEndpoint("https://proxy.example.com/token")
                 .build();
 
-        assertDoesNotThrow(() -> validator.validate(metadata, RESOURCE_ENDPOINT));
+        assertDoesNotThrow(() -> validator.validate(metadata));
     }
 
     @Test
@@ -45,7 +43,7 @@ class AuthorizationServerMetadataValidatorTest {
                 .tokenEndpoint("https://example.com/token")
                 .build();
 
-        assertDoesNotThrow(() -> validator.validate(metadata, RESOURCE_ENDPOINT));
+        assertDoesNotThrow(() -> validator.validate(metadata));
     }
 
     @ParameterizedTest
@@ -59,7 +57,7 @@ class AuthorizationServerMetadataValidatorTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> validator.validate(metadata, RESOURCE_ENDPOINT));
+                () -> validator.validate(metadata));
         assertEquals("Authorization Server metadata is missing required 'issuer' field", exception.getMessage());
     }
 
@@ -73,7 +71,7 @@ class AuthorizationServerMetadataValidatorTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> validator.validate(metadata, RESOURCE_ENDPOINT));
+                () -> validator.validate(metadata));
         assertEquals("Issuer must not contain query component: https://example.com?param=value", exception.getMessage());
     }
 
@@ -87,7 +85,7 @@ class AuthorizationServerMetadataValidatorTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> validator.validate(metadata, RESOURCE_ENDPOINT));
+                () -> validator.validate(metadata));
         assertEquals("Issuer must not contain fragment component: https://example.com#fragment", exception.getMessage());
     }
 
@@ -100,7 +98,7 @@ class AuthorizationServerMetadataValidatorTest {
                 .build();
 
         assertThrows(IllegalArgumentException.class,
-                () -> validator.validate(metadata, RESOURCE_ENDPOINT));
+                () -> validator.validate(metadata));
     }
 
     @ParameterizedTest
@@ -114,7 +112,7 @@ class AuthorizationServerMetadataValidatorTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> validator.validate(metadata, RESOURCE_ENDPOINT));
+                () -> validator.validate(metadata));
         assertEquals("Authorization Server metadata is missing required 'authorization_endpoint' field", exception.getMessage());
     }
 
@@ -129,7 +127,7 @@ class AuthorizationServerMetadataValidatorTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> validator.validate(metadata, RESOURCE_ENDPOINT));
+                () -> validator.validate(metadata));
         assertEquals("Authorization Server metadata is missing required 'token_endpoint' field", exception.getMessage());
     }
 }

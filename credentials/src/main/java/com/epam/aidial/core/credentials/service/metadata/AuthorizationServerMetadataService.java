@@ -60,7 +60,7 @@ public class AuthorizationServerMetadataService {
         AuthorizationServerMetadata metadata = FallbackHandler.executeWithFallback(
                 fallbackEndpoints,
                 endpoint -> resourceAuthorizationClient.executeGet(endpoint, AuthorizationServerMetadata.class),
-                (endpoint, result) -> authorizationServerMetadataValidator.validate(result, endpoint)
+                (endpoint, result) -> authorizationServerMetadataValidator.validate(result)
         );
 
         if (metadata != null
