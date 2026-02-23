@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.util.BucketBuilder;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import io.vertx.core.json.JsonObject;
@@ -356,7 +357,8 @@ public class AccessServiceTest {
     public void testGetAdminAccess_WhenPrivateResource() {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "/Users/sub", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("admin"), "hash", Map.of(), null, "userName");
+        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("admin"), "hash",
+                ProxyUtil.MAPPER.createObjectNode(), null, "userName");
         when(context.getExtractedClaims()).thenReturn(extractedClaims);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
