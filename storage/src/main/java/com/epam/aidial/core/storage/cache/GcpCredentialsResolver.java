@@ -7,17 +7,13 @@ import com.google.protobuf.Duration;
 import com.google.protobuf.Timestamp;
 import lombok.SneakyThrows;
 import org.redisson.config.Credentials;
-import org.redisson.config.CredentialsResolver;
 
-import java.net.InetSocketAddress;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 
-public class GcpCredentialsResolver implements CredentialsResolver {
+public class GcpCredentialsResolver extends BaseCredentialResolver {
 
     private static final Duration LIFETIME = Duration.newBuilder().setSeconds(TimeUnit.MINUTES.toSeconds(15)).build();
 
@@ -26,9 +22,9 @@ public class GcpCredentialsResolver implements CredentialsResolver {
     private final IamCredentialsClient iamClient;
     private final String accountName;
 
-    private volatile Timestamp expireTime;
+    private Timestamp expireTime;
 
-    private volatile CompletionStage<Credentials> future;
+    private Credentials credentials;
 
     @SneakyThrows
     public GcpCredentialsResolver(String accountName) {
@@ -38,7 +34,7 @@ public class GcpCredentialsResolver implements CredentialsResolver {
     }
 
     @Override
-    public CompletionStage<Credentials> resolve(InetSocketAddress address) {
+    protected Credentials resolve() {
         long now = Instant.now().getEpochSecond();
         if (expireTime == null || now >= expireTime.getSeconds()) {
             GenerateAccessTokenResponse response =
@@ -49,8 +45,8 @@ public class GcpCredentialsResolver implements CredentialsResolver {
                             LIFETIME);
             expireTime = response.getExpireTime();
             String token = response.getAccessToken();
-            future = CompletableFuture.completedFuture(new Credentials(null, token));
+            credentials = new Credentials(null, token);
         }
-        return future;
+        return credentials;
     }
 }

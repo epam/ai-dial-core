@@ -8,18 +8,14 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.redisson.config.Credentials;
-import org.redisson.config.CredentialsResolver;
 
-import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.Base64;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
 
 @SuppressWarnings("checkstyle:LineLength")
-public class AzureCredentialsResolver implements CredentialsResolver {
+public class AzureCredentialsResolver extends BaseCredentialResolver {
 
     private static final long EXPIRATION_WINDOW_IN_SEC = 10;
 
@@ -29,9 +25,9 @@ public class AzureCredentialsResolver implements CredentialsResolver {
 
     private final Supplier<OffsetDateTime> now;
 
-    private volatile OffsetDateTime expiresAt;
+    private OffsetDateTime expiresAt;
 
-    private volatile CompletionStage<Credentials> future;
+    private Credentials credentials;
 
     public AzureCredentialsResolver() {
         this.defaultCredential = new DefaultAzureCredentialBuilder().build();
@@ -45,16 +41,16 @@ public class AzureCredentialsResolver implements CredentialsResolver {
     }
 
     @Override
-    public CompletionStage<Credentials> resolve(InetSocketAddress address) {
+    protected Credentials resolve() {
         OffsetDateTime date = now.get().plusSeconds(EXPIRATION_WINDOW_IN_SEC);
         if (expiresAt == null || date.isAfter(expiresAt)) {
             AccessToken accessToken = defaultCredential.getTokenSync(TOKEN_REQUEST_CONTEXT);
             String token = accessToken.getToken();
             String userName = extractUsernameFromToken(token);
             expiresAt = accessToken.getExpiresAt();
-            future = CompletableFuture.completedFuture(new Credentials(userName, token));
+            credentials = new Credentials(userName, token);
         }
-        return future;
+        return credentials;
     }
 
     /**

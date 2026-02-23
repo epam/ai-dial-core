@@ -9,13 +9,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.config.Credentials;
 
-import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.Base64;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
@@ -64,19 +62,14 @@ public class AzureCredentialsResolverTest {
             String token = "header." + new String(Base64.getEncoder().encode(payload)) + ".signature";
             return new AccessToken(token, expired);
         });
-        InetSocketAddress address = new InetSocketAddress(8080);
-        CompletionStage<Credentials> stage = resolver.resolve(address);
-        assertNotNull(stage);
-        stage.thenAcceptAsync(credentials -> {
-            assertEquals("1", credentials.getPassword());
-            assertNull(credentials.getUsername());
-        });
-        stage = resolver.resolve(address);
-        assertNotNull(stage);
-        stage.thenAcceptAsync(credentials -> {
-            assertEquals("2", credentials.getPassword());
-            assertNull(credentials.getUsername());
-        });
+        Credentials credentials = resolver.resolve();
+        assertNotNull(credentials);
+        assertEquals("1", credentials.getUsername());
+        assertNotNull(credentials.getPassword());
+        credentials = resolver.resolve();
+        assertNotNull(credentials);
+        assertEquals("2", credentials.getUsername());
+        assertNotNull(credentials.getPassword());
     }
 
     private static OffsetDateTime to(long epochSecond) {

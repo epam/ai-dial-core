@@ -2,18 +2,14 @@ package com.epam.aidial.core.storage.cache;
 
 import com.amazonaws.auth.AWSCredentialsProvider;
 import org.redisson.config.Credentials;
-import org.redisson.config.CredentialsResolver;
 
-import java.net.InetSocketAddress;
 import java.net.URISyntaxException;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 
 /**
  * Source of implementation <a href="https://redisson.org/articles/how-to-connect-to-redis-using-elasticache-iam-credential-provider.html">
  *     How to Connect to Redis With the ElastiCache IAM Credential Provider</a>.
  */
-public class AwsCredentialsResolver implements CredentialsResolver {
+public class AwsCredentialsResolver extends BaseCredentialResolver {
 
     private static final long TOKEN_EXPIRY_MS = 900_000;
 
@@ -21,8 +17,8 @@ public class AwsCredentialsResolver implements CredentialsResolver {
     private final IamAuthTokenRequest iamAuthTokenRequest;
     private final AWSCredentialsProvider awsCredentialsProvider;
 
-    private volatile CompletionStage<Credentials> future;
-    private volatile long lastTime = System.currentTimeMillis();
+    private Credentials credentials;
+    private long lastTime = System.currentTimeMillis();
 
     public AwsCredentialsResolver(String userName, IamAuthTokenRequest iamAuthTokenRequest,
                                   AWSCredentialsProvider awsCredentialsProvider) {
@@ -32,16 +28,16 @@ public class AwsCredentialsResolver implements CredentialsResolver {
     }
 
     @Override
-    public CompletionStage<Credentials> resolve(InetSocketAddress address) {
-        if (System.currentTimeMillis() - lastTime > TOKEN_EXPIRY_MS || future == null) {
+    protected Credentials resolve() {
+        if (System.currentTimeMillis() - lastTime > TOKEN_EXPIRY_MS || credentials == null) {
             try {
                 String token = iamAuthTokenRequest.toSignedRequestUri(awsCredentialsProvider.getCredentials());
-                future = CompletableFuture.completedFuture(new Credentials(userName, token));
+                credentials = new Credentials(userName, token);
                 lastTime = System.currentTimeMillis();
             } catch (URISyntaxException e) {
                 throw new IllegalArgumentException(e);
             }
         }
-        return future;
+        return credentials;
     }
 }
