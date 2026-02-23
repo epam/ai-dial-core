@@ -124,7 +124,7 @@ public class ApiKeyStore {
     }
 
     private static Future<ApiKeyData> validateIpAddressRange(ApiKeyData apiKeyData, String clientIpAddress) {
-        log.info("Api key {} is accessed by client IP {}", apiKeyData.getOriginalKey().getProject(), clientIpAddress);
+        log.debug("Api key {} is accessed by client IP {}", apiKeyData.getOriginalKey().getProject(), clientIpAddress);
         IpAddressRanges ranges = apiKeyData.getOriginalKey().getAllowedIpAddressRanges();
         if (ranges == null || ranges.isAddressInRange(clientIpAddress)) {
             return Future.succeededFuture(apiKeyData);
