@@ -434,6 +434,19 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testProxyMcpPostCall_WhenToolsetNotFound() {
+        String mcpRequest = """
+                {
+                   "payload": "foo"
+                }
+                """;
+
+        Response resp = send(HttpMethod.POST, "/v1/toolset/unknown/mcp", null, mcpRequest);
+
+        assertEquals(404, resp.status());
+    }
+
+    @Test
     void testProxyMcp_TerminateSession() {
         String mcpRequest = """                
                 """;

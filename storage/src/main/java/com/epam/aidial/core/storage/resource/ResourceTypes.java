@@ -1,22 +1,36 @@
 package com.epam.aidial.core.storage.resource;
 
+import java.util.concurrent.TimeUnit;
+
 public enum ResourceTypes implements ResourceType {
-    FILE("files", false), CONVERSATION("conversations", true),
-    PROMPT("prompts", true), LIMIT("limits", true),
-    SHARED_WITH_ME("shared_with_me", true), SHARED_BY_ME("shared_by_me", true), INVITATION("invitations", true),
-    PUBLICATION("publications", true), RULES("rules", true), API_KEY_DATA("api_key_data", true), NOTIFICATION("notifications", true),
-    APPLICATION("applications", true), DEPLOYMENT_COST_STATS("deployment_cost_stats", true),
-    CODE_INTERPRETER_SESSION("code_interpreter_session", true), USER_CONSENT("user_consent", true),
-    TOOL_SET("toolsets", true),
-    CREDENTIALS("credentials", true),
-    ENCRYPTION_KEYS("encryption_keys", true);
+
+    FILE("files", false, TimeUnit.MINUTES.toMillis(5)),
+    CONVERSATION("conversations", true, TimeUnit.MINUTES.toMillis(5)),
+    PROMPT("prompts", true, TimeUnit.MINUTES.toMillis(5)),
+    LIMIT("limits", true, TimeUnit.MINUTES.toMillis(5)),
+    SHARED_WITH_ME("shared_with_me", true, TimeUnit.MINUTES.toMillis(5)),
+    SHARED_BY_ME("shared_by_me", true, TimeUnit.MINUTES.toMillis(5)),
+    INVITATION("invitations", true, TimeUnit.MINUTES.toMillis(5)),
+    PUBLICATION("publications", true, TimeUnit.MINUTES.toMillis(5)),
+    RULES("rules", true, TimeUnit.MINUTES.toMillis(5)),
+    API_KEY_DATA("api_key_data", true, TimeUnit.MINUTES.toMillis(5)),
+    NOTIFICATION("notifications", true, TimeUnit.MINUTES.toMillis(5)),
+    APPLICATION("applications", true, Long.MAX_VALUE),
+    DEPLOYMENT_COST_STATS("deployment_cost_stats", true, TimeUnit.MINUTES.toMillis(5)),
+    CODE_INTERPRETER_SESSION("code_interpreter_session", true, TimeUnit.MINUTES.toMillis(5)),
+    USER_CONSENT("user_consent", true, TimeUnit.MINUTES.toMillis(5)),
+    TOOL_SET("toolsets", true, Long.MAX_VALUE),
+    CREDENTIALS("credentials", true, TimeUnit.MINUTES.toMillis(5)),
+    ENCRYPTION_KEYS("encryption_keys", true, TimeUnit.MINUTES.toMillis(5));
 
     private final String group;
     private final boolean requireCompression;
+    private final long ttl;
 
-    ResourceTypes(String group, boolean requireCompression) {
+    ResourceTypes(String group, boolean requireCompression, long ttl) {
         this.group = group;
         this.requireCompression = requireCompression;
+        this.ttl = ttl;
     }
 
     public static ResourceTypes of(String group) {
@@ -44,5 +58,11 @@ public enum ResourceTypes implements ResourceType {
     public boolean requireCompression() {
         return requireCompression;
     }
+
+    @Override
+    public long ttl() {
+        return ttl;
+    }
+
 
 }

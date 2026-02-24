@@ -4,6 +4,7 @@ import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.data.NodeType;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
@@ -20,6 +21,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import lombok.Builder;
+import lombok.Data;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -34,7 +36,10 @@ import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.StorageType;
 import org.jclouds.io.Payload;
+import org.redisson.api.BatchResult;
+import org.redisson.api.RBatch;
 import org.redisson.api.RMap;
+import org.redisson.api.RMapAsync;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.ByteArrayCodec;
@@ -48,6 +53,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -55,9 +61,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import javax.annotation.Nullable;
+
+import static java.util.concurrent.Executors.newThreadPerTaskExecutor;
 
 @Slf4j
 public class ResourceService implements AutoCloseable {
@@ -94,6 +105,16 @@ public class ResourceService implements AutoCloseable {
             StringCodec.INSTANCE,
             ByteArrayCodec.INSTANCE);
 
+    private static final int BATCH_SIZE = 50;
+    private static final int PAGE_SIZE = 1000;
+
+    private static final ExecutorService VIRTUAL_THREAD_PER_TASK_EXECUTOR;
+
+    static {
+        ThreadFactory threadFactory = Thread.ofVirtual().name("batch-dial.x-virtual-thread-", 0).factory();
+        VIRTUAL_THREAD_PER_TASK_EXECUTOR = newThreadPerTaskExecutor(threadFactory);
+    }
+
     private final RedissonClient redis;
     private final BlobStorage blobStore;
     private final LockService lockService;
@@ -108,6 +129,7 @@ public class ResourceService implements AutoCloseable {
     private final int compressionMinSize;
     private final String prefix;
     private final String resourceQueue;
+    private final Map<String, Long> resourceTypeExpiration;
 
     public ResourceService(TimerService timerService,
                            RedissonClient redis,
@@ -120,14 +142,14 @@ public class ResourceService implements AutoCloseable {
         this.lockService = lockService;
         this.topic = new ResourceTopic(redis, "resource:" + BlobStorageUtil.toStoragePath(prefix, "topic"));
         this.maxSize = settings.maxSize;
-        this.maxSizeToCache = settings.maxSizeToCache();
+        this.maxSizeToCache = settings.maxSizeToCache;
         this.syncDelay = settings.syncDelay;
         this.syncBatch = settings.syncBatch;
         this.cacheExpiration = Duration.ofMillis(settings.cacheExpiration);
         this.compressionMinSize = settings.compressionMinSize;
         this.prefix = prefix;
         this.resourceQueue = "resource:" + BlobStorageUtil.toStoragePath(prefix, "queue");
-
+        this.resourceTypeExpiration = Objects.requireNonNullElseGet(settings.resourceTypesExpiration, Map::of);
         this.syncTimer = timerService.scheduleWithFixedDelay(settings.syncPeriod, settings.syncPeriod, this::sync);
     }
 
@@ -223,6 +245,111 @@ public class ResourceService implements AutoCloseable {
         // we should encode the marker any way to get back the original string from a query parameter
         String nextMarker = UrlUtil.encodePath(set.getNextMarker());
         return new ResourceFolderMetadata(descriptor, resources, nextMarker);
+    }
+
+    @SneakyThrows
+    public List<Pair<ResourceItemMetadata, String>> listResources(ResourceDescriptor resourceFolder, Consumer<ResourceFolderMetadata> filter) {
+        if (!resourceFolder.isFolder()) {
+            throw new IllegalArgumentException("Invalid deployment folder: " + resourceFolder.getUrl());
+        }
+        String nextToken = null;
+        List<Pair<ResourceItemMetadata, String>> result = new ArrayList<>();
+        do {
+            ResourceFolderMetadata folder = getFolderMetadata(resourceFolder, nextToken, PAGE_SIZE, true);
+            if (folder == null) {
+                break;
+            }
+
+            filter.accept(folder);
+
+            List<ResourceItemMetadata> items = folder.getItems().stream()
+                    .filter(item -> item.getNodeType() == NodeType.ITEM)
+                    .map(item -> (ResourceItemMetadata) item).toList();
+
+            load(items, result);
+            nextToken = folder.getNextToken();
+
+        } while (nextToken != null);
+
+        return result;
+    }
+
+    /**
+     * Loads content of resource metadata into the result.
+     */
+    @SneakyThrows
+    public void load(List<ResourceItemMetadata> items, List<Pair<ResourceItemMetadata, String>> result) {
+        final int size = items.size();
+        int batches = size / BATCH_SIZE;
+        int rem = size % BATCH_SIZE;
+        int cur = 0;
+
+        List<Future<List<Pair<ResourceItemMetadata, String>>>> futures = new ArrayList<>();
+        for (int i = 0; i < batches; i++) {
+            int end = cur + BATCH_SIZE;
+            int start = cur;
+            Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
+                    .submit(() -> runReadBatch(start, end, items));
+            futures.add(future);
+            cur = end;
+        }
+        if (rem > 0) {
+            int end = cur + rem;
+            int start = cur;
+            Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
+                    .submit(() -> runReadBatch(start, end, items));
+            futures.add(future);
+        }
+
+        for (Future<List<Pair<ResourceItemMetadata, String>>> future : futures) {
+            result.addAll(future.get());
+        }
+    }
+
+    @SneakyThrows
+    private List<Pair<ResourceItemMetadata, String>> runReadBatch(int start, int end, List<ResourceItemMetadata> items) {
+        if (end - start <= 0) {
+            return List.of();
+        }
+        RBatch batch = redis.createBatch();
+        List<Pair<ResourceItemMetadata, String>> result = new ArrayList<>();
+        List<String> redisKeys = new ArrayList<>();
+        for (int i = start; i < end; i++) {
+            ResourceItemMetadata meta = items.get(i);
+            String redisKey = redisKey(meta.getDescriptor());
+            redisKeys.add(redisKey);
+            RMapAsync<String, byte[]> map = batch.getMap(redisKey, REDIS_MAP_CODEC);
+            map.getAllAsync(REDIS_FIELDS);
+        }
+        BatchResult<?> batchResult = batch.execute();
+        List<ResourceItemMetadata> missed = new ArrayList<>();
+        List<?> responses = batchResult.getResponses();
+        for (int j = 0; j < responses.size(); j++) {
+            Map<String, byte[]> fields = (Map<String, byte[]>) responses.get(j);
+            String redisKey = redisKeys.get(j);
+            Result redisResult = toResult(fields, redisKey);
+            ResourceItemMetadata metadata = items.get(start + j);
+            if (redisResult == null) {
+                missed.add(metadata);
+            } else {
+                Pair<ResourceItemMetadata, String> pair = Pair.of(toResourceItemMetadata(metadata.getDescriptor(), redisResult),
+                        new String(redisResult.body, StandardCharsets.UTF_8));
+                result.add(pair);
+            }
+        }
+        List<Future<Pair<ResourceItemMetadata, String>>> futures = new ArrayList<>();
+        for (ResourceItemMetadata metadata : missed) {
+            Future<Pair<ResourceItemMetadata, String>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
+                    .submit(() -> getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, false));
+            futures.add(future);
+        }
+        for (Future<Pair<ResourceItemMetadata, String>> future : futures) {
+            Pair<ResourceItemMetadata, String> res = future.get();
+            if (res != null) {
+                result.add(res);
+            }
+        }
+        return result;
     }
 
     private static MetadataBase storageToResourceMetadata(StorageMetadata meta, ResourceDescriptor folder) {
@@ -705,7 +832,8 @@ public class ResourceService implements AutoCloseable {
             long ttl = map.remainTimeToLive();
             // according to the documentation, -1 means expiration is not set
             if (ttl == -1) {
-                map.expire(cacheExpiration);
+                Duration expiration = getExpiration(redisKey);
+                map.expire(expiration);
             }
             redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).remove(redisKey);
             return map;
@@ -816,7 +944,11 @@ public class ResourceService implements AutoCloseable {
     private Result redisGet(String key, boolean withBody) {
         RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
         Map<String, byte[]> fields = map.getAll(withBody ? REDIS_FIELDS : REDIS_FIELDS_NO_BODY);
+        return toResult(fields, key);
+    }
 
+    @Nullable
+    private Result toResult(Map<String, byte[]> fields, String key) {
         if (fields.isEmpty()) {
             return null;
         }
@@ -870,7 +1002,8 @@ public class ResourceService implements AutoCloseable {
         map.putAll(fields);
 
         if (result.synced) { // cleanup because it is already synced
-            map.expire(cacheExpiration);
+            Duration expiration = getExpiration(key);
+            map.expire(expiration);
             set.remove(key);
         }
     }
@@ -878,7 +1011,8 @@ public class ResourceService implements AutoCloseable {
     private RMap<String, byte[]> redisSync(String key) {
         RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
         map.put(SYNCED_ATTRIBUTE, RedisUtil.BOOLEAN_TRUE_ARRAY);
-        map.expire(cacheExpiration);
+        Duration expiration = getExpiration(key);
+        map.expire(expiration);
 
         RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
         set.remove(key);
@@ -952,6 +1086,15 @@ public class ResourceService implements AutoCloseable {
         return (etag == null) ? meta.getETag() : EtagHeader.quoteIfNeeded(etag);
     }
 
+    private Duration getExpiration(String redisKey) {
+        String resourceType = RedisUtil.getResourceType(redisKey);
+        Long ttl = resourceTypeExpiration.get(resourceType);
+        if (ttl == null) {
+            return cacheExpiration;
+        }
+        return Duration.ofMillis(ttl);
+    }
+
     @Builder
     private record Result(
             byte[] body,
@@ -1003,23 +1146,53 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
-    /**
-     * @param maxSize            - max allowed size in bytes for a resource.
-     * @param maxSizeToCache     - max size in bytes to cache resource in Redis.
-     * @param syncPeriod         - period in milliseconds, how frequently check for resources to sync.
-     * @param syncDelay          - delay in milliseconds for a resource to be written back in object storage after last modification.
-     * @param syncBatch          - how many resources to sync in one go.
-     * @param cacheExpiration    - expiration in milliseconds for synced resources in Redis.
-     * @param compressionMinSize - compress resources with gzip if their size in bytes more or equal to this value.
-     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Settings(
-            int maxSize,
-            int maxSizeToCache,
-            long syncPeriod,
-            long syncDelay,
-            int syncBatch,
-            long cacheExpiration,
-            int compressionMinSize) {
+    @Data
+    public static class Settings {
+        /**
+         * Max allowed size in bytes for a resource.
+         */
+        private int maxSize;
+        /**
+         * Max size in bytes to cache resource in Redis.
+         */
+        private int maxSizeToCache;
+        /**
+         * Period in milliseconds, how frequently check for resources to sync.
+         */
+        private int syncPeriod;
+        /**
+         * Delay in milliseconds for a resource to be written back in object storage after last modification.
+         */
+        private long syncDelay;
+        /**
+         * How many resources to sync in one go.
+         */
+        private int syncBatch;
+        /**
+         * Default expiration in milliseconds for synced resources in Redis.
+         */
+        private long cacheExpiration;
+        /**
+         * Compress resources with gzip if their size in bytes more or equal to this value.
+         */
+        private int compressionMinSize;
+        /**
+         * Expiration in milliseconds per resource type.
+         */
+        private Map<String, Long> resourceTypesExpiration = new HashMap<>();
+
+        public Settings() {
+        }
+
+        public Settings(int maxSize, int maxSizeToCache, int syncPeriod, long syncDelay, int syncBatch, long cacheExpiration, int compressionMinSize) {
+            this.maxSize = maxSize;
+            this.maxSizeToCache = maxSizeToCache;
+            this.syncPeriod = syncPeriod;
+            this.syncDelay = syncDelay;
+            this.syncBatch = syncBatch;
+            this.cacheExpiration = cacheExpiration;
+            this.compressionMinSize = compressionMinSize;
+        }
     }
 }
