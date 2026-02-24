@@ -15,4 +15,13 @@ public class UserInfoApiTest extends ResourceBaseTest {
         assertEquals("""
                 {"roles":["default"],"project":"EPM-RTC-GPT"}""", resp.body());
     }
+
+    @Test
+    public void testUserInfoInfo() {
+        var resp = send(HttpMethod.GET, "/v1/user/info", null, null, "Authorization", "user");
+
+        assertEquals(200, resp.status());
+        assertEquals("""
+                {"roles":["user"],"userClaims":{"title":["Manager"]}}""", resp.body());
+    }
 }

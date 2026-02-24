@@ -230,7 +230,7 @@ public class ResourceBaseTest {
 
     static ExtractedClaims createClaims(String role) {
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
-        claims.set("title", ProxyUtil.MAPPER.createArrayNode().add("Manager"));
+        claims.put("title", "Manager");
         return new ExtractedClaims(role, List.of(role), role, claims, null, null);
     }
 
