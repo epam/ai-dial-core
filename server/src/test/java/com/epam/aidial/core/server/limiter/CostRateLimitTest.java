@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ModelCostCalculator;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
@@ -150,7 +151,8 @@ public class CostRateLimitTest {
         // Create ProxyContext with user and roles
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request-key");
-        apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash", Map.of(), null, null));
+        apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash",
+                ProxyUtil.MAPPER.createObjectNode(), null, null));
         ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
 
         // Set up a model with pricing
@@ -243,7 +245,8 @@ public class CostRateLimitTest {
         // Create ProxyContext with user and role
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request-key");
-        apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role"), "user-hash", Map.of(), null, null));
+        apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role"), "user-hash",
+                ProxyUtil.MAPPER.createObjectNode(), null, null));
         ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
 
         // Set up a model with pricing
@@ -345,14 +348,16 @@ public class CostRateLimitTest {
         // Create first user context
         ApiKeyData apiKeyData1 = new ApiKeyData();
         apiKeyData1.setPerRequestKey("per-request-key-1");
-        apiKeyData1.setExtractedClaims(new ExtractedClaims("user1", List.of("role"), "user-hash-1", Map.of(), null, null));
+        apiKeyData1.setExtractedClaims(new ExtractedClaims("user1", List.of("role"), "user-hash-1",
+                ProxyUtil.MAPPER.createObjectNode(), null, null));
         ProxyContext proxyContext1 = new ProxyContext(null, config, request, apiKeyData1, null, "trace-id-1", "span-id-1", "01");
         proxyContext1.setDeployment(model);
 
         // Create second user context
         ApiKeyData apiKeyData2 = new ApiKeyData();
         apiKeyData2.setPerRequestKey("per-request-key-2");
-        apiKeyData2.setExtractedClaims(new ExtractedClaims("user2", List.of("role"), "user-hash-2", Map.of(), null, null));
+        apiKeyData2.setExtractedClaims(new ExtractedClaims("user2", List.of("role"), "user-hash-2",
+                ProxyUtil.MAPPER.createObjectNode(), null, null));
         ProxyContext proxyContext2 = new ProxyContext(null, config, request, apiKeyData2, null, "trace-id-2", "span-id-2", "01");
         proxyContext2.setDeployment(model);
 

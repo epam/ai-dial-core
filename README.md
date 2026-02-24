@@ -146,7 +146,7 @@ Priority order:
 | identityProviders.*.disableJwtVerification    |  false  |    No    | The flag disables JWT verification. *Note*. `userInfoEndpoint` must be unset if the flag is set to `true`.                                                                                                                                                                                                                                                                              |
 | identityProviders.*.audience                  |    -    |    No    | If the setting is set it will be validated against the claim `aud` in JWT                                                                                                                                                                                                                                                                                                               |
 | identityProviders.*.userDisplayName           |    -    |    No    | Path to the claim in JWT token or user info response where user display name can be taken.                                                                                                                                                                                                                                                                                              |
-| identityProviders.*.userIdPath           |   sub   |    No    | Path to the claim in JWT token or user info response where user ID can be taken.                                                                                                                                                                                                                                                                                                        |
+| identityProviders.*.userIdPath           |   sub   |    No    | Path to the claim in JWT token or user info response where user ID can be taken. Can differ based on each IDP. E.g. Microsoft Entra ID uses `oid`.                                                                                                                                                                                                                                                                                                        |
 
 </details>
 
@@ -204,15 +204,21 @@ Priority order:
 <details> 
 <summary><b>Resources Configurations</b></summary>
 
-| Setting                      | Default  | Required | Description                                                                                        |
-|------------------------------|:--------:|:--------:|----------------------------------------------------------------------------------------------------|
-| resources.maxSize            | 67108864 |    No    | Max allowed size in bytes for a resource.                                                          |
-| resources.maxSizeToCache     | 1048576  |    No    | Max size in bytes for a resource to cache in Redis.                                                |
-| resources.syncPeriod         |  60000   |    No    | Period in milliseconds, how frequently check for resources to sync.                                |
-| resources.syncDelay          |  120000  |    No    | Delay in milliseconds for a resource to be written back in object storage after last modification. |
-| resources.syncBatch          |   4096   |    No    | How many resources to sync in one go.                                                              |
-| resources.cacheExpiration    |  300000  |    No    | Expiration in milliseconds for synced resources in Redis.                                          |
-| resources.compressionMinSize |   256    |    No    | Compress a resource with gzip if its size in bytes more or equal to this value.                    |
+| Setting                                 | Default  | Required | Description                                                                                        |
+|-----------------------------------------|:--------:|:--------:|----------------------------------------------------------------------------------------------------|
+| resources.maxSize                       | 67108864 |    No    | Max allowed size in bytes for a resource.                                                          |
+| resources.maxSizeToCache                | 1048576  |    No    | Max size in bytes for a resource to cache in Redis.                                                |
+| resources.syncPeriod                    |  60000   |    No    | Period in milliseconds, how frequently check for resources to sync.                                |
+| resources.syncDelay                     |  120000  |    No    | Delay in milliseconds for a resource to be written back in object storage after last modification. |
+| resources.syncBatch                     |   4096   |    No    | How many resources to sync in one go.                                                              |
+| resources.cacheExpiration               |  300000  |    No    | Expiration in milliseconds for synced resources in Redis.                                          |
+| resources.compressionMinSize            |   256    |    No    | Compress a resource with gzip if its size in bytes more or equal to this value.                    |
+| resources.resourceTypesExpiration       |      |    No    | Define expiration time per resource type in milliseconds                                           |
+| resources.resourceTypesExpiration.FILE |      |  300000  | Define expiration time for files                                                                   |
+| resources.resourceTypesExpiration.CONVERSATION |      |  300000  | Define expiration time for converations                                                            |
+| resources.resourceTypesExpiration.PROMPT |      |  300000  | Define expiration time for prompts                                                                 |
+| resources.resourceTypesExpiration.APPLICATION |      | Infinity | Define expiration time for applications                                                            |
+| resources.resourceTypesExpiration.TOOL_SET |      |  Infinity  | Define expiration time for toolsets                                                                |
 
 </details>
 

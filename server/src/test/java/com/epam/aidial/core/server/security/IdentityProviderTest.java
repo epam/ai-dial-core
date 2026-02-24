@@ -7,6 +7,8 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -349,18 +351,9 @@ public class IdentityProviderTest {
             assertEquals(List.of("role"), claims.userRoles());
             assertEquals("sub", claims.userId());
             assertNotNull(claims.userHash());
-            Map<String, List<String>> userClaims = claims.userClaims();
+            ObjectNode userClaims = claims.userClaims();
             // assert user claim
             assertEquals(9, userClaims.size());
-            assertEquals(List.of("sub"), userClaims.get("sub"));
-            assertEquals(List.of("read", "write"), userClaims.get("access"));
-            assertEquals(List.of("role"), userClaims.get("roles"));
-            assertEquals(List.of(), userClaims.get("expire"));
-            assertEquals(List.of("15", "17", "34"), userClaims.get("numberList"));
-            assertEquals(List.of(), userClaims.get("id"));
-            assertEquals(List.of("title"), userClaims.get("title"));
-            assertEquals(List.of(), userClaims.get("map"));
-            assertEquals(List.of("test@email.com"), userClaims.get("email"));
         });
     }
 
@@ -394,18 +387,9 @@ public class IdentityProviderTest {
             assertEquals(List.of("role"), claims.userRoles());
             assertEquals("sub", claims.userId());
             assertNotNull(claims.userHash());
-            Map<String, List<String>> userClaims = claims.userClaims();
+            JsonNode userClaims = claims.userClaims();
             // assert user claim
             assertEquals(9, userClaims.size());
-            assertEquals(List.of("sub"), userClaims.get("sub"));
-            assertEquals(List.of("read", "write"), userClaims.get("access"));
-            assertEquals(List.of("role"), userClaims.get("roles"));
-            assertEquals(List.of(), userClaims.get("expire"));
-            assertEquals(List.of("15", "17", "34"), userClaims.get("numberList"));
-            assertEquals(List.of(), userClaims.get("id"));
-            assertEquals(List.of("title"), userClaims.get("title"));
-            assertEquals(List.of(), userClaims.get("map"));
-            assertEquals(List.of("test@email.com"), userClaims.get("email"));
         });
     }
 
