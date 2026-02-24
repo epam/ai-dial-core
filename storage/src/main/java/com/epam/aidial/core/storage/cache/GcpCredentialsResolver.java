@@ -13,7 +13,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-public class GcpCredentialsResolver extends BaseCredentialResolver {
+public class GcpCredentialsResolver extends BaseCredentialsResolver {
 
     private static final Duration LIFETIME = Duration.newBuilder().setSeconds(TimeUnit.MINUTES.toSeconds(15)).build();
 

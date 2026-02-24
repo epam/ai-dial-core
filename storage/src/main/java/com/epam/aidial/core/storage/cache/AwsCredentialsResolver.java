@@ -9,7 +9,7 @@ import java.net.URISyntaxException;
  * Source of implementation <a href="https://redisson.org/articles/how-to-connect-to-redis-using-elasticache-iam-credential-provider.html">
  *     How to Connect to Redis With the ElastiCache IAM Credential Provider</a>.
  */
-public class AwsCredentialsResolver extends BaseCredentialResolver {
+public class AwsCredentialsResolver extends BaseCredentialsResolver {
 
     private static final long TOKEN_EXPIRY_MS = 900_000;
 

@@ -11,7 +11,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 @Slf4j
-public abstract class BaseCredentialResolver implements CredentialsResolver {
+public abstract class BaseCredentialsResolver implements CredentialsResolver {
 
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
 

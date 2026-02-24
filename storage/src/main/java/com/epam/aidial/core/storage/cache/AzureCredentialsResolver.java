@@ -15,7 +15,7 @@ import java.util.Base64;
 import java.util.function.Supplier;
 
 @SuppressWarnings("checkstyle:LineLength")
-public class AzureCredentialsResolver extends BaseCredentialResolver {
+public class AzureCredentialsResolver extends BaseCredentialsResolver {
 
     private static final long EXPIRATION_WINDOW_IN_SEC = 10;
 
