@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
@@ -228,7 +229,9 @@ public class ResourceBaseTest {
     }
 
     static ExtractedClaims createClaims(String role) {
-        return new ExtractedClaims(role, List.of(role), role, Map.of("title", List.of("Manager")), null, null);
+        ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
+        claims.put("title", "Manager");
+        return new ExtractedClaims(role, List.of(role), role, claims, null, null);
     }
 
     static ApiKeyData createAdminAppKey() {

@@ -2,11 +2,13 @@ package com.epam.aidial.core.server.security;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Rule;
+import com.epam.aidial.core.server.util.JsonPath;
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.experimental.UtilityClass;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -23,16 +25,16 @@ public class RuleMatcher {
             return true;
         }
 
-        Map<String, List<String>> userClaims = Optional.ofNullable(context.getExtractedClaims())
+        JsonNode userClaims = Optional.ofNullable(context.getExtractedClaims())
                 .map(ExtractedClaims::userClaims).orElse(null);
 
         for (Rule rule : rules) {
-            String targetClaim = rule.getSource();
+            String claim = rule.getSource();
             List<String> sources;
-            if (targetClaim.equals("roles")) {
+            if (claim.equals("roles")) {
                 sources = context.getUserRoles();
             } else {
-                sources = userClaims == null ? null : userClaims.get(targetClaim);
+                sources = userClaims == null ? null : extract(userClaims, claim);
             }
 
             if (sources == null) {
@@ -54,6 +56,26 @@ public class RuleMatcher {
         }
 
         return false;
+    }
+
+    private List<String> extract(JsonNode claims, String path) {
+        JsonNode node = JsonPath.read(claims, path);
+        if (node == null) {
+            return null;
+        }
+        if (node.isTextual()) {
+            return List.of(node.textValue());
+        } else if (node.isArray()) {
+            List<String> list = new ArrayList<>();
+            for (int i = 0; i < node.size(); i++) {
+                JsonNode child = node.get(i);
+                if (child.isTextual()) {
+                    list.add(child.textValue());
+                }
+            }
+            return list;
+        }
+        return null;
     }
 
     private boolean equal(List<String> sources, List<String> targets) {

@@ -398,6 +398,8 @@ public class ToolSetProxyController implements Controller {
             log.warn("Forbidden toolset {}", toolSetId);
         } else if (error instanceof HttpException httpException) {
             respond(httpException);
+        } else if (error instanceof ResourceNotFoundException) {
+            respond(HttpStatus.NOT_FOUND, error.getMessage());
         } else {
             String errorMsg = "Error occurred on processing MCP request by toolset: %s".formatted(toolSetId);
             respond(HttpStatus.INTERNAL_SERVER_ERROR, errorMsg);

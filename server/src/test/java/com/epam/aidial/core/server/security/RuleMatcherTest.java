@@ -2,6 +2,8 @@ package com.epam.aidial.core.server.security;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Rule;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -53,6 +55,21 @@ class RuleMatcherTest {
         verifyOnApiKey(rule("roles", Rule.Function.REGEX, ".*"), true, "any");
         verifyOnApiKey(rule("roles", Rule.Function.REGEX, "(admin|user)"), true, "user");
         verifyOnApiKey(rule("roles", Rule.Function.REGEX, "(admin|user)$"), false, "user2");
+    }
+
+    @Test
+    void testNestedUserClaimRules() {
+        // test access by access token
+
+        verifyOnAccessToken(List.of(rule("job.title", Rule.Function.TRUE)),
+                List.of("user1"), Map.of("job", Map.of("title", List.of("Software Engineer"))), true);
+        verifyOnAccessToken(List.of(rule("job.title", Rule.Function.FALSE)),
+                List.of("user2"), Map.of("job", Map.of("title", List.of("Software Engineer"))), false);
+
+        verifyOnAccessToken(List.of(rule("job.title", Rule.Function.EQUAL, "Software Engineer")),
+                List.of("admin"), Map.of("job", Map.of("title", List.of("Software Engineer"))), true);
+        verifyOnAccessToken(List.of(rule("job.title", Rule.Function.EQUAL, "Engineer")),
+                List.of("user"), Map.of("job", Map.of("title", List.of("Software Engineer"))), false);
     }
 
     @Test
@@ -154,10 +171,11 @@ class RuleMatcherTest {
                 List.of("admin"), false);
     }
 
-    void verifyOnAccessToken(List<Rule> rules, List<String> userRoles, Map<String, List<String>> userClaims, boolean expected) {
+    void verifyOnAccessToken(List<Rule> rules, List<String> userRoles, Map<String, Object> userClaims, boolean expected) {
         ProxyContext context = Mockito.mock(ProxyContext.class);
         Mockito.when(context.getUserRoles()).thenReturn(userRoles);
-        ExtractedClaims claims = new ExtractedClaims("sub", userRoles, "hash", userClaims, null, null);
+        ObjectNode root = ProxyUtil.MAPPER.valueToTree(userClaims);
+        ExtractedClaims claims = new ExtractedClaims("sub", userRoles, "hash", root, null, null);
         Mockito.when(context.getExtractedClaims()).thenReturn(claims);
         boolean actual = RuleMatcher.match(context, rules);
         Assertions.assertEquals(expected, actual);
