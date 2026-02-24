@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -316,7 +317,8 @@ public class RateLimiterTest {
 
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request-key");
-        apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash", Map.of(), null, null));
+        apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash",
+                ProxyUtil.MAPPER.createObjectNode(), null, null));
         ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData,
                 null, "trace-id", "span-id", "01");
         Model model = new Model();
@@ -360,7 +362,9 @@ public class RateLimiterTest {
 
         ApiKeyData apiKeyData = new ApiKeyData();
         ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData,
-                new ExtractedClaims("sub", List.of("role1"), "user-hash", Map.of(), null, null), "trace-id", "span-id", "01");
+                new ExtractedClaims("sub", List.of("role1"), "user-hash",
+                        ProxyUtil.MAPPER.createObjectNode(), null, null),
+                "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
@@ -416,7 +420,9 @@ public class RateLimiterTest {
 
         ApiKeyData apiKeyData = new ApiKeyData();
         ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData,
-                new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash", Map.of(), null, null), "trace-id", "span-id", "01");
+                new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash",
+                        ProxyUtil.MAPPER.createObjectNode(), null, null),
+                "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);

@@ -73,4 +73,12 @@ public class RedisUtil {
         String resourcePath = BlobStorageUtil.toStoragePath(prefix, descriptor.getAbsoluteFilePath());
         return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
     }
+
+    public String getResourceType(String redisKey) {
+        int index = redisKey.indexOf(':');
+        if (index == -1) {
+            throw new IllegalArgumentException("Invalid redis key");
+        }
+        return redisKey.substring(0, index);
+    }
 }

@@ -14,12 +14,10 @@ import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
-import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -250,12 +248,14 @@ public class ApplicationController {
     private class ApplicationDeploymentExtractor implements DeploymentService.DeploymentExtractor {
         @SuppressWarnings("unchecked")
         @Override
-        public Application extract(ResourceDescriptor resource, ProxyContext context) {
-            Application application = applicationService.getApplication(resource).getValue();
+        public Application extract(String content, ResourceItemMetadata metadata,  ProxyContext context) {
+            ResourceDescriptor resource = metadata.getDescriptor();
+            Application application = applicationService.extractFrom(content, metadata);
             boolean applicationRequestInfoAboutItSelf = !Objects.equals(context.getDecodedSourceDeployment(),
                     resource.getDecodedUrl());
             boolean filterClientProps = applicationRequestInfoAboutItSelf && !accessService.hasWriteAccess(resource, context);
             return applicationSchemaService.modifySchemaRichApplication(application, filterClientProps);
         }
+
     }
 }
