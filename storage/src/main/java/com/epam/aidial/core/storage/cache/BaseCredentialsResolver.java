@@ -18,9 +18,11 @@ public abstract class BaseCredentialsResolver implements CredentialsResolver {
     @Override
     public CompletionStage<Credentials> resolve(InetSocketAddress address) {
         CompletableFuture<Credentials> future = new CompletableFuture<>();
+        log.info("Start resolving credentials");
         executorService.submit(() -> {
             try {
                 Credentials credentials = resolve();
+                log.info("Finish resolving credentials {} {}", credentials.getUsername(), credentials.getPassword().length());
                 future.complete(credentials);
             } catch (Throwable e) {
                 log.error("Error occurred at resolving credentials for access to the cache server", e);
