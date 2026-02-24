@@ -76,6 +76,18 @@ public class ToolSetService {
         return Pair.of(meta, toolSet);
     }
 
+    public ToolSet extractFrom(String content, ResourceItemMetadata meta) {
+        ToolSet toolSet = ProxyUtil.convertToObject(content, ToolSet.class);
+
+        if (toolSet == null) {
+            throw new IllegalArgumentException("ToolSet content is missed");
+        }
+        toolSet.setAuthor(meta.getAuthor());
+        toolSet.setCreatedAt(meta.getCreatedAt());
+        toolSet.setUpdatedAt(meta.getUpdatedAt());
+        return toolSet;
+    }
+
     public Pair<ResourceItemMetadata, ToolSet> putToolSet(ResourceDescriptor resource, EtagHeader etag, String author, ToolSet toolSet) {
         toolSet.setForwardAuthToken(false);
         toolSet.setName(resource.getUrl());

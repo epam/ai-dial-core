@@ -8,7 +8,9 @@ import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.auth0.jwt.interfaces.Verification;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -328,23 +330,8 @@ public class IdentityProvider {
      * @param map - user context
      * @return map of extracted user claims
      */
-    @SuppressWarnings("unchecked")
-    private Map<String, List<String>> extractUserClaims(Map<String, Object> map) {
-        Map<String, List<String>> userClaims = new HashMap<>();
-        for (Map.Entry<String, Object> entry : map.entrySet()) {
-            String claimName = entry.getKey();
-            Object claimValue = entry.getValue();
-            if (claimValue instanceof String stringClaimValue) {
-                userClaims.put(claimName, List.of(stringClaimValue));
-            } else if (claimValue instanceof List<?> list && (list.isEmpty() || list.getFirst() instanceof String)) {
-                userClaims.put(claimName, (List<String>) claimValue);
-            } else {
-                // if claim value doesn't match supported type - add claim with empty value
-                userClaims.put(claimName, List.of());
-            }
-        }
-
-        return userClaims;
+    private ObjectNode extractUserClaims(Map<String, Object> map) {
+        return ProxyUtil.MAPPER.valueToTree(map);
     }
 
     Future<ExtractedClaims> extractClaimsFromJwt(DecodedJWT decodedJwt) {

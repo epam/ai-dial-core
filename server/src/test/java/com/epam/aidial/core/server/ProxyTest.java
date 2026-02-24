@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -416,7 +417,8 @@ public class ProxyTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
-        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash", Map.of(), null, null);
+        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash",
+                ProxyUtil.MAPPER.createObjectNode(), null, null);
         when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
 
         proxy.handle(request);
@@ -572,7 +574,8 @@ public class ProxyTest {
         routes.put("route", route);
         config.setRoutes(routes);
         when(configStore.get()).thenReturn(config);
-        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash", Map.of(), null, null);
+        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash",
+                ProxyUtil.MAPPER.createObjectNode(), null, null);
         when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
 
         proxy.handle(request);
