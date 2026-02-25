@@ -425,7 +425,7 @@ public class ToolSetProxyController implements Controller {
 
     private Future<?> handleRateLimitSuccess(Deployment deployment) {
         return tokenStatsTracker.startSpan(context).map(ignore -> {
-            UpstreamRoute upstreamRoute = upstreamRouteProvider.get(deployment, null);
+            UpstreamRoute upstreamRoute = upstreamRouteProvider.get(deployment, null, this::getUpstreamEndpoint);
             if (!canRetry(upstreamRoute)) {
                 return null;
             }
@@ -437,6 +437,13 @@ public class ToolSetProxyController implements Controller {
                     .onSuccess(this::handleRequestBody);
             return null;
         });
+    }
+
+    private String getUpstreamEndpoint(Deployment deployment) {
+        if (deployment instanceof Application application) {
+            return application.getMcp().getEndpoint();
+        }
+        return deployment.getEndpoint();
     }
 
     private void handleRateLimitHit(RateLimitResult result) {
