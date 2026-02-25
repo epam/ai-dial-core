@@ -11,11 +11,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.Map;
 
-public class EnhanceMcpRequest extends BaseRequestFunction<ObjectNode> {
+public class InjectApplicationPropsToMcpRequest extends BaseRequestFunction<ObjectNode> {
 
     private static final String[] APP_PROPS_PATH = new String[]{"params", "_meta", "ai_dial_config"};
 
-    public EnhanceMcpRequest(Proxy proxy, ProxyContext context) {
+    public InjectApplicationPropsToMcpRequest(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }
 

@@ -14,7 +14,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
-import com.epam.aidial.core.server.function.enhancement.EnhanceMcpRequest;
+import com.epam.aidial.core.server.function.enhancement.InjectApplicationPropsToMcpRequest;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
@@ -118,7 +118,7 @@ public class ToolSetProxyController implements Controller {
         this.consentService = proxy.getConsentService();
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.applicationSchemaService = proxy.getApplicationSchemaService();
-        this.enhancementFunctions = List.of(new EnhanceMcpRequest(proxy, context));
+        this.enhancementFunctions = List.of(new InjectApplicationPropsToMcpRequest(proxy, context));
     }
 
     @Override
