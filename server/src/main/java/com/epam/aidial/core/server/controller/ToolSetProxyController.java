@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Upstream;
@@ -12,10 +13,13 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.function.enhancement.EnhanceMcpRequest;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
@@ -56,6 +60,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
+import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
+import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
 import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 
 @Slf4j
@@ -89,9 +95,12 @@ public class ToolSetProxyController implements Controller {
 
     private final TokenStatsTracker tokenStatsTracker;
 
+    private final List<BaseRequestFunction<ObjectNode>> enhancementFunctions;
+
     private String mcpMethodName;
 
     private final ResourceCredentialsService resourceCredentialsService;
+    private final ApplicationSchemaService applicationSchemaService;
 
     public ToolSetProxyController(Proxy proxy, ProxyContext context, String toolSetId) {
         this.taskExecutor = proxy.getTaskExecutor();
@@ -108,6 +117,8 @@ public class ToolSetProxyController implements Controller {
         this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(UrlUtil.encodePath(toolSetId), context, ResourceTypes.TOOL_SET);
         this.consentService = proxy.getConsentService();
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
+        this.applicationSchemaService = proxy.getApplicationSchemaService();
+        this.enhancementFunctions = List.of(new EnhanceMcpRequest(proxy, context));
     }
 
     @Override
@@ -117,13 +128,17 @@ public class ToolSetProxyController implements Controller {
             if (deployment instanceof ToolSet toolSet) {
                 consentService.verifyUserConsent(context, deployment);
                 return toolSet;
+            } else if (deployment instanceof Application application) {
+                consentService.verifyUserConsent(context, deployment);
+                verify(application);
+                return application;
             }
             throw new ResourceNotFoundException("Toolset is not found: " + toolSetId);
-        }).compose(toolSet -> rateLimiter.limit(context, toolSet)
+        }).compose(deployment -> rateLimiter.limit(context, deployment)
                 .compose(rateLimitResult -> {
                     Future<?> future;
                     if (rateLimitResult.status() == HttpStatus.OK) {
-                        future = handleRateLimitSuccess(toolSet);
+                        future = handleRateLimitSuccess(deployment);
                     } else {
                         handleRateLimitHit(rateLimitResult);
                         future = Future.succeededFuture();
@@ -133,6 +148,21 @@ public class ToolSetProxyController implements Controller {
                     handleError(error);
                     return null;
                 });
+    }
+
+    private void verify(Application application) {
+        Application.Mcp mcp;
+        if (application.hasApplicationTypeSchemaId()) {
+            mcp = applicationSchemaService.getMcp(application);
+        } else {
+            mcp = application.getMcp();
+        }
+        if (mcp == null) {
+            throw new IllegalArgumentException("Application doesn't support MCP protocol: " + application.getName());
+        }
+        if (application.hasApplicationTypeSchemaId()) {
+            application.setMcp(mcp);
+        }
     }
 
     private void sendRequest() {
@@ -165,6 +195,9 @@ public class ToolSetProxyController implements Controller {
                 if (tree.has("method")) {
                     mcpMethodName = tree.get("method").asText();
                 }
+                if (tree.isObject() && ProxyUtil.processChain((ObjectNode) tree, enhancementFunctions)) {
+                    context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
+                }
             } catch (Throwable e) {
                 if (e instanceof HttpException httpException) {
                     respond(httpException.getStatus(), httpException.getMessage());
@@ -188,12 +221,29 @@ public class ToolSetProxyController implements Controller {
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
 
-        MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
         Deployment deployment = context.getDeployment();
+
+        MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
         if (!deployment.isForwardAuthToken()) {
             excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
         }
+        excludeHeaders.add(HEADER_APPLICATION_PROPERTIES, "whatever");
+        excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
+
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
+
+        if ((deployment instanceof Application application
+                && application.hasApplicationTypeSchemaId()
+                && application.getMcp().getConfigDelivery() == Application.McpConfigDelivery.HEADER)) {
+            proxyRequest.putHeader(HEADER_APPLICATION_ID, deployment.getName());
+
+            applicationSchemaService.consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
+                if (appendApplicationPropertiesHeader) {
+                    String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
+                    proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
+                }
+            });
+        }
 
         setToolsetCredentials(proxyRequest);
         Buffer proxyRequestBody = context.getRequestBody();
@@ -205,26 +255,34 @@ public class ToolSetProxyController implements Controller {
     }
 
     private void setToolsetCredentials(HttpClientRequest proxyRequest) {
-        try {
-            ToolSet toolSet = (ToolSet) context.getDeployment();
-            ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
-                    credentialsLocator, toolSet.getAuthSettings(), context.getUserId()
-            );
+        Deployment deployment = context.getDeployment();
+        if (deployment instanceof ToolSet toolSet) {
+            try {
+                ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
+                        credentialsLocator, toolSet.getAuthSettings(), context.getUserId()
+                );
 
-            if (resourceCredentials != null) {
-                log.debug("Credentials found: User: {}, Resource: {}, CredentialsLevel: {}",
-                        context.getUserId(), toolSetId, resourceCredentials.getCredentialsLevel());
-                addAuthorizationHeader(proxyRequest, resourceCredentials);
-            } else {
-                log.debug("Credentials not found - User: {}, Resource: {}", context.getUserId(), toolSetId);
+                if (resourceCredentials != null) {
+                    log.debug("Credentials found: User: {}, Resource: {}, CredentialsLevel: {}",
+                            context.getUserId(), toolSetId, resourceCredentials.getCredentialsLevel());
+                    addAuthorizationHeader(proxyRequest, resourceCredentials);
+                } else {
+                    log.debug("Credentials not found - User: {}, Resource: {}", context.getUserId(), toolSetId);
+                }
+
+                if (toolSet.isForwardPerRequestKey()) {
+                    String perRequestKey = assignPerRequestKey();
+                    proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
+                }
+            } catch (Exception e) {
+                log.error("Can't provide credentials to toolset due to the error: {}", e.getMessage(), e);
             }
-
-            if (toolSet.isForwardPerRequestKey()) {
+        } else if (deployment instanceof Application application) {
+            Application.Mcp mcp = application.getMcp();
+            if (mcp.isForwardPerRequestKey()) {
                 String perRequestKey = assignPerRequestKey();
                 proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
             }
-        } catch (Exception e) {
-            log.error("Can't provide credentials to toolset due to the error: {}", e.getMessage(), e);
         }
     }
 
@@ -340,8 +398,7 @@ public class ToolSetProxyController implements Controller {
     private boolean filterToolList(ObjectNode body) {
         ArrayNode tools = (ArrayNode) Optional.ofNullable(body.get("result")).map(result -> result.get("tools"))
                 .filter(JsonNode::isArray).orElse(EMPTY_JSON_ARRAY);
-        ToolSet toolSet = (ToolSet) context.getDeployment();
-        List<String> allowedTools = toolSet.getAllowedTools();
+        List<String> allowedTools = getAllowedTools(context.getDeployment());
         if (allowedTools.isEmpty()) {
             return false;
         }
@@ -357,15 +414,24 @@ public class ToolSetProxyController implements Controller {
         return modified;
     }
 
-    private Future<?> handleRateLimitSuccess(ToolSet toolSet) {
+    private List<String> getAllowedTools(Deployment deployment) {
+        if (deployment instanceof ToolSet toolSet) {
+            return toolSet.getAllowedTools();
+        } else if (deployment instanceof Application application) {
+            return application.getMcp().getAllowedTools();
+        }
+        throw new IllegalArgumentException("Unsupported deployment type: " + deployment.getName());
+    }
+
+    private Future<?> handleRateLimitSuccess(Deployment deployment) {
         return tokenStatsTracker.startSpan(context).map(ignore -> {
-            UpstreamRoute upstreamRoute = upstreamRouteProvider.get(toolSet, null);
+            UpstreamRoute upstreamRoute = upstreamRouteProvider.get(deployment, null);
             if (!canRetry(upstreamRoute)) {
                 return null;
             }
             context.setUpstreamRoute(upstreamRoute);
-            context.setDeployment(toolSet);
-            context.setTraceOperation("Send request to %s toolset".formatted(toolSet.getName()));
+            context.setDeployment(deployment);
+            context.setTraceOperation("Send request to %s toolset".formatted(deployment.getName()));
             context.getRequest().body()
                     .onFailure(this::handleRequestBodyError)
                     .onSuccess(this::handleRequestBody);

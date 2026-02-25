@@ -13,6 +13,7 @@ import lombok.experimental.Accessors;
 import java.net.URI;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -35,6 +36,8 @@ public class Application extends Deployment {
 
     @JsonAlias({"editorUrl", "editor_url"})
     private String editorUrl;
+
+    private Mcp mcp;
 
     // maintain the order of routes defined in the app config
     private LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
@@ -126,6 +129,24 @@ public class Application extends Deployment {
         private String content;
     }
 
+    @Data
+    public static class Mcp {
+        @JsonAlias({"endpoint", "dial:endpoint"})
+        private String endpoint;
+        @JsonAlias({"transport", "dial:transport"})
+        private final ToolSet.Transport transport = ToolSet.Transport.HTTP;
+        @JsonAlias({"allowedTools", "allowed_tools", "dial:allowedTools"})
+        private List<String> allowedTools = List.of();
+        @JsonAlias({"configDelivery", "config_delivery", "dial:mcpConfigDelivery"})
+        private McpConfigDelivery configDelivery = McpConfigDelivery.META;
+        @JsonAlias({"forwardAuthToken", "forward_auth_token", "dial:forwardPerRequestKey"})
+        private boolean forwardPerRequestKey = true;
+    }
+
+    public enum McpConfigDelivery {
+        HEADER, META;
+    }
+
     public Application() {
         super();
     }
@@ -155,5 +176,6 @@ public class Application extends Deployment {
         this.setCreatedAt(source.getCreatedAt());
         this.setUpdatedAt(source.getUpdatedAt());
         this.setRoutes(source.getRoutes());
+        this.setMcp(source.getMcp());
     }
 }

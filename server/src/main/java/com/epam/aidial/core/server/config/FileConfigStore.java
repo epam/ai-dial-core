@@ -27,10 +27,12 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 public final class FileConfigStore implements ConfigStore {
@@ -67,6 +69,8 @@ public final class FileConfigStore implements ConfigStore {
             log.debug("Config loading is started");
             Config config = loadConfig();
 
+            Set<String> deploymentIds = new HashSet<>();
+
             List<Route> sortedRoutes = new ArrayList<>();
             for (Map.Entry<String, Route> entry : config.getRoutes().entrySet()) {
                 String name = entry.getKey();
@@ -84,6 +88,7 @@ public final class FileConfigStore implements ConfigStore {
 
             for (Map.Entry<String, Model> entry : config.getModels().entrySet()) {
                 String name = entry.getKey();
+                enforceDeploymentUniqueness(name, deploymentIds);
                 Model model = entry.getValue();
                 model.setName(name);
                 log.debug("Loading {}", model);
@@ -91,6 +96,7 @@ public final class FileConfigStore implements ConfigStore {
 
             for (Map.Entry<String, Application> entry : config.getApplications().entrySet()) {
                 String name = entry.getKey();
+                enforceDeploymentUniqueness(name, deploymentIds);
                 Application application = entry.getValue();
                 application.setName(name);
                 log.debug("Loading {}", application);
@@ -111,6 +117,7 @@ public final class FileConfigStore implements ConfigStore {
 
             for (Map.Entry<String, Interceptor> entry : config.getInterceptors().entrySet()) {
                 String name = entry.getKey();
+                enforceDeploymentUniqueness(name, deploymentIds);
                 Interceptor interceptor = entry.getValue();
                 interceptor.setName(name);
                 log.debug("Loading {}", interceptor);
@@ -120,6 +127,7 @@ public final class FileConfigStore implements ConfigStore {
             while (iterator.hasNext()) {
                 Map.Entry<String, ToolSet> entry = iterator.next();
                 String name = entry.getKey();
+                enforceDeploymentUniqueness(name, deploymentIds);
                 if (isValidResourceKey(name)) {
                     ToolSet toolSet = entry.getValue();
                     toolSet.setName(name);
@@ -141,6 +149,12 @@ public final class FileConfigStore implements ConfigStore {
             log.warn("Failed to reload config: {}", e.getMessage());
         }
         return null;
+    }
+
+    private static void enforceDeploymentUniqueness(String deploymentId, Set<String> deployments) {
+        if (!deployments.add(deploymentId)) {
+            throw new IllegalStateException("Deployment uniqueness is violated: duplicate is found " + deploymentId);
+        }
     }
 
     private boolean isValidResourceKey(String resourceKey) {

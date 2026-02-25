@@ -112,7 +112,18 @@ public class UpstreamRouteProvider {
         }
 
         Upstream upstream = new Upstream();
-        upstream.setEndpoint(deployment.getEndpoint());
+        String endpoint;
+        if (deployment instanceof Application application) {
+            Application.Mcp mcp = application.getMcp();
+            if (mcp == null) {
+                endpoint = application.getEndpoint();
+            } else {
+                endpoint = mcp.getEndpoint();
+            }
+        } else {
+            endpoint = deployment.getEndpoint();
+        }
+        upstream.setEndpoint(endpoint);
         upstream.setKey("whatever");
         return List.of(upstream);
     }

@@ -192,10 +192,43 @@
             }
           },
           "additionalProperties": false
+        },
+        "dial:applicationTypeMcp": {
+          "type": "object",
+          "properties": {
+            "dial:endpoint": {
+              "type": "string",
+              "format": "uri",
+              "description": "MCP server endpoint for MCP protocol calls"
+            },
+            "dial:transport": {
+              "type": "string",
+              "enum": ["HTTP"],
+              "description": "Transport supported by MCP server. Currently only HTTP (Streamable HTTP) is supported."
+            },
+            "dial:allowedTools": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional. Metadata for DIAL Core that defines the allowed tool names. When specified, DIAL Core filters the tools/list response from the MCP server to only include tools whose names match this list. When omitted, DIAL Core proxies the tools/list response from the MCP server without filtering."
+            },
+            "dial:mcpConfigDelivery": {
+              "type": "string",
+              "enum": ["HEADER", "META"],
+              "default": "META",
+              "description": "Method for delivering application configuration to MCP server. 'header' sends config in HTTP header, 'meta' sends config in params._meta.ai_dial_config field of MCP protocol message."
+            },
+            "dial:forwardPerRequestKey": {
+              "type": "boolean",
+              "default": true,
+              "description": "If this flag is set to true, the per-request API key will be forwarded in DIAL-API-KEY HTTP header with every MCP protocol request to the toolset endpoint. This allows schema-rich applications to access DIAL Core APIs (e.g., file storage, other DIAL resources) using the per-request API key."
+            }
+          },
+          "required": ["dial:endpoint"]
         }
       },
       "required": [
-        "dial:applicationTypeCompletionEndpoint",
         "dial:applicationTypeDisplayName"
       ]
     },
