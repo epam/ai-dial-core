@@ -1,12 +1,17 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.vertx.core.http.HttpMethod;
+import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.atomic.AtomicReference;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class ApplicationTypeSchemaApiTest extends ResourceBaseTest {
 
@@ -55,6 +60,40 @@ public class ApplicationTypeSchemaApiTest extends ResourceBaseTest {
         Assertions.assertTrue(node.has("$id"));
         Assertions.assertTrue(node.has("$schema"));
         Assertions.assertTrue(node.has("dial:applicationTypeViewerUrl"));
+    }
+
+    @Test
+    void testGetSchemaBySchemaEndpoint() throws JsonProcessingException {
+        String responseBody = """
+                {
+                 "properties": {
+                    "property1": {
+                        "title": "Property 1",
+                        "type": "string",
+                        "dial:meta": {
+                            "dial:propertyKind": "client",
+                            "dial:propertyOrder": 1
+                        }
+                    }
+                 },
+                 "required": ["property1"]
+                }""";
+        try (TestWebServer server = new TestWebServer(4848)) {
+            TestWebServer.Handler handler = request -> {
+                MockResponse response = new MockResponse();
+                response.setResponseCode(200);
+                response.setBody(responseBody);
+                return response;
+            };
+            server.map(HttpMethod.GET, "/schema", handler);
+
+            ResourceBaseTest.Response response = send(HttpMethod.GET, "/v1/application_type_schemas/schema",
+                    "id=https://mydial.somewhere.com/custom_application_schemas/schema_endpoint", null);
+
+            verify(response, 200);
+            JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+            assertNotNull(body.get("properties"));
+        }
     }
 
 }

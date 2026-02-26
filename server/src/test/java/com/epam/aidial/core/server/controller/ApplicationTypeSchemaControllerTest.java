@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -15,6 +16,7 @@ import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.net.URI;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,15 +36,18 @@ class ApplicationTypeSchemaControllerTest {
     private AsyncTaskExecutor taskExecutor;
     private ApplicationTypeSchemaController controller;
     private Config config;
+    private ApplicationSchemaService applicationSchemaService;
 
     @BeforeEach
     void setUp() {
         context = mock(ProxyContext.class);
         taskExecutor = mock(AsyncTaskExecutor.class);
         config = mock(Config.class);
+        applicationSchemaService = mock(ApplicationSchemaService.class);
         when(context.getProxy()).thenReturn(mock(Proxy.class));
         when(context.getProxy().getTaskExecutor()).thenReturn(taskExecutor);
         when(context.getConfig()).thenReturn(config);
+        when(context.getProxy().getApplicationSchemaService()).thenReturn(applicationSchemaService);
         //noinspection unchecked
         when(taskExecutor.submit(any(Callable.class)))
                 .thenAnswer(invocation -> {
@@ -72,6 +77,7 @@ class ApplicationTypeSchemaControllerTest {
         Map<String, String> schemas = new HashMap<>();
         schemas.put(schemaId, schema);
         when(config.getApplicationTypeSchemas()).thenReturn(schemas);
+        when(applicationSchemaService.getSchema(any(URI.class), eq(true))).thenReturn(schema);
         controller.handleGetSchema();
         ObjectNode schemaNode = (ObjectNode) ProxyUtil.MAPPER.readTree(schema);
         verify(context).respond(eq(HttpStatus.OK), eq(schemaNode));
