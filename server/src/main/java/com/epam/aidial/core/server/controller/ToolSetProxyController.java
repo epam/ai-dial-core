@@ -130,7 +130,7 @@ public class ToolSetProxyController implements Controller {
                 return toolSet;
             } else if (deployment instanceof Application application) {
                 consentService.verifyUserConsent(context, deployment);
-                verify(application);
+                resolveMcpProperties(application);
                 return application;
             }
             throw new ResourceNotFoundException("Toolset is not found: " + toolSetId);
@@ -150,7 +150,7 @@ public class ToolSetProxyController implements Controller {
                 });
     }
 
-    private void verify(Application application) {
+    private void resolveMcpProperties(Application application) {
         Application.Mcp mcp;
         if (application.hasApplicationTypeSchemaId()) {
             mcp = applicationSchemaService.getMcp(application);
