@@ -74,3 +74,18 @@ A list of upstream servers with their parameters. Use to configure [load balanci
   }
 }
 ```
+
+## Calling Route
+
+DIAL Core will expose a route from the application configuration using the following path pattern:
+
+`http_method ^/+v1/deployments/(?<id>.+)/route(?<route_path>/.+?)$`
+
+where:
+
+- **http_method**: One of the allowed HTTP methods, as specified in the route’s configuration property `methods`.
+- **id**: The deployment ID.
+- **route_path**: The path segment to be matched against at least one value in the route’s configuration property `paths`.
+
+  **Note:** The `route_path` must not include the keyword `route` anywhere in its value. This restriction prevents conflicts when resolving the deployment `id` and the route’s path from the request path.
+

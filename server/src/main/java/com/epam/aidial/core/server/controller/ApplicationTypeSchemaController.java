@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -27,10 +28,12 @@ public class ApplicationTypeSchemaController {
 
     private final ProxyContext context;
     private final AsyncTaskExecutor taskExecutor;
+    private final ApplicationSchemaService applicationSchemaService;
 
     public ApplicationTypeSchemaController(ProxyContext context) {
         this.context = context;
         this.taskExecutor = context.getProxy().getTaskExecutor();
+        this.applicationSchemaService = context.getProxy().getApplicationSchemaService();
     }
 
     public Future<?> handleGetMetaSchema() {
@@ -54,7 +57,7 @@ public class ApplicationTypeSchemaController {
             throw new HttpException(HttpStatus.BAD_REQUEST, "Bad Schema ID");
         }
 
-        String schema = context.getConfig().getApplicationTypeSchemas().get(schemaId.toString());
+        String schema = applicationSchemaService.getSchema(schemaId, true);
         if (schema == null) {
             throw new HttpException(HttpStatus.NOT_FOUND, "Schema not found");
         }

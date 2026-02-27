@@ -238,7 +238,7 @@ public class ResourceController extends AccessControlBaseController {
             return;
         }
         // force reload application schema
-        applicationSchemaService.getCustomApplicationSchemaOrThrow(application, true);
+        applicationSchemaService.getSchema(application.getApplicationTypeSchemaId(), true);
         if (application.getApplicationProperties() != null) {
             List<ResourceDescriptor> files = applicationSchemaService.getFiles(application);
             files.stream().filter(resource -> !(accessService.hasReadAccess(resource, context)))

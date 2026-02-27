@@ -141,14 +141,11 @@ public class ApplicationSchemaService {
     }
 
     @SneakyThrows
-    public String getCustomApplicationSchemaOrThrow(Application application, boolean forceReload) {
-        URI schemaId = application.getApplicationTypeSchemaId();
-        if (schemaId == null) {
-            return null;
-        }
+    @Nullable
+    public String getSchema(URI schemaId, boolean forceReload) {
         String customApplicationSchema = configStore.get().getCustomApplicationSchema(schemaId);
         if (customApplicationSchema == null) {
-            throw new ApplicationTypeSchemaValidationException("Custom application schema not found: " + schemaId);
+            return null;
         }
         JsonNode schema = ProxyUtil.MAPPER.readTree(customApplicationSchema);
         if (schema.has(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT)) {
@@ -165,6 +162,19 @@ public class ApplicationSchemaService {
         } else {
             return customApplicationSchema;
         }
+    }
+
+    @SneakyThrows
+    String getCustomApplicationSchemaOrThrow(Application application, boolean forceReload) {
+        URI schemaId = application.getApplicationTypeSchemaId();
+        if (schemaId == null) {
+            return null;
+        }
+        String customApplicationSchema = getSchema(schemaId, forceReload);
+        if (customApplicationSchema == null) {
+            throw new ApplicationTypeSchemaValidationException("Custom application schema not found: " + schemaId);
+        }
+        return customApplicationSchema;
     }
 
     private void merge(ObjectNode appSchema, JsonNode schema) {
