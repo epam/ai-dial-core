@@ -154,14 +154,12 @@ public class ToolSetProxyController implements Controller {
         Application.Mcp mcp;
         if (application.hasApplicationTypeSchemaId()) {
             mcp = applicationSchemaService.getMcp(application);
+            application.setMcp(mcp);
         } else {
             mcp = application.getMcp();
         }
         if (mcp == null) {
             throw new IllegalArgumentException("Application doesn't support MCP protocol: " + application.getName());
-        }
-        if (application.hasApplicationTypeSchemaId()) {
-            application.setMcp(mcp);
         }
     }
 
@@ -256,8 +254,8 @@ public class ToolSetProxyController implements Controller {
 
     private void setToolsetCredentials(HttpClientRequest proxyRequest) {
         Deployment deployment = context.getDeployment();
-        if (deployment instanceof ToolSet toolSet) {
-            try {
+        try {
+            if (deployment instanceof ToolSet toolSet) {
                 ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
                         credentialsLocator, toolSet.getAuthSettings(), context.getUserId()
                 );
@@ -274,15 +272,16 @@ public class ToolSetProxyController implements Controller {
                     String perRequestKey = assignPerRequestKey();
                     proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
                 }
-            } catch (Exception e) {
-                log.error("Can't provide credentials to toolset due to the error: {}", e.getMessage(), e);
+
+            } else if (deployment instanceof Application application) {
+                Application.Mcp mcp = application.getMcp();
+                if (mcp.isForwardPerRequestKey()) {
+                    String perRequestKey = assignPerRequestKey();
+                    proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
+                }
             }
-        } else if (deployment instanceof Application application) {
-            Application.Mcp mcp = application.getMcp();
-            if (mcp.isForwardPerRequestKey()) {
-                String perRequestKey = assignPerRequestKey();
-                proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
-            }
+        } catch (Exception e) {
+            log.error("Can't provide credentials to toolset due to the error: {}", e.getMessage(), e);
         }
     }
 

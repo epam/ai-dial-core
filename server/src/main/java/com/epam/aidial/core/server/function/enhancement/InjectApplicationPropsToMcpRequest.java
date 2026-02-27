@@ -26,7 +26,7 @@ public class InjectApplicationPropsToMcpRequest extends BaseRequestFunction<Obje
                 && application.hasApplicationTypeSchemaId()
                 && application.getMcp().getConfigDelivery() == Application.McpConfigDelivery.META) {
             Map<String, Object> props = application.getApplicationProperties();
-            if (props.isEmpty()) {
+            if (props == null || props.isEmpty()) {
                 return false;
             }
             ObjectNode node = getApplicationPropsNode(tree);
