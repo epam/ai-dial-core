@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
 import com.epam.aidial.core.server.data.Prompt;
 import com.epam.aidial.core.server.security.AccessService;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
@@ -52,6 +53,7 @@ public class ResourceController extends AccessControlBaseController {
     private final AsyncTaskExecutor taskExecutor;
     private final ResourceService resourceService;
     private final ApplicationService applicationService;
+    private final ApplicationSchemaService applicationSchemaService;
     private final boolean metadata;
     private final AccessService accessService;
 
@@ -65,6 +67,7 @@ public class ResourceController extends AccessControlBaseController {
         this.applicationService = proxy.getApplicationService();
         this.accessService = proxy.getAccessService();
         this.resourceService = proxy.getResourceService();
+        this.applicationSchemaService = proxy.getApplicationSchemaService();
         this.metadata = metadata;
     }
 
@@ -215,13 +218,7 @@ public class ResourceController extends AccessControlBaseController {
     private void validateCustomApplication(Application application) {
         try {
             checkCreateCodeApp(application);
-            if (application.getApplicationProperties() != null) {
-                List<ResourceDescriptor> files = proxy.getApplicationSchemaService().getFiles(application, true);
-                files.stream().filter(resource -> !(accessService.hasReadAccess(resource, context)))
-                        .findAny().ifPresent(file -> {
-                            throw new HttpException(FORBIDDEN, "No read access to file: " + file.getUrl());
-                        });
-            }
+            validateSchemaBasedApplication(application);
             if (!application.getInterceptors().isEmpty() && !accessService.hasAdminAccess(context)) {
                 throw new HttpException(FORBIDDEN, "Only admins are allowed to set interceptors");
             }
@@ -233,6 +230,27 @@ public class ResourceController extends AccessControlBaseController {
             throw new HttpException(FORBIDDEN, "Failed to access application resource " + e.getResourceUri(), e);
         } catch (ApplicationTypeSchemaProcessingException e) {
             throw new HttpException(INTERNAL_SERVER_ERROR, "Custom application processing exception", e);
+        }
+    }
+
+    private void validateSchemaBasedApplication(Application application) {
+        if (!application.hasApplicationTypeSchemaId()) {
+            return;
+        }
+        // force reload application schema
+        applicationSchemaService.getSchema(application.getApplicationTypeSchemaId(), true);
+        if (application.getApplicationProperties() != null) {
+            List<ResourceDescriptor> files = applicationSchemaService.getFiles(application);
+            files.stream().filter(resource -> !(accessService.hasReadAccess(resource, context)))
+                    .findAny().ifPresent(file -> {
+                        throw new HttpException(FORBIDDEN, "No read access to file: " + file.getUrl());
+                    });
+        }
+        Application.Mcp mcp = applicationSchemaService.getMcp(application);
+        String mcpEndpoint = mcp == null ? null : mcp.getEndpoint();
+        String chatCompletionEndpoint = applicationSchemaService.getChatCompletionEndpoint(application);
+        if (mcpEndpoint == null && chatCompletionEndpoint == null) {
+            throw new IllegalArgumentException("At least MCP or chat completion endpoint must be provided");
         }
     }
 

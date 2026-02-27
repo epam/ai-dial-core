@@ -19,6 +19,7 @@ import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -53,8 +54,13 @@ public class UpstreamRouteProvider {
     }
 
     public UpstreamRoute get(Deployment deployment, CacheBreakpointContext breakpointContext) {
+        return get(deployment, breakpointContext, Deployment::getEndpoint);
+    }
+
+    public UpstreamRoute get(Deployment deployment, CacheBreakpointContext breakpointContext,
+                             Function<Deployment, String> endpointSupplier) {
         String key = getKey(deployment);
-        List<Upstream> upstreams = getUpstreams(deployment);
+        List<Upstream> upstreams = getUpstreams(deployment, endpointSupplier);
         UpstreamCacheContext context = null;
         if (deployment instanceof Model model && breakpointContext != null) {
             CachedUpstreamEntry entry = upstreamCacheService.getCacheEntry(breakpointContext, model);
@@ -106,13 +112,13 @@ public class UpstreamRouteProvider {
         return new UpstreamRoute(taskExecutor, upstreamCacheService, wrapper.balancer, result, context);
     }
 
-    private List<Upstream> getUpstreams(Deployment deployment) {
+    private List<Upstream> getUpstreams(Deployment deployment, Function<Deployment, String> endpointSupplier) {
         if (deployment instanceof Model model && !model.getUpstreams().isEmpty()) {
             return model.getUpstreams();
         }
 
         Upstream upstream = new Upstream();
-        upstream.setEndpoint(deployment.getEndpoint());
+        upstream.setEndpoint(endpointSupplier.apply(deployment));
         upstream.setKey("whatever");
         return List.of(upstream);
     }

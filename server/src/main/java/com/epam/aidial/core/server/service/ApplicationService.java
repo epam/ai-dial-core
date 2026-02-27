@@ -566,6 +566,13 @@ public class ApplicationService {
                 throw new IllegalArgumentException("Application function sources must be a valid file folder: " + function.getSourceFolder());
             }
         }
+
+        Application.Mcp mcp = application.getMcp();
+        if (mcp != null) {
+            if (mcp.getEndpoint() == null) {
+                throw new IllegalArgumentException("MCP endpoint must be provided");
+            }
+        }
     }
 
     private Void checkApplications() {

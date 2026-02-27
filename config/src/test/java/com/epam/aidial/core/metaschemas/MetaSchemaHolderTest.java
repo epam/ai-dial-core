@@ -285,33 +285,6 @@ public class MetaSchemaHolderTest {
     }
 
     @Test
-    void customSchema_validatesAgainstMetaSchema_failed_completionEndpointAbsent() throws Exception {
-        String invalidCustomSchemaStr = """
-                {\
-                "$schema": "https://dial.epam.com/application_type_schemas/schema#",\
-                "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",\
-                "dial:applicationTypeEditorUrl": "https://mydial.epam.com/specific_application_type_editor",\
-                "dial:applicationTypeDisplayName": "Specific Application Type",\
-                "properties": {\
-                  "file": {\
-                    "type": "string",\
-                    "format": "dial-file-encoded",\
-                    "dial:meta": {\
-                      "dial:propertyKind": "client",\
-                      "dial:propertyOrder": 1\
-                    },\
-                    "dial:file": true\
-                  }\
-                },\
-                "required": ["file"]\
-                }""";
-        JsonNode customSchemaNode = MAPPER.readTree(invalidCustomSchemaStr);
-        Set<ValidationMessage> metaSchemaValidationMessages = jsonMetaSchema.validate(customSchemaNode);
-        assertEquals(1, metaSchemaValidationMessages.size(), "Custom schema should be invalid against"
-                                                             + " meta schema because of a single reason");
-    }
-
-    @Test
     void customSchema_validatesAgainstMetaSchema_fails_wrong_feature_endpoints() throws Exception {
         String customSchemaStr = """
                 {\
