@@ -26,7 +26,7 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           trigger_phrase: "/security-review"
           direct_prompt: |
-            Perform a comprehensive security review of this PR. This is a Java 21 / Spring Boot project. Focus on:
+            Perform a comprehensive security review of this PR. This is a Java 21 / Vertex.io project. Focus on:
 
             1. **Injection vulnerabilities** — SQL injection, command injection, LDAP injection, XSS, SSRF
             2. **Authentication & Authorization** — broken access control, missing auth checks, privilege escalation
