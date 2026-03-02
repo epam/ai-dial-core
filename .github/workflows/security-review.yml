@@ -16,7 +16,7 @@ jobs:
       issues: write
     steps:
       - name: Add reaction to acknowledge command
-        uses: peter-evans/create-or-update-comment@71345be0265236311c031f5c7866368571afd8c1 # v4.0.0
+        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
         with:
           comment-id: ${{ github.event.comment.id }}
           reactions: eyes
@@ -25,8 +25,9 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           trigger_phrase: "/security-review"
-          direct_prompt: |
-            Perform a comprehensive security review of this PR. This is a Java 21 / Vertex.io project. Focus on:
+          claude_args: "--allowedTools Read Grep Glob"
+          prompt: |
+            Perform a comprehensive security review of this PR. This is a Java 21 / Eclipse Vert.x project. Focus on:
 
             1. **Injection vulnerabilities** — SQL injection, command injection, LDAP injection, XSS, SSRF
             2. **Authentication & Authorization** — broken access control, missing auth checks, privilege escalation
