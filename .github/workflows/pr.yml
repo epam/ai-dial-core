@@ -15,3 +15,4 @@ jobs:
     with:
       platforms: "linux/amd64,linux/arm64"
       java-version: 21
+      trivy-limit-severities-for-sarif: false
