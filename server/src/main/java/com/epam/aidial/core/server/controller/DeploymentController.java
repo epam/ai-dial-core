@@ -272,8 +272,9 @@ public class DeploymentController {
     }
 
     private static ToolSetData to(ToolSet toolSet) {
-        toolSet.clearAuthSettings();
         ToolSetData toolSetData = ToolSetData.toData(toolSet);
+        // don't return login status because of performance reasons
+        toolSetData.setAuthSettings(null);
         toolSetData.setInterfaces(List.of(MCP_IFACE));
         return toolSetData;
     }
