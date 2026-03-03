@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.data;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Route;
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -47,4 +48,48 @@ public class ApplicationData extends DeploymentData {
     private String viewerUrl;
 
     private String editorUrl;
+
+    @JsonIgnore
+    public static ApplicationData mapApplication(Application application) {
+        ApplicationData data = new ApplicationData();
+        data.setInvalid(application.getInvalid());
+        data.setId(application.getName());
+        data.setApplication(application.getName());
+        if (application.getDisplayName() != null) {
+            data.setDisplayName(application.getDisplayName());
+        } else {
+            data.setDisplayName(application.getName());
+        }
+        data.setDisplayVersion(application.getDisplayVersion());
+        data.setIconUrl(application.getIconUrl());
+        data.setDescription(application.getDescription());
+        data.setFeatures(FeaturesData.createFeatures(application.getFeatures()));
+        data.setInputAttachmentTypes(application.getInputAttachmentTypes());
+        data.setMaxInputAttachments(application.getMaxInputAttachments());
+        data.setDefaults(application.getDefaults());
+        data.setDescriptionKeywords(application.getDescriptionKeywords());
+
+        data.setApplicationTypeSchemaId(application.getApplicationTypeSchemaId());
+        data.setApplicationProperties(application.getApplicationProperties());
+        String reference = application.getReference();
+        data.setReference(reference == null ? application.getName() : reference);
+        data.setFunction(application.getFunction());
+        data.setMaxRetryAttempts(application.getMaxRetryAttempts());
+
+        if (application.getAuthor() != null) {
+            data.setOwner(application.getAuthor());
+        }
+        if (application.getCreatedAt() != null) {
+            data.setCreatedAt(application.getCreatedAt());
+        }
+        if (application.getUpdatedAt() != null) {
+            data.setUpdatedAt(application.getUpdatedAt());
+        }
+
+        data.setRoutes(application.getRoutes());
+        data.setViewerUrl(application.getViewerUrl());
+        data.setEditorUrl(application.getEditorUrl());
+
+        return data;
+    }
 }

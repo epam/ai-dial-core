@@ -1,0 +1,97 @@
+{
+  "applications": {
+    "app": {
+      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+      "displayName": "10k",
+      "iconUrl": "http://localhost:7001/logo10k.png",
+      "description": "Some description of the application for testing",
+      "features": {
+        "rateEndpoint": "http://localhost:7001/openai/deployments/10k/rate_response",
+        "configurationEndpoint": "http://localhost:7001/openai/deployments/10k/config",
+        "systemPromptSupported": false
+      },
+      "viewer_url": "http://some-host",
+      "editor_url": "http://some-host"
+    }
+  },
+  "models": {
+    "embedding-ada": {
+      "type": "embedding",
+      "endpoint": "http://localhost:7001/openai/deployments/ada/embeddings",
+      "upstreams": [
+        {
+          "endpoint": "http://localhost:7001",
+          "key": "modelKey1"
+        }
+      ]
+    },
+    "gpt-4": {
+      "type": "chat",
+      "endpoint": "http://localhost:7001/openai/deployments/ada/embeddings",
+      "upstreams": [
+        {
+          "endpoint": "http://localhost:7001",
+          "key": "modelKey2"
+        }
+      ]
+    }
+  },
+  "toolsets": {
+    "git": {
+      "transport": "http",
+      "endpoint": "http://localhost:9876",
+      "allowed_tools": [
+        "branch",
+        "remote"
+      ],
+      "description": "Git remote tool set",
+      "forwardPerRequestKey": true
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    }
+  },
+  "applicationTypeSchemas": [
+    {
+      "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+      "$id": "https://mydial.somewhere.com/custom_application_schemas/specific_toolset_type",
+      "dial:applicationTypeEditorUrl": "https://mydial.somewhere.com/custom_application_schemas/schema",
+      "dial:applicationTypeViewerUrl": "https://mydial.somewhere.com/custom_application_schemas/viewer",
+      "dial:applicationTypeDisplayName": "Specific Application Type",
+      "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/openai/v1/completion",
+      "dial:applicationTypeBucketCopy": "ENABLED",
+      "dial:applicationTypeMcp": {
+        "dial:endpoint": "http://localhost:9876/mcp",
+        "dial:transport": "HTTP",
+        "dial:allowedTools": ["classify_text"],
+        "dial:mcpConfigDelivery": "META",
+        "dial:forwardPerRequestKey": true
+      },
+      "properties": {
+        "property1": {
+          "title": "Property 1",
+          "type": "string",
+          "dial:meta": {
+            "dial:propertyKind": "client",
+            "dial:propertyOrder": 1
+          }
+        },
+        "property2": {
+          "title": "Property 2",
+          "type": "string",
+          "dial:meta": {
+            "dial:propertyKind": "server",
+            "dial:propertyOrder": 2
+          }
+        }
+      },
+      "required": [
+        "property1",
+        "property2"
+      ]
+    }
+  ]
+}

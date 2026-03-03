@@ -529,4 +529,16 @@ public class ApplicationSchemaService {
                 .map(JsonNode::asBoolean).orElse(false);
     }
 
+    @SneakyThrows
+    @Nullable
+    public String getStringProperty(Application application, String propName) {
+        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application, false);
+        if (customApplicationSchema == null) {
+            return null;
+        }
+        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
+        return Optional.ofNullable(schemaNode.get(propName))
+                .map(JsonNode::asText).orElse(null);
+    }
+
 }

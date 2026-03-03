@@ -182,6 +182,10 @@ public class ResourceController extends AccessControlBaseController {
             features.setTokenizeEndpoint(null);
             features.setTruncatePromptEndpoint(null);
         }
+        Application.Mcp mcp = application.getMcp();
+        if (mcp != null) {
+            mcp.setEndpoint(null);
+        }
         try {
             return proxy.getApplicationSchemaService().filterCustomClientProperties(application);
         } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {

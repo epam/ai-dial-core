@@ -32,12 +32,12 @@ public class ControllerSelector {
     static {
         // GET routes
         get(RouteTemplate.DEPLOYMENT, (proxy, context, pathMatcher) -> {
-            DeploymentController controller = new DeploymentController(context);
+            DeploymentController controller = new DeploymentController(proxy, context);
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             return () -> controller.getDeployment(deploymentId);
         });
         get(RouteTemplate.DEPLOYMENTS, (proxy, context, pathMatcher) -> {
-            DeploymentController controller = new DeploymentController(context);
+            DeploymentController controller = new DeploymentController(proxy, context);
             return controller::getDeployments;
         });
         get(RouteTemplate.MODEL, (proxy, context, pathMatcher) -> {
@@ -135,6 +135,10 @@ public class ControllerSelector {
             String toolSetId = UrlUtil.decodePath(pathMatcher.group(1));
             return new ToolSetProxyController(proxy, context, toolSetId);
         }));
+        get(RouteTemplate.DEPLOYMENT_LISTING, (((proxy, context, pathMatcher) -> {
+            DeploymentController controller = new DeploymentController(proxy, context);
+            return controller::listDeployments;
+        })));
 
         // POST routes
         post(RouteTemplate.POST_DEPLOYMENT, (proxy, context, pathMatcher) -> {

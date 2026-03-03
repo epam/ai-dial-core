@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.controller.extraction.ApplicationDeploymentExtractor;
 import com.epam.aidial.core.server.data.ApplicationData;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.ListData;
@@ -17,7 +18,6 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
-import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -53,7 +53,7 @@ public class ApplicationController {
         this.applicationService = context.getProxy().getApplicationService();
         this.deploymentService = context.getProxy().getDeploymentService();
         this.applicationSchemaService = context.getProxy().getApplicationSchemaService();
-        this.deploymentExtractor = new ApplicationDeploymentExtractor();
+        this.deploymentExtractor = new ApplicationDeploymentExtractor(accessService, applicationService, applicationSchemaService);
         this.taskExecutor = context.getProxy().getTaskExecutor();
     }
 
@@ -245,17 +245,4 @@ public class ApplicationController {
         return data;
     }
 
-    private class ApplicationDeploymentExtractor implements DeploymentService.DeploymentExtractor {
-        @SuppressWarnings("unchecked")
-        @Override
-        public Application extract(String content, ResourceItemMetadata metadata,  ProxyContext context) {
-            ResourceDescriptor resource = metadata.getDescriptor();
-            Application application = applicationService.extractFrom(content, metadata);
-            boolean applicationRequestInfoAboutItSelf = !Objects.equals(context.getDecodedSourceDeployment(),
-                    resource.getDecodedUrl());
-            boolean filterClientProps = applicationRequestInfoAboutItSelf && !accessService.hasWriteAccess(resource, context);
-            return applicationSchemaService.modifySchemaRichApplication(application, filterClientProps);
-        }
-
-    }
 }
