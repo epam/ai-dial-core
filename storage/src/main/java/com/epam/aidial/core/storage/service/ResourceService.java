@@ -4,6 +4,7 @@ import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.data.NodeType;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
@@ -35,7 +36,10 @@ import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.StorageType;
 import org.jclouds.io.Payload;
+import org.redisson.api.BatchResult;
+import org.redisson.api.RBatch;
 import org.redisson.api.RMap;
+import org.redisson.api.RMapAsync;
 import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.ByteArrayCodec;
@@ -49,6 +53,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -56,9 +61,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import javax.annotation.Nullable;
+
+import static java.util.concurrent.Executors.newThreadPerTaskExecutor;
 
 @Slf4j
 public class ResourceService implements AutoCloseable {
@@ -94,6 +104,16 @@ public class ResourceService implements AutoCloseable {
     private static final Codec REDIS_MAP_CODEC = new CompositeCodec(
             StringCodec.INSTANCE,
             ByteArrayCodec.INSTANCE);
+
+    private static final int BATCH_SIZE = 50;
+    private static final int PAGE_SIZE = 1000;
+
+    private static final ExecutorService VIRTUAL_THREAD_PER_TASK_EXECUTOR;
+
+    static {
+        ThreadFactory threadFactory = Thread.ofVirtual().name("batch-dial.x-virtual-thread-", 0).factory();
+        VIRTUAL_THREAD_PER_TASK_EXECUTOR = newThreadPerTaskExecutor(threadFactory);
+    }
 
     private final RedissonClient redis;
     private final BlobStorage blobStore;
@@ -225,6 +245,111 @@ public class ResourceService implements AutoCloseable {
         // we should encode the marker any way to get back the original string from a query parameter
         String nextMarker = UrlUtil.encodePath(set.getNextMarker());
         return new ResourceFolderMetadata(descriptor, resources, nextMarker);
+    }
+
+    @SneakyThrows
+    public List<Pair<ResourceItemMetadata, String>> listResources(ResourceDescriptor resourceFolder, Consumer<ResourceFolderMetadata> filter) {
+        if (!resourceFolder.isFolder()) {
+            throw new IllegalArgumentException("Invalid deployment folder: " + resourceFolder.getUrl());
+        }
+        String nextToken = null;
+        List<Pair<ResourceItemMetadata, String>> result = new ArrayList<>();
+        do {
+            ResourceFolderMetadata folder = getFolderMetadata(resourceFolder, nextToken, PAGE_SIZE, true);
+            if (folder == null) {
+                break;
+            }
+
+            filter.accept(folder);
+
+            List<ResourceItemMetadata> items = folder.getItems().stream()
+                    .filter(item -> item.getNodeType() == NodeType.ITEM)
+                    .map(item -> (ResourceItemMetadata) item).toList();
+
+            load(items, result);
+            nextToken = folder.getNextToken();
+
+        } while (nextToken != null);
+
+        return result;
+    }
+
+    /**
+     * Loads content of resource metadata into the result.
+     */
+    @SneakyThrows
+    public void load(List<ResourceItemMetadata> items, List<Pair<ResourceItemMetadata, String>> result) {
+        final int size = items.size();
+        int batches = size / BATCH_SIZE;
+        int rem = size % BATCH_SIZE;
+        int cur = 0;
+
+        List<Future<List<Pair<ResourceItemMetadata, String>>>> futures = new ArrayList<>();
+        for (int i = 0; i < batches; i++) {
+            int end = cur + BATCH_SIZE;
+            int start = cur;
+            Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
+                    .submit(() -> runReadBatch(start, end, items));
+            futures.add(future);
+            cur = end;
+        }
+        if (rem > 0) {
+            int end = cur + rem;
+            int start = cur;
+            Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
+                    .submit(() -> runReadBatch(start, end, items));
+            futures.add(future);
+        }
+
+        for (Future<List<Pair<ResourceItemMetadata, String>>> future : futures) {
+            result.addAll(future.get());
+        }
+    }
+
+    @SneakyThrows
+    private List<Pair<ResourceItemMetadata, String>> runReadBatch(int start, int end, List<ResourceItemMetadata> items) {
+        if (end - start <= 0) {
+            return List.of();
+        }
+        RBatch batch = redis.createBatch();
+        List<Pair<ResourceItemMetadata, String>> result = new ArrayList<>();
+        List<String> redisKeys = new ArrayList<>();
+        for (int i = start; i < end; i++) {
+            ResourceItemMetadata meta = items.get(i);
+            String redisKey = redisKey(meta.getDescriptor());
+            redisKeys.add(redisKey);
+            RMapAsync<String, byte[]> map = batch.getMap(redisKey, REDIS_MAP_CODEC);
+            map.getAllAsync(REDIS_FIELDS);
+        }
+        BatchResult<?> batchResult = batch.execute();
+        List<ResourceItemMetadata> missed = new ArrayList<>();
+        List<?> responses = batchResult.getResponses();
+        for (int j = 0; j < responses.size(); j++) {
+            Map<String, byte[]> fields = (Map<String, byte[]>) responses.get(j);
+            String redisKey = redisKeys.get(j);
+            Result redisResult = toResult(fields, redisKey);
+            ResourceItemMetadata metadata = items.get(start + j);
+            if (redisResult == null) {
+                missed.add(metadata);
+            } else {
+                Pair<ResourceItemMetadata, String> pair = Pair.of(toResourceItemMetadata(metadata.getDescriptor(), redisResult),
+                        new String(redisResult.body, StandardCharsets.UTF_8));
+                result.add(pair);
+            }
+        }
+        List<Future<Pair<ResourceItemMetadata, String>>> futures = new ArrayList<>();
+        for (ResourceItemMetadata metadata : missed) {
+            Future<Pair<ResourceItemMetadata, String>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
+                    .submit(() -> getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, false));
+            futures.add(future);
+        }
+        for (Future<Pair<ResourceItemMetadata, String>> future : futures) {
+            Pair<ResourceItemMetadata, String> res = future.get();
+            if (res != null) {
+                result.add(res);
+            }
+        }
+        return result;
     }
 
     private static MetadataBase storageToResourceMetadata(StorageMetadata meta, ResourceDescriptor folder) {
@@ -819,7 +944,11 @@ public class ResourceService implements AutoCloseable {
     private Result redisGet(String key, boolean withBody) {
         RMap<String, byte[]> map = redis.getMap(key, REDIS_MAP_CODEC);
         Map<String, byte[]> fields = map.getAll(withBody ? REDIS_FIELDS : REDIS_FIELDS_NO_BODY);
+        return toResult(fields, key);
+    }
 
+    @Nullable
+    private Result toResult(Map<String, byte[]> fields, String key) {
         if (fields.isEmpty()) {
             return null;
         }

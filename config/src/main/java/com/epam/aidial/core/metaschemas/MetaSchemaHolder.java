@@ -26,6 +26,7 @@ public class MetaSchemaHolder {
     public static final String DIAL_APPLICATION_TYPE_INTERCEPTORS = "dial:applicationTypeInterceptors";
     public static final String DIAL_APPLICATION_TYPE_ASSISTANT_ATTACHMENTS_IN_REQUEST = "dial:applicationTypeAssistantAttachmentsInRequestSupported";
     public static final String DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT = "dial:applicationTypeSchemaEndpoint";
+    public static final String DIAL_APPLICATION_TYPE_MCP = "dial:applicationTypeMcp";
 
     public static final String APPLICATION_TYPE_ROUTES = "dial:applicationTypeRoutes";
 
@@ -63,6 +64,7 @@ public class MetaSchemaHolder {
                 .keyword(new NonValidationKeyword(DIAL_APPLICATION_TYPE_INTERCEPTORS))
                 .keyword(new NonValidationKeyword(DIAL_APPLICATION_TYPE_ASSISTANT_ATTACHMENTS_IN_REQUEST))
                 .keyword(new NonValidationKeyword(DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT))
+                .keyword(new NonValidationKeyword(DIAL_APPLICATION_TYPE_MCP))
                 .keyword(new NonValidationKeyword("$defs"))
                 .format(new DialFileFormat());
     }

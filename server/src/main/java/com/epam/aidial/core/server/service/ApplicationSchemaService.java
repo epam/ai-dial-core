@@ -64,6 +64,7 @@ import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.APPLICATION_TYPE
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.DIAL_APPLICATION_TYPE_ASSISTANT_ATTACHMENTS_IN_REQUEST;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.DIAL_APPLICATION_TYPE_BUCKET_COPY;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.DIAL_APPLICATION_TYPE_INTERCEPTORS;
+import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.DIAL_APPLICATION_TYPE_MCP;
 import static com.epam.aidial.core.metaschemas.MetaSchemaHolder.getMetaschemaBuilder;
 
 @Slf4j
@@ -81,6 +82,13 @@ public class ApplicationSchemaService {
             .build();
 
     private static final TypeReference<Map<String, Route>> APP_ROUTE_TYPE_REF = new TypeReference<>() {
+        @Override
+        public Type getType() {
+            return super.getType();
+        }
+    };
+
+    private static final TypeReference<Application.Mcp> APP_MCP_TYPE_REF = new TypeReference<>() {
         @Override
         public Type getType() {
             return super.getType();
@@ -133,14 +141,11 @@ public class ApplicationSchemaService {
     }
 
     @SneakyThrows
-    String getCustomApplicationSchemaOrThrow(Application application, boolean forceReload) {
-        URI schemaId = application.getApplicationTypeSchemaId();
-        if (schemaId == null) {
-            return null;
-        }
+    @Nullable
+    public String getSchema(URI schemaId, boolean forceReload) {
         String customApplicationSchema = configStore.get().getCustomApplicationSchema(schemaId);
         if (customApplicationSchema == null) {
-            throw new ApplicationTypeSchemaValidationException("Custom application schema not found: " + schemaId);
+            return null;
         }
         JsonNode schema = ProxyUtil.MAPPER.readTree(customApplicationSchema);
         if (schema.has(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT)) {
@@ -157,6 +162,19 @@ public class ApplicationSchemaService {
         } else {
             return customApplicationSchema;
         }
+    }
+
+    @SneakyThrows
+    String getCustomApplicationSchemaOrThrow(Application application, boolean forceReload) {
+        URI schemaId = application.getApplicationTypeSchemaId();
+        if (schemaId == null) {
+            return null;
+        }
+        String customApplicationSchema = getSchema(schemaId, forceReload);
+        if (customApplicationSchema == null) {
+            throw new ApplicationTypeSchemaValidationException("Custom application schema not found: " + schemaId);
+        }
+        return customApplicationSchema;
     }
 
     private void merge(ObjectNode appSchema, JsonNode schema) {
@@ -265,6 +283,13 @@ public class ApplicationSchemaService {
         }
     }
 
+    @SneakyThrows
+    public String getChatCompletionEndpoint(Application application) {
+        String schema = getCustomApplicationSchemaOrThrow(application, false);
+        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(schema);
+        return getEndpoint(schemaNode, APPLICATION_TYPE_COMPLETION_ENDPOINT, false);
+    }
+
     private static String getEndpoint(JsonNode schemaNode, String endpointKey, boolean isRequired) {
         JsonNode endpointNode = schemaNode.get(endpointKey);
         if (endpointNode == null) {
@@ -332,10 +357,6 @@ public class ApplicationSchemaService {
 
     public List<ResourceDescriptor> getFiles(Application application) {
         return getFiles(application, ListCollector.ResourceCollectorType.ALL_RESOURCES, false);
-    }
-
-    public List<ResourceDescriptor> getFiles(Application application, boolean forceReload) {
-        return getFiles(application, ListCollector.ResourceCollectorType.ALL_RESOURCES, forceReload);
     }
 
     @SuppressWarnings("unchecked")
@@ -452,6 +473,21 @@ public class ApplicationSchemaService {
             return null;
         }
         return ProxyUtil.MAPPER.treeToValue(appRoutes, APP_ROUTE_TYPE_REF);
+    }
+
+    @Nullable
+    @SneakyThrows
+    public Application.Mcp getMcp(Application application) {
+        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application, false);
+        if (customApplicationSchema == null) {
+            return null;
+        }
+        JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
+        JsonNode mcp = schemaNode.get(DIAL_APPLICATION_TYPE_MCP);
+        if (mcp == null) {
+            return null;
+        }
+        return ProxyUtil.MAPPER.treeToValue(mcp, APP_MCP_TYPE_REF);
     }
 
     @SneakyThrows

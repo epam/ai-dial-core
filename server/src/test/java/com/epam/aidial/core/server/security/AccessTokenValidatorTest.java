@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.security;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -117,7 +118,8 @@ public class AccessTokenValidatorTest {
         IdentityProvider provider2 = mock(IdentityProvider.class);
         when(provider2.match(any(DecodedJWT.class))).thenReturn(true);
         when(provider2.extractClaimsFromJwt(any(DecodedJWT.class))).thenReturn(Future
-                .succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash", Map.of(), null, null)));
+                .succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash",
+                        ProxyUtil.MAPPER.createObjectNode(), null, null)));
         List<IdentityProvider> providerList = List.of(provider1, provider2);
         validator.setProviders(providerList);
         KeyPair keyPair = generateRsa256Pair();
@@ -141,7 +143,8 @@ public class AccessTokenValidatorTest {
         IdentityProvider provider = mock(IdentityProvider.class);
         when(provider.hasUserinfoUrl()).thenReturn(false);
         when(provider.extractClaimsFromJwt(any(DecodedJWT.class))).thenReturn(Future
-                .succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash", Map.of(), null, null)));
+                .succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash",
+                        ProxyUtil.MAPPER.createObjectNode(), null, null)));
         List<IdentityProvider> providerList = List.of(provider);
         validator.setProviders(providerList);
         KeyPair keyPair = generateRsa256Pair();
@@ -179,7 +182,8 @@ public class AccessTokenValidatorTest {
         AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, taskExecutor, client);
         IdentityProvider provider = mock(IdentityProvider.class);
         when(provider.hasUserinfoUrl()).thenReturn(true);
-        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash", Map.of(), null, null);
+        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash",
+                ProxyUtil.MAPPER.createObjectNode(), null, null);
         when(provider.extractClaimsFromUserInfo(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
         List<IdentityProvider> providerList = List.of(provider);
         validator.setProviders(providerList);
@@ -197,7 +201,8 @@ public class AccessTokenValidatorTest {
         AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, taskExecutor, client);
         IdentityProvider provider = mock(IdentityProvider.class);
         when(provider.hasUserinfoUrl()).thenReturn(true);
-        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash", Map.of(), "project1", null);
+        ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash",
+                ProxyUtil.MAPPER.createObjectNode(), "project1", null);
         when(provider.extractClaimsFromUserInfo(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
         List<IdentityProvider> providerList = List.of(provider);
         validator.setProviders(providerList);

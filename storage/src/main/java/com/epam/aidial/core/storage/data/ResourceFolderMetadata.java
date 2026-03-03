@@ -20,13 +20,10 @@ public class ResourceFolderMetadata extends MetadataBase {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String nextToken;
 
-    public ResourceFolderMetadata(ResourceType type, String bucket, String name, String path, String url, List<MetadataBase> items) {
-        super(name, path, bucket, url, NodeType.FOLDER, type, null, null, null);
+    private ResourceFolderMetadata(ResourceDescriptor descriptor, ResourceType type, String bucket,
+                                   String name, String path, String url, List<MetadataBase> items) {
+        super(descriptor, name, path, bucket, url, NodeType.FOLDER, type, null, null, null);
         this.items = items;
-    }
-
-    public ResourceFolderMetadata(ResourceType type, String bucket, String name, String path, String url) {
-        this(type, bucket, name, path, url, null);
     }
 
     public ResourceFolderMetadata(ResourceDescriptor resource) {
@@ -34,7 +31,7 @@ public class ResourceFolderMetadata extends MetadataBase {
     }
 
     public ResourceFolderMetadata(ResourceDescriptor resource, List<MetadataBase> items, String nextToken) {
-        this(resource.getType(), resource.getBucketName(), resource.getName(), resource.getParentPath(), resource.getUrl(), items);
+        this(resource, resource.getType(), resource.getBucketName(), resource.getName(), resource.getParentPath(), resource.getUrl(), items);
         this.nextToken = nextToken;
     }
 }
