@@ -90,6 +90,11 @@ public enum RouteTemplate {
             "/v1/deployments/{id}/route/{routePath}"
     ),
 
+    DEPLOYMENT_LISTING(
+            "^/+v1/deployments$",
+            "/v1/deployments"
+    ),
+
     // Operations
     SHARE_RESOURCE_OPERATIONS(
             "^/v1/ops/resource/share/(create|list|discard|revoke|copy)$",

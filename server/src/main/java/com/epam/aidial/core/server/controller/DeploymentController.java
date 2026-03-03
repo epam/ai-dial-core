@@ -1,23 +1,80 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.controller.extraction.ApplicationDeploymentExtractor;
+import com.epam.aidial.core.server.data.ApplicationData;
 import com.epam.aidial.core.server.data.DeploymentData;
 import com.epam.aidial.core.server.data.ListData;
+import com.epam.aidial.core.server.data.ToolSetData;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
+import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.DeploymentService;
+import com.epam.aidial.core.server.service.ToolSetService;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import io.vertx.core.Future;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Predicate;
 
 import static com.epam.aidial.core.server.controller.ModelController.createModel;
 
-@RequiredArgsConstructor
+@Slf4j
 public class DeploymentController {
 
+    private static final String CHAT_IFACE = "chat";
+    private static final String EMBEDDING_IFACE = "embedding";
+    private static final String MCP_IFACE = "mcp";
+    private static final String CUSTOM_UI_IFACE = "custom_ui";
+    private static final String ALL_IFACE = "all";
+    private final Proxy proxy;
     private final ProxyContext context;
+    /**
+     * Interface to resource type mapping, where a key is an interface name and a value is a mask.
+     * The bit mask describes which resource types are applicable for the given interface.
+     * From the least to the most significant bit:
+     * <ul>
+     *     <li>0 - Model</li>
+     *     <li>1 - Application</li>
+     *     <li>2 - Toolset</li>
+     * </ul>
+     */
+    private final Map<String, Integer> interfaceToResourceType = Map.of(CHAT_IFACE, 0b011,
+            EMBEDDING_IFACE, 0b001,
+            MCP_IFACE, 0b110,
+            CUSTOM_UI_IFACE, 0b010,
+            ALL_IFACE, 0b111);
+    private final DeploymentService.DeploymentExtractor appExtractor;
+    private final DeploymentService deploymentService;
+    private final ApplicationService applicationService;
+    private final ToolSetService toolSetService;
+    private final ApplicationSchemaService applicationSchemaService;
+
+    public DeploymentController(Proxy proxy, ProxyContext context) {
+        this.proxy = proxy;
+        this.context = context;
+        this.appExtractor = new ApplicationDeploymentExtractor(proxy.getAccessService(),
+                proxy.getApplicationService(), proxy.getApplicationSchemaService());
+        this.deploymentService = proxy.getDeploymentService();
+        this.applicationService = proxy.getApplicationService();
+        this.toolSetService = proxy.getToolSetService();
+        this.applicationSchemaService = proxy.getApplicationSchemaService();
+
+    }
 
     public Future<?> getDeployment(String deploymentId) {
         Config config = context.getConfig();
@@ -32,24 +89,199 @@ public class DeploymentController {
         }
 
         DeploymentData data = createModel(model);
-        return context.respond(HttpStatus.OK, data);
+        context.respond(HttpStatus.OK, data);
+        return Future.succeededFuture();
     }
 
     public Future<?> getDeployments() {
-        Config config = context.getConfig();
-        List<DeploymentData> deployments = new ArrayList<>();
+        getModels(List.of()).onSuccess(deployments -> {
+            ListData<DeploymentData> list = new ListData<>();
+            list.setData(deployments);
+            context.respond(HttpStatus.OK, list);
+        }).onFailure(error -> {
+            log.error("Error occurred on listing models", error);
+            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+        });
+        return Future.succeededFuture();
+    }
 
+    public Future<?> listDeployments() {
+        String interfacesParam = context.getRequest().getParam("interface_type", "all");
+        String[] interfaces = interfacesParam.split(",");
+        int mask = 0;
+        List<Predicate<Application>> appFilters = new ArrayList<>();
+        List<Predicate<Model>> modelFilters = new ArrayList<>();
+        boolean all = false;
+        for (String iface : interfaces) {
+            Integer mapping = interfaceToResourceType.get(iface);
+            if (ALL_IFACE.equals(iface)) {
+                all = true;
+            }
+            if (mapping == null) {
+                context.respond(new HttpException(HttpStatus.BAD_REQUEST, "Unsupported interface provided: " + iface));
+                return Future.succeededFuture();
+            }
+            mask |= mapping;
+            switch (iface) {
+                case CHAT_IFACE: {
+                    appFilters.add(app -> app.getEndpoint() != null);
+                    modelFilters.add(model -> model.getType() == ModelType.CHAT);
+                    break;
+                }
+                case EMBEDDING_IFACE: {
+                    modelFilters.add(model -> model.getType() == ModelType.EMBEDDING);
+                    break;
+                }
+                case MCP_IFACE: {
+                    appFilters.add(app -> app.getMcp() != null);
+                    break;
+                }
+                case CUSTOM_UI_IFACE: {
+                    appFilters.add(app -> app.getViewerUrl() != null);
+                    break;
+                }
+                default: // do nothing
+            }
+        }
+        List<Future<List<DeploymentData>>> futures = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            if ((mask & (1 << i)) == 0) {
+                continue;
+            }
+            switch (i) {
+                case 0: { // model
+                    List<Predicate<Model>> filters = all ? List.of() : modelFilters;
+                    futures.add(getModels(filters));
+                    break;
+                }
+                case 1: { // application
+                    List<Predicate<Application>> filters = all ? List.of() : appFilters;
+                    futures.add(getApplications(filters));
+                    break;
+                }
+                case 2: { // toolset
+                    futures.add(getToolSets());
+                    break;
+                }
+                default: // do nothing
+            }
+        }
+        Future.all(futures).onSuccess(result -> {
+            List<DeploymentData> deployments = new ArrayList<>();
+            for (int i = 0; i < result.size(); i++) {
+                deployments.addAll(result.resultAt(i));
+            }
+            context.respond(HttpStatus.OK, deployments);
+        }).onFailure(error -> {
+            log.error("Error occurred on listing deployments", error);
+            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+        });
+        return Future.succeededFuture();
+    }
+
+    private Future<List<DeploymentData>> getApplications(List<Predicate<Application>> filters) {
+        return proxy.getTaskExecutor().submit(() -> {
+            Config config = context.getConfig();
+            List<DeploymentData> deployments = new ArrayList<>();
+            for (Application application : config.getApplications().values()) {
+                if (application.hasAccess(context.getUserRoles()) && match(filters, application)) {
+                    boolean applicationRequestInfoAboutItSelf = Objects.equals(context.getDecodedSourceDeployment(), application.getName());
+                    application = applicationSchemaService.modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
+                    if (application.hasApplicationTypeSchemaId()) {
+                        application.setMcp(applicationSchemaService.getMcp(application));
+                        application.setViewerUrl(applicationSchemaService.getStringProperty(application,
+                                MetaSchemaHolder.APPLICATION_TYPE_VIEWER_URL));
+                    }
+                    deployments.add(to(application));
+                }
+            }
+            List<Application> resourceApps = List.of();
+            if (applicationService.isIncludeCustomApps()) {
+                resourceApps = deploymentService.listDeployments(context, ResourceTypes.APPLICATION, appExtractor);
+            }
+            for (Application app : resourceApps) {
+                if (match(filters, app)) {
+                    deployments.add(to(app));
+                }
+            }
+            return deployments;
+        });
+    }
+
+    private Future<List<DeploymentData>> getToolSets() {
+        return proxy.getTaskExecutor().submit(() -> {
+            List<DeploymentData> deployments = new ArrayList<>();
+            List<ToolSet> resourceToolsets = deploymentService.listDeployments(context, ResourceTypes.TOOL_SET, new DeploymentService.DeploymentExtractor() {
+                @SuppressWarnings("unchecked")
+                @Override
+                public ToolSet extract(String content, ResourceItemMetadata metadata, ProxyContext context) {
+                    return toolSetService.extractFrom(content, metadata);
+                }
+            });
+            for (ToolSet toolSet : resourceToolsets) {
+                deployments.add(to(toolSet));
+            }
+            Config config = context.getConfig();
+            for (ToolSet toolSet : config.getToolsets().values()) {
+                if (toolSet.hasAccess(context.getUserRoles())) {
+                    deployments.add(to(toolSet));
+                }
+            }
+            return deployments;
+        });
+    }
+
+    private Future<List<DeploymentData>> getModels(List<Predicate<Model>> filters) {
+        List<DeploymentData> deployments = new ArrayList<>();
+        Config config = context.getConfig();
         for (Model model : config.getModels().values()) {
-            if (model.hasAccess(context.getUserRoles())) {
+            if (model.hasAccess(context.getUserRoles()) && match(filters, model)) {
                 DeploymentData deployment = createModel(model);
+                List<String> interfaces = new ArrayList<>();
+                if (model.getType() == ModelType.CHAT) {
+                    interfaces.add(CHAT_IFACE);
+                } else {
+                    interfaces.add(EMBEDDING_IFACE);
+                }
+                deployment.setInterfaces(interfaces);
                 deployments.add(deployment);
             }
         }
+        return Future.succeededFuture(deployments);
+    }
 
-        ListData<DeploymentData> list = new ListData<>();
-        list.setData(deployments);
+    private static ApplicationData to(Application app) {
+        ApplicationData applicationData = ApplicationData.mapApplication(app);
+        List<String> interfaces = new ArrayList<>();
+        if (app.getMcp() != null) {
+            interfaces.add(MCP_IFACE);
+        }
+        if (app.getEndpoint() != null) {
+            interfaces.add(CHAT_IFACE);
+        }
+        if (app.getViewerUrl() != null) {
+            interfaces.add(CUSTOM_UI_IFACE);
+        }
+        applicationData.setInterfaces(interfaces);
+        return applicationData;
+    }
 
-        return context.respond(HttpStatus.OK, list);
+    private static ToolSetData to(ToolSet toolSet) {
+        toolSet.clearAuthSettings();
+        ToolSetData toolSetData = ToolSetData.toData(toolSet);
+        toolSetData.setInterfaces(List.of(MCP_IFACE));
+        return toolSetData;
+    }
+
+    private static <T extends Deployment> boolean match(List<Predicate<T>> filters, T app) {
+        boolean matched = filters.isEmpty();
+        for (Predicate<T> filter : filters) {
+            if (filter.test(app)) {
+                matched = true;
+                break;
+            }
+        }
+        return matched;
     }
 
 }

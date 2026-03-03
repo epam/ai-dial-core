@@ -33,4 +33,5 @@ public class DeploymentData {
     private Map<String, Object> defaults;
     private List<String> descriptionKeywords;
     private int maxRetryAttempts;
+    private List<String> interfaces;
 }
