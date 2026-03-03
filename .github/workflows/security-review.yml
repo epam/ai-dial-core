@@ -1,0 +1,49 @@
+name: Security Review
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  security-review:
+    if: |
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '/security-review')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Add reaction to acknowledge command
+        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
+        with:
+          comment-id: ${{ github.event.comment.id }}
+          reactions: eyes
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          trigger_phrase: "/security-review"
+          claude_args: "--allowedTools Read Grep Glob"
+          prompt: |
+            Perform a comprehensive security review of this PR. This is a Java 21 / Eclipse Vert.x project. Focus on:
+
+            1. **Injection vulnerabilities** — SQL injection, command injection, LDAP injection, XSS, SSRF
+            2. **Authentication & Authorization** — broken access control, missing auth checks, privilege escalation
+            3. **Sensitive data exposure** — secrets, PII, credentials in code or logs
+            4. **Security misconfiguration** — permissive CORS, disabled CSRF, overly broad permissions
+            5. **Insecure deserialization** — unsafe ObjectInputStream, Jackson polymorphic typing
+            6. **Dependency vulnerabilities** — known CVEs in added/changed dependencies
+            7. **Cryptographic issues** — weak algorithms, hardcoded keys, improper random generation
+            8. **Input validation gaps** — missing validation on API inputs, path traversal
+            9. **Logging & error handling** — stack traces or sensitive info leaked to clients
+            10. **Race conditions & concurrency** — TOCTOU, shared mutable state without synchronization
+
+            For each finding provide:
+            - **Severity**: Critical / High / Medium / Low / Info
+            - **File and line number**
+            - **Description** of the vulnerability
+            - **Recommended fix** with a code suggestion when possible
+
+            If no security issues are found, confirm the PR looks secure with a brief summary of what was reviewed.
