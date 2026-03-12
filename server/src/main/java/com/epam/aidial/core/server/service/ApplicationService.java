@@ -498,14 +498,15 @@ public class ApplicationService {
         verifyApplication(resource);
         URI applicationSchemaId = application.getApplicationTypeSchemaId();
         if (applicationSchemaId != null) {
-            if (application.getEndpoint() != null || application.getFunction() != null) {
-                throw new IllegalArgumentException("Endpoint must not be set for custom application");
+            if (application.getEndpoint() != null || application.getFunction() != null || application.getMcp() != null) {
+                throw new IllegalArgumentException("Neither application endpoint, MCP or function must be set for schema based application");
             }
             if (configStore.get().getCustomApplicationSchema(applicationSchemaId) == null) {
                 throw new IllegalArgumentException("Application schema is not found by schema id: " + applicationSchemaId);
             }
-        } else if (application.getEndpoint() == null && application.getFunction() == null) {
-            throw new IllegalArgumentException("Application endpoint or function must be provided");
+        } else if (application.getEndpoint() == null && application.getFunction() == null
+                && (application.getMcp() == null || application.getMcp().getEndpoint() == null)) {
+            throw new IllegalArgumentException("At least application endpoint, MCP endpoint or function must be provided");
         }
 
         application.setName(resource.getUrl());
