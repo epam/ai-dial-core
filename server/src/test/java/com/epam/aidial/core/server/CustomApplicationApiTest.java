@@ -1334,6 +1334,23 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         }
     }
 
+    @Test
+    public void testCreateMcpCompatibleApplication() {
+        var response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app", null, """
+                {
+                "display_name": "My App",
+                "display_version": "1.0",
+                "icon_url": "http://apprunner/icon.svg",
+                "description": "My app Description",
+                "mcp": {
+                  "endpoint": "http://localhost:7878/mcp",
+                  "transport": "HTTP"
+                  }
+                }
+                """);
+        verify(response, 200);
+    }
+
     private HttpUriRequest createHttpUriRequest(int port, String deployment, String apiKey) {
         String uri = "http://127.0.0.1:" + port + "/openai/deployments/" + deployment + "/chat/completions";
         String requestBody = """
