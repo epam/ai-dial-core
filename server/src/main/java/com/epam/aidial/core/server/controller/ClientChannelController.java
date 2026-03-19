@@ -68,10 +68,7 @@ public class ClientChannelController {
             return clientChannelService.subscribe(channelId, subscriber, context);
         }).onSuccess(subscription -> {
 
-            response.setChunked(true)
-                    .setStatusCode(200)
-                    .putHeader(HttpHeaders.CONTENT_TYPE, "text/event-stream")
-                    .write(""); // to force writing header
+            setupEventStreamResponse(response);
 
             response.closeHandler(event -> {
                 heartbeatService.unsubscribe(heartbeat);
@@ -113,35 +110,40 @@ public class ClientChannelController {
                         context.respond(HttpStatus.NOT_FOUND, "Channel is not found");
                     }
                 })
-                .onFailure(this::handleServiceError);;
+                .onFailure(this::handleServiceError);
         return Future.succeededFuture();
     }
 
     public Future<?> interact() {
         HttpServerResponse response = context.getResponse();
+        setupEventStreamResponse(response);
         String channelId = context.getRequest().getHeader(Proxy.HEADER_CLIENT_CHANNEL_ID);
         if (channelId == null) {
-            context.respond(HttpStatus.BAD_REQUEST, "Channel ID is missed");
+            handleRpcError(new HttpException(HttpStatus.BAD_REQUEST, "Channel ID is missed"));
             return Future.succeededFuture();
         }
         Runnable heartbeat = this::sendHeartbeat;
         context.getRequest()
                 .body()
-                .compose(json -> {
-                    response.setChunked(true)
-                            .setStatusCode(200)
-                            .putHeader(HttpHeaders.CONTENT_TYPE, "text/event-stream")
-                            .write(""); // to force writing header
-                    return createResponseSubscriptions(channelId, json, heartbeat);
-                }).onSuccess(subscriptions -> response.closeHandler(event -> {
-                    heartbeatService.unsubscribe(heartbeat);
-                    for (RpcResponseTopic.RpcResponseSubscription subscription : subscriptions) {
-                        subscription.close();
-                    }
-                }))
-                .onFailure(this::handleServiceError);
+                .compose(json -> createResponseSubscriptions(channelId, json, heartbeat))
+                .onSuccess(subscriptions -> {
+                    response.closeHandler(event -> {
+                        heartbeatService.unsubscribe(heartbeat);
+                        for (RpcResponseTopic.RpcResponseSubscription subscription : subscriptions) {
+                            subscription.close();
+                        }
+                    });
+                })
+                .onFailure(this::handleRpcError);
 
         return Future.succeededFuture();
+    }
+
+    private static void setupEventStreamResponse(HttpServerResponse response) {
+        response.setChunked(true)
+                .setStatusCode(200)
+                .putHeader(HttpHeaders.CONTENT_TYPE, "text/event-stream")
+                .write(""); // to force writing header
     }
 
     private Future<List<RpcResponseTopic.RpcResponseSubscription>> createResponseSubscriptions(String channelId, Buffer json, Runnable heartbeat) {
@@ -274,6 +276,12 @@ public class ClientChannelController {
             case HttpException httpException -> context.respond(httpException.getStatus(), httpException.getMessage());
             default -> context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
         }
+    }
+
+    private void handleRpcError(Throwable error) {
+        ErrorMessage errorMessage = new ErrorMessage(-32000, error.getMessage(), null);
+        RpcResponse response = new RpcResponse(errorMessage);
+        sendMessage(response);
     }
 
     private void sendMessage(Object message) {
