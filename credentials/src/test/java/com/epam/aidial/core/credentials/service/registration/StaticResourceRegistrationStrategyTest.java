@@ -16,6 +16,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -119,6 +120,70 @@ class StaticResourceRegistrationStrategyTest {
         assertEquals(List.of("scope1"), result.getScopesSupported());
         verify(protectedResourceMetadataService).getProtectedResourceMetadata(
                 resourceId, resourceEndpoint);
+        verify(authorizationServerMetadataService).getAuthorizationServerMetadata(
+                resourceId, resourceEndpoint, protectedResourceMetadata, false);
+    }
+
+    @Test
+    void testStaticEndpointsNotOverwrittenByDiscovery() {
+        // Given
+        String resourceId = "staticResource";
+        String resourceEndpoint = "https://test.endpoint.com";
+        String clientId = "staticClientId";
+        String clientSecret = "staticClientSecret";
+        String redirectUri = "https://static.redirect.uri";
+
+        // Static endpoints provided by the user
+        String staticAuthorizationEndpoint = "https://static.auth.endpoint";
+        String staticTokenEndpoint = "https://static.token.endpoint";
+        List<String> scopesSupported = List.of("scope1", "scope2");
+
+        // Discovery returns different endpoints and a codeChallengeMethod
+        String discoveredAuthorizationEndpoint = "https://discovered.auth.endpoint";
+        String discoveredTokenEndpoint = "https://discovered.token.endpoint";
+        String discoveredCodeChallengeMethod = "S256";
+
+        // codeChallengeMethod is null (simulates UI-created toolset), triggering discovery
+        ResourceAuthSettings resourceAuthSettings = ResourceAuthSettings.builder()
+                .clientId(clientId)
+                .clientSecret(clientSecret)
+                .redirectUri(redirectUri)
+                .authorizationEndpoint(staticAuthorizationEndpoint)
+                .tokenEndpoint(staticTokenEndpoint)
+                .scopesSupported(scopesSupported)
+                .build();
+
+        assertNull(resourceAuthSettings.getCodeChallengeMethod());
+
+        AuthorizationServerProtectedResourceMetadata protectedResourceMetadata = mock(AuthorizationServerProtectedResourceMetadata.class);
+        when(protectedResourceMetadataService.getProtectedResourceMetadata(resourceId, resourceEndpoint))
+                .thenReturn(protectedResourceMetadata);
+
+        AuthorizationServerMetadata authorizationServerMetadata = mock(AuthorizationServerMetadata.class);
+        when(authorizationServerMetadata.getAuthorizationEndpoint()).thenReturn(discoveredAuthorizationEndpoint);
+        when(authorizationServerMetadata.getTokenEndpoint()).thenReturn(discoveredTokenEndpoint);
+        when(authorizationServerMetadata.getCodeChallengeMethodsSupported()).thenReturn(List.of(discoveredCodeChallengeMethod));
+
+        when(authorizationServerMetadataService.getAuthorizationServerMetadata(
+                resourceId, resourceEndpoint, protectedResourceMetadata, false))
+                .thenReturn(authorizationServerMetadata);
+
+        // When
+        ClientRegistration result = resourceRegistrationStrategy.register(resourceId, resourceEndpoint, resourceAuthSettings);
+
+        // Then
+        assertNotNull(result);
+        assertEquals(clientId, result.getClientId());
+        assertEquals(clientSecret, result.getClientSecret());
+        assertEquals(redirectUri, result.getRedirectUri());
+        // Static endpoints must be preserved (not overwritten by discovery)
+        assertEquals(staticAuthorizationEndpoint, result.getAuthorizationEndpoint());
+        assertEquals(staticTokenEndpoint, result.getTokenEndpoint());
+        // codeChallengeMethod should be filled from discovery
+        assertEquals(discoveredCodeChallengeMethod, result.getCodeChallengeMethod());
+        assertEquals(scopesSupported, result.getScopesSupported());
+        // Verify discovery was called (because codeChallengeMethod was null)
+        verify(protectedResourceMetadataService).getProtectedResourceMetadata(resourceId, resourceEndpoint);
         verify(authorizationServerMetadataService).getAuthorizationServerMetadata(
                 resourceId, resourceEndpoint, protectedResourceMetadata, false);
     }
