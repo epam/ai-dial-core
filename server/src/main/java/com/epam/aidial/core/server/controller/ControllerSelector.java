@@ -286,6 +286,18 @@ public class ControllerSelector {
             PerRequestPermissionController controller = new PerRequestPermissionController(context);
             return () -> controller.handle(operation);
         });
+        post(RouteTemplate.CODE_INTERPRETER, (proxy, context, pathMatcher) -> {
+            String operation = pathMatcher.group(1);
+            ClientChannelController controller = new ClientChannelController(context);
+
+            return switch (operation) {
+                case "subscribe" -> controller::subscribe;
+                case "report" -> controller::report;
+                case "unsubscribe" -> controller::unsubscribe;
+                case "interact" -> controller::interact;
+                default -> null;
+            };
+        });
         // DELETE routes
         delete(RouteTemplate.FILES, (proxy, context, pathMatcher) -> {
             ResourceController controller = new ResourceController(proxy, context, false);

@@ -21,7 +21,8 @@ public enum ResourceTypes implements ResourceType {
     USER_CONSENT("user_consent", true, TimeUnit.MINUTES.toMillis(5)),
     TOOL_SET("toolsets", true, Long.MAX_VALUE),
     CREDENTIALS("credentials", true, TimeUnit.MINUTES.toMillis(5)),
-    ENCRYPTION_KEYS("encryption_keys", true, TimeUnit.MINUTES.toMillis(5));
+    ENCRYPTION_KEYS("encryption_keys", true, TimeUnit.MINUTES.toMillis(5)),
+    CLIENT_CHANNEL("client_channels", true, TimeUnit.HOURS.toMillis(24));
 
     private final String group;
     private final boolean requireCompression;

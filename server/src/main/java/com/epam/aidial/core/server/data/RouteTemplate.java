@@ -180,7 +180,10 @@ public enum RouteTemplate {
             "/.well-known/oauth-protected-resource/v1/toolset/{id}/mcp"
     ),
     PER_REQUEST_PERMISSION("^/v1/ops/resource/per-request-permissions/(grant|revoke|list)",
-            "/v1/ops/resource/per-request-permissions/{operation}");
+            "/v1/ops/resource/per-request-permissions/{operation}"),
+
+    CLIENT_CHANNEL("^/v1/ops/client-channel/(subscribe|report|unsubscribe|interact)",
+            "/v1/ops/client-channel/{operation}");
 
     private final Pattern pattern;
     private final String template;
