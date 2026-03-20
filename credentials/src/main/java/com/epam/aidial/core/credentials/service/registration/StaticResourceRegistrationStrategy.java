@@ -50,7 +50,7 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
      * @param resourceAuthSettings The static authentication settings provided for the resource.
      * @return A {@link ClientRegistration} containing the complete registration details.
      * @throws IllegalArgumentException If any of the required endpoints (authorizationEndpoint,
-     *                                  tokenEndpoint, codeChallengeMethod) cannot be resolved.
+     *                                  tokenEndpoint) cannot be resolved.
      */
     @Override
     public ClientRegistration register(String resourceId, String resourceEndpoint, ResourceAuthSettings resourceAuthSettings) {
@@ -78,12 +78,12 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
             }
 
             if (authServerMetadata != null) {
-                authorizationEndpoint = Optional.ofNullable(authServerMetadata.getAuthorizationEndpoint())
-                        .orElse(authorizationEndpoint);
-                tokenEndpoint = Optional.ofNullable(authServerMetadata.getTokenEndpoint())
-                        .orElse(tokenEndpoint);
-                codeChallengeMethod = getCodeChallengeMethod(authServerMetadata)
-                        .orElse(codeChallengeMethod);
+                authorizationEndpoint = Optional.ofNullable(authorizationEndpoint)
+                        .orElse(authServerMetadata.getAuthorizationEndpoint());
+                tokenEndpoint = Optional.ofNullable(tokenEndpoint)
+                        .orElse(authServerMetadata.getTokenEndpoint());
+                codeChallengeMethod = Optional.ofNullable(codeChallengeMethod)
+                        .orElse(getCodeChallengeMethod(authServerMetadata).orElse(null));
             }
         }
 
