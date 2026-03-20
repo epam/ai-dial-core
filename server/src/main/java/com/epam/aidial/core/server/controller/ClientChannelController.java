@@ -22,6 +22,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.mutable.MutableObject;
 
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
@@ -58,6 +59,7 @@ public class ClientChannelController {
         HttpServerResponse response = context.getResponse();
         Runnable heartbeat = this::sendHeartbeat;
         Consumer<RpcRequest> subscriber = this::sendMessage;
+        MutableObject<String> channelIdRef = new MutableObject<>();
         taskExecutor.submit(() -> {
             String channelId =  context.getRequest().getHeader(Proxy.HEADER_CLIENT_CHANNEL_ID);
             if (channelId == null) {
@@ -65,12 +67,17 @@ public class ClientChannelController {
                 response.putHeader(Proxy.HEADER_CLIENT_CHANNEL_ID, channelId);
             }
             heartbeatService.subscribe(heartbeat);
+            channelIdRef.setValue(channelId);
+            log.info("Client subscribes on channel {}. User {}. Project {}",
+                    channelId, context.getUserId(), context.getProject());
             return clientChannelService.subscribe(channelId, subscriber, context);
         }).onSuccess(subscription -> {
 
             setupEventStreamResponse(response);
 
             response.closeHandler(event -> {
+                log.debug("Client closes channel {}. User {}. Project {}",
+                        channelIdRef.get(), context.getUserId(), context.getProject());
                 heartbeatService.unsubscribe(heartbeat);
                 subscription.close();
             });
@@ -89,6 +96,8 @@ public class ClientChannelController {
                 .compose(json -> {
                     RpcResponse response = ProxyUtil.convertToObject(json, RpcResponse.class);
                     return taskExecutor.submit(() -> {
+                        log.debug("Client reports response {}  to channel {}. User {}. Project {}",
+                                response.getId().asText(), channelId, context.getUserId(), context.getProject());
                         clientChannelService.report(channelId, response, context);
                         return null;
                     });
@@ -104,6 +113,8 @@ public class ClientChannelController {
         }
         taskExecutor.submit(() -> clientChannelService.deleteChannel(channelId, context))
                 .onSuccess(deleted -> {
+                    log.info("Client unsubscribes on channel {}. User {}. Project {}",
+                            channelId, context.getUserId(), context.getProject());
                     if (deleted) {
                         context.respond(HttpStatus.OK);
                     } else {
@@ -128,6 +139,8 @@ public class ClientChannelController {
                 .compose(json -> createResponseSubscriptions(channelId, json, heartbeat))
                 .onSuccess(subscriptions -> {
                     response.closeHandler(event -> {
+                        log.debug("Deployment closes channel {}. User {}. Project {}",
+                                channelId, context.getUserId(), context.getProject());
                         heartbeatService.unsubscribe(heartbeat);
                         for (RpcResponseTopic.RpcResponseSubscription subscription : subscriptions) {
                             subscription.close();
@@ -149,7 +162,7 @@ public class ClientChannelController {
     private Future<List<RpcResponseTopic.RpcResponseSubscription>> createResponseSubscriptions(String channelId, Buffer json, Runnable heartbeat) {
         RpcResponseSubscriber subscriber;
         try {
-            subscriber = parseRpcRequest(json);
+            subscriber = parseRpcRequest(json, channelId);
         } catch (RpcParsingException e) {
             RpcResponse rpcResponse = new RpcResponse(e.errorMessage);
             sendMessage(rpcResponse);
@@ -162,17 +175,19 @@ public class ClientChannelController {
         } else {
             return taskExecutor.submit(() -> {
                 heartbeatService.subscribe(heartbeat);
-                return clientChannelService.interact(channelId, subscriber.validRequests, subscriber, context);
+                return clientChannelService.interact(channelId, subscriber.requestsToBeSent, subscriber, context);
             });
         }
     }
 
-    private RpcResponseSubscriber parseRpcRequest(Buffer buffer) {
+    private RpcResponseSubscriber parseRpcRequest(Buffer buffer, String channelId) {
         JsonNode root;
         try {
             String text = buffer.toString(StandardCharsets.UTF_8);
             root = ProxyUtil.MAPPER.readTree(text);
             String prefix = getRequestIdPrefix();
+            log.info("Deployment {} sends request to channel {}. User {}. Project {}", prefix,
+                    channelId, context.getUserId(), context.getProject());
             if (root.isArray()) {
                 List<RpcRequest> requests = ProxyUtil.MAPPER.treeToValue(root, REQ_BATCH_REF);
                 return new RpcResponseSubscriber(requests, true, prefix);
@@ -181,6 +196,7 @@ public class ClientChannelController {
                 return new RpcResponseSubscriber(List.of(request), false, prefix);
             }
         } catch (Exception e) {
+            log.warn("Unable to parse RPC request", e);
             ErrorMessage message = new ErrorMessage(-32700, "Parse error", null);
             throw new RpcParsingException(message);
         }
@@ -198,10 +214,14 @@ public class ClientChannelController {
         return requester;
     }
 
+    /**
+     * The subscriber is shared for multiple Redis topic listeners. The listeners handle messages from Redis topic RPC Responses.
+     * The subscriber waits for all requests receive responses in a batch request.
+     */
     private class RpcResponseSubscriber implements Consumer<RpcResponse> {
         final Map<String, ValueNode> compositeToOriginalRequestId = new HashMap<>();
         final List<RpcResponse> responses = new ArrayList<>();
-        final List<RpcRequest> validRequests = new ArrayList<>();
+        final List<RpcRequest> requestsToBeSent = new ArrayList<>();
         final boolean isBatch;
         private int pendingRequests;
 
@@ -217,9 +237,9 @@ public class ClientChannelController {
                     if (request.getId() != NullNode.getInstance()) {
                         String id = prefix + "/" + request.getId().asText();
                         compositeToOriginalRequestId.put(id, request.getId());
-                        validRequests.add(request.copyWith(id));
+                        requestsToBeSent.add(request.copyWith(id));
                     } else {
-                        validRequests.add(request);
+                        requestsToBeSent.add(request);
                     }
                 }
             }
@@ -227,6 +247,7 @@ public class ClientChannelController {
         }
 
         public void accept(RpcResponse response) {
+            log.debug("Deployment subscriber {} received response ID {}", context.getSourceDeployment(), response.getId());
             synchronized (this) {
                 ValueNode originalId = compositeToOriginalRequestId.get(response.getId().asText());
                 if (originalId == null) {
@@ -252,6 +273,7 @@ public class ClientChannelController {
                 }
             }
             sendMessage(response);
+            log.debug("Response was sent to deployment subscriber {}", context.getSourceDeployment());
         }
 
         synchronized boolean ready() {

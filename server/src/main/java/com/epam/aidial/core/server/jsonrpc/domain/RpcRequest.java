@@ -30,7 +30,7 @@ public class RpcRequest {
     @JsonIgnore
     @Nullable
     public ErrorMessage validate() {
-        if (VERSION.equals(jsonrpc)) {
+        if (!VERSION.equals(jsonrpc)) {
             return new ErrorMessage(-32600, "JSON-RPC version 2.0 is only supported", null);
         }
         if (method == null || method.isEmpty()) {

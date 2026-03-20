@@ -60,10 +60,12 @@ public class ClientChannelService {
                 if (status == PendingMessage.Status.CREATED) {
                     subscriber.accept(message.getRpcRequest());
                     message.setStatus(PendingMessage.Status.SENT);
+                    log.debug("Missed RPC request {} is sent to subscriber {}", message.getRpcRequest().getId().asText(), channelId);
                 } else if (status == PendingMessage.Status.RECEIVED) {
                     PubSubResponse pubSubResponse = new PubSubResponse(channelId, message.getRpcResponse());
                     rpcResponseTopic.publish(pubSubResponse);
                     iterator.remove();
+                    log.debug("Missed RPC response {} is published to Redis topic {}", message.getRpcResponse().getId().asText(), channelId);
                 }
             }
         });
@@ -80,6 +82,7 @@ public class ClientChannelService {
             String json = bucket.get();
             ClientChannelState clientChannelData = ProxyUtil.convertToObject(json, ClientChannelState.class);
             if (clientChannelData == null) {
+                log.debug("Client channel {} is not found", channelId);
                 throw new IllegalArgumentException("Client channel is not found for the given ID: " + channelId);
             }
 
@@ -103,6 +106,7 @@ public class ClientChannelService {
 
         @Override
         public void accept(RpcRequest request) {
+            log.debug("RpcRequestSubscriber starts receiving request ID {}", request.getId());
             subscriber.accept(request);
             String requestId = request.getId().asText();
             updateClientChannelState(channelId, context, clientChannelState -> {
@@ -113,10 +117,12 @@ public class ClientChannelService {
                 }
                 message.setStatus(PendingMessage.Status.SENT);
             });
+            log.debug("RpcRequestSubscriber finishes receiving request ID {}", request.getId());
         }
     }
     
     public void report(String channelId, RpcResponse response, ProxyContext context) {
+        log.debug("Start reporting response ID {} to channel ID {}", response.getId(), channelId);
         PubSubResponse pubSubResponse = new PubSubResponse(channelId, response);
         String requestId = response.getId().asText();
         updateClientChannelState(channelId, context, clientChannelState -> {
@@ -130,6 +136,7 @@ public class ClientChannelService {
         });
         rpcResponseTopic.publish(pubSubResponse);
         updateClientChannelState(channelId, context, clientChannelState -> clientChannelState.getPendingMessages().remove(requestId));
+        log.debug("Finish reporting response ID {} to channel ID {}", response.getId(), channelId);
     }
 
     public List<RpcResponseTopic.RpcResponseSubscription> interact(String channelId, List<RpcRequest> requestList, Consumer<RpcResponse> subscriber, ProxyContext context) {
@@ -143,8 +150,10 @@ public class ClientChannelService {
                 PendingMessage message = pendingMessageMap.get(requestId);
                 if (message != null) {
                     if (message.getStatus() == PendingMessage.Status.RECEIVED) {
+                        log.debug("RPC response {} is already received. Channel ID {}", message.getRpcResponse().getId(), channelId);
                         responses.add(message.getRpcResponse());
                     } else {
+                        log.debug("Register request {} . Channel ID {}", request.getId(), channelId);
                         requestsToBeSubscribed.add(requestId);
                     }
                 } else {
@@ -153,8 +162,12 @@ public class ClientChannelService {
                     pendingMessage.setStatus(PendingMessage.Status.CREATED);
                     pendingMessageMap.put(requestId, pendingMessage);
                     requestsToBePublished.add(request);
+                    log.debug("Adds new pending message for request {} . Channel ID {}", request.getId(), channelId);
                     if (request.getId() != NullNode.getInstance()) { // notification doesn't expect response
+                        log.debug("Register request {} . Channel ID {}", request.getId(), channelId);
                         requestsToBeSubscribed.add(requestId);
+                    } else {
+                        log.debug("Notification {} is not registered. Channel ID {}", request.getId(), channelId);
                     }
                 }
             }
@@ -184,10 +197,12 @@ public class ClientChannelService {
             throw new IllegalStateException(String.format("Client channel %s already exists in Redis storage", channelId));
         }
         bucket.expire(ttl);
+        log.debug("Client channel {} is created with ttl {}", channelId, ttl);
         return channelId;
     }
 
     public boolean deleteChannel(String channelId, ProxyContext context) {
+        log.debug("Delete client channel {}", channelId);
         String redisKey = toRedisKey(channelId, context);
         RBucket<String> bucket = redis.getBucket(redisKey);
         return bucket.delete();

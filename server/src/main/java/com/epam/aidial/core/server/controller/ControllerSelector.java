@@ -286,7 +286,7 @@ public class ControllerSelector {
             PerRequestPermissionController controller = new PerRequestPermissionController(context);
             return () -> controller.handle(operation);
         });
-        post(RouteTemplate.CODE_INTERPRETER, (proxy, context, pathMatcher) -> {
+        post(RouteTemplate.CLIENT_CHANNEL, (proxy, context, pathMatcher) -> {
             String operation = pathMatcher.group(1);
             ClientChannelController controller = new ClientChannelController(context);
 
