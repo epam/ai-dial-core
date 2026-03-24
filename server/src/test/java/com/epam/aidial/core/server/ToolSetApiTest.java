@@ -1090,6 +1090,74 @@ public class ToolSetApiTest extends ResourceBaseTest {
         verify(response, 400, "Wrong authentication_type. Expected type: API_KEY, provided: OAUTH");
     }
 
+    @Test
+    void testCreateToolSetWithOauthStaticEndpointsPreservedAfterDiscovery() throws JsonProcessingException {
+        String requestBody = """
+                {
+                    "endpoint": "http://localhost:9876/mcp",
+                    "transport": "HTTP",
+                    "allowedTools": [],
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "my-client-id",
+                        "client_secret": "my-client-secret",
+                        "redirect_uri": "http://localhost:3000/auth/signin",
+                        "authorization_endpoint": "https://static.auth.example.com/authorize",
+                        "token_endpoint": "https://static.auth.example.com/token"
+                    }
+                }
+                """;
+
+        String protectedResourceMetadata = """
+                {
+                    "resource": "http://localhost:9876/mcp",
+                    "authorization_servers": ["http://localhost:9876"],
+                    "scopes_supported": ["read", "write"]
+                }
+                """;
+
+        String authServerMetadata = """
+                {
+                    "issuer": "http://localhost:9876",
+                    "authorization_endpoint": "https://discovered.auth.example.com/authorize",
+                    "token_endpoint": "https://discovered.auth.example.com/token",
+                    "code_challenge_methods_supported": ["S256"]
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            // MCP endpoint returns 401 without WWW-Authenticate to trigger well-known discovery
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+
+            // Protected resource metadata discovery
+            server.map(HttpMethod.GET, "/.well-known/oauth-protected-resource/mcp",
+                    200, protectedResourceMetadata, "Content-Type", "application/json");
+
+            // Authorization server metadata discovery (on the auth server from authorization_servers)
+            server.map(HttpMethod.GET, "/.well-known/oauth-authorization-server",
+                    200, authServerMetadata, "Content-Type", "application/json");
+
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-oauth-static@",
+                    null, requestBody, "authorization", "admin");
+
+            assertEquals(200, response.status());
+
+            // GET the created toolset to verify auth_settings
+            response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-oauth-static@",
+                    null, null, "authorization", "admin");
+
+            assertEquals(200, response.status());
+            JsonNode toolset = ProxyUtil.MAPPER.readTree(response.body());
+            JsonNode authSettings = toolset.get("auth_settings");
+
+            // Static endpoints must be preserved (not overwritten by discovered ones)
+            assertEquals("https://static.auth.example.com/authorize", authSettings.get("authorization_endpoint").asText());
+            assertEquals("https://static.auth.example.com/token", authSettings.get("token_endpoint").asText());
+            // codeChallengeMethod should be filled from discovery
+            assertEquals("S256", authSettings.get("code_challenge_method").asText());
+        }
+    }
+
     private String replaceValueInJsonArray(
             String originalJson,
             String arrayFieldName,
