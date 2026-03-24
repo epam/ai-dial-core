@@ -97,6 +97,7 @@ public class ApiKeyStore {
                 break;
             }
         }
+        bucket.expire(ttl);
     }
 
     /**

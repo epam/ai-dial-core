@@ -15,7 +15,6 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ValueNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -57,7 +56,6 @@ public class ClientChannelController {
 
     public Future<?> subscribe() {
         HttpServerResponse response = context.getResponse();
-        Runnable heartbeat = this::sendHeartbeat;
         Consumer<RpcRequest> subscriber = this::sendMessage;
         MutableObject<String> channelIdRef = new MutableObject<>();
         taskExecutor.submit(() -> {
@@ -66,13 +64,14 @@ public class ClientChannelController {
                 channelId = clientChannelService.createChannel(context);
                 response.putHeader(Proxy.HEADER_CLIENT_CHANNEL_ID, channelId);
             }
-            heartbeatService.subscribe(heartbeat);
             channelIdRef.setValue(channelId);
             log.info("Client subscribes on channel {}. User {}. Project {}",
                     channelId, context.getUserId(), context.getProject());
             return clientChannelService.subscribe(channelId, subscriber, context);
         }).onSuccess(subscription -> {
 
+            Runnable heartbeat = this::sendHeartbeat;
+            heartbeatService.subscribe(heartbeat);
             setupEventStreamResponse(response);
 
             response.closeHandler(event -> {
@@ -133,11 +132,12 @@ public class ClientChannelController {
             handleRpcError(new HttpException(HttpStatus.BAD_REQUEST, "Channel ID is missed"));
             return Future.succeededFuture();
         }
-        Runnable heartbeat = this::sendHeartbeat;
         context.getRequest()
                 .body()
-                .compose(json -> createResponseSubscriptions(channelId, json, heartbeat))
+                .compose(json -> createResponseSubscriptions(channelId, json))
                 .onSuccess(subscriptions -> {
+                    Runnable heartbeat = this::sendHeartbeat;
+                    heartbeatService.subscribe(heartbeat);
                     response.closeHandler(event -> {
                         log.debug("Deployment closes channel {}. User {}. Project {}",
                                 channelId, context.getUserId(), context.getProject());
@@ -159,7 +159,7 @@ public class ClientChannelController {
                 .write(""); // to force writing header
     }
 
-    private Future<List<RpcResponseTopic.RpcResponseSubscription>> createResponseSubscriptions(String channelId, Buffer json, Runnable heartbeat) {
+    private Future<List<RpcResponseTopic.RpcResponseSubscription>> createResponseSubscriptions(String channelId, Buffer json) {
         RpcResponseSubscriber subscriber;
         try {
             subscriber = parseRpcRequest(json, channelId);
@@ -173,10 +173,7 @@ public class ClientChannelController {
             subscriber.sendResponse();
             return Future.succeededFuture(List.of());
         } else {
-            return taskExecutor.submit(() -> {
-                heartbeatService.subscribe(heartbeat);
-                return clientChannelService.interact(channelId, subscriber.requestsToBeSent, subscriber, context);
-            });
+            return taskExecutor.submit(() -> clientChannelService.interact(channelId, subscriber.requestsToBeSent, subscriber, context));
         }
     }
 
@@ -223,18 +220,15 @@ public class ClientChannelController {
         final List<RpcResponse> responses = new ArrayList<>();
         final List<RpcRequest> requestsToBeSent = new ArrayList<>();
         final boolean isBatch;
-        private int pendingRequests;
 
         RpcResponseSubscriber(List<RpcRequest> requests, boolean isBatch, String prefix) {
-            this.pendingRequests = requests.size();
             for (RpcRequest request : requests) {
                 ErrorMessage error = request.validate();
                 if (error != null) {
                     RpcResponse rpcResponse = new RpcResponse(error);
                     responses.add(rpcResponse);
-                    pendingRequests--;
                 } else {
-                    if (request.getId() != NullNode.getInstance()) {
+                    if (!request.getId().isNull()) {
                         String id = prefix + "/" + request.getId().asText();
                         compositeToOriginalRequestId.put(id, request.getId());
                         requestsToBeSent.add(request.copyWith(id));
@@ -248,17 +242,16 @@ public class ClientChannelController {
 
         public void accept(RpcResponse response) {
             log.debug("Deployment subscriber {} received response ID {}", context.getSourceDeployment(), response.getId());
+            boolean isReadyToSentResponse;
             synchronized (this) {
-                ValueNode originalId = compositeToOriginalRequestId.get(response.getId().asText());
+                ValueNode originalId = compositeToOriginalRequestId.remove(response.getId().asText());
                 if (originalId == null) {
                     return;
                 }
                 responses.add(response.copyWith(originalId));
-                if (pendingRequests > 0) {
-                    pendingRequests--;
-                }
+                isReadyToSentResponse = ready();
             }
-            if (ready()) {
+            if (isReadyToSentResponse) {
                 sendResponse();
             }
         }
@@ -276,8 +269,11 @@ public class ClientChannelController {
             log.debug("Response was sent to deployment subscriber {}", context.getSourceDeployment());
         }
 
+        /**
+         * Determines if the subscriber is ready to send a response.
+         */
         synchronized boolean ready() {
-            return pendingRequests == 0;
+            return compositeToOriginalRequestId.isEmpty();
         }
     }
 

@@ -89,6 +89,7 @@ public class ClientChannelService {
             handler.accept(clientChannelData);
 
             bucket.set(ProxyUtil.convertToString(clientChannelData));
+            bucket.expire(ttl);
         }
     }
 
@@ -157,16 +158,17 @@ public class ClientChannelService {
                         requestsToBeSubscribed.add(requestId);
                     }
                 } else {
-                    PendingMessage pendingMessage = new PendingMessage();
-                    pendingMessage.setRpcRequest(request);
-                    pendingMessage.setStatus(PendingMessage.Status.CREATED);
-                    pendingMessageMap.put(requestId, pendingMessage);
                     requestsToBePublished.add(request);
-                    log.debug("Adds new pending message for request {} . Channel ID {}", request.getId(), channelId);
-                    if (request.getId() != NullNode.getInstance()) { // notification doesn't expect response
+                    if (!request.getId().isNull()) {
+                        log.debug("Adds new pending message for request {} . Channel ID {}", request.getId(), channelId);
+                        PendingMessage pendingMessage = new PendingMessage();
+                        pendingMessage.setRpcRequest(request);
+                        pendingMessage.setStatus(PendingMessage.Status.CREATED);
+                        pendingMessageMap.put(requestId, pendingMessage);
                         log.debug("Register request {} . Channel ID {}", request.getId(), channelId);
                         requestsToBeSubscribed.add(requestId);
                     } else {
+                        // notification doesn't expect response
                         log.debug("Notification {} is not registered. Channel ID {}", request.getId(), channelId);
                     }
                 }
