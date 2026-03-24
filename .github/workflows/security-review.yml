@@ -27,4 +27,4 @@ jobs:
           claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           comment-pr: true
           run-every-commit: true
-          claude-model: claude-sonnet-4-6-20250514
+          claude-model: ${{ vars.CLAUDE_MODEL || 'claude-sonnet-4-6-20250514' }}
