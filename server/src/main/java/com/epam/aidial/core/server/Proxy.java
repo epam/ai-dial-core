@@ -36,6 +36,7 @@ import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
+import com.epam.aidial.core.server.service.clientchannel.ClientChannelService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -98,6 +99,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_APPLICATION_PROPERTIES = "X-DIAL-APPLICATION-PROPERTIES";
     public static final String HEADER_APPLICATION_ID = "X-DIAL-APPLICATION-ID";
     public static final String HEADER_OVERRIDE_NAME = "X-DIAL-OVERRIDE-NAME";
+    public static final String HEADER_CLIENT_CHANNEL_ID = "X-DIAL-CLIENT-CHANNEL-ID";
 
     public static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT,
             HttpMethod.DELETE, HttpMethod.HEAD, HttpMethod.PATCH);
@@ -141,6 +143,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ResourceCredentialsService resourceCredentialsService;
     private final PerRequestPermissionService perRequestPermissionService;
     private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
+    private final ClientChannelService clientChannelService;
     private final AsyncTaskExecutor taskExecutor;
     private final String version;
 
