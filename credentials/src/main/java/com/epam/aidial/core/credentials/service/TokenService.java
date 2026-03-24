@@ -7,6 +7,7 @@ import com.epam.aidial.core.credentials.data.credentials.TokenRequest;
 import com.epam.aidial.core.credentials.data.credentials.TokenResponse;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @AllArgsConstructor
 @Slf4j
@@ -25,8 +26,7 @@ public class TokenService {
                 // TODO: do we need to support different?
                 .grantType("authorization_code")
                 .codeVerifier(resourceAuthSettings.getCodeVerifier())
-                .redirectUri(resourceSignInRequest.getRedirectUri() != null
-                        && !resourceSignInRequest.getRedirectUri().isBlank()
+                .redirectUri(StringUtils.isNotBlank(resourceSignInRequest.getRedirectUri())
                         ? resourceSignInRequest.getRedirectUri()
                         : resourceAuthSettings.getRedirectUri())
                 .build();
