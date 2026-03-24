@@ -245,7 +245,7 @@ public class AiDial {
             ApiKeyValidation apiKeyValidation = Json.decodeValue(settings("apiKeyValidation").toBuffer(), ApiKeyValidation.class);
 
             Duration clientChannelTtl = Duration.ofMillis(resourceServiceSettings.getResourceTypesExpiration().get(ResourceTypes.CLIENT_CHANNEL.name()));
-            ClientChannelService clientChannelService = new ClientChannelService(lockService, redis, storage.getPrefix(), clientChannelTtl);
+            ClientChannelService clientChannelService = new ClientChannelService(lockService, redis, taskExecutor, clock, storage.getPrefix(), clientChannelTtl);
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,

@@ -15,6 +15,8 @@ public class PendingMessage {
 
     private RpcResponse rpcResponse;
 
+    private long receivedAt;
+
     public enum Status {
         CREATED, SENT, RECEIVED
     }
