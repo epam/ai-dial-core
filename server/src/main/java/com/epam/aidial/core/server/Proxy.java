@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
@@ -21,6 +22,7 @@ import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.server.security.IdentityProvider;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ConsentService;
@@ -296,6 +298,15 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
 
         if (apiKey == null) {
+            String token = AccessTokenValidator.extractTokenFromHeader(authorization);
+            try {
+                IdentityProvider.decodeJwtToken(token);
+            } catch (JWTDecodeException e) {
+                // OpenAI's Responses API uses the Authorization header to send the API key.
+                return apiKeyStore.getApiKeyData(token, clientIpAddress)
+                        .map(apiKeyData -> new AuthorizationResult(apiKeyData, null));
+            }
+
             return tokenValidator.extractClaims(authorization)
                     .compose(extractedClaims -> Future.succeededFuture(new AuthorizationResult(new ApiKeyData(), extractedClaims)),
                             error -> {

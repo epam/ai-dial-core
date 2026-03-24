@@ -1,9 +1,12 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.security.ExtractedClaims;
@@ -15,12 +18,14 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.RequestOptions;
 import io.vertx.core.http.ServerWebSocket;
 import lombok.Getter;
 import lombok.Setter;
@@ -28,19 +33,23 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
+import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
 
 @Slf4j
 @Getter
 @Setter
 public class ProxyContext {
-
-    private static final int LOG_MAX_ERROR_LENGTH = 200;
+    private static final Set<Integer> DEFAULT_RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
+            HttpStatus.BAD_GATEWAY.getCode(), HttpStatus.GATEWAY_TIMEOUT.getCode(),
+            HttpStatus.SERVICE_UNAVAILABLE.getCode());
     private static final Set<CharSequence> CORS_SAFE_LIST = Stream.of(
                     HttpHeaders.CACHE_CONTROL,
                     HttpHeaders.CONTENT_LANGUAGE,
@@ -80,7 +89,6 @@ public class ProxyContext {
     private Route route;
     private UpstreamRoute upstreamRoute;
     private HttpClientRequest proxyRequest;
-    private Map<String, String> requestHeaders = Map.of();
     private HttpClientResponse proxyResponse;
     private Buffer requestBody;
     private Buffer responseBody;
@@ -94,7 +102,6 @@ public class ProxyContext {
     private ApiKeyData proxyApiKeyData;
     // deployment triggers interceptors
     private String initialDeployment;
-    private String initialDeploymentApi;
     // List of interceptors copied from the deployment config, global interceptors and application type interceptors
     private List<String> interceptors;
     private boolean isStreamingRequest;
@@ -237,10 +244,6 @@ public class ProxyContext {
         return initialDeployment == null ? apiKeyData.getInitialDeployment() : initialDeployment;
     }
 
-    public String getInitialDeploymentApi() {
-        return initialDeploymentApi == null ? apiKeyData.getInitialDeploymentApi() : initialDeploymentApi;
-    }
-
     public ProxyContext putHeader(CharSequence name, String value) {
         response.putHeader(name, value);
 
@@ -276,5 +279,64 @@ public class ProxyContext {
 
     public ProxyContext copyWith(ApiKeyData newApiKeyData) {
         return new ProxyContext(proxy, config, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
+    }
+
+    public Future<HttpClientRequest> createProxyRequest(Function<Deployment, String> endpointSelector) {
+        String uri = endpointSelector.apply(deployment) + (request.query() == null ? "" : request.query());
+        RequestOptions options = new RequestOptions()
+                .setAbsoluteURI(uri)
+                .setMethod(request.method())
+                .setTraceOperation(traceOperation)
+                .setConnectTimeout(proxy.getClientOptions().getConnectTimeout())
+                .setIdleTimeout(proxy.getClientOptions().getIdleTimeout());
+
+        return proxy.getClient().request(options);
+    }
+
+    public Future<HttpClientResponse> sendProxyRequest(
+            HttpClientRequest proxyRequest, Function<Upstream, String> upstreamSelector) {
+        log.info("Connected to origin. Deployment: {}. Address: {}",
+                deployment.getName(),
+                proxyRequest.connection().remoteAddress());
+
+        MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
+        if (!deployment.isForwardAuthToken()) {
+            excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
+        }
+        excludeHeaders.add(HEADER_APPLICATION_PROPERTIES, "whatever");
+        excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
+
+        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
+        ProxyUtil.setOverrideNameHeader(proxyRequest, deployment);
+
+        proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
+
+        if (deployment instanceof Model model && !model.getUpstreams().isEmpty()) {
+            Upstream upstream = Objects.requireNonNull(upstreamRoute.get());
+            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstreamSelector.apply(upstream))
+                    .putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey())
+                    .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, upstream.getExtraData())
+                    .putHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH, upstreamRoute.getBreakpointPath())
+                    .putHeader(Proxy.HEADER_CACHE_EXTRA_METADATA, upstreamRoute.getExtraMetadata());
+        }
+
+        if (deployment instanceof Application application && application.hasApplicationTypeSchemaId()) {
+            proxyRequest.putHeader(HEADER_APPLICATION_ID, deployment.getName());
+
+            proxy.getApplicationSchemaService().consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
+                if (appendApplicationPropertiesHeader) {
+                    String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
+                    proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
+                }
+            });
+        }
+
+        proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
+
+        return proxyRequest.send(requestBody);
+    }
+
+    public boolean isRetriableError(int statusCode) {
+        return DEFAULT_RETRIABLE_HTTP_CODES.contains(statusCode) || config.getRetriableErrorCodes().contains(statusCode);
     }
 }

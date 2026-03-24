@@ -9,13 +9,13 @@ import java.math.BigDecimal;
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class TokenUsage {
-    @JsonAlias({"completion_tokens", "completionTokens"})
+    @JsonAlias({"output_tokens", "completion_tokens", "completionTokens"})
     private long completionTokens;
-    @JsonAlias({"prompt_tokens", "promptTokens"})
+    @JsonAlias({"input_tokens", "prompt_tokens", "promptTokens"})
     private long promptTokens;
     @JsonAlias({"total_tokens", "totalTokens"})
     private long totalTokens;
-    @JsonAlias({"prompt_tokens_details", "promptsTokenDetails"})
+    @JsonAlias({"input_tokens_details", "prompt_tokens_details", "promptsTokenDetails"})
     private PromptTokensDetails promptTokensDetails;
 
     private BigDecimal cost;

@@ -16,6 +16,8 @@ public class Upstream {
 
     @JsonAlias({"endpoint", "dial:endpoint"})
     private String endpoint;
+    @JsonAlias({"responsesEndpoint", "dial:responsesEndpoint"})
+    private String responsesEndpoint;
     @ToString.Exclude
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @JsonAlias({"key", "dial:key"})

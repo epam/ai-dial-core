@@ -1,10 +1,15 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -95,5 +100,38 @@ public class BaseDeploymentPostController {
     protected void handleRequestBodyError(Throwable error) {
         respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
         log.warn("Failed to receive client body. Error: {}", error.getMessage());
+    }
+
+    protected Future<TokenUsage> collectTokenUsage(Buffer responseBody) {
+        Future<TokenUsage> tokenUsageFuture = Future.succeededFuture();
+        if (context.getDeployment() instanceof Model model) {
+            if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
+                TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
+                if (tokenUsage == null) {
+                    Pricing pricing = model.getPricing();
+                    if (pricing == null || "token".equals(pricing.getUnit())) {
+                        Upstream currentUpstream = context.getUpstreamRoute().get();
+                        log.warn("Can't find token usage. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}. Upstream.extraData: {}",
+                                context.getDeployment().getName(),
+                                context.getDeployment().getEndpoint(),
+                                currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
+                                context.getResponseBody().length(),
+                                currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
+                    }
+                    tokenUsage = new TokenUsage();
+                }
+                context.setTokenUsage(tokenUsage);
+                tokenUsageFuture = proxy.getRateLimiter().increase(context, context.getDeployment())
+                        .transform(result -> {
+                            if (result.failed()) {
+                                log.warn("Failed to increase limit", result.cause());
+                            }
+                            return proxy.getTokenStatsTracker().updateModelStats(context);
+                        });
+            }
+        } else {
+            tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context).andThen(result -> context.setTokenUsage(result.result()));
+        }
+        return tokenUsageFuture;
     }
 }

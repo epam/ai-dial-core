@@ -3,21 +3,13 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
-import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
-import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
-import com.epam.aidial.core.server.function.CollectDeploymentsFn;
-import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
-import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
-import com.epam.aidial.core.server.function.CollectRequestDataFn;
-import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
-import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -27,7 +19,6 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -39,220 +30,137 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 
 @Slf4j
-public class DeploymentPostController extends BaseDeploymentPostController {
+public class ResponsesController extends BaseDeploymentPostController {
     private final List<BaseRequestFunction<ObjectNode>> enhancementFunctions;
 
-    public DeploymentPostController(Proxy proxy, ProxyContext context) {
+    public ResponsesController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
-        this.enhancementFunctions = List.of(new CollectRequestChatCompletionAttachmentsFn(proxy, context),
-                new CollectRequestDataFn(proxy, context),
-                new ApplyDefaultDeploymentSettingsFn(proxy, context),
-                new EnhanceModelRequestFn(proxy, context),
-                new CollectRequestApplicationFilesFn(proxy, context),
-                new BuildUpstreamCacheFn(proxy, context),
-                new CollectDeploymentsFn(proxy, context));
+        this.enhancementFunctions = List.of(new EnhanceModelRequestFn(proxy, context));
     }
 
-    public Future<?> handle(String deploymentId) {
+    public Future<?> handle() {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
         if (!Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
-        // handle a special deployment `interceptor`
-        if ("interceptor".equals(deploymentId)) {
-            // move to next interceptor
-            int nextIndex = context.getApiKeyData().getInterceptorIndex() + 1;
-            return handleInterceptor(nextIndex);
-        }
-        return handleDeployment(deploymentId);
+        return proxy.getTaskExecutor().submit(() -> {
+            context.getRequest().body()
+                    .compose(body -> {
+                        log.info("Received body from client. Length: {}", body.length());
+                        return proxy.getTaskExecutor().submit(() -> parseBody(body));
+                    }).compose(tree -> {
+                        String model = tree.path("model").asText();
+                        return proxy.getTaskExecutor().submit(() -> setupDeployment(model))
+                                .compose(ignore -> verifyLimit())
+                                .map(ignore -> handleRequestBody(tree))
+                                .otherwise(error -> handleRequestError(context.getDeployment().getName(), error));
+                    })
+                    .onFailure(this::handleRequestBodyError);
+            return null;
+        });
     }
 
-    private Future<?> handleDeployment(String deploymentId) {
-        return proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId))
-                .compose(dep -> proxy.getTaskExecutor().submit(() -> {
-                    proxy.getConsentService().verifyUserConsent(context, dep);
-                    return dep;
-                }))
-                .map(dep -> {
-                    Features features = dep.getFeatures();
-                    boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
-                    if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
-                        throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", deploymentId, context.getApiKeyData().getSourceDeployment()));
-                    }
+    private Void setupDeployment(String model) {
+        Deployment deployment = proxy.getDeploymentService().findDeployment(context, model);
+        proxy.getConsentService().verifyUserConsent(context, deployment);
 
-                    if (dep instanceof Application app) {
-                        dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(app);
-                    }
+        Features features = deployment.getFeatures();
+        boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
+        if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
+            throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", model, context.getApiKeyData().getSourceDeployment()));
+        }
 
-                    if (dep.getEndpoint() == null) {
-                        throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
-                    }
+        if (deployment instanceof Application application) {
+            deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
+        }
 
-                    context.setTraceOperation("Send request to %s deployment".formatted(dep.getName()));
-                    context.setDeployment(dep);
-                    List<String> interceptors = proxy.getDeploymentService().getInterceptors(context, dep);
-                    context.setInterceptors(interceptors);
-                    return dep;
-                })
-                .compose(dep -> {
-                    if (dep instanceof Model && !context.hasNextInterceptor()) {
-                        return proxy.getRateLimiter().limit(context, dep);
-                    } else {
-                        return Future.succeededFuture(RateLimitResult.SUCCESS);
-                    }
-                })
-                .compose(rateLimitResult -> {
-                    Future<?> future;
-                    if (rateLimitResult.status() == HttpStatus.OK) {
-                        if (context.hasNextInterceptor()) {
-                            context.setInitialDeployment(deploymentId);
-                            future = handleInterceptor(0);
-                        } else {
-                            future = handleRateLimitSuccess();
-                        }
-                    } else {
-                        handleRateLimitHit(deploymentId, rateLimitResult);
-                        future = Future.succeededFuture();
-                    }
-                    return future;
-                })
-                .otherwise(error -> {
-                    handleRequestError(deploymentId, error);
+        if (deployment.getResponsesEndpoint() == null) {
+            throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
+        }
+
+        context.setTraceOperation("Send request to %s deployment".formatted(deployment.getName()));
+        context.setDeployment(deployment);
+
+        return null;
+    }
+
+    private Future<Void> verifyLimit() {
+        return proxy.getRateLimiter().limit(context, context.getDeployment())
+                .map(rateLimit -> {
+                    rateLimit.throwIfError();
                     return null;
                 });
     }
 
-    private Future<?> handleInterceptor(int interceptorIndex) {
-        ApiKeyData apiKeyData = context.getApiKeyData();
-        List<String> interceptors = context.getInterceptors();
-        if (interceptorIndex < interceptors.size()) {
-            String interceptorName = interceptors.get(interceptorIndex);
-            Interceptor interceptor = context.getConfig().getInterceptors().get(interceptorName);
-            if (interceptor == null) {
-                log.warn("Interceptor is not found for the given name: {}", interceptorName);
-                return respond(HttpStatus.NOT_FOUND, "Interceptor is not found");
-            }
-            context.setTraceOperation("Send request to %s interceptor".formatted(interceptorName));
-            context.setDeployment(interceptor);
-            ApiKeyData proxyApiKeyData = new ApiKeyData();
-            proxyApiKeyData.setInterceptorIndex(interceptorIndex);
-            proxyApiKeyData.setInterceptors(interceptors);
-            proxyApiKeyData.setInitialDeployment(context.getInitialDeployment());
-            setupProxyApiKeyData(proxyApiKeyData);
-
-            InterceptorController controller = new InterceptorController(proxy, context);
-            return controller.handle();
-        } else { // all interceptors are completed we should call the initial deployment
-            return handleDeployment(apiKeyData.getInitialDeployment());
+    private ObjectNode parseBody(Buffer body) throws IOException {
+        try (InputStream stream = new ByteBufInputStream(body.getByteBuf())) {
+            return (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
         }
     }
 
-    private void handleRequestError(String deploymentId, Throwable error) {
+    private Void handleRequestError(String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {
             respond(HttpStatus.FORBIDDEN, error.getMessage());
             log.warn("Forbidden deployment {}", deploymentId);
         } else if (error instanceof ResourceNotFoundException) {
             respond(HttpStatus.NOT_FOUND, error.getMessage());
             log.warn("Deployment not found {}", deploymentId, error);
-        } else if (error instanceof HttpException e) {
-            respond(e.getStatus(), e.getMessage());
+        } else if (error instanceof HttpException httpException) {
+            respond(httpException);
             log.warn("Deployment error {}", deploymentId, error);
         } else {
             respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);
             log.error("Failed to handle deployment {}", deploymentId, error);
         }
-    }
 
-    private Future<?> handleRateLimitSuccess() {
-        log.info("Received request from client. Deployment: {}. Headers: {}",
-                context.getDeployment().getName(),
-                context.getRequest().headers().size());
-
-        setupProxyApiKeyData(new ApiKeyData());
-        return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
-            context.getRequest().body()
-                    .onSuccess(body -> proxy.getTaskExecutor().submit(() -> {
-                        handleRequestBody(body);
-                        return null;
-                    }).onFailure(error -> handleRequestError(context.getDeployment().getName(), error)))
-                    .onFailure(this::handleRequestBodyError);
-            return null;
-        });
-    }
-
-    private void setupProxyApiKeyData(ApiKeyData proxyApiKeyData) {
-        context.setProxyApiKeyData(proxyApiKeyData);
-        ApiKeyData.initFromContext(proxyApiKeyData, context);
-    }
-
-    private void handleRateLimitHit(String deploymentId, RateLimitResult result) {
-        try {
-            result.throwIfError();
-        } catch (HttpException e) {
-            respond(e);
-            log.warn("Rate limit error {}. Deployment: {}", result.errorMessage(), deploymentId);
-        }
+        return null;
     }
 
     @SneakyThrows
+    private Void handleRequestBody(ObjectNode tree) {
+        if (ProxyUtil.processChain(tree, enhancementFunctions)) {
+            context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
+        }
+        proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
+
+        Deployment deployment = context.getDeployment();
+        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
+                .get(deployment, context.getCacheBreakpointContext());
+
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        context.setProxyApiKeyData(proxyApiKeyData);
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
+        context.setRequestBodyTimestamp(System.currentTimeMillis());
+        context.setUpstreamRoute(upstreamRoute);
+        sendRequest();
+
+        return null;
+    }
+
     private void sendRequest() {
         UpstreamRoute route = context.getUpstreamRoute();
         try {
             Upstream next;
             do {
                 next = route.next();
-            } while (next.getEndpoint() != null);
+            } while (next.getResponsesEndpoint() != null);
         } catch (HttpException e) {
             respond(e);
             log.warn("No route. Deployment: {}", context.getDeployment().getName());
             return;
         }
 
-        context.createProxyRequest(Deployment::getEndpoint)
+        context.createProxyRequest(Deployment::getResponsesEndpoint)
                 .onSuccess(this::handleProxyRequest)
                 .onFailure(this::handleProxyConnectionError);
     }
 
-    @VisibleForTesting
-    void handleRequestBody(Buffer requestBody) {
-        Deployment deployment = context.getDeployment();
-        log.info("Received body from client. Deployment: {}. Length: {}",
-                deployment.getName(), requestBody.length());
-
-        context.setRequestBody(requestBody);
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
-
-        try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
-            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            if (ProxyUtil.processChain(tree, enhancementFunctions)) {
-                context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
-            }
-            proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
-        } catch (Throwable e) {
-            if (e instanceof HttpException httpException) {
-                respond(httpException.getStatus(), httpException.getMessage());
-            } else {
-                respond(HttpStatus.BAD_REQUEST);
-            }
-            log.warn("Can't process JSON request body. Error:", e);
-            return;
-        }
-
-        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext());
-        context.setUpstreamRoute(upstreamRoute);
-
-        sendRequest();
-    }
-
-    /**
-     * Called when proxy connected to the origin.
-     */
-    @VisibleForTesting
-    void handleProxyRequest(HttpClientRequest proxyRequest) {
+    private void handleProxyRequest(HttpClientRequest proxyRequest) {
         log.info("Connected to origin. Deployment: {}. Address: {}",
                 context.getDeployment().getName(),
                 proxyRequest.connection().remoteAddress());
@@ -265,15 +173,12 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 .onFailure(this::handleProxyResponseError);
     }
 
-    /**
-     * Called when proxy received the response headers from the origin.
-     */
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         Upstream currentUpstream = upstreamRoute.get();
         log.info("Received header from origin. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}. Upstream.extraData: {}",
                 context.getDeployment().getName(),
-                context.getDeployment().getEndpoint(), currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
+                context.getDeployment().getResponsesEndpoint(), currentUpstream == null ? "N/A" : currentUpstream.getResponsesEndpoint(),
                 proxyResponse.statusCode(), proxyResponse.headers().size(), currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
         int responseStatusCode = proxyResponse.statusCode();
@@ -309,11 +214,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    /**
-     * Called when proxy sent response from the origin to the client.
-     */
-    @VisibleForTesting
-    void handleResponse(BufferingReadStream responseStream) {
+    private void handleResponse(BufferingReadStream responseStream) {
         Buffer responseBody = context.getResponseStream().getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
@@ -357,9 +258,6 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         finalizeRequest();
     }
 
-    /**
-     * Called when proxy failed to receive response header from origin.
-     */
     private void handleProxyResponseError(Throwable error) {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
@@ -368,12 +266,10 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 context.getDeployment().getName(),
                 context.getProxyRequest().connection().remoteAddress(),
                 error);
+
         sendRequest(); // try next
     }
 
-    /**
-     * Called when proxy failed to send response to the client.
-     */
     private void handleResponseError(Throwable error, BufferingReadStream responseStream) {
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
         log.warn("Can't send response to client. Error:", error);
