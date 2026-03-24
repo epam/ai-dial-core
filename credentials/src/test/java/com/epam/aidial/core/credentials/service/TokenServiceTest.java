@@ -51,7 +51,7 @@ class TokenServiceTest {
 
         String formData = formDataCaptor.getValue();
         assertTrue(formData.contains("redirect_uri=http%3A%2F%2Fchat%2Fcallback"),
-                "Should use redirect_uri from sign-in request, got: " + formData);
+                "Expected redirect_uri from sign-in request, got: " + formData);
     }
 
     @Test
