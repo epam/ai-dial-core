@@ -202,10 +202,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
     private void sendRequest() {
         UpstreamRoute route = context.getUpstreamRoute();
         try {
-            Upstream next;
-            do {
-                next = route.next();
-            } while (next.getEndpoint() != null);
+            route.next();
         } catch (HttpException e) {
             respond(e);
             log.warn("No route. Deployment: {}", context.getDeployment().getName());
@@ -260,7 +257,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        context.sendProxyRequest(proxyRequest, Upstream::getResponsesEndpoint)
+        context.sendProxyRequest(proxyRequest, Upstream::getEndpoint)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyResponseError);
     }

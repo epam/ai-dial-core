@@ -23,10 +23,10 @@ public class RandomizedWeightedBalancerTest {
     @Test
     void testWeightedLoadBalancer() {
         List<Upstream> upstreams = List.of(
-                new Upstream("endpoint1", null, null, 1, 0),
-                new Upstream("endpoint2", null, null, 2, 0),
-                new Upstream("endpoint3", null, null, 3, 0),
-                new Upstream("endpoint4", null, null, 4, 0)
+                new Upstream("endpoint1", null, null, null, 1, 0),
+                new Upstream("endpoint2", null, null, null, 2, 0),
+                new Upstream("endpoint3", null, null, null, 3, 0),
+                new Upstream("endpoint4", null, null, null, 4, 0)
         );
 
         RandomizedWeightedBalancer balancer = new RandomizedWeightedBalancer("model1", upstreams, generator);
@@ -60,8 +60,8 @@ public class RandomizedWeightedBalancerTest {
     @Test
     void testZeroWeightLoadBalancer() {
         List<Upstream> upstreams = List.of(
-                new Upstream("endpoint1", null, null, 0, 1),
-                new Upstream("endpoint2", null, null, -9, 1)
+                new Upstream("endpoint1", null, null, null, 0, 1),
+                new Upstream("endpoint2", null, null, null, -9, 1)
         );
         RandomizedWeightedBalancer balancer = new RandomizedWeightedBalancer("model1", upstreams, generator);
 

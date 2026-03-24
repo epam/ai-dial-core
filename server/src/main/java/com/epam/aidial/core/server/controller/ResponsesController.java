@@ -126,17 +126,17 @@ public class ResponsesController extends BaseDeploymentPostController {
         if (ProxyUtil.processChain(tree, enhancementFunctions)) {
             context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
         }
-        proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
 
         Deployment deployment = context.getDeployment();
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment, context.getCacheBreakpointContext());
 
+        context.setRequestBodyTimestamp(System.currentTimeMillis());
+        context.setUpstreamRoute(upstreamRoute);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
-        context.setUpstreamRoute(upstreamRoute);
+        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
         sendRequest();
 
         return null;
@@ -148,7 +148,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             Upstream next;
             do {
                 next = route.next();
-            } while (next.getResponsesEndpoint() != null);
+            } while (next.getResponsesEndpoint() == null);
         } catch (HttpException e) {
             respond(e);
             log.warn("No route. Deployment: {}", context.getDeployment().getName());

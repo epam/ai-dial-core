@@ -111,7 +111,7 @@ public class DeploymentPostControllerTest {
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn("unsupported");
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
 
-        controller.handle("app1", "api");
+        controller.handle("app1");
 
         verify(context).respond(eq(UNSUPPORTED_MEDIA_TYPE), anyString());
     }
@@ -129,7 +129,7 @@ public class DeploymentPostControllerTest {
         when(taskExecutor.submit(any(Callable.class)))
                 .thenReturn(Future.failedFuture(new ResourceNotFoundException("Not found")));
 
-        controller.handle("unknown-app", "chat/completions");
+        controller.handle("unknown-app");
 
         verify(context).respond(eq(NOT_FOUND), anyString());
     }
@@ -154,7 +154,7 @@ public class DeploymentPostControllerTest {
         when(taskExecutor.submit(any(Callable.class)))
                 .thenReturn(Future.succeededFuture(app));
 
-        controller.handle("unknown-app", "chat/completions");
+        controller.handle("unknown-app");
 
         verify(context).respond(eq(FORBIDDEN), anyString());
     }
@@ -183,7 +183,7 @@ public class DeploymentPostControllerTest {
         when(context.getDeployment()).thenReturn(application);
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
 
-        controller.handle("app1", "chat/completions");
+        controller.handle("app1");
 
         verify(context).respond(any(HttpException.class));
     }
@@ -215,7 +215,7 @@ public class DeploymentPostControllerTest {
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
 
-        controller.handle("app1", "chat/completions");
+        controller.handle("app1");
 
         verify(tokenStatsTracker).startSpan(eq(context));
     }
@@ -446,7 +446,7 @@ public class DeploymentPostControllerTest {
         when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
         when(tokenStatsTracker.startSpan(any())).thenReturn(Future.succeededFuture());
 
-        controller.handle("applications/bucket/app1", "chat/completions");
+        controller.handle("applications/bucket/app1");
 
         verify(tokenStatsTracker).startSpan(eq(context));
     }
@@ -478,7 +478,6 @@ public class DeploymentPostControllerTest {
 
         Buffer requestBody = Buffer.buffer("{}");
         when(context.getRequestBody()).thenReturn(requestBody);
-        when(context.getRequestHeaders()).thenReturn(Map.of());
         when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
         doAnswer(ans -> {
             ApplicationSchemaService.MetadataPropertiesConsumer consumer = ans.getArgument(1);
@@ -549,7 +548,6 @@ public class DeploymentPostControllerTest {
 
         Buffer requestBody = Buffer.buffer("{\"custom_fields\":{\"foo\":\"bar\"}}");
         when(context.getRequestBody()).thenReturn(requestBody);
-        when(context.getRequestHeaders()).thenReturn(Map.of());
         when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
         doAnswer(ans -> {
             ApplicationSchemaService.MetadataPropertiesConsumer consumer = ans.getArgument(1);
@@ -594,7 +592,6 @@ public class DeploymentPostControllerTest {
 
         Buffer requestBody = Buffer.buffer("{}");
         when(context.getRequestBody()).thenReturn(requestBody);
-        when(context.getRequestHeaders()).thenReturn(Map.of());
 
         controller.handleProxyRequest(proxyRequest);
 
