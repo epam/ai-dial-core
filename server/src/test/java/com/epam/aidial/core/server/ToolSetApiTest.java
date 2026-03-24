@@ -1158,6 +1158,120 @@ public class ToolSetApiTest extends ResourceBaseTest {
         }
     }
 
+    @Test
+    void testOauthSignInWithRedirectUriFromRequest() {
+        String tokenResponse = """
+                {
+                    "access_token": "test-access-token",
+                    "refresh_token": "test-refresh-token",
+                    "expires_in": 3600
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            // MCP endpoint returns 401 to trigger metadata discovery
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+            // No metadata endpoints — discovery will fail gracefully, static settings will be used
+
+            // Token endpoint that validates redirect_uri from the request
+            server.map(HttpMethod.POST, "/token", request -> {
+
+                String body = request.getBody().readUtf8();
+                if (body.contains("redirect_uri=http%3A%2F%2Fchat%2Fcallback")) {
+                    return new MockResponse()
+                            .setBody(tokenResponse)
+                            .setHeader("Content-Type", "application/json");
+                }
+                return new MockResponse().setResponseCode(400).setBody("redirect_uri mismatch");
+            });
+
+            // Create toolset with OAuth settings (admin redirect_uri in settings)
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-oauth@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "client_secret": "my-client-secret",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            // Sign in with redirect_uri from the chat (overrides admin's redirect_uri)
+            response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset-oauth@",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code",
+                        "redirect_uri": "http://chat/callback"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+        }
+    }
+
+    @Test
+    void testOauthSignInWithoutRedirectUriFallsBackToSettings() {
+        String tokenResponse = """
+                {
+                    "access_token": "test-access-token",
+                    "refresh_token": "test-refresh-token",
+                    "expires_in": 3600
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+
+            // Token endpoint that validates redirect_uri from auth settings
+            server.map(HttpMethod.POST, "/token", request -> {
+                String body = request.getBody().readUtf8();
+                if (body.contains("redirect_uri=http%3A%2F%2Fadmin%2Fcallback")) {
+                    return new MockResponse()
+                            .setBody(tokenResponse)
+                            .setHeader("Content-Type", "application/json");
+                }
+                return new MockResponse().setResponseCode(400).setBody("redirect_uri mismatch");
+            });
+
+            // Create toolset with OAuth settings
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-oauth-fallback@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "client_secret": "my-client-secret",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            // Sign in without redirect_uri — should fall back to auth settings
+            response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset-oauth-fallback@",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+        }
+    }
+
     private String replaceValueInJsonArray(
             String originalJson,
             String arrayFieldName,

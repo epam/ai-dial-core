@@ -25,7 +25,10 @@ public class TokenService {
                 // TODO: do we need to support different?
                 .grantType("authorization_code")
                 .codeVerifier(resourceAuthSettings.getCodeVerifier())
-                .redirectUri(resourceAuthSettings.getRedirectUri())
+                .redirectUri(resourceSignInRequest.getRedirectUri() != null
+                        && !resourceSignInRequest.getRedirectUri().isBlank()
+                        ? resourceSignInRequest.getRedirectUri()
+                        : resourceAuthSettings.getRedirectUri())
                 .build();
 
         TokenResponse tokenResponse = doTokenCall(resourceAuthSettings.getTokenEndpoint(), tokenRequest.buildFormData());
