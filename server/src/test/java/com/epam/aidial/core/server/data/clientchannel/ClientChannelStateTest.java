@@ -30,10 +30,10 @@ public class ClientChannelStateTest {
         message.setReceivedAt(3);
         state.getPendingMessages().put("4", message);
 
-        state.removeExpiredMessages(2, 7);
+        state.removeExpiredMessages(5, 10);
 
         assertEquals(2, state.getPendingMessages().size());
         assertTrue(state.getPendingMessages().containsKey("3"));
-        assertTrue(state.getPendingMessages().containsKey("4"));
+        assertTrue(state.getPendingMessages().containsKey("1"));
     }
 }

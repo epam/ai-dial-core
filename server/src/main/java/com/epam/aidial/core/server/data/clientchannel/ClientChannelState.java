@@ -13,6 +13,6 @@ public class ClientChannelState {
     @JsonIgnore
     public void removeExpiredMessages(long timeout, long nowTs) {
         pendingMessages.values().removeIf(message -> message.getStatus() == PendingMessage.Status.RECEIVED
-                && message.getReceivedAt() + timeout >= nowTs);
+                && message.getReceivedAt() + timeout <= nowTs);
     }
 }
