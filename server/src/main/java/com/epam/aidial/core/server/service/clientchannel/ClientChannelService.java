@@ -85,7 +85,7 @@ public class ClientChannelService {
                 });
             }
             long now = clock.getAsLong();
-            clientChannelState.removeExpired(EXPIRATION_TIMEOUT, now);
+            clientChannelState.removeExpiredMessages(EXPIRATION_TIMEOUT, now);
         });
         RpcRequestSubscriber rpcRequestSubscriber = new RpcRequestSubscriber(channelId, context, subscriber);
         return rpcRequestTopic.subscribe(channelId, rpcRequestSubscriber);
@@ -198,7 +198,7 @@ public class ClientChannelService {
             }
 
             long now = clock.getAsLong();
-            clientChannelState.removeExpired(EXPIRATION_TIMEOUT, now);
+            clientChannelState.removeExpiredMessages(EXPIRATION_TIMEOUT, now);
         });
         for (RpcResponse response : responses) {
             log.debug("RPC response {} is already received. Channel ID {}", response.getId(), channelId);

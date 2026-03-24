@@ -11,7 +11,7 @@ public class ClientChannelState {
     private Map<String, PendingMessage> pendingMessages = new LinkedHashMap<>();
 
     @JsonIgnore
-    public void removeExpired(long timeout, long nowTs) {
+    public void removeExpiredMessages(long timeout, long nowTs) {
         pendingMessages.values().removeIf(message -> message.getStatus() == PendingMessage.Status.RECEIVED
                 && message.getReceivedAt() + timeout >= nowTs);
     }
