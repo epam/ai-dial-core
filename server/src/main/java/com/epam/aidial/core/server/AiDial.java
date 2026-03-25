@@ -374,6 +374,10 @@ public class AiDial {
                 .mergeIn(envSettings(), true);
     }
 
+    private JsonObject settings(String key) {
+        return settings.getJsonObject(key, new JsonObject());
+    }
+
     private List<String> getAllowedRedirectUris() {
         return settings("toolsets")
                 .getJsonObject("security", new JsonObject())
@@ -381,10 +385,6 @@ public class AiDial {
                 .stream()
                 .map(Object::toString)
                 .toList();
-    }
-
-    private JsonObject settings(String key) {
-        return settings.getJsonObject(key, new JsonObject());
     }
 
     private static JsonObject defaultSettings() throws IOException {
