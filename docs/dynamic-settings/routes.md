@@ -55,7 +55,7 @@ A list of upstream servers with their parameters. Use to configure [load balanci
     "rate": {
       "paths": ["/v1/rate"],
       "rewritePath": true,
-      "": ["GET", "HEAD"],
+      "methods": ["GET", "HEAD"],
       "response": {
         "status": 200,
         "body": "OK"
