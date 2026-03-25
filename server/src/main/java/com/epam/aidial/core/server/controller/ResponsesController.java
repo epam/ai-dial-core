@@ -123,9 +123,8 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     @SneakyThrows
     private Void handleRequestBody(ObjectNode tree) {
-        if (ProxyUtil.processChain(tree, enhancementFunctions)) {
-            context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
-        }
+        ProxyUtil.processChain(tree, enhancementFunctions);
+        context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
 
         Deployment deployment = context.getDeployment();
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
