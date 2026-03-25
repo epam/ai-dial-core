@@ -18,7 +18,7 @@ An object containing parameters for each [route](#routes).
     - `body` - http response body.
 * `rewritePath`: A boolean flag that indicates that the path to the upstream server will be replaced with the path of the original request, if this flag is set to `true`.
 * `paths`: A list of paths to be matched request's path. If any path is matched, the request will be processed by this route. **Note**. A path can be a plain string or a regular expression. 
-* `methods`: A list of HTTP methods supported by this route. 
+* `methods`: A list of HTTP methods supported by this route. Supported methods: GET, POST, PUT, DELETE, HEAD and PATCH. 
 * `maxRetryAttempts`: Maximum number of [retry](https://docs.dialx.ai/platform/core/load-balancer#fallbacks) attempts in case if upstream server returns unsuccessful response code. In this case load balancer will try to find another upstream from the list of available upstreams.
 * `order`: The value of this parameter determines the order within the global routes. The lower value means the higher priority. The value can't be negative integer. The default one is 2^31-1.
 * `upstreams`: A list of upstream servers. Either `response` or `upstreams` must be provided. Refer to [routes.<route_name>.upstreams](#routesroute_nameupstreams) for more details.
@@ -41,7 +41,7 @@ A list of upstream servers with their parameters. Use to configure [load balanci
     "vector_store_query": {
       "paths": ["/v1/vector_store(/[^/]+)*$"],
       "rewritePath": true,
-      "methods": ["GET", "HEAD"],
+      "": ["GET", "HEAD"],
       "userRoles": ["role1"],
       "upstreams": [
         {
