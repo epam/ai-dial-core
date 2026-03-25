@@ -12,6 +12,13 @@ jobs:
       contents: read
       pull-requests: write
     steps:
+      - name: Validate API key
+        run: |
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "::error::ANTHROPIC_API_KEY secret is not set or empty"
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       - name: Run Security Review
@@ -19,3 +26,5 @@ jobs:
         with:
           claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           comment-pr: true
+          run-every-commit: true
+          claude-model: ${{ vars.CLAUDE_MODEL || 'claude-sonnet-4-6-20250514' }}
