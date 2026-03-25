@@ -85,9 +85,6 @@ public class DeploymentPostControllerTest {
     private HttpServerRequest request;
 
     @Mock
-    private ApiKeyStore apiKeyStore;
-
-    @Mock
     private RateLimiter rateLimiter;
 
     @Mock
@@ -247,6 +244,7 @@ public class DeploymentPostControllerTest {
 
         Buffer requestBody = Buffer.buffer();
         when(context.getRequestBody()).thenReturn(requestBody);
+        doCallRealMethod().when(context).sendProxyRequest(any(), any());
 
         controller.handleProxyRequest(proxyRequest);
 
@@ -285,6 +283,7 @@ public class DeploymentPostControllerTest {
         Buffer requestBody = Buffer.buffer(body);
         when(context.getRequestBody()).thenCallRealMethod();
         doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).createProxyRequest(any());
 
         controller.handleRequestBody(requestBody);
 
@@ -327,6 +326,7 @@ public class DeploymentPostControllerTest {
         Buffer requestBody = Buffer.buffer(body);
         when(context.getRequestBody()).thenCallRealMethod();
         doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).createProxyRequest(any());
 
         controller.handleRequestBody(requestBody);
 
@@ -365,6 +365,7 @@ public class DeploymentPostControllerTest {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey("key1");
         when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+        doCallRealMethod().when(context).sendProxyRequest(any(), any());
 
         controller.handleProxyRequest(proxyRequest);
 
@@ -485,6 +486,8 @@ public class DeploymentPostControllerTest {
             consumer.accept(props, true);
             return null;
         }).when(applicationSchemaService).consumeMetadataProperties(eq(application), any(ApplicationSchemaService.MetadataPropertiesConsumer.class));
+        when(context.getProxy()).thenReturn(proxy);
+        doCallRealMethod().when(context).sendProxyRequest(any(), any());
 
         controller.handleProxyRequest(proxyRequest);
 
@@ -514,6 +517,7 @@ public class DeploymentPostControllerTest {
 
         Buffer requestBody = Buffer.buffer("{}");
         when(context.getRequestBody()).thenReturn(requestBody);
+        doCallRealMethod().when(context).sendProxyRequest(any(), any());
 
         controller.handleProxyRequest(proxyRequest);
 
@@ -555,6 +559,8 @@ public class DeploymentPostControllerTest {
             consumer.accept(props, true);
             return null;
         }).when(applicationSchemaService).consumeMetadataProperties(eq(application), any(ApplicationSchemaService.MetadataPropertiesConsumer.class));
+        when(context.getProxy()).thenReturn(proxy);
+        doCallRealMethod().when(context).sendProxyRequest(any(), any());
 
         controller.handleProxyRequest(proxyRequest);
 
@@ -592,6 +598,8 @@ public class DeploymentPostControllerTest {
 
         Buffer requestBody = Buffer.buffer("{}");
         when(context.getRequestBody()).thenReturn(requestBody);
+        when(context.getProxy()).thenReturn(proxy);
+        doCallRealMethod().when(context).sendProxyRequest(any(), any());
 
         controller.handleProxyRequest(proxyRequest);
 

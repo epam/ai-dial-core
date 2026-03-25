@@ -282,48 +282,48 @@ public class ProxyContext {
     }
 
     public Future<HttpClientRequest> createProxyRequest(Function<Deployment, String> endpointSelector) {
-        String uri = endpointSelector.apply(deployment) + (request.query() == null ? "" : request.query());
+        String uri = endpointSelector.apply(getDeployment()) + (getRequest().query() == null ? "" : getRequest().query());
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(uri)
-                .setMethod(request.method())
-                .setTraceOperation(traceOperation)
-                .setConnectTimeout(proxy.getClientOptions().getConnectTimeout())
-                .setIdleTimeout(proxy.getClientOptions().getIdleTimeout());
+                .setMethod(getRequest().method())
+                .setTraceOperation(getTraceOperation())
+                .setConnectTimeout(getProxy().getClientOptions().getConnectTimeout())
+                .setIdleTimeout(getProxy().getClientOptions().getIdleTimeout());
 
-        return proxy.getClient().request(options);
+        return getProxy().getClient().request(options);
     }
 
     public Future<HttpClientResponse> sendProxyRequest(
             HttpClientRequest proxyRequest, Function<Upstream, String> upstreamSelector) {
         log.info("Connected to origin. Deployment: {}. Address: {}",
-                deployment.getName(),
+                getDeployment().getName(),
                 proxyRequest.connection().remoteAddress());
 
         MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
-        if (!deployment.isForwardAuthToken()) {
+        if (!getDeployment().isForwardAuthToken()) {
             excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
         }
         excludeHeaders.add(HEADER_APPLICATION_PROPERTIES, "whatever");
         excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
 
-        ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
-        ProxyUtil.setOverrideNameHeader(proxyRequest, deployment);
+        ProxyUtil.copyHeaders(getRequest().headers(), proxyRequest.headers(), excludeHeaders);
+        ProxyUtil.setOverrideNameHeader(proxyRequest, getDeployment());
 
-        proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
+        proxyRequest.headers().add(Proxy.HEADER_API_KEY, getProxyApiKeyData().getPerRequestKey());
 
-        if (deployment instanceof Model model && !model.getUpstreams().isEmpty()) {
-            Upstream upstream = Objects.requireNonNull(upstreamRoute.get());
+        if (getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
+            Upstream upstream = Objects.requireNonNull(getUpstreamRoute().get());
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstreamSelector.apply(upstream))
                     .putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey())
                     .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, upstream.getExtraData())
-                    .putHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH, upstreamRoute.getBreakpointPath())
-                    .putHeader(Proxy.HEADER_CACHE_EXTRA_METADATA, upstreamRoute.getExtraMetadata());
+                    .putHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH, getUpstreamRoute().getBreakpointPath())
+                    .putHeader(Proxy.HEADER_CACHE_EXTRA_METADATA, getUpstreamRoute().getExtraMetadata());
         }
 
-        if (deployment instanceof Application application && application.hasApplicationTypeSchemaId()) {
-            proxyRequest.putHeader(HEADER_APPLICATION_ID, deployment.getName());
+        if (getDeployment() instanceof Application application && application.hasApplicationTypeSchemaId()) {
+            proxyRequest.putHeader(HEADER_APPLICATION_ID, getDeployment().getName());
 
-            proxy.getApplicationSchemaService().consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
+            getProxy().getApplicationSchemaService().consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
                 if (appendApplicationPropertiesHeader) {
                     String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
                     proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
@@ -331,7 +331,7 @@ public class ProxyContext {
             });
         }
 
-        proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
+        proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(getRequestBody().length()));
 
         return proxyRequest.send(requestBody);
     }
