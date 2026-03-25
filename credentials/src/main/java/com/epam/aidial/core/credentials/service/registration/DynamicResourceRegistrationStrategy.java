@@ -6,6 +6,7 @@ import com.epam.aidial.core.credentials.data.registration.AuthorizationServerPro
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistrationRequest;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistrationResponse;
+import com.epam.aidial.core.credentials.service.RedirectUriHelper;
 import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
 import com.epam.aidial.core.credentials.service.metadata.AuthorizationServerMetadataService;
 import com.epam.aidial.core.credentials.service.metadata.ProtectedResourceMetadataService;
@@ -40,6 +41,7 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
     private final AuthorizationServerMetadataService authorizationServerMetadataService;
     private final ResourceAuthorizationClient resourceAuthorizationClient;
     private final ProtectedResourceMetadataService protectedResourceMetadataService;
+    private final List<String> allowedRedirectUris;
 
     /**
      * Registers a protected resource dynamically using the authorization server's dynamic client registration
@@ -72,7 +74,7 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
 
         ClientRegistrationRequest clientRegistrationRequest = ClientRegistrationRequest.builder()
                 .clientName(resourceId)
-                .redirectUris(List.of(resourceAuthSettings.getRedirectUri()))
+                .redirectUris(collectRedirectUris(resourceAuthSettings))
                 .build();
 
         ClientRegistrationResponse clientRegistrationResponse = resourceAuthorizationClient.executePost(
@@ -96,5 +98,9 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
 
         log.info("Finished dynamic registration for Resource: {}", resourceId);
         return clientRegistration;
+    }
+
+    private List<String> collectRedirectUris(ResourceAuthSettings resourceAuthSettings) {
+        return RedirectUriHelper.collectAllowedRedirectUris(allowedRedirectUris, resourceAuthSettings);
     }
 }

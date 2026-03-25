@@ -197,10 +197,11 @@ public class AiDial {
             TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);
             ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient(httpProxySelector);
             CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
+            List<String> allowedRedirectUris = getAllowedRedirectUris();
             ResourceCredentialsService resourceCredentialsService = getResourceCredentialsService(
-                    tokenRefreshStrategyFactory, resourceAuthorizationClient, credentialEncryptionService, timeProvider);
+                    tokenRefreshStrategyFactory, resourceAuthorizationClient, credentialEncryptionService, timeProvider, allowedRedirectUris);
             ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
-                    resourceCredentialsService, tokenRefreshStrategyFactory, resourceAuthorizationClient);
+                    resourceCredentialsService, tokenRefreshStrategyFactory, resourceAuthorizationClient, allowedRedirectUris);
             AuthorizationHeaderProvider authorizationHeaderProvider = new AuthorizationHeaderProvider(resourceCredentialsService);
             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
                     credentialEncryptionService);
@@ -285,7 +286,8 @@ public class AiDial {
         return new HttpProxySelector(proxyOptions, options.getNonProxyHosts());
     }
 
-    private static ResourceRegistrationService getResourceRegistrationService(ResourceAuthorizationClient resourceAuthorizationClient) {
+    private static ResourceRegistrationService getResourceRegistrationService(ResourceAuthorizationClient resourceAuthorizationClient,
+                                                                                List<String> allowedRedirectUris) {
         ProtectedResourceMetadataValidator protectedResourceMetadataValidator = new ProtectedResourceMetadataValidator();
         HttpHeadersHandler httpHeadersHandler = new HttpHeadersHandler();
         ProtectedResourceMetadataService protectedResourceMetadataService = new ProtectedResourceMetadataService(
@@ -294,7 +296,7 @@ public class AiDial {
         AuthorizationServerMetadataValidator authorizationServerMetadataValidator = new AuthorizationServerMetadataValidator();
         AuthorizationServerMetadataService authorizationServerMetadataService = new AuthorizationServerMetadataService(
                 resourceAuthorizationClient, authorizationServerMetadataValidator);
-        return new ResourceRegistrationService(authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService);
+        return new ResourceRegistrationService(authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, allowedRedirectUris);
     }
 
     private CredentialEncryptionService getCredentialEncryptionService() {
@@ -327,8 +329,9 @@ public class AiDial {
     private ResourceCredentialsService getResourceCredentialsService(TokenRefreshStrategyFactory tokenRefreshStrategyFactory,
                                                                      ResourceAuthorizationClient resourceAuthorizationClient,
                                                                      CredentialEncryptionService credentialEncryptionService,
-                                                                     TimeProvider timeProvider) {
-        TokenService tokenService = new TokenService(resourceAuthorizationClient);
+                                                                     TimeProvider timeProvider,
+                                                                     List<String> allowedRedirectUris) {
+        TokenService tokenService = new TokenService(resourceAuthorizationClient, allowedRedirectUris);
         ResourceCredentialsFactoryProvider resourceCredentialsFactoryProvider = new ResourceCredentialsFactoryProvider(tokenService);
         return new ResourceCredentialsService(resourceService, credentialEncryptionService, resourceCredentialsFactoryProvider,
                 tokenService, tokenRefreshStrategyFactory, timeProvider);
@@ -336,8 +339,9 @@ public class AiDial {
 
     private ResourceAuthSettingsService getResourceAuthSettingsService(ResourceCredentialsService resourceCredentialsService,
                                                                        TokenRefreshStrategyFactory tokenRefreshStrategyFactory,
-                                                                       ResourceAuthorizationClient resourceAuthorizationClient) {
-        ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient);
+                                                                       ResourceAuthorizationClient resourceAuthorizationClient,
+                                                                       List<String> allowedRedirectUris) {
+        ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient, allowedRedirectUris);
         AuthSettingsValidatorFactory authSettingsValidatorFactory = new AuthSettingsValidatorFactory();
         return new ResourceAuthSettingsService(resourceRegistrationService, resourceCredentialsService,
                 tokenRefreshStrategyFactory, authSettingsValidatorFactory);
@@ -368,6 +372,15 @@ public class AiDial {
         return defaultSettings()
                 .mergeIn(fileSettings(), true)
                 .mergeIn(envSettings(), true);
+    }
+
+    private List<String> getAllowedRedirectUris() {
+        return settings("toolsets")
+                .getJsonObject("security", new JsonObject())
+                .getJsonArray("allowedRedirectUris", new JsonArray())
+                .stream()
+                .map(Object::toString)
+                .toList();
     }
 
     private JsonObject settings(String key) {

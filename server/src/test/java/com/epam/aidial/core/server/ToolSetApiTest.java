@@ -1185,7 +1185,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 return new MockResponse().setResponseCode(400).setBody("redirect_uri mismatch");
             });
 
-            // Create toolset with OAuth settings (admin redirect_uri in settings)
+            // Create toolset with OAuth settings (single redirect_uri for admin)
             Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-oauth@", null, """
                     {
                         "endpoint": "http://localhost:9876/mcp",
@@ -1203,7 +1203,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     """, "authorization", "admin");
             assertEquals(200, response.status());
 
-            // Sign in with redirect_uri from the chat (overrides admin's redirect_uri)
+            // Sign in with redirect_uri from the chat (allowed via global allowedRedirectUris in settings)
             response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
                     {
                         "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset-oauth@",
@@ -1214,6 +1214,43 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     }
                     """, "authorization", "admin");
             verify(response, 200, "true");
+        }
+    }
+
+    @Test
+    void testOauthSignInWithDisallowedRedirectUri() {
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+
+            // Create toolset with single redirect_uri
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-oauth-reject@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "client_secret": "my-client-secret",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            // Sign in with redirect_uri not in allowed list — should be rejected
+            response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset-oauth-reject@",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code",
+                        "redirect_uri": "http://evil/callback"
+                    }
+                    """, "authorization", "admin");
+            assertEquals(400, response.status());
         }
     }
 
