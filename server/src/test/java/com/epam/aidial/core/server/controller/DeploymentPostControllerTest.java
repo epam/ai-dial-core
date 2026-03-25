@@ -244,7 +244,6 @@ public class DeploymentPostControllerTest {
 
         Buffer requestBody = Buffer.buffer();
         when(context.getRequestBody()).thenReturn(requestBody);
-        doCallRealMethod().when(context).sendProxyRequest(any(), any());
 
         controller.handleProxyRequest(proxyRequest);
 
@@ -256,14 +255,13 @@ public class DeploymentPostControllerTest {
     public void testHandleRequestBody_OverrideModelName() throws IOException {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        when(upstreamRoute.next()).thenReturn(new Upstream());
+        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, 0, 0));
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
-        when(context.getProxy()).thenReturn(proxy);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setInterceptorIndex(0);
         when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
@@ -283,7 +281,6 @@ public class DeploymentPostControllerTest {
         Buffer requestBody = Buffer.buffer(body);
         when(context.getRequestBody()).thenCallRealMethod();
         doCallRealMethod().when(context).setRequestBody(any());
-        doCallRealMethod().when(context).createProxyRequest(any());
 
         controller.handleRequestBody(requestBody);
 
@@ -300,13 +297,12 @@ public class DeploymentPostControllerTest {
     public void testHandleRequestBody_NotOverrideModelName() throws IOException {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        when(upstreamRoute.next()).thenReturn(new Upstream());
+        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, 0, 0));
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
-        when(context.getProxy()).thenReturn(proxy);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setInterceptorIndex(0);
@@ -326,7 +322,6 @@ public class DeploymentPostControllerTest {
         Buffer requestBody = Buffer.buffer(body);
         when(context.getRequestBody()).thenCallRealMethod();
         doCallRealMethod().when(context).setRequestBody(any());
-        doCallRealMethod().when(context).createProxyRequest(any());
 
         controller.handleRequestBody(requestBody);
 
@@ -365,7 +360,6 @@ public class DeploymentPostControllerTest {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey("key1");
         when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
-        doCallRealMethod().when(context).sendProxyRequest(any(), any());
 
         controller.handleProxyRequest(proxyRequest);
 
@@ -486,8 +480,6 @@ public class DeploymentPostControllerTest {
             consumer.accept(props, true);
             return null;
         }).when(applicationSchemaService).consumeMetadataProperties(eq(application), any(ApplicationSchemaService.MetadataPropertiesConsumer.class));
-        when(context.getProxy()).thenReturn(proxy);
-        doCallRealMethod().when(context).sendProxyRequest(any(), any());
 
         controller.handleProxyRequest(proxyRequest);
 
@@ -517,7 +509,6 @@ public class DeploymentPostControllerTest {
 
         Buffer requestBody = Buffer.buffer("{}");
         when(context.getRequestBody()).thenReturn(requestBody);
-        doCallRealMethod().when(context).sendProxyRequest(any(), any());
 
         controller.handleProxyRequest(proxyRequest);
 
@@ -559,8 +550,6 @@ public class DeploymentPostControllerTest {
             consumer.accept(props, true);
             return null;
         }).when(applicationSchemaService).consumeMetadataProperties(eq(application), any(ApplicationSchemaService.MetadataPropertiesConsumer.class));
-        when(context.getProxy()).thenReturn(proxy);
-        doCallRealMethod().when(context).sendProxyRequest(any(), any());
 
         controller.handleProxyRequest(proxyRequest);
 
@@ -598,8 +587,6 @@ public class DeploymentPostControllerTest {
 
         Buffer requestBody = Buffer.buffer("{}");
         when(context.getRequestBody()).thenReturn(requestBody);
-        when(context.getProxy()).thenReturn(proxy);
-        doCallRealMethod().when(context).sendProxyRequest(any(), any());
 
         controller.handleProxyRequest(proxyRequest);
 
