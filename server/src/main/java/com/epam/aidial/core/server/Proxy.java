@@ -297,7 +297,7 @@ public class Proxy implements Handler<HttpServerRequest> {
                     .map(apiKeyData -> new AuthorizationResult(apiKeyData, null));
         }
 
-        if (apiKey == null) {
+        if (apiKey == null && authorization.startsWith("Bearer ")) {
             String token = AccessTokenValidator.extractTokenFromHeader(authorization);
             try {
                 IdentityProvider.decodeJwtToken(token);
@@ -306,7 +306,9 @@ public class Proxy implements Handler<HttpServerRequest> {
                 return apiKeyStore.getApiKeyData(token, clientIpAddress)
                         .map(apiKeyData -> new AuthorizationResult(apiKeyData, null));
             }
+        }
 
+        if (apiKey == null) {
             return tokenValidator.extractClaims(authorization)
                     .compose(extractedClaims -> Future.succeededFuture(new AuthorizationResult(new ApiKeyData(), extractedClaims)),
                             error -> {
