@@ -146,7 +146,7 @@ public class ControllerSelector {
             DeploymentPostController controller = new DeploymentPostController(proxy, context);
             return () -> controller.handle(deploymentId);
         });
-        post(RouteTemplate.RESPONSES, (proxy, context, pathMatcher) -> {
+        post(RouteTemplate.LLM_RESPONSES_API, (proxy, context, pathMatcher) -> {
             ResponsesController controller = new ResponsesController(proxy, context);
             return controller::handle;
         });

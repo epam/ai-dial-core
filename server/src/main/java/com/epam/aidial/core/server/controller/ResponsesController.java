@@ -50,10 +50,8 @@ public class ResponsesController extends BaseDeploymentPostController {
         }
         return proxy.getTaskExecutor().submit(() -> {
             context.getRequest().body()
-                    .compose(body -> {
-                        log.info("Received body from client. Length: {}", body.length());
-                        return proxy.getTaskExecutor().submit(() -> parseBody(body));
-                    }).compose(tree -> {
+                    .map(this::parseBody)
+                    .compose(tree -> {
                         String model = tree.path("model").asText();
                         return proxy.getTaskExecutor().submit(() -> setupDeployment(model))
                                 .compose(ignore -> verifyLimit())
@@ -97,9 +95,12 @@ public class ResponsesController extends BaseDeploymentPostController {
                 });
     }
 
-    private ObjectNode parseBody(Buffer body) throws IOException {
+    private ObjectNode parseBody(Buffer body) {
+        log.info("Received body from client. Length: {}", body.length());
         try (InputStream stream = new ByteBufInputStream(body.getByteBuf())) {
             return (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
+        } catch (IOException e) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 
@@ -142,19 +143,11 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private void sendRequest() {
-        UpstreamRoute route = context.getUpstreamRoute();
-        try {
-            Upstream next;
-            do {
-                next = route.next();
-            } while (next.getResponsesEndpoint() == null);
-        } catch (HttpException e) {
-            respond(e);
-            log.warn("No route. Deployment: {}", context.getDeployment().getName());
+        if (!nextUpstream(Upstream::getResponsesEndpoint)) {
             return;
         }
 
-        context.createProxyRequest(Deployment::getResponsesEndpoint)
+        createProxyRequest(Deployment::getResponsesEndpoint)
                 .onSuccess(this::handleProxyRequest)
                 .onFailure(this::handleProxyConnectionError);
     }
@@ -167,7 +160,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        context.sendProxyRequest(proxyRequest, Upstream::getResponsesEndpoint)
+        sendProxyRequest(proxyRequest, Upstream::getResponsesEndpoint)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyResponseError);
     }
@@ -181,7 +174,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 proxyResponse.statusCode(), proxyResponse.headers().size(), currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
         int responseStatusCode = proxyResponse.statusCode();
-        if (context.isRetriableError(responseStatusCode)) {
+        if (isRetriableError(responseStatusCode)) {
             upstreamRoute.fail(proxyResponse);
             sendRequest(); // try next
             return;
@@ -219,14 +212,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         Future<TokenUsage> tokenUsageFuture = collectTokenUsage(responseBody);
 
-        Future<Void> handleResponseFuture = tokenUsageFuture.transform(result -> {
-            if (result.failed()) {
-                log.warn("Failed to collect token usage", result.cause());
-            }
-            return collectResponseAttachments(responseBody);
-        });
-
-        handleResponseFuture.onComplete(result -> {
+        tokenUsageFuture.onComplete(result -> {
             if (result.failed()) {
                 log.warn("Failed to collect attachments from response", result.cause());
             }

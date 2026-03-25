@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 public enum RouteTemplate {
 
     // OpenAI API routes
-    RESPONSES(
+    LLM_RESPONSES_API(
             "^/+openai/v1/responses$",
             "/openai/v1/responses"
     ),

@@ -200,16 +200,11 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
     @SneakyThrows
     private void sendRequest() {
-        UpstreamRoute route = context.getUpstreamRoute();
-        try {
-            route.next();
-        } catch (HttpException e) {
-            respond(e);
-            log.warn("No route. Deployment: {}", context.getDeployment().getName());
+        if (!nextUpstream(Upstream::getEndpoint)) {
             return;
         }
 
-        context.createProxyRequest(Deployment::getEndpoint)
+        createProxyRequest(Deployment::getEndpoint)
                 .onSuccess(this::handleProxyRequest)
                 .onFailure(this::handleProxyConnectionError);
     }
@@ -257,7 +252,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        context.sendProxyRequest(proxyRequest, Upstream::getEndpoint)
+        sendProxyRequest(proxyRequest, Upstream::getEndpoint)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyResponseError);
     }
@@ -274,7 +269,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 proxyResponse.statusCode(), proxyResponse.headers().size(), currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
         int responseStatusCode = proxyResponse.statusCode();
-        if (context.isRetriableError(responseStatusCode)) {
+        if (isRetriableError(responseStatusCode)) {
             upstreamRoute.fail(proxyResponse);
             sendRequest(); // try next
             return;
