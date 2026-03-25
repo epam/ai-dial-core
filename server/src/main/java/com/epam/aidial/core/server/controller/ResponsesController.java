@@ -48,19 +48,17 @@ public class ResponsesController extends BaseDeploymentPostController {
         if (!Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
-        return proxy.getTaskExecutor().submit(() -> {
-            context.getRequest().body()
-                    .map(this::parseBody)
-                    .compose(tree -> {
-                        String model = tree.path("model").asText();
-                        return proxy.getTaskExecutor().submit(() -> setupDeployment(model))
-                                .compose(ignore -> verifyLimit())
-                                .map(ignore -> handleRequestBody(tree))
-                                .otherwise(error -> handleRequestError(context.getDeployment().getName(), error));
-                    })
-                    .onFailure(this::handleRequestBodyError);
-            return null;
-        });
+        context.getRequest().body()
+                .map(this::parseBody)
+                .compose(tree -> {
+                    String model = tree.path("model").asText();
+                    return proxy.getTaskExecutor().submit(() -> setupDeployment(model))
+                            .compose(ignore -> verifyLimit())
+                            .map(ignore -> handleRequestBody(tree))
+                            .otherwise(error -> handleRequestError(context.getDeployment().getName(), error));
+                })
+                .onFailure(this::handleRequestBodyError);
+        return Future.succeededFuture();
     }
 
     private Void setupDeployment(String model) {
