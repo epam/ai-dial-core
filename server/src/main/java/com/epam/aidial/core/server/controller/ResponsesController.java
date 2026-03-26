@@ -55,7 +55,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                     return proxy.getTaskExecutor().submit(() -> setupDeployment(model))
                             .compose(ignore -> verifyLimit())
                             .map(ignore -> handleRequestBody(tree))
-                            .otherwise(error -> handleRequestError(context.getDeployment().getName(), error));
+                            .otherwise(error -> handleRequestError(model, error));
                 })
                 .onFailure(this::handleRequestBodyError);
         return Future.succeededFuture();
