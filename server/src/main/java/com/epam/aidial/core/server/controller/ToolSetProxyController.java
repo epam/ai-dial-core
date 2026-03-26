@@ -99,6 +99,8 @@ public class ToolSetProxyController implements Controller {
 
     private String mcpMethodName;
 
+    private boolean useAllowedTools;
+
     private final ResourceCredentialsService resourceCredentialsService;
     private final ApplicationSchemaService applicationSchemaService;
 
@@ -123,6 +125,7 @@ public class ToolSetProxyController implements Controller {
 
     @Override
     public Future<?> handle() {
+        useAllowedTools = Boolean.parseBoolean(context.getRequest().getParam("useAllowedTools", "true"));
         return taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
             if (deployment instanceof ToolSet toolSet) {
@@ -373,7 +376,7 @@ public class ToolSetProxyController implements Controller {
     }
 
     private void handleResponse(int responseStatus, Buffer proxyResponseBody) {
-        if ("tools/list".equalsIgnoreCase(mcpMethodName)) {
+        if ("tools/list".equalsIgnoreCase(mcpMethodName) && useAllowedTools) {
             try (InputStream stream = new ByteBufInputStream(proxyResponseBody.getByteBuf())) {
                 ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
                 if (filterToolList(tree)) {
