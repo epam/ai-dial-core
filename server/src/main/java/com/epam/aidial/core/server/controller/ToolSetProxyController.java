@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.function.enhancement.InjectApplicationPropsTo
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
+import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ConsentService;
@@ -95,6 +96,8 @@ public class ToolSetProxyController implements Controller {
 
     private final TokenStatsTracker tokenStatsTracker;
 
+    private final AccessService accessService;
+
     private final List<BaseRequestFunction<ObjectNode>> enhancementFunctions;
 
     private String mcpMethodName;
@@ -109,6 +112,7 @@ public class ToolSetProxyController implements Controller {
         this.deploymentService = proxy.getDeploymentService();
         this.rateLimiter = proxy.getRateLimiter();
         this.httpClient = proxy.getClient();
+        this.accessService = proxy.getAccessService();
         this.upstreamRouteProvider = proxy.getUpstreamRouteProvider();
         this.logStore = proxy.getLogStore();
         this.context = context;
@@ -127,6 +131,9 @@ public class ToolSetProxyController implements Controller {
     public Future<?> handle() {
         useAllowedTools = Boolean.parseBoolean(context.getRequest().getParam("useAllowedTools", "true"));
         return taskExecutor.submit(() -> {
+            if (!useAllowedTools && !accessService.hasAdminAccess(context)) {
+                throw new HttpException(HttpStatus.FORBIDDEN, "Only admin is allowed to view all tools");
+            }
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
             if (deployment instanceof ToolSet toolSet) {
                 consentService.verifyUserConsent(context, deployment);

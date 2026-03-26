@@ -618,9 +618,13 @@ public class ToolSetApiTest extends ResourceBaseTest {
             return new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "application/json");
         };
         try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            // operation is not allowed for a regular user
             Response resp = send(HttpMethod.POST, "/v1/toolset/git/mcp?useAllowedTools=false", null,
                     mcpRequest, "Content-Type", "application/json");
-
+            assertEquals(403, resp.status());
+            // admin is allowed to view all tools
+            resp = send(HttpMethod.POST, "/v1/toolset/git/mcp?useAllowedTools=false", null,
+                    mcpRequest, "Content-Type", "application/json", "authorization", "admin");
             assertEquals(200, resp.status());
             var json = ProxyUtil.MAPPER.readTree(resp.body());
             ArrayNode tools = (ArrayNode) json.get("result").get("tools");
