@@ -153,7 +153,8 @@ public class BaseDeploymentPostController {
 
     protected Future<HttpClientRequest> createProxyRequest(Function<Deployment, String> endpointSelector) {
         HttpServerRequest request = context.getRequest();
-        String uri = endpointSelector.apply(context.getDeployment()) + (request.query() == null ? "" : request.query());
+        String uri = endpointSelector.apply(context.getDeployment())
+                + (request.query() == null ? "" : "?" + request.query());
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(uri)
                 .setMethod(request.method())

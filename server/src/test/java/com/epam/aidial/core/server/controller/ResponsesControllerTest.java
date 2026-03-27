@@ -233,6 +233,7 @@ public class ResponsesControllerTest {
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         when(request.body()).thenReturn(Future.succeededFuture(requestBody));
         when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.query()).thenReturn("arg=value");
         when(upstreamRoute.next()).thenReturn(upstream);
         when(upstreamRoute.get()).thenReturn(upstream);
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
@@ -286,6 +287,8 @@ public class ResponsesControllerTest {
 
         await(textContext);
 
+        verify(proxy.getClient()).request(argThat(req ->
+                "/responses?arg=value".equals(req.getURI().toString())));
         assertEquals(responseBody, context.getResponseBody());
         assertEquals(tokenUsage, context.getTokenUsage());
     }
