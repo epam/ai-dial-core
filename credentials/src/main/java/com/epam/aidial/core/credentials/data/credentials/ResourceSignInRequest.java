@@ -29,4 +29,7 @@ public class ResourceSignInRequest {
 
     @JsonAlias({"apiKey", "api_key"})
     private String apiKey;
+
+    @JsonAlias({"redirectUri", "redirect_uri"})
+    private String redirectUri;
 }
