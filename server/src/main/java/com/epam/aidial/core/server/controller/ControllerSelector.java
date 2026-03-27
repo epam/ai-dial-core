@@ -142,10 +142,13 @@ public class ControllerSelector {
 
         // POST routes
         post(RouteTemplate.POST_DEPLOYMENT, (proxy, context, pathMatcher) -> {
-            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
-            String deploymentApi = UrlUtil.decodePath(pathMatcher.group(2));
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group("id"));
             DeploymentPostController controller = new DeploymentPostController(proxy, context);
-            return () -> controller.handle(deploymentId, deploymentApi);
+            return () -> controller.handle(deploymentId);
+        });
+        post(RouteTemplate.LLM_RESPONSES_API, (proxy, context, pathMatcher) -> {
+            ResponsesController controller = new ResponsesController(proxy, context);
+            return controller::handle;
         });
         post(RouteTemplate.RATE_RESPONSE, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));

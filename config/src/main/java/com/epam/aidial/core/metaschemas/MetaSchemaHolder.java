@@ -17,6 +17,7 @@ public class MetaSchemaHolder {
     public static final String APPLICATION_TYPE_DISPLAY_NAME = "dial:applicationTypeDisplayName";
     public static final String APPLICATION_TYPE_ICON_URL = "dial:applicationTypeIconUrl";
     public static final String APPLICATION_TYPE_COMPLETION_ENDPOINT = "dial:applicationTypeCompletionEndpoint";
+    public static final String APPLICATION_TYPE_RESPONSES_ENDPOINT = "dial:applicationTypeResponsesEndpoint";
     public static final String APPLICATION_TYPE_CONFIGURATION_ENDPOINT = "dial:applicationTypeConfigurationEndpoint";
     public static final String APPLICATION_TYPE_RATE_ENDPOINT = "dial:applicationTypeRateEndpointEndpoint";
     public static final String APPLICATION_TYPE_TOKENIZE_ENDPOINT = "dial:applicationTypeTokenizeEndpointEndpoint";

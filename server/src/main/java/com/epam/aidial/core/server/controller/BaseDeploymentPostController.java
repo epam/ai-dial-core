@@ -1,10 +1,18 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.token.TokenUsageParser;
+import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -12,18 +20,31 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.RequestOptions;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.io.InputStream;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
+
+import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
+import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
 
 @Slf4j
 @AllArgsConstructor
 public class BaseDeploymentPostController {
+    private static final Set<Integer> DEFAULT_RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
+            HttpStatus.BAD_GATEWAY.getCode(), HttpStatus.GATEWAY_TIMEOUT.getCode(),
+            HttpStatus.SERVICE_UNAVAILABLE.getCode());
 
     protected final Proxy proxy;
     protected final ProxyContext context;
@@ -95,5 +116,116 @@ public class BaseDeploymentPostController {
     protected void handleRequestBodyError(Throwable error) {
         respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
         log.warn("Failed to receive client body. Error: {}", error.getMessage());
+    }
+
+    protected Future<TokenUsage> collectTokenUsage(Buffer responseBody) {
+        Future<TokenUsage> tokenUsageFuture = Future.succeededFuture();
+        if (context.getDeployment() instanceof Model model) {
+            if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
+                TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
+                if (tokenUsage == null) {
+                    Pricing pricing = model.getPricing();
+                    if (pricing == null || "token".equals(pricing.getUnit())) {
+                        Upstream currentUpstream = context.getUpstreamRoute().get();
+                        log.warn("Can't find token usage. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}. Upstream.extraData: {}",
+                                context.getDeployment().getName(),
+                                context.getDeployment().getEndpoint(),
+                                currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
+                                context.getResponseBody().length(),
+                                currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
+                    }
+                    tokenUsage = new TokenUsage();
+                }
+                context.setTokenUsage(tokenUsage);
+                tokenUsageFuture = proxy.getRateLimiter().increase(context, context.getDeployment())
+                        .transform(result -> {
+                            if (result.failed()) {
+                                log.warn("Failed to increase limit", result.cause());
+                            }
+                            return proxy.getTokenStatsTracker().updateModelStats(context);
+                        });
+            }
+        } else {
+            tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context).andThen(result -> context.setTokenUsage(result.result()));
+        }
+        return tokenUsageFuture;
+    }
+
+    protected Future<HttpClientRequest> createProxyRequest(Function<Deployment, String> endpointSelector) {
+        HttpServerRequest request = context.getRequest();
+        String uri = endpointSelector.apply(context.getDeployment()) + (request.query() == null ? "" : request.query());
+        RequestOptions options = new RequestOptions()
+                .setAbsoluteURI(uri)
+                .setMethod(request.method())
+                .setTraceOperation(context.getTraceOperation())
+                .setConnectTimeout(proxy.getClientOptions().getConnectTimeout())
+                .setIdleTimeout(proxy.getClientOptions().getIdleTimeout());
+
+        return proxy.getClient().request(options);
+    }
+
+    protected Future<HttpClientResponse> sendProxyRequest(
+            HttpClientRequest proxyRequest, Function<Upstream, String> upstreamSelector) {
+        log.info("Connected to origin. Deployment: {}. Address: {}",
+                context.getDeployment().getName(),
+                proxyRequest.connection().remoteAddress());
+
+        MultiMap excludeHeaders = MultiMap.caseInsensitiveMultiMap();
+        if (!context.getDeployment().isForwardAuthToken()) {
+            excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
+        }
+        excludeHeaders.add(HEADER_APPLICATION_PROPERTIES, "whatever");
+        excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
+
+        ProxyUtil.copyHeaders(context.getRequest().headers(), proxyRequest.headers(), excludeHeaders);
+        ProxyUtil.setOverrideNameHeader(proxyRequest, context.getDeployment());
+
+        proxyRequest.headers().add(Proxy.HEADER_API_KEY, context.getProxyApiKeyData().getPerRequestKey());
+
+        if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
+            Upstream upstream = Objects.requireNonNull(context.getUpstreamRoute().get());
+            proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstreamSelector.apply(upstream))
+                    .putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey())
+                    .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, upstream.getExtraData())
+                    .putHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH, context.getUpstreamRoute().getBreakpointPath())
+                    .putHeader(Proxy.HEADER_CACHE_EXTRA_METADATA, context.getUpstreamRoute().getExtraMetadata());
+        }
+
+        if (context.getDeployment() instanceof Application application && application.hasApplicationTypeSchemaId()) {
+            proxyRequest.putHeader(HEADER_APPLICATION_ID, context.getDeployment().getName());
+
+            proxy.getApplicationSchemaService().consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
+                if (appendApplicationPropertiesHeader) {
+                    String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
+                    proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
+                }
+            });
+        }
+
+        proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(context.getRequestBody().length()));
+
+        return proxyRequest.send(context.getRequestBody());
+    }
+
+    protected boolean isRetriableError(int statusCode) {
+        return DEFAULT_RETRIABLE_HTTP_CODES.contains(statusCode)
+                || context.getConfig().getRetriableErrorCodes().contains(statusCode);
+    }
+
+    protected boolean nextUpstream(Function<Upstream, String> endpointSelector) {
+        UpstreamRoute route = context.getUpstreamRoute();
+        try {
+            Upstream next;
+            do {
+                next = route.next();
+            } while (endpointSelector.apply(next) == null);
+
+            return true;
+        } catch (HttpException e) {
+            respond(e);
+            log.warn("No route. Deployment: {}", context.getDeployment().getName());
+        }
+
+        return false;
     }
 }

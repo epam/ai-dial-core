@@ -11,6 +11,7 @@ import java.util.Map;
 @EqualsAndHashCode(callSuper = true)
 public abstract class Deployment extends RoleBasedEntity {
     private String endpoint;
+    private String responsesEndpoint;
     @JsonAlias({"displayName", "display_name"})
     private String displayName;
     @JsonAlias({"displayVersion", "display_version"})

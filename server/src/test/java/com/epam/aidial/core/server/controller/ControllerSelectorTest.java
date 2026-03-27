@@ -204,13 +204,11 @@ public class ControllerSelectorTest {
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
-        assertEquals(3, lambda.getCapturedArgCount());
+        assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        Object arg3 = lambda.getCapturedArg(2);
         assertInstanceOf(DeploymentPostController.class, arg1);
         assertEquals("app1", arg2);
-        assertEquals("completions", arg3);
     }
 
     @Test
@@ -221,13 +219,11 @@ public class ControllerSelectorTest {
         assertNotNull(controller);
         SerializedLambda lambda = getSerializedLambda(controller);
         assertNotNull(lambda);
-        assertEquals(3, lambda.getCapturedArgCount());
+        assertEquals(2, lambda.getCapturedArgCount());
         Object arg1 = lambda.getCapturedArg(0);
         Object arg2 = lambda.getCapturedArg(1);
-        Object arg3 = lambda.getCapturedArg(2);
         assertInstanceOf(DeploymentPostController.class, arg1);
         assertEquals("applications/bucket/my-application", arg2);
-        assertEquals("chat/completions", arg3);
     }
 
     @Test

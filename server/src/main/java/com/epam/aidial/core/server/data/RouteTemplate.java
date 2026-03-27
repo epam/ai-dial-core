@@ -8,6 +8,10 @@ import java.util.regex.Pattern;
 public enum RouteTemplate {
 
     // OpenAI API routes
+    LLM_RESPONSES_API(
+            "^/+openai/v1/responses$",
+            "/openai/v1/responses"
+    ),
     POST_DEPLOYMENT(
             "^/+openai/deployments/(?<id>.+?)/(completions|chat/completions|embeddings)$",
             "/openai/deployments/{id}/{action}"

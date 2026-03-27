@@ -119,6 +119,7 @@ public class UpstreamRouteProvider {
 
         Upstream upstream = new Upstream();
         upstream.setEndpoint(endpointSupplier.apply(deployment));
+        upstream.setResponsesEndpoint(deployment.getResponsesEndpoint());
         upstream.setKey("whatever");
         return List.of(upstream);
     }

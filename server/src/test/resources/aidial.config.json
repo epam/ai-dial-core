@@ -166,8 +166,9 @@
     "gpt-3-turbo": {
       "type": "chat",
       "endpoint" : "http://localhost:4848/chat/completions",
+      "responsesEndpoint" : "http://localhost:4848/openai/v1/responses",
       "upstreams": [
-        {"endpoint": "http://localhost:7001", "key": "modelKey"}
+        {"endpoint": "http://chat/completions", "responsesEndpoint": "http://responses", "key": "modelKey"}
       ]
     }
   },

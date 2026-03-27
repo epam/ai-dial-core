@@ -201,7 +201,6 @@ public class DeploymentFeatureController {
 
         Buffer requestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
-        context.getRequestHeaders().forEach(proxyRequest::putHeader);
 
         proxyRequest.send(requestBody)
                 .onSuccess(this::handleProxyResponse)
