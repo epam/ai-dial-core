@@ -335,7 +335,7 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
-    public void testHandleRequestBody_NoUpstreamEndpoint() throws IOException {
+    public void testHandleRequestBody_UseUpstreamWithoutEndpoint() {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         when(upstreamRoute.next()).thenReturn(new Upstream());
