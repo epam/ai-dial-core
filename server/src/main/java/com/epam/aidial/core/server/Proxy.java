@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server;
 
-import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
@@ -22,7 +21,6 @@ import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
-import com.epam.aidial.core.server.security.IdentityProvider;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ConsentService;
@@ -297,24 +295,16 @@ public class Proxy implements Handler<HttpServerRequest> {
                     .map(apiKeyData -> new AuthorizationResult(apiKeyData, null));
         }
 
-        if (apiKey == null && authorization.startsWith("Bearer ")) {
-            String token = AccessTokenValidator.extractTokenFromHeader(authorization);
-            try {
-                IdentityProvider.decodeJwtToken(token);
-            } catch (JWTDecodeException e) {
-                // OpenAI's Responses API uses the Authorization header to send the API key.
-                return apiKeyStore.getApiKeyData(token, clientIpAddress)
-                        .map(apiKeyData -> new AuthorizationResult(apiKeyData, null));
-            }
-        }
-
         if (apiKey == null) {
             return tokenValidator.extractClaims(authorization)
-                    .compose(extractedClaims -> Future.succeededFuture(new AuthorizationResult(new ApiKeyData(), extractedClaims)),
-                            error -> {
-                                log.debug("Can't extract claims from authorization header", error);
-                                return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Bad Authorization header"));
-                            });
+                    .compose(extractedClaims -> Future.succeededFuture(new AuthorizationResult(new ApiKeyData(), extractedClaims)))
+                    .recover(error -> {
+                        // OpenAI's Responses API uses the Authorization header to send the API key.
+                        String token = AccessTokenValidator.extractTokenFromHeader(authorization);
+                        return apiKeyStore.getApiKeyData(token, clientIpAddress)
+                                .map(apiKeyData -> new AuthorizationResult(apiKeyData, null));
+                    })
+                    .recover(error -> Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Bad Authorization header")));
         }
 
         // see https://github.com/epam/ai-dial-core/issues/675
