@@ -59,8 +59,7 @@ public class TokenService {
         String requestRedirectUri = resourceSignInRequest.getRedirectUri();
 
         if (StringUtils.isNotBlank(requestRedirectUri)) {
-            List<String> effectiveAllowedUris = getEffectiveAllowedUris(resourceAuthSettings);
-            if (!effectiveAllowedUris.contains(requestRedirectUri)) {
+            if (!isAllowedRedirectUri(requestRedirectUri, resourceAuthSettings)) {
                 throw new IllegalArgumentException(
                         "Provided redirect_uri is not in the list of allowed redirect URIs");
             }
@@ -71,8 +70,9 @@ public class TokenService {
         return resourceAuthSettings.getRedirectUri();
     }
 
-    private List<String> getEffectiveAllowedUris(ResourceAuthSettings resourceAuthSettings) {
-        return RedirectUriHelper.collectAllowedRedirectUris(allowedRedirectUris, resourceAuthSettings);
+    private boolean isAllowedRedirectUri(String uri, ResourceAuthSettings resourceAuthSettings) {
+        return allowedRedirectUris.contains(uri)
+                || uri.equals(resourceAuthSettings.getRedirectUri());
     }
 
     private TokenResponse doTokenCall(String tokenEndpoint, String tokenRequest) {

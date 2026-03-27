@@ -6,7 +6,6 @@ import com.epam.aidial.core.credentials.data.registration.AuthorizationServerPro
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistrationRequest;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistrationResponse;
-import com.epam.aidial.core.credentials.service.RedirectUriHelper;
 import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
 import com.epam.aidial.core.credentials.service.metadata.AuthorizationServerMetadataService;
 import com.epam.aidial.core.credentials.service.metadata.ProtectedResourceMetadataService;
@@ -14,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ContentType;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -101,6 +101,11 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
     }
 
     private List<String> collectRedirectUris(ResourceAuthSettings resourceAuthSettings) {
-        return RedirectUriHelper.collectAllowedRedirectUris(allowedRedirectUris, resourceAuthSettings);
+        List<String> uris = new ArrayList<>(allowedRedirectUris);
+        String resourceRedirectUri = resourceAuthSettings.getRedirectUri();
+        if (resourceRedirectUri != null && !uris.contains(resourceRedirectUri)) {
+            uris.add(resourceRedirectUri);
+        }
+        return uris;
     }
 }
