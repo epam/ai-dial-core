@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ContentType;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,6 +41,7 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
     private final AuthorizationServerMetadataService authorizationServerMetadataService;
     private final ResourceAuthorizationClient resourceAuthorizationClient;
     private final ProtectedResourceMetadataService protectedResourceMetadataService;
+    private final List<String> allowedRedirectUris;
 
     /**
      * Registers a protected resource dynamically using the authorization server's dynamic client registration
@@ -72,7 +74,7 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
 
         ClientRegistrationRequest clientRegistrationRequest = ClientRegistrationRequest.builder()
                 .clientName(resourceId)
-                .redirectUris(List.of(resourceAuthSettings.getRedirectUri()))
+                .redirectUris(collectRedirectUris(resourceAuthSettings))
                 .build();
 
         ClientRegistrationResponse clientRegistrationResponse = resourceAuthorizationClient.executePost(
@@ -96,5 +98,14 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
 
         log.info("Finished dynamic registration for Resource: {}", resourceId);
         return clientRegistration;
+    }
+
+    private List<String> collectRedirectUris(ResourceAuthSettings resourceAuthSettings) {
+        List<String> uris = new ArrayList<>(allowedRedirectUris);
+        String resourceRedirectUri = resourceAuthSettings.getRedirectUri();
+        if (resourceRedirectUri != null && !uris.contains(resourceRedirectUri)) {
+            uris.add(resourceRedirectUri);
+        }
+        return uris;
     }
 }

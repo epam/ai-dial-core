@@ -10,9 +10,9 @@ import com.epam.aidial.core.credentials.service.ResourceAuthorizationClient;
 import com.epam.aidial.core.credentials.service.metadata.AuthorizationServerMetadataService;
 import com.epam.aidial.core.credentials.service.metadata.ProtectedResourceMetadataService;
 import org.apache.hc.core5.http.ContentType;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -41,8 +41,13 @@ class DynamicResourceRegistrationStrategyTest {
     @Mock
     private ProtectedResourceMetadataService protectedResourceMetadataService;
 
-    @InjectMocks
     private DynamicResourceRegistrationStrategy resourceRegistrationStrategy;
+
+    @BeforeEach
+    void setUp() {
+        resourceRegistrationStrategy = new DynamicResourceRegistrationStrategy(
+                authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, List.of());
+    }
 
     @Test
     void testCreateDynamicResourceRegistration_Success() {

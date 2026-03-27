@@ -62,7 +62,6 @@ public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
     private ResourceAuthSettingsValidationFields getOauthWithStaticRegistrationValidationFields() {
         return ResourceAuthSettingsValidationFields.builder()
                 .requiredFields(Set.of(
-                        ResourceAuthSettingsField.REDIRECT_URI,
                         ResourceAuthSettingsField.CLIENT_ID,
                         ResourceAuthSettingsField.CLIENT_SECRET,
                         ResourceAuthSettingsField.AUTHORIZATION_ENDPOINT,
@@ -90,7 +89,7 @@ public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
      */
     private ResourceAuthSettingsValidationFields getOauthWithDynamicRegistrationValidationFields() {
         return ResourceAuthSettingsValidationFields.builder()
-                .requiredFields(Set.of(ResourceAuthSettingsField.REDIRECT_URI))
+                .requiredFields(Set.of())
                 .forbiddenFields(Set.of(
                         ResourceAuthSettingsField.CLIENT_ID,
                         ResourceAuthSettingsField.CLIENT_SECRET,
@@ -120,7 +119,6 @@ public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
     private ResourceAuthSettingsValidationFields getOauthWithNoAuthTypeChangeValidationFields() {
         return ResourceAuthSettingsValidationFields.builder()
                 .requiredFields(Set.of(
-                        ResourceAuthSettingsField.REDIRECT_URI,
                         ResourceAuthSettingsField.CLIENT_ID,
                         ResourceAuthSettingsField.AUTHORIZATION_ENDPOINT,
                         ResourceAuthSettingsField.TOKEN_ENDPOINT)

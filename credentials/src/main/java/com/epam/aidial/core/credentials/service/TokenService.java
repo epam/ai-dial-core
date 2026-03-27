@@ -7,17 +7,22 @@ import com.epam.aidial.core.credentials.data.credentials.TokenRequest;
 import com.epam.aidial.core.credentials.data.credentials.TokenResponse;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+
+import java.util.List;
 
 @AllArgsConstructor
 @Slf4j
 public class TokenService {
 
     private final ResourceAuthorizationClient resourceAuthorizationClient;
+    private final List<String> allowedRedirectUris;
 
     public TokenResponse getToken(String resourceId,
                                   ResourceAuthSettings resourceAuthSettings,
                                   ResourceSignInRequest resourceSignInRequest) {
         log.debug("Start Resource {} token retrieval", resourceId);
+        String redirectUri = resolveRedirectUri(resourceAuthSettings, resourceSignInRequest);
         TokenRequest tokenRequest = TokenRequest.builder()
                 .clientId(resourceAuthSettings.getClientId())
                 .clientSecret(resourceAuthSettings.getClientSecret())
@@ -25,7 +30,7 @@ public class TokenService {
                 // TODO: do we need to support different?
                 .grantType("authorization_code")
                 .codeVerifier(resourceAuthSettings.getCodeVerifier())
-                .redirectUri(resourceAuthSettings.getRedirectUri())
+                .redirectUri(redirectUri)
                 .build();
 
         TokenResponse tokenResponse = doTokenCall(resourceAuthSettings.getTokenEndpoint(), tokenRequest.buildFormData());
@@ -36,7 +41,7 @@ public class TokenService {
     public TokenResponse getToken(String resourceId,
                                   ResourceAuthSettings resourceAuthSettings,
                                   String refreshToken) {
-        log.debug("Start Resource {} reresh token retrieval", resourceId);
+        log.debug("Start Resource {} refresh token retrieval", resourceId);
         RefreshTokenRequest tokenRequest = RefreshTokenRequest.builder()
                 .clientId(resourceAuthSettings.getClientId())
                 .clientSecret(resourceAuthSettings.getClientSecret())
@@ -47,6 +52,27 @@ public class TokenService {
         TokenResponse tokenResponse = doTokenCall(resourceAuthSettings.getTokenEndpoint(), tokenRequest.buildFormData());
         log.debug("Finished Resource {} refresh token retrieval", resourceId);
         return tokenResponse;
+    }
+
+    private String resolveRedirectUri(ResourceAuthSettings resourceAuthSettings,
+                                      ResourceSignInRequest resourceSignInRequest) {
+        String requestRedirectUri = resourceSignInRequest.getRedirectUri();
+
+        if (StringUtils.isNotBlank(requestRedirectUri)) {
+            if (!isAllowedRedirectUri(requestRedirectUri, resourceAuthSettings)) {
+                throw new IllegalArgumentException(
+                        "Provided redirect_uri is not in the list of allowed redirect URIs");
+            }
+            return requestRedirectUri;
+        }
+
+        // Fallback to toolset's own redirect_uri (backward compatible)
+        return resourceAuthSettings.getRedirectUri();
+    }
+
+    private boolean isAllowedRedirectUri(String uri, ResourceAuthSettings resourceAuthSettings) {
+        return allowedRedirectUris.contains(uri)
+                || uri.equals(resourceAuthSettings.getRedirectUri());
     }
 
     private TokenResponse doTokenCall(String tokenEndpoint, String tokenRequest) {

@@ -32,8 +32,7 @@ This API allows the creation of a new ToolSet with customizable properties. The 
         "tool2"
     ],
     "auth_settings": {
-        "authentication_type": "OAUTH",
-        "redirect_uri": "{chat-host}/toolset/sign-in"
+        "authentication_type": "OAUTH"
     }
 }
 ```
@@ -56,6 +55,7 @@ This API allows the creation of a new ToolSet with customizable properties. The 
 |----------------------------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------|
 | `client_id`                | `string` | The unique identifier of the client/application requesting access to the resource.                                                                                        | Yes                                                                                                  |
 | `client_secret`            | `string` | A confidential key used by the client to authenticate itself with the authentication server.                                                                              | Yes (for confidential clients) / No (for public clients like SPAs or mobile apps implementing PKCE)  |
+| `redirect_uri`             | `string` | The redirect URI for the OAuth callback. If omitted, the client must provide `redirect_uri` at sign-in time (validated against `toolsets.security.allowedRedirectUris`).           | No                                                                                                   |
 | `authorization_endpoint`   | `string` | The URL where the client directs the user to authenticate and obtain authorization. Can be discovered via .well-known metadata if provided by the Authorization Server.   | No (if discoverable) / Yes (if not discoverable)                                                     |
 | `token_endpoint`           | `string` | The URL where the client exchanges the authorization code for an access token. Can be discovered via .well-known metadata if provided by the Authorization Server.        | No (if discoverable) / Yes (if not discoverable)                                                     |
 | `code_challenge_method`    | `string` | The method used for Proof Key for Code Exchange (PKCE), usually plain or S256.                                                                                            | No (Required only if using PKCE)                                                                     |
@@ -77,17 +77,18 @@ This API allows the creation of a new ToolSet with customizable properties. The 
 }
 ```
 
+> **Note:** `redirect_uri` is optional. When omitted, the client must provide `redirect_uri` in the sign-in request. The provided URI is validated against the `toolsets.security.allowedRedirectUris` setting and the toolset's own `redirect_uri` (if configured).
+
 ---
 
 ##### **2. OAUTH (Dynamic Client Registration)**
 
-The client can be dynamically created without including a `client_id` or `client_secret`.
+The client can be dynamically created without including a `client_id` or `client_secret`. The `redirect_uri` is optional — if omitted, all URIs from `toolsets.security.allowedRedirectUris` are registered with the authorization server.
 
 ```json
 {
     "auth_settings": {
-        "authentication_type": "OAUTH",
-        "redirect_uri": "{chat-host}/toolset/sign-in"
+        "authentication_type": "OAUTH"
     }
 }
 ```
@@ -215,7 +216,8 @@ Authenticates the user for a specified ToolSet using OAUTH or API_KEY.
     "url": "toolsets/{bucket}/{path}",
     "credentials_level": "GLOBAL",
     "authentication_type": "OAUTH",
-    "code": "auth-code"
+    "code": "auth-code",
+    "redirect_uri": "{chat-host}/toolset/sign-in"
 }
 ```
 
@@ -229,13 +231,14 @@ Authenticates the user for a specified ToolSet using OAUTH or API_KEY.
 }
 ```
 
-| **Field**             | **Type**   | **Required**         | **Description**                                                               |
-|-----------------------|------------|----------------------|-------------------------------------------------------------------------------|
-| `url`                 | `string`   | Yes                  | The ToolSet URL (e.g., `toolsets/{bucket}/{path}`).                           |
-| `credentials_level`   | `string`   | Yes                  | The scope of credentials for the ToolSet (`GLOBAL`, `APP`, or `USER`).        |
-| `authentication_type` | `string`   | Yes                  | The authentication method used (`OAUTH` or `API_KEY`).                        |
-| `code`                | `string`   | Required for OAUTH   | The authorization code used in OAUTH authentication flows.                    |
-| `api_key`             | `string`   | Required for API_KEY | The API key value.                                                            |
+| **Field**             | **Type**   | **Required**         | **Description**                                                                                                                                                   |
+|-----------------------|------------|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `url`                 | `string`   | Yes                  | The ToolSet URL (e.g., `toolsets/{bucket}/{path}`).                                                                                                               |
+| `credentials_level`   | `string`   | Yes                  | The scope of credentials for the ToolSet (`GLOBAL`, `APP`, or `USER`).                                                                                            |
+| `authentication_type` | `string`   | Yes                  | The authentication method used (`OAUTH` or `API_KEY`).                                                                                                            |
+| `code`                | `string`   | Required for OAUTH   | The authorization code used in OAUTH authentication flows.                                                                                                        |
+| `redirect_uri`        | `string`   | No (OAUTH only)      | The redirect URI used in the authorization request. Must match `toolsets.security.allowedRedirectUris` or the toolset's own `redirect_uri`. Falls back to toolset's URI if omitted. |
+| `api_key`             | `string`   | Required for API_KEY | The API key value.                                                                                                                                                |
 
 ---
 

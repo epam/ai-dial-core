@@ -8,6 +8,8 @@ import com.epam.aidial.core.credentials.service.metadata.ProtectedResourceMetada
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.List;
+
 @Slf4j
 @RequiredArgsConstructor
 public class ResourceRegistrationService {
@@ -15,6 +17,7 @@ public class ResourceRegistrationService {
     private final AuthorizationServerMetadataService authorizationServerMetadataService;
     private final ResourceAuthorizationClient resourceAuthorizationClient;
     private final ProtectedResourceMetadataService protectedResourceMetadataService;
+    private final List<String> allowedRedirectUris;
 
     public ClientRegistration register(String resourceId,
                                        String resourceEndpoint,
@@ -22,7 +25,7 @@ public class ResourceRegistrationService {
                                        boolean oauthDynamicClientRegistrationRequired) {
         ResourceRegistrationStrategy strategy = oauthDynamicClientRegistrationRequired
                 ? new DynamicResourceRegistrationStrategy(
-                        authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService)
+                        authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, allowedRedirectUris)
                 : new StaticResourceRegistrationStrategy(
                         authorizationServerMetadataService, protectedResourceMetadataService);
 

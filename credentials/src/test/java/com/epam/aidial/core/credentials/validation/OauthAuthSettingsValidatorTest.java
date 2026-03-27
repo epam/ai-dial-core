@@ -36,6 +36,22 @@ class OauthAuthSettingsValidatorTest {
                                 .authenticationType(AuthenticationType.OAUTH)
                                 .redirectUri("https://example.com/oauth")
                                 .build(),
+                        ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT),
+
+                // Case 3: OAUTH authentication with static registration without redirect_uri
+                Arguments.of(ResourceAuthSettings.builder()
+                                .authenticationType(AuthenticationType.OAUTH)
+                                .clientId("client123")
+                                .clientSecret("secret123")
+                                .authorizationEndpoint("authorizationEndpoint")
+                                .tokenEndpoint("tokenEndpoint")
+                                .build(),
+                        ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT),
+
+                // Case 4: OAUTH authentication with dynamic registration without redirect_uri
+                Arguments.of(ResourceAuthSettings.builder()
+                                .authenticationType(AuthenticationType.OAUTH)
+                                .build(),
                         ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT)
         );
     }
@@ -105,16 +121,6 @@ class OauthAuthSettingsValidatorTest {
                                 .build(),
                         ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT,
                         "Field 'CLIENT_ID' is required for OAUTH authentication."),
-
-                Arguments.of(ResourceAuthSettings.builder()
-                                .authenticationType(AuthenticationType.OAUTH)
-                                .clientId("client123")
-                                .clientSecret("secret123")
-                                .authorizationEndpoint("authorizationEndpoint")
-                                .tokenEndpoint("tokenEndpoint")
-                                .build(),
-                        ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT,
-                        "Field 'REDIRECT_URI' is required for OAUTH authentication."),
 
                 Arguments.of(ResourceAuthSettings.builder()
                                 .authenticationType(AuthenticationType.OAUTH)
