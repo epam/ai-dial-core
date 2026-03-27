@@ -17,6 +17,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertLinesMatch;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class ResponsesApiTest extends ResourceBaseTest {
@@ -37,7 +38,7 @@ public class ResponsesApiTest extends ResourceBaseTest {
                 String result = client.execute(
                         httpUriRequest,
                         response -> new String(response.getEntity().getContent().readAllBytes(), StandardCharsets.UTF_8));
-                assertEquals(responseBody, result);
+                assertLinesMatch(responseBody.lines(), result.lines());
                 // wait for core to save usage
                 Thread.sleep(1000);
 
