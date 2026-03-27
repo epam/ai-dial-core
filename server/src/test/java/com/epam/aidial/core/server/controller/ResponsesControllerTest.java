@@ -91,6 +91,8 @@ public class ResponsesControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(context.respond(any(HttpStatus.class), anyString()))
                 .thenAnswer(invocation -> complete(textContext));
+        when(proxy.getTokenStatsTracker().startSpan(context))
+                .thenReturn(Future.succeededFuture());
 
         controller.handle();
 
@@ -109,6 +111,8 @@ public class ResponsesControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "unknown"))
                 .thenThrow(new ResourceNotFoundException("not found error"));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(proxy.getTokenStatsTracker().startSpan(context))
+                .thenReturn(Future.succeededFuture());
 
         controller.handle();
 
@@ -133,6 +137,8 @@ public class ResponsesControllerTest {
                 .verifyUserConsent(context, deployment);
         when(proxy.getConsentService()).thenReturn(consentService);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(proxy.getTokenStatsTracker().startSpan(context))
+                .thenReturn(Future.succeededFuture());
 
         controller.handle();
 
@@ -154,6 +160,8 @@ public class ResponsesControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(proxy.getTokenStatsTracker().startSpan(context))
+                .thenReturn(Future.succeededFuture());
 
         controller.handle();
 
@@ -171,7 +179,6 @@ public class ResponsesControllerTest {
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"model\":\"test\"}")));
         when(context.getRequest()).thenReturn(request);
-        when(context.getDeployment()).thenReturn(deployment);
         when(context.respond(any(HttpException.class)))
                 .thenAnswer(invocation -> complete(textContext));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
@@ -180,6 +187,10 @@ public class ResponsesControllerTest {
         when(proxy.getRateLimiter().limit(context, deployment)).thenReturn(Future.succeededFuture(
                 new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, "rate limit error", null, 0)));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(proxy.getTokenStatsTracker().startSpan(context))
+                .thenReturn(Future.succeededFuture());
+        doCallRealMethod().when(context).setDeployment(any());
+        doCallRealMethod().when(context).getDeployment();
 
         controller.handle();
 
@@ -257,6 +268,8 @@ public class ResponsesControllerTest {
         when(proxy.getClient().request(any()))
                 .thenReturn(Future.succeededFuture(proxyRequest));
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        when(proxy.getTokenStatsTracker().startSpan(context))
+                .thenReturn(Future.succeededFuture());
         when(proxyResponse.handler(any())).thenAnswer(inv -> {
             Handler<Buffer> handler = inv.getArgument(0);
             handler.handle(responseBody);
@@ -292,7 +305,7 @@ public class ResponsesControllerTest {
     }
 
     private static void await(VertxTestContext textContext) throws Throwable {
-        textContext.awaitCompletion(1000, TimeUnit.SECONDS);
+        textContext.awaitCompletion(1, TimeUnit.SECONDS);
         if (textContext.failed()) {
             throw textContext.causeOfFailure();
         }

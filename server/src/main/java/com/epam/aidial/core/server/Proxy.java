@@ -64,6 +64,7 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.Strings;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -298,13 +299,18 @@ public class Proxy implements Handler<HttpServerRequest> {
         if (apiKey == null) {
             return tokenValidator.extractClaims(authorization)
                     .compose(extractedClaims -> Future.succeededFuture(new AuthorizationResult(new ApiKeyData(), extractedClaims)))
-                    .recover(error -> {
-                        // OpenAI's Responses API uses the Authorization header to send the API key.
-                        String token = AccessTokenValidator.extractTokenFromHeader(authorization);
-                        return apiKeyStore.getApiKeyData(token, clientIpAddress)
-                                .map(apiKeyData -> new AuthorizationResult(apiKeyData, null));
-                    })
-                    .recover(error -> Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Bad Authorization header")));
+                    .transform(result -> {
+                        if (result.failed()) {
+                            if (!Strings.CI.startsWith(authorization, "bearer ")) {
+                                return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Bad Authorization header"));
+                            }
+                            // OpenAI's Responses API uses the Authorization header to send the API key.
+                            String token = AccessTokenValidator.extractTokenFromHeader(authorization);
+                            return apiKeyStore.getApiKeyData(token, clientIpAddress)
+                                    .map(apiKeyData -> new AuthorizationResult(apiKeyData, null));
+                        }
+                        return Future.succeededFuture(result.result());
+                    });
         }
 
         // see https://github.com/epam/ai-dial-core/issues/675

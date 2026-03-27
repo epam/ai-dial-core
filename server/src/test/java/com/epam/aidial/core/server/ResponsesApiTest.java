@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 public class ResponsesApiTest extends ResourceBaseTest {
 
     @Test
-    public void testResponsesApi() throws IOException {
+    public void testResponsesApi() throws IOException, InterruptedException {
         String responseBody = getResponseBody();
         try (TestWebServer server = new TestWebServer(4848)) {
             try (CloseableHttpClient client = HttpClientBuilder.create().disableAutomaticRetries().build()) {
@@ -52,8 +52,6 @@ public class ResponsesApiTest extends ResourceBaseTest {
                 assertEquals(18, limitStats.getWeekTokenStats().getUsed());
                 assertEquals(18, limitStats.getMonthTokenStats().getUsed());
             }
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
         }
     }
 
