@@ -48,7 +48,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         if (!Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
-        return proxy.getTokenStatsTracker().startSpan(context).map(ignore_ -> {
+        return proxy.getTokenStatsTracker().startSpan(context).map(ignored -> {
             context.getRequest().body()
                     .map(this::parseBody)
                     .compose(tree -> {
