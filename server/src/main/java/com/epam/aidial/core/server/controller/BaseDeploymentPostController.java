@@ -212,21 +212,4 @@ public class BaseDeploymentPostController {
         return DEFAULT_RETRIABLE_HTTP_CODES.contains(statusCode)
                 || context.getConfig().getRetriableErrorCodes().contains(statusCode);
     }
-
-    protected boolean nextUpstream(Function<Upstream, String> endpointSelector) {
-        UpstreamRoute route = context.getUpstreamRoute();
-        try {
-            Upstream next;
-            do {
-                next = route.next();
-            } while (endpointSelector.apply(next) == null);
-
-            return true;
-        } catch (HttpException e) {
-            respond(e);
-            log.warn("No route. Deployment: {}", context.getDeployment().getName());
-        }
-
-        return false;
-    }
 }

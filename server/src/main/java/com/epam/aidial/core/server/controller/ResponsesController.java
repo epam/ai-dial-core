@@ -143,13 +143,11 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private void sendRequest() {
-        if (!nextUpstream(Upstream::getResponsesEndpoint)) {
-            return;
+        if (nextUpstream()) {
+            createProxyRequest(Deployment::getResponsesEndpoint)
+                    .onSuccess(this::handleProxyRequest)
+                    .onFailure(this::handleProxyConnectionError);
         }
-
-        createProxyRequest(Deployment::getResponsesEndpoint)
-                .onSuccess(this::handleProxyRequest)
-                .onFailure(this::handleProxyConnectionError);
     }
 
     private void handleProxyRequest(HttpClientRequest proxyRequest) {
@@ -277,5 +275,22 @@ public class ResponsesController extends BaseDeploymentPostController {
             // drop connection to stop application responding
             context.getProxyRequest().reset();
         }
+    }
+
+    private boolean nextUpstream() {
+        UpstreamRoute route = context.getUpstreamRoute();
+        try {
+            Upstream next;
+            do {
+                next = route.next();
+            } while (next.getResponsesEndpoint() == null);
+
+            return true;
+        } catch (HttpException e) {
+            respond(e);
+            log.warn("No route. Deployment: {}", context.getDeployment().getName());
+        }
+
+        return false;
     }
 }
