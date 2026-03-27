@@ -584,7 +584,7 @@ public class ProxyTest {
     }
 
     @Test
-    public void testHandle_WrongAccessToken() {
+    public void testHandle_WrongAccessTokenTreatedAsKey() {
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
         MultiMap headers = mock(MultiMap.class);
@@ -605,12 +605,14 @@ public class ProxyTest {
         config.setRoutes(routes);
         when(configStore.get()).thenReturn(config);
         when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.failedFuture(new HttpException(UNAUTHORIZED, "Bad Authorization header")));
-        when(request.response()).thenReturn(response);
-        when(response.ended()).thenReturn(false);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        Key originalKey = new Key();
+        apiKeyData.setOriginalKey(originalKey);
+        when(apiKeyStore.getApiKeyData("key1", null)).thenReturn(Future.succeededFuture(apiKeyData));
 
         proxy.handle(request);
 
-        verify(response).setStatusCode(UNAUTHORIZED.getCode());
+        verify(response).setStatusCode(OK.getCode());
     }
 
     @Test

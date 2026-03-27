@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
@@ -91,8 +92,6 @@ public class ResponsesControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(context.respond(any(HttpStatus.class), anyString()))
                 .thenAnswer(invocation -> complete(textContext));
-        when(proxy.getTokenStatsTracker().startSpan(context))
-                .thenReturn(Future.succeededFuture());
 
         controller.handle();
 
@@ -111,8 +110,6 @@ public class ResponsesControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "unknown"))
                 .thenThrow(new ResourceNotFoundException("not found error"));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getTokenStatsTracker().startSpan(context))
-                .thenReturn(Future.succeededFuture());
 
         controller.handle();
 
@@ -137,8 +134,6 @@ public class ResponsesControllerTest {
                 .verifyUserConsent(context, deployment);
         when(proxy.getConsentService()).thenReturn(consentService);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getTokenStatsTracker().startSpan(context))
-                .thenReturn(Future.succeededFuture());
 
         controller.handle();
 
@@ -160,8 +155,6 @@ public class ResponsesControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getTokenStatsTracker().startSpan(context))
-                .thenReturn(Future.succeededFuture());
 
         controller.handle();
 
@@ -187,8 +180,6 @@ public class ResponsesControllerTest {
         when(proxy.getRateLimiter().limit(context, deployment)).thenReturn(Future.succeededFuture(
                 new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, "rate limit error", null, 0)));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getTokenStatsTracker().startSpan(context))
-                .thenReturn(Future.succeededFuture());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
 
@@ -204,8 +195,8 @@ public class ResponsesControllerTest {
     }
 
     @Test
-    public void testDeploymentResponse(Vertx vertx, VertxTestContext textContext) throws Throwable {
-        Deployment deployment = new Model();
+    public void testModelResponse(Vertx vertx, VertxTestContext textContext) throws Throwable {
+        Model deployment = new Model();
         deployment.setName("test");
         deployment.setResponsesEndpoint("http://adapter/responses");
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
@@ -270,6 +261,105 @@ public class ResponsesControllerTest {
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getTokenStatsTracker().startSpan(context))
                 .thenReturn(Future.succeededFuture());
+        when(proxyResponse.handler(any())).thenAnswer(inv -> {
+            Handler<Buffer> handler = inv.getArgument(0);
+            handler.handle(responseBody);
+            return proxyResponse;
+        });
+        when(proxyResponse.endHandler(any())).thenAnswer(inv -> {
+            Handler<Buffer> handler = inv.getArgument(0);
+            handler.handle(null);
+            return proxyResponse;
+        });
+        doCallRealMethod().when(context).setDeployment(any());
+        doCallRealMethod().when(context).getDeployment();
+        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).getRequestBody();
+        doCallRealMethod().when(context).setResponseBody(any());
+        doCallRealMethod().when(context).getResponseBody();
+        doCallRealMethod().when(context).setResponseStream(any());
+        doCallRealMethod().when(context).getResponseStream();
+        doCallRealMethod().when(context).setTokenUsage(any());
+        doCallRealMethod().when(context).getTokenUsage();
+
+        controller.handle();
+
+        await(textContext);
+
+        assertEquals(responseBody, context.getResponseBody());
+        assertEquals(tokenUsage, context.getTokenUsage());
+    }
+
+    @Test
+    public void testApplicationResponse(Vertx vertx, VertxTestContext textContext) throws Throwable {
+        Application deployment = new Application();
+        deployment.setName("test");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0);
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setPerRequestKey("per-request-key");
+        Buffer requestBody = Buffer.buffer("{\"model\":\"test\"}");
+        Buffer responseBody = Buffer.buffer("""
+                {
+                    "usage": {
+                        "input_tokens": 19,
+                        "input_tokens_details": {
+                          "cached_tokens": 0
+                        },
+                        "output_tokens": 9,
+                        "output_tokens_details": {
+                          "reasoning_tokens": 0
+                        },
+                        "total_tokens": 28
+                    }
+                }
+                """);
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setPromptTokens(20);
+        tokenUsage.setCompletionTokens(10);
+        PromptTokensDetails promptTokensDetails = new PromptTokensDetails();
+        promptTokensDetails.setCachedTokens(1);
+        tokenUsage.setPromptTokensDetails(promptTokensDetails);
+        tokenUsage.setTotalTokens(31);
+
+        when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        when(request.body()).thenReturn(Future.succeededFuture(requestBody));
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(upstreamRoute.next()).thenReturn(upstream);
+        when(upstreamRoute.get()).thenReturn(upstream);
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        when(context.getRequest()).thenReturn(request);
+        when(context.getResponse()).thenReturn(response);
+        when(context.getConfig()).thenReturn(new Config());
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+        when(proxyRequest.headers()).thenReturn(new HeadersMultiMap());
+        when(proxyRequest.send(requestBody)).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxyResponse.statusCode()).thenReturn(200);
+        when(response.end())
+                .thenAnswer(invocation -> complete(textContext));
+        when(proxy.getDeploymentService().findDeployment(context, "test"))
+                .thenReturn(deployment);
+        when(proxy.getRateLimiter().limit(context, deployment))
+                .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
+        when(proxy.getRateLimiter().increase(context, deployment))
+                .thenReturn(Future.succeededFuture());
+        when(proxy.getTokenStatsTracker().updateModelStats(context))
+                .thenReturn(Future.succeededFuture());
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(proxy.getClient().request(any()))
+                .thenReturn(Future.succeededFuture(proxyRequest));
+        when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
+                .thenReturn(deployment);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        when(proxy.getTokenStatsTracker().startSpan(context))
+                .thenReturn(Future.succeededFuture());
+        when(proxy.getTokenStatsTracker().getTokenStats(context))
+                .thenReturn(Future.succeededFuture(tokenUsage));
         when(proxyResponse.handler(any())).thenAnswer(inv -> {
             Handler<Buffer> handler = inv.getArgument(0);
             handler.handle(responseBody);

@@ -60,6 +60,7 @@ public class ApplicationSchemaServiceTest {
               "dial:applicationTypeEditorUrl" : "https://mydial.epam.com/specific_application_type_editor",
               "dial:applicationTypeDisplayName" : "Specific Application Type",
               "dial:applicationTypeCompletionEndpoint" : "http://specific_application_service/opeani/v1/completion",
+              "dial:applicationTypeResponsesEndpoint" : "http://specific_application_service/opeani/v1/responses",
               "dial:applicationTypeAssistantAttachmentsInRequestSupported": true,
               "properties" : {
                 "clientFile" : {
@@ -381,6 +382,7 @@ public class ApplicationSchemaServiceTest {
 
         Assertions.assertNotSame(application, result);
         Assertions.assertEquals("http://specific_application_service/opeani/v1/completion", result.getEndpoint());
+        Assertions.assertEquals("http://specific_application_service/opeani/v1/responses", result.getResponsesEndpoint());
         Assertions.assertTrue(result.getFeatures().getAssistantAttachmentsInRequestSupported());
     }
 
@@ -394,6 +396,7 @@ public class ApplicationSchemaServiceTest {
 
         Assertions.assertNotSame(application, result);
         Assertions.assertEquals("http://specific_application_service/opeani/v1/completion", result.getEndpoint());
+        Assertions.assertEquals("http://specific_application_service/opeani/v1/responses", result.getResponsesEndpoint());
     }
 
     @Test
