@@ -583,6 +583,56 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testProxyMcpPostCall_ListAllTools() throws JsonProcessingException {
+        String mcpRequest = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 1,
+                   "method": "tools/list",
+                   "params": {
+                     "cursor": "optional-cursor-value"
+                   }
+                 }
+                """;
+        String mcpResponse = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 1,
+                   "result": {
+                     "tools": [
+                       {
+                         "name": "branch",
+                         "title": "Manage branches"
+                       },
+                       {
+                         "name": "tag",
+                         "title": "Manage tags"
+                       }
+                     ],
+                     "nextCursor": "next-page-cursor"
+                   }
+                 }
+                """;
+        TestWebServer.Handler handler = request -> {
+            assertEquals(mcpRequest, request.getBody().readString(StandardCharsets.UTF_8));
+            return new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "application/json");
+        };
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            // operation is not allowed for a regular user
+            Response resp = send(HttpMethod.POST, "/v1/toolset/git/mcp?useAllowedTools=false", null,
+                    mcpRequest, "Content-Type", "application/json");
+            assertEquals(403, resp.status());
+            // admin is allowed to view all tools
+            resp = send(HttpMethod.POST, "/v1/toolset/git/mcp?useAllowedTools=false", null,
+                    mcpRequest, "Content-Type", "application/json", "authorization", "admin");
+            assertEquals(200, resp.status());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = (ArrayNode) json.get("result").get("tools");
+            assertEquals(2, tools.size());
+        }
+    }
+
+    @Test
     void testProxyMcpGetCall() {
         String mcpResponse = """
                 {
