@@ -276,21 +276,4 @@ public class ResponsesController extends BaseDeploymentPostController {
             context.getProxyRequest().reset();
         }
     }
-
-    private boolean nextUpstream() {
-        UpstreamRoute route = context.getUpstreamRoute();
-        try {
-            Upstream next;
-            do {
-                next = route.next();
-            } while (next.getResponsesEndpoint() == null);
-
-            return true;
-        } catch (HttpException e) {
-            respond(e);
-            log.warn("No route. Deployment: {}", context.getDeployment().getName());
-        }
-
-        return false;
-    }
 }
