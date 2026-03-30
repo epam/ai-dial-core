@@ -200,13 +200,11 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
     @SneakyThrows
     private void sendRequest() {
-        if (!nextUpstream(Upstream::getEndpoint)) {
-            return;
+        if (nextUpstream()) {
+            createProxyRequest(Deployment::getEndpoint)
+                    .onSuccess(this::handleProxyRequest)
+                    .onFailure(this::handleProxyConnectionError);
         }
-
-        createProxyRequest(Deployment::getEndpoint)
-                .onSuccess(this::handleProxyRequest)
-                .onFailure(this::handleProxyConnectionError);
     }
 
     @VisibleForTesting

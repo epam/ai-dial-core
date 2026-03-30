@@ -213,14 +213,10 @@ public class BaseDeploymentPostController {
                 || context.getConfig().getRetriableErrorCodes().contains(statusCode);
     }
 
-    protected boolean nextUpstream(Function<Upstream, String> endpointSelector) {
+    protected boolean nextUpstream() {
         UpstreamRoute route = context.getUpstreamRoute();
         try {
-            Upstream next;
-            do {
-                next = route.next();
-            } while (endpointSelector.apply(next) == null);
-
+            route.next();
             return true;
         } catch (HttpException e) {
             respond(e);

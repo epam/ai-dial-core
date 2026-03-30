@@ -335,6 +335,39 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
+    public void testHandleRequestBody_UseUpstreamWithoutEndpoint() {
+        when(context.getRequest()).thenReturn(request);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(upstreamRoute.next()).thenReturn(new Upstream());
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(context.getRequest()).thenReturn(request);
+        when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
+        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setInterceptorIndex(0);
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+
+        Model model = new Model();
+        model.setName("name");
+        model.setEndpoint("http://host/model");
+        when(context.getDeployment()).thenReturn(model);
+        String body = """
+                {
+                    "model": "name",
+                    "messages": [],
+                    "stream": false
+                }
+                """;
+        Buffer requestBody = Buffer.buffer(body);
+
+        controller.handleRequestBody(requestBody);
+
+        verify(proxy.getClient()).request(any());
+    }
+
+    @Test
     public void testHandleProxyRequest_PropagateAuthHeader() {
         when(context.getRequest()).thenReturn(request);
         Application application = new Application();
