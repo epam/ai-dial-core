@@ -1,7 +1,11 @@
 package com.epam.aidial.core.server.vertx.stream;
 
 import com.epam.aidial.core.server.function.BaseResponseFunction;
-import com.epam.aidial.core.server.util.EventStreamParser;
+import com.epam.aidial.core.server.sse.SseEvent;
+import com.epam.aidial.core.server.sse.SseEventListener;
+import com.epam.aidial.core.server.sse.SseParser;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
@@ -11,7 +15,10 @@ import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.ReadStream;
 import io.vertx.core.streams.impl.PipeImpl;
 import lombok.Getter;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+
+import javax.annotation.Nullable;
 
 @Slf4j
 @Getter
@@ -27,30 +34,26 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     private Throwable error;
     private boolean ended;
     private boolean reset;
-    // set the position to unset by default
-    private int lastChunkPos = -1;
-    private final EventStreamParser eventStreamParser;
-    // a chain of futures supplied by eventStreamParser
-    private Future<Boolean> streamHandlerFuture;
+    private final SseParser eventStreamParser;
+    private final BaseEventListener eventListener;
     // promise on input stream is completed
     private final Promise<Void> endStream;
-
-    public BufferingReadStream(ReadStream<Buffer> stream) {
-        this(stream, 512, null);
-    }
 
     public BufferingReadStream(ReadStream<Buffer> stream, int initialSize) {
         this(stream, initialSize, null);
     }
 
-    public BufferingReadStream(ReadStream<Buffer> stream, int initialSize, BaseResponseFunction streamHandler) {
+    public BufferingReadStream(ReadStream<Buffer> stream, int initialSize, @Nullable BaseEventListener listener) {
         this.stream = stream;
         this.content = Buffer.buffer(initialSize);
         this.endStream = Promise.promise();
-        if (streamHandler == null) {
+        this.eventListener = listener;
+        if (listener == null) {
             this.eventStreamParser = null;
         } else {
-            this.eventStreamParser = new EventStreamParser(512, streamHandler);
+            listener.chunkHandler(this::notifyOnChunk);
+            listener.chunkEndHandler(this::handleEndInternal);
+            this.eventStreamParser = new SseParser(512, listener);
         }
 
         stream.handler(this::handleChunk);
@@ -132,8 +135,11 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     }
 
     public synchronized void end(HttpServerResponse response) {
-        if (lastChunkPos != -1) {
-            Buffer lastChunk = content.slice(lastChunkPos, content.length());
+        Buffer lastChunk = null;
+        if (eventListener != null) {
+            lastChunk = eventListener.lastChunk;
+        }
+        if (lastChunk != null) {
             response.end(lastChunk);
         } else {
             response.end();
@@ -145,51 +151,26 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     }
 
     private synchronized void handleChunk(Buffer chunk) {
-        int pos = content.length();
         content.appendBuffer(chunk);
-        if (lastChunkPos != -1) {
-            // stop streaming
-            return;
-        }
         if (eventStreamParser != null) {
-            // build chain of chunk futures: the chunks should be sent in the same order as they arrive
-            if (streamHandlerFuture == null) {
-                streamHandlerFuture = parseChunk(chunk, pos);
-            } else {
-                streamHandlerFuture = streamHandlerFuture.transform(ignore -> parseChunk(chunk, pos));
-            }
+            eventStreamParser.parse(chunk);
         } else {
             notifyOnChunk(chunk);
         }
     }
 
-    private synchronized Future<Boolean> parseChunk(Buffer chunk, int pos) {
-        return eventStreamParser.parse(chunk)
-                .andThen(result -> handleStreamEvent(chunk, result.result() == Boolean.TRUE, pos));
-    }
-
-    private synchronized void handleStreamEvent(Buffer chunk, boolean isLastChunk, int pos) {
-        if (isLastChunk) {
-            if (lastChunkPos == -1) {
-                lastChunkPos = pos;
-            }
-            // don't send the last chunk
-            return;
-        }
-        notifyOnChunk(chunk);
-    }
-
     private synchronized void handleEnd(Void ignored) {
         ended = true;
-        if (streamHandlerFuture == null) {
-            endStream.tryComplete();
-            notifyOnEnd(ignored);
+        if (eventListener == null) {
+            handleEndInternal(ignored);
         } else {
-            streamHandlerFuture.onComplete(ignore -> {
-                endStream.tryComplete();
-                notifyOnEnd(ignored);
-            });
+            eventStreamParser.finish();
         }
+    }
+
+    private void handleEndInternal(Void ignored) {
+        endStream.tryComplete();
+        notifyOnEnd(ignored);
     }
 
     private synchronized void handleException(Throwable exception) {
@@ -227,5 +208,98 @@ public class BufferingReadStream implements ReadStream<Buffer> {
                 log.warn("Exception handler threw exception in buffering read stream: {}", throwable.getMessage());
             }
         }
+    }
+
+    public static class BaseEventListener implements SseEventListener {
+        public static final String CHAT_COMPLETION_FINAL_MESSAGE = "[DONE]";
+        @Nullable
+        private final BaseResponseFunction function;
+        // a chain of futures supplied by SSE parser
+        private Future<Void> streamHandlerChain;
+        private Handler<Buffer> chunkHandler;
+        private Handler<Void> chunkEndHandler;
+        private volatile Buffer lastChunk;
+
+        public BaseEventListener() {
+            function = null;
+        }
+
+        public BaseEventListener(BaseResponseFunction function) {
+            this.function = function;
+        }
+
+        @Override
+        public void onEvent(SseEvent event) {
+            try {
+                if (streamHandlerChain == null) {
+                    streamHandlerChain = handle(event);
+                } else {
+                    streamHandlerChain = streamHandlerChain.transform(ignore -> handle(event));
+                }
+            } catch (Throwable e) {
+                log.warn("Error occurred at handling sse event", e);
+            }
+        }
+
+        @Override
+        public void onComment(String comment) {
+            Buffer chunk = Buffer.buffer(":"  + comment + "\n");
+            // we don't enforce sending order for comments
+            chunkHandler.handle(chunk);
+        }
+
+        public void chunkHandler(Handler<Buffer> handler) {
+            this.chunkHandler = handler;
+        }
+
+        public void chunkEndHandler(Handler<Void> handler) {
+            chunkEndHandler = handler;
+        }
+
+        @Override
+        public void onComplete() {
+            streamHandlerChain.onComplete(ignored -> chunkEndHandler.handle(null));
+        }
+
+        @SneakyThrows
+        private Future<Void> handle(SseEvent event) {
+            String data = event.getData();
+            Future<JsonNode> result;
+            if (function == null || CHAT_COMPLETION_FINAL_MESSAGE.equals(data)) {
+                result = Future.succeededFuture();
+            } else {
+                JsonNode tree = ProxyUtil.MAPPER.readTree(data);
+                result = function.apply(tree);
+            }
+            return result.map(json -> send(json, event));
+        }
+
+        private Void send(@Nullable JsonNode tree, SseEvent event) {
+            if (isLastEvent(event, tree)) {
+                // we send the last chunk later
+                lastChunk = to(event, tree);
+            } else {
+                Buffer chunk = to(event, tree);
+                chunkHandler.handle(chunk);
+            }
+            return null;
+        }
+
+        private static Buffer to(SseEvent originalEvent, @Nullable JsonNode tree) {
+            String rawEvent;
+            if (tree == null) {
+                rawEvent = originalEvent.toString();
+            } else {
+                String json = tree.toString();
+                SseEvent event = originalEvent.copyWith(json);
+                rawEvent = event.toString();
+            }
+            return Buffer.buffer(rawEvent);
+        }
+
+        protected boolean isLastEvent(SseEvent event, JsonNode data) {
+            return false;
+        }
+
     }
 }

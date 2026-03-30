@@ -96,7 +96,7 @@ public class ApplicationRouteController extends BaseRouteController {
             try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
                 ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
                 var fn = new CollectResponseCustomAttachmentsFn(proxy, context);
-                return fn.apply(tree);
+                return fn.apply(tree).map(ignored -> null);
             } catch (Throwable e) {
                 log.warn("Can't parse JSON response body. Error:", e);
                 return Future.failedFuture(e);

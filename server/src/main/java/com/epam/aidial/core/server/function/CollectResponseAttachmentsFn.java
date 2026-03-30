@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
@@ -24,10 +25,14 @@ public abstract class CollectResponseAttachmentsFn extends BaseResponseFunction 
     }
 
     @Override
-    public Future<Void> apply(ObjectNode tree) {
+    public Future<JsonNode> apply(JsonNode tree) {
+        if (!tree.isObject()) {
+            return Future.succeededFuture(tree);
+        }
+        ObjectNode objectNode = (ObjectNode) tree;
         try {
             Map<String, Set<ResourceAccessType>> permittedAttachments = new HashMap<>();
-            Set<String> attachments = collectAttachments(tree);
+            Set<String> attachments = collectAttachments(objectNode);
             for (String attachment : attachments) {
                 processAttachedFile(attachment, permittedAttachments);
             }
@@ -37,7 +42,7 @@ public abstract class CollectResponseAttachmentsFn extends BaseResponseFunction 
             String perRequestKey = context.getApiKeyData().getPerRequestKey();
             return proxy.getTaskExecutor().submit(() -> {
                 proxy.getApiKeyStore().updatePerRequestApiKey(perRequestKey, json -> updateAutoSharedAttachments(json, permittedAttachments, perRequestKey));
-                return null;
+                return tree;
             });
         } catch (Throwable e) {
             return Future.failedFuture(e);

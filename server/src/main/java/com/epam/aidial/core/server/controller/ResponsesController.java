@@ -9,8 +9,11 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.function.BaseResponseFunction;
+import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -18,6 +21,7 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
@@ -33,6 +37,7 @@ import org.apache.commons.lang3.Strings;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
+import java.util.function.Supplier;
 
 @Slf4j
 public class ResponsesController extends BaseDeploymentPostController {
@@ -188,7 +193,8 @@ public class ResponsesController extends BaseDeploymentPostController {
             upstreamRoute.fail(proxyResponse);
         }
 
-        BufferingReadStream responseStream = createResponseStream(proxyResponse);
+        Supplier<BufferingReadStream.BaseEventListener> eventListenerSupplier = ResponsesSseListener::new;
+        BufferingReadStream responseStream = createResponseStream(proxyResponse, eventListenerSupplier);
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
@@ -276,6 +282,18 @@ public class ResponsesController extends BaseDeploymentPostController {
         } else {
             // drop connection to stop application responding
             context.getProxyRequest().reset();
+        }
+    }
+
+    private static class ResponsesSseListener extends BufferingReadStream.BaseEventListener {
+
+        public ResponsesSseListener() {
+            super();
+        }
+
+        @Override
+        protected boolean isLastEvent(SseEvent event, JsonNode data) {
+            return "response.completed".equals(event.getEvent());
         }
     }
 }

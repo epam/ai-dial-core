@@ -14,6 +14,8 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.function.BaseResponseFunction;
+import com.epam.aidial.core.server.function.FilterAllowedToolsFn;
 import com.epam.aidial.core.server.function.enhancement.InjectApplicationPropsToMcpRequest;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
@@ -24,6 +26,7 @@ import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -68,8 +71,6 @@ import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_
 @Slf4j
 public class ToolSetProxyController implements Controller {
 
-    private static final ArrayNode EMPTY_JSON_ARRAY = ProxyUtil.MAPPER.createArrayNode();
-
     private final String toolSetId;
 
     private final CredentialsLocator credentialsLocator;
@@ -100,6 +101,8 @@ public class ToolSetProxyController implements Controller {
 
     private final List<BaseRequestFunction<ObjectNode>> enhancementFunctions;
 
+    private final Proxy proxy;
+
     private String mcpMethodName;
 
     private boolean useAllowedTools;
@@ -125,6 +128,7 @@ public class ToolSetProxyController implements Controller {
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.applicationSchemaService = proxy.getApplicationSchemaService();
         this.enhancementFunctions = List.of(new InjectApplicationPropsToMcpRequest(proxy, context));
+        this.proxy = proxy;
     }
 
     @Override
@@ -346,8 +350,14 @@ public class ToolSetProxyController implements Controller {
     }
 
     private void handleSseProxyResponse(HttpClientResponse proxyResponse) {
+        BufferingReadStream.BaseEventListener eventListener = null;
+        if (requireToolFiltering()) {
+            FilterAllowedToolsFn fn = new FilterAllowedToolsFn(proxy, context);
+            eventListener = new BufferingReadStream.BaseEventListener(fn);
+        }
+
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
-                ProxyUtil.contentLength(proxyResponse, 1024));
+                ProxyUtil.contentLength(proxyResponse, 1024), eventListener);
 
         context.setProxyResponse(proxyResponse);
         context.setResponseStream(proxyResponseStream);
@@ -383,12 +393,12 @@ public class ToolSetProxyController implements Controller {
     }
 
     private void handleResponse(int responseStatus, Buffer proxyResponseBody) {
-        if ("tools/list".equalsIgnoreCase(mcpMethodName) && useAllowedTools) {
+        Future<Buffer> future;
+        if (requireToolFiltering()) {
             try (InputStream stream = new ByteBufInputStream(proxyResponseBody.getByteBuf())) {
-                ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-                if (filterToolList(tree)) {
-                    proxyResponseBody = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
-                }
+                JsonNode tree = ProxyUtil.MAPPER.readTree(stream);
+                FilterAllowedToolsFn fn = new FilterAllowedToolsFn(proxy, context);
+                future = fn.apply(tree).map(result -> Buffer.buffer(result.toString()));
             } catch (Throwable e) {
                 if (e instanceof HttpException httpException) {
                     respond(httpException.getStatus(), httpException.getMessage());
@@ -398,38 +408,21 @@ public class ToolSetProxyController implements Controller {
                 log.warn("Can't process JSON response body. Error:", e);
                 return;
             }
+        } else {
+            future = Future.succeededFuture(proxyResponseBody);
         }
-        context.setResponseBody(proxyResponseBody);
-        respond(responseStatus, proxyResponseBody);
-        logStore.save(context);
+        future.onSuccess(result -> {
+            context.setResponseBody(result);
+            respond(responseStatus, result);
+            logStore.save(context);
+        }).onFailure(error -> {
+            log.error("Failed to handle MCP response body", error);
+            respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to handle MCP response body");
+        });
     }
 
-    private boolean filterToolList(ObjectNode body) {
-        ArrayNode tools = (ArrayNode) Optional.ofNullable(body.get("result")).map(result -> result.get("tools"))
-                .filter(JsonNode::isArray).orElse(EMPTY_JSON_ARRAY);
-        List<String> allowedTools = getAllowedTools(context.getDeployment());
-        if (allowedTools.isEmpty()) {
-            return false;
-        }
-        boolean modified = false;
-        for (Iterator<JsonNode> iter = tools.iterator(); iter.hasNext();) {
-            JsonNode tool = iter.next();
-            String name = tool.get("name").asText();
-            if (!allowedTools.contains(name)) {
-                iter.remove();
-                modified = true;
-            }
-        }
-        return modified;
-    }
-
-    private List<String> getAllowedTools(Deployment deployment) {
-        if (deployment instanceof ToolSet toolSet) {
-            return toolSet.getAllowedTools();
-        } else if (deployment instanceof Application application) {
-            return application.getMcp().getAllowedTools();
-        }
-        throw new IllegalArgumentException("Unsupported deployment type: " + deployment.getName());
+    private boolean requireToolFiltering() {
+        return "tools/list".equalsIgnoreCase(mcpMethodName) && useAllowedTools;
     }
 
     private Future<?> handleRateLimitSuccess(Deployment deployment) {
@@ -562,4 +555,5 @@ public class ToolSetProxyController implements Controller {
                     }).onFailure(error -> log.error("error occurred on invalidating per-request key", error));
         }
     }
+
 }
