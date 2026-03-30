@@ -48,6 +48,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
@@ -334,7 +336,6 @@ public class ResponsesControllerTest {
         when(request.headers()).thenReturn(new HeadersMultiMap());
         when(upstreamRoute.next()).thenReturn(upstream);
         when(upstreamRoute.get()).thenReturn(upstream);
-        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getRequest()).thenReturn(request);
         when(context.getResponse()).thenReturn(response);
         when(context.getConfig()).thenReturn(new Config());
@@ -354,6 +355,7 @@ public class ResponsesControllerTest {
         when(proxy.getTokenStatsTracker().updateModelStats(context))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(proxy.getUpstreamRouteProvider().get(any(), any(), any())).thenReturn(upstreamRoute);
         when(proxy.getClient().request(any()))
                 .thenReturn(Future.succeededFuture(proxyRequest));
         when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
@@ -383,10 +385,17 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getResponseStream();
         doCallRealMethod().when(context).setTokenUsage(any());
         doCallRealMethod().when(context).getTokenUsage();
+        doCallRealMethod().when(context).setUpstreamRoute(any());
+        doCallRealMethod().when(context).getUpstreamRoute();
 
         controller.handle();
 
         await(textContext);
+
+        verify(proxy.getUpstreamRouteProvider()).get(
+                eq(deployment),
+                isNull(),
+                argThat(arg -> "http://adapter/responses".equals(arg.apply(deployment))));
 
         assertEquals(responseBody, context.getResponseBody());
         assertEquals(tokenUsage, context.getTokenUsage());
