@@ -293,7 +293,7 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         @Override
         protected boolean isLastEvent(SseEvent event, JsonNode data) {
-            return "response.completed".equals(event.getEvent());
+            return "response.incomplete".equals(event.getEvent()) || "response.completed".equals(event.getEvent());
         }
     }
 }
