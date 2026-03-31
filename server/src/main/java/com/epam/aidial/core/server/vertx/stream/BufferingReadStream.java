@@ -19,6 +19,7 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.annotation.Nullable;
+import java.util.Objects;
 
 @Slf4j
 @Getter
@@ -134,7 +135,7 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         return this;
     }
 
-    public synchronized void end(HttpServerResponse response) {
+    public void end(HttpServerResponse response) {
         Buffer lastChunk = null;
         if (eventListener != null) {
             lastChunk = eventListener.lastChunk;
@@ -215,7 +216,7 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         @Nullable
         private final BaseResponseFunction function;
         // a chain of futures supplied by SSE parser
-        private Future<Void> streamHandlerChain;
+        private Future<Void> streamHandlerChain = Future.succeededFuture();
         private Handler<Buffer> chunkHandler;
         private Handler<Void> chunkEndHandler;
         private volatile Buffer lastChunk;
@@ -231,13 +232,9 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         @Override
         public void onEvent(SseEvent event) {
             try {
-                if (streamHandlerChain == null) {
-                    streamHandlerChain = handle(event);
-                } else {
-                    streamHandlerChain = streamHandlerChain.transform(ignore -> handle(event));
-                }
+                streamHandlerChain = streamHandlerChain.transform(ignore -> handle(event));
             } catch (Throwable e) {
-                log.warn("Error occurred at handling SSE event", e);
+                log.error("Error occurred at handling SSE event", e);
             }
         }
 
@@ -249,11 +246,11 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         }
 
         public void chunkHandler(Handler<Buffer> handler) {
-            this.chunkHandler = handler;
+            this.chunkHandler = Objects.requireNonNull(handler, "Chunk handler must not be null");
         }
 
         public void chunkEndHandler(Handler<Void> handler) {
-            chunkEndHandler = handler;
+            chunkEndHandler = Objects.requireNonNull(handler, "Chunk end handler must not be null");
         }
 
         @Override
@@ -272,7 +269,7 @@ public class BufferingReadStream implements ReadStream<Buffer> {
                     JsonNode tree = ProxyUtil.MAPPER.readTree(data);
                     result = function.apply(tree);
                 } catch (Throwable error) {
-                    log.warn("Error occurred at JSON data parsing and function calling", error);
+                    log.warn("Error occurred at JSON data parsing of SSE data and function calling", error);
                     result = Future.failedFuture(error);
                 }
             }
