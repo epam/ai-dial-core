@@ -37,8 +37,8 @@ public class FilterAllowedToolsFn extends BaseResponseFunction {
         }
         for (Iterator<JsonNode> iter = tools.iterator(); iter.hasNext();) {
             JsonNode tool = iter.next();
-            String name = tool.get("name").asText();
-            if (!allowedTools.contains(name)) {
+            JsonNode name = tool.get("name");
+            if (name != null && !allowedTools.contains(name.asText())) {
                 iter.remove();
             }
         }
