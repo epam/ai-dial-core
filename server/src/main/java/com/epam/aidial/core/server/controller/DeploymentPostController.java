@@ -399,12 +399,23 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
     public static class ChatCompletionSseListener extends BufferingReadStream.BaseEventListener {
 
+        public static final String CHAT_COMPLETION_FINAL_MESSAGE = "[DONE]";
+
         public ChatCompletionSseListener(BaseResponseFunction function) {
             super(function);
         }
 
         @Override
         protected boolean isLastEvent(SseEvent event, JsonNode data) {
+            return isFinalEvent(event);
+        }
+
+        @Override
+        protected boolean skipEvent(SseEvent event) {
+            return isFinalEvent(event);
+        }
+
+        private static boolean isFinalEvent(SseEvent event) {
             return CHAT_COMPLETION_FINAL_MESSAGE.equals(event.getData());
         }
     }

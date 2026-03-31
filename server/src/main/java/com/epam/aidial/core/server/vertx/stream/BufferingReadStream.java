@@ -210,8 +210,8 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         }
     }
 
+    @Slf4j
     public static class BaseEventListener implements SseEventListener {
-        public static final String CHAT_COMPLETION_FINAL_MESSAGE = "[DONE]";
         @Nullable
         private final BaseResponseFunction function;
         // a chain of futures supplied by SSE parser
@@ -237,7 +237,7 @@ public class BufferingReadStream implements ReadStream<Buffer> {
                     streamHandlerChain = streamHandlerChain.transform(ignore -> handle(event));
                 }
             } catch (Throwable e) {
-                log.warn("Error occurred at handling sse event", e);
+                log.warn("Error occurred at handling SSE event", e);
             }
         }
 
@@ -263,22 +263,35 @@ public class BufferingReadStream implements ReadStream<Buffer> {
 
         @SneakyThrows
         private Future<Void> handle(SseEvent event) {
-            String data = event.getData();
             Future<JsonNode> result;
-            if (function == null || CHAT_COMPLETION_FINAL_MESSAGE.equals(data)) {
+            if (function == null || skipEvent(event)) {
                 result = Future.succeededFuture();
             } else {
-                JsonNode tree = ProxyUtil.MAPPER.readTree(data);
-                result = function.apply(tree);
+                String data = event.getData();
+                try {
+                    JsonNode tree = ProxyUtil.MAPPER.readTree(data);
+                    result = function.apply(tree);
+                } catch (Throwable error) {
+                    log.warn("Error occurred at JSON data parsing and function calling", error);
+                    result = Future.failedFuture(error);
+                }
             }
-            return result.map(json -> send(json, event));
+            return result.recover(error -> {
+                log.warn("Function call is failed with error. Try to recover SSE event", error);
+                return recover(error, event);
+            }).map(json -> send(event, json));
         }
 
-        private Void send(@Nullable JsonNode tree, SseEvent event) {
+        protected Future<JsonNode> recover(Throwable error, SseEvent event) {
+            // default logic for recovering
+            return Future.succeededFuture();
+        }
+
+        private Void send(SseEvent event, @Nullable JsonNode tree) {
             if (isLastEvent(event, tree)) {
                 // we send the last chunk later
                 lastChunk = to(event, tree);
-            } else {
+            } else if (lastChunk == null) {
                 Buffer chunk = to(event, tree);
                 chunkHandler.handle(chunk);
             }
@@ -297,7 +310,11 @@ public class BufferingReadStream implements ReadStream<Buffer> {
             return Buffer.buffer(rawEvent);
         }
 
-        protected boolean isLastEvent(SseEvent event, JsonNode data) {
+        protected boolean isLastEvent(SseEvent event, @Nullable JsonNode tree) {
+            return false;
+        }
+
+        protected boolean skipEvent(SseEvent event) {
             return false;
         }
 

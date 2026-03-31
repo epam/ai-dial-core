@@ -7,8 +7,17 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Server side event parser.
+ *
+ * <p>
+ *     Note. The class is not thread-safe since the parser processes all chunks sequentially.
+ * </p>
+ */
 @Slf4j
 public class SseParser {
+
+    private static final byte[] BOM = new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
 
     private final SseEventListener listener;
     private final ByteBuf chunkBuffer;
@@ -19,15 +28,17 @@ public class SseParser {
     private String lastEventId = null;
     private Integer retry = null;
 
+    private boolean firstChunk = true;
+
     public SseParser(int initialChunkBufferSize, SseEventListener listener) {
         this.listener = listener;
         chunkBuffer = ByteBufAllocator.DEFAULT.heapBuffer(initialChunkBufferSize, Integer.MAX_VALUE);
     }
 
-    public synchronized void parse(Buffer chunk) {
+    public void parse(Buffer chunk) {
         int len = chunk.length();
         try {
-            for (int i = 0; i < len; i++) {
+            for (int i = skipBom(chunk); i < len; i++) {
                 byte b = chunk.getByte(i);
                 if (b == '\r') {
                     if (i + 1 < len && chunk.getByte(i + 1) == '\n') {
@@ -50,7 +61,7 @@ public class SseParser {
      * Call this when the stream is known to be finished/closed.
      * It will flush any remaining partial line and event.
      */
-    public synchronized void finish() {
+    public void finish() {
         try {
             processLine();
             // Emit pending event if any
@@ -151,5 +162,24 @@ public class SseParser {
 
     private String bufferToString() {
         return StandardCharsets.UTF_8.decode(chunkBuffer.nioBuffer()).toString();
+    }
+
+    /**
+     * <a href="https://en.wikipedia.org/wiki/Byte_order_mark">BOM</a>
+     */
+    private int skipBom(Buffer chunk) {
+        if (!firstChunk) {
+            return 0;
+        }
+        firstChunk = false;
+        if (chunk.length() < BOM.length) {
+            return 0;
+        }
+        for (int i = 0; i < BOM.length; i++) {
+            if (chunk.getByte(i) != BOM[i]) {
+                return 0;
+            }
+        }
+        return BOM.length;
     }
 }
