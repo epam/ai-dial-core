@@ -136,6 +136,48 @@ public class ToolSetApiTest extends ResourceBaseTest {
                         },
                         "transport" : "HTTP",
                         "allowed_tools" : [ ]
+                      },
+                    {
+                        "id" : "oauth-toolset",
+                        "toolset" : "oauth-toolset",
+                        "display_name" : "OAuth Toolset",
+                        "reference" : "oauth-toolset",
+                        "owner" : "organization-owner",
+                        "object" : "toolset",
+                        "status" : "succeeded",
+                        "created_at" : 1672534800,
+                        "updated_at" : 1672534800,
+                        "features" : {
+                          "rate" : false,
+                          "tokenize" : false,
+                          "truncate_prompt" : false,
+                          "configuration" : false,
+                          "system_prompt" : true,
+                          "tools" : false,
+                          "seed" : false,
+                          "url_attachments" : false,
+                          "folder_attachments" : false,
+                          "allow_resume" : true,
+                          "accessible_by_per_request_key" : true,
+                          "content_parts" : false,
+                          "temperature" : true,
+                          "cache" : false,
+                          "auto_caching" : false,
+                          "parallel_tool_calls" : true,
+                          "assistant_attachments_in_request" : false
+                        },
+                        "description_keywords" : [ ],
+                        "max_retry_attempts" : 1,
+                        "auth_settings" : {
+                          "authentication_type" : "OAUTH",
+                          "client_id" : "test-client-id",
+                          "authorization_endpoint" : "http://localhost:9876/authorize",
+                          "redirect_uri" : "http://localhost:3000/auth/signin",
+                          "global_auth_status" : "SIGNED_OUT",
+                          "user_level_auth_status" : "SIGNED_OUT"
+                        },
+                        "transport" : "HTTP",
+                        "allowed_tools" : [ ]
                       } ],
                    "object" : "list"
                  }
@@ -1350,6 +1392,51 @@ public class ToolSetApiTest extends ResourceBaseTest {
             response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
                     {
                         "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset-oauth-fallback@",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+        }
+    }
+
+    @Test
+    void testStaticOauthToolsetSecretPreservedAfterListing() {
+        String tokenResponse = """
+                {
+                    "access_token": "test-access-token",
+                    "refresh_token": "test-refresh-token",
+                    "expires_in": 3600
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/token", request ->
+                    new MockResponse()
+                            .setBody(tokenResponse)
+                            .setHeader("Content-Type", "application/json"));
+
+            // list toolsets multiple times as admin (previously this would null out clientSecret via clearAuthSettings)
+            for (int i = 0; i < 3; i++) {
+                Response response = send(HttpMethod.GET, "/openai/toolsets", null, null, "authorization", "admin");
+                assertEquals(200, response.status());
+                // verify secrets are not leaked in list response
+                assertFalse(response.body().contains("test-client-secret"), "client_secret must not be in list response");
+                assertFalse(response.body().contains("code_verifier"), "code_verifier must not be in list response");
+            }
+
+            // get specific toolset (previously this would also null out clientSecret)
+            Response response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            // verify secrets are not leaked in get response
+            assertFalse(response.body().contains("test-client-secret"), "client_secret must not be in get response");
+            assertFalse(response.body().contains("code_verifier"), "code_verifier must not be in get response");
+
+            // sign in should still work - client_secret must not have been cleared by listing
+            response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "oauth-toolset",
                         "credentialsLevel": "GLOBAL",
                         "authenticationType": "OAUTH",
                         "code": "auth-code"
