@@ -174,7 +174,6 @@ public class ToolSetService {
     public void setResourceAuthStatuses(ProxyContext context, ToolSet toolSet, String encodedToolSetId) {
         CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedToolSetId, context, ResourceTypes.TOOL_SET);
         resourceAuthSettingsService.setResourceAuthStatuses(credentialsLocator, toolSet.getAuthSettings(), context.getUserId());
-        toolSet.clearAuthSettings();
     }
 
     private boolean copyCredentials(ProxyContext context, ResourceDescriptor source, ResourceDescriptor destination,

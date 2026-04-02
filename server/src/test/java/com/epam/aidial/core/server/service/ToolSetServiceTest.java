@@ -179,7 +179,7 @@ class ToolSetServiceTest {
 
         // Then
         assertNotNull(toolSet.getAuthSettings().getClientId());
-        assertNull(toolSet.getAuthSettings().getClientSecret());
+        assertEquals("clientSecret", toolSet.getAuthSettings().getClientSecret());
 
         ArgumentCaptor<CredentialsLocator> credentialsLocatorCaptor = ArgumentCaptor.forClass(CredentialsLocator.class);
         verify(resourceAuthSettingsService).setResourceAuthStatuses(credentialsLocatorCaptor.capture(), any(), any());
@@ -190,6 +190,38 @@ class ToolSetServiceTest {
                 .map(BucketInfo::name)
                 .collect(Collectors.toSet());
         assertEquals(Set.of("public", "encrypted-user-123"), bucketNames);
+    }
+
+    @Test
+    void testSetResourceAuthStatuses_doesNotMutateClientSecret() {
+        // Given
+        String toolSetId = "toolsets/test-toolset";
+        ToolSet toolSet = createToolSet();
+        toolSet.setName(toolSetId);
+
+        ResourceAuthSettings resourceAuthSettings = ResourceAuthSettings.builder()
+                .authenticationType(AuthenticationType.OAUTH)
+                .clientId("clientId")
+                .clientSecret("clientSecret")
+                .codeVerifier("codeVerifier")
+                .build();
+
+        toolSet.setAuthSettings(resourceAuthSettings);
+
+        when(context.getProxy()).thenReturn(proxy);
+        when(proxy.getEncryptionService()).thenReturn(encryptionService);
+        when(context.getConfig()).thenReturn(mock(Config.class));
+        when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
+        when(context.getUserId()).thenReturn("user-123");
+        when(encryptionService.encrypt("Users/user-123/")).thenReturn("encrypted-user-123");
+
+        // When - call setResourceAuthStatuses multiple times (simulating multiple API requests)
+        toolSetService.setResourceAuthStatuses(context, toolSet, toolSetId);
+        toolSetService.setResourceAuthStatuses(context, toolSet, toolSetId);
+
+        // Then - clientSecret and codeVerifier must be preserved after multiple calls
+        assertEquals("clientSecret", toolSet.getAuthSettings().getClientSecret());
+        assertEquals("codeVerifier", toolSet.getAuthSettings().getCodeVerifier());
     }
 
     private static ToolSet createToolSet() {

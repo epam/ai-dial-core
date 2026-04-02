@@ -214,6 +214,7 @@ public class ResourceController extends AccessControlBaseController {
             ResourceItemMetadata meta = result.getKey();
             ToolSet toolSet = result.getValue();
             toolSetService.setResourceAuthStatuses(context, toolSet, descriptor.getUrl());
+            toolSet.clearAuthSettings();
             String body = ProxyUtil.convertToString(toolSet);
             return Pair.of(meta, body);
         });

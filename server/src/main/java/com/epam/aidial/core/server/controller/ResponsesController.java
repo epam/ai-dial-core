@@ -134,7 +134,7 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         Deployment deployment = context.getDeployment();
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
-                .get(deployment, context.getCacheBreakpointContext());
+                .get(deployment, context.getCacheBreakpointContext(), Deployment::getResponsesEndpoint);
 
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
@@ -148,13 +148,11 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private void sendRequest() {
-        if (!nextUpstream(Upstream::getResponsesEndpoint)) {
-            return;
+        if (nextUpstream()) {
+            createProxyRequest(Deployment::getResponsesEndpoint)
+                    .onSuccess(this::handleProxyRequest)
+                    .onFailure(this::handleProxyConnectionError);
         }
-
-        createProxyRequest(Deployment::getResponsesEndpoint)
-                .onSuccess(this::handleProxyRequest)
-                .onFailure(this::handleProxyConnectionError);
     }
 
     private void handleProxyRequest(HttpClientRequest proxyRequest) {

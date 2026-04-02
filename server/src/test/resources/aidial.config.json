@@ -200,6 +200,22 @@
       "userRoles": [
         "admin"
       ]
+    },
+    "oauth-toolset": {
+      "display_name": "OAuth Toolset",
+      "endpoint": "http://localhost:9876",
+      "transport": "HTTP",
+      "auth_settings": {
+        "authentication_type": "OAUTH",
+        "client_id": "test-client-id",
+        "client_secret": "test-client-secret",
+        "authorization_endpoint": "http://localhost:9876/authorize",
+        "token_endpoint": "http://localhost:9876/token",
+        "redirect_uri": "http://localhost:3000/auth/signin"
+      },
+      "userRoles": [
+        "admin"
+      ]
     }
   },
   "keys": {
