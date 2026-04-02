@@ -5,6 +5,8 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.permission.ListPermissionRequest;
 import com.epam.aidial.core.server.data.permission.PerRequestReceiver;
 import com.epam.aidial.core.server.data.permission.ResourcePermission;
+import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiOperations;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
@@ -36,6 +38,27 @@ public class PerRequestPermissionController {
         this.encryptionService = proxy.getEncryptionService();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/per-request-permissions/grant",
+            operationId = "grantPerRequestPermissions",
+            requestBody = com.epam.aidial.core.server.data.permission.PerRequestReceiver.class,
+            tags = {"Sharing"}
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/per-request-permissions/revoke",
+            operationId = "revokePerRequestPermissions",
+            requestBody = com.epam.aidial.core.server.data.permission.PerRequestReceiver.class,
+            tags = {"Sharing"}
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/per-request-permissions/list",
+            operationId = "getPerRequestPermissions",
+            requestBody = com.epam.aidial.core.server.data.permission.ListPermissionRequest.class,
+            tags = {"Sharing"}
+    )
     public Future<Void> handle(String operation) {
         Future<Void> result = Future.succeededFuture();
         if (context.getApiKeyData().getPerRequestKey() == null) {

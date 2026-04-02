@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.data.ApplicationData;
 import com.epam.aidial.core.server.data.DeploymentData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ToolSetData;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -60,6 +61,13 @@ public class DeploymentController {
 
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/openai/deployments/{deployment_name}",
+            operationId = "getDeployment",
+            responseBody = DeploymentData.class,
+            tags = {"Deployment listing"}
+    )
     public Future<?> getDeployment(String deploymentId) {
         Config config = context.getConfig();
         Model model = config.getModels().get(deploymentId);
@@ -77,6 +85,14 @@ public class DeploymentController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/openai/deployments",
+            operationId = "getDeployments",
+            responseBody = DeploymentData.class,
+            responseWrapper = ListData.class,
+            tags = {"Deployment listing"}
+    )
     public Future<?> getDeployments() {
         getModels(List.of()).onSuccess(deployments -> {
             ListData<DeploymentData> list = new ListData<>();
@@ -89,6 +105,14 @@ public class DeploymentController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/deployments",
+            operationId = "listDeployments",
+            responseBody = DeploymentData.class,
+            responseWrapper = List.class,
+            tags = {"Deployment listing"}
+    )
     public Future<?> listDeployments() {
         String[] interfaces = getDeploymentInterfaces();
 

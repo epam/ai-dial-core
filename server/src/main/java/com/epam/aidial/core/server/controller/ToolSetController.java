@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ToolSetData;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
@@ -38,6 +39,13 @@ public class ToolSetController {
         this.toolSetService = context.getProxy().getToolSetService();
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/openai/toolsets/{toolset_name}",
+            operationId = "getToolset",
+            responseBody = ToolSetData.class,
+            tags = {"Deployment listing"}
+    )
     public Future<?> getToolSet(String toolSetId) {
         taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
@@ -53,6 +61,14 @@ public class ToolSetController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/openai/toolsets",
+            operationId = "getToolSets",
+            responseBody = ToolSetData.class,
+            responseWrapper = ListData.class,
+            tags = {"Deployment listing"}
+    )
     public Future<?> getToolSets() {
         Config config = context.getConfig();
         return taskExecutor.submit(this::getResourceToolSets)

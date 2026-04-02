@@ -1,0 +1,21 @@
+package com.epam.aidial.core.server.openapi;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Repeatable;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+@Repeatable(ApiOperations.class)
+public @interface ApiOperation {
+    String method();
+    String path();
+    String operationId();
+    Class<?> requestBody() default Void.class;
+    Class<?> responseBody() default Void.class;
+    Class<?> responseWrapper() default Void.class;
+    String[] tags() default {};
+    String contentType() default "application/json";
+}

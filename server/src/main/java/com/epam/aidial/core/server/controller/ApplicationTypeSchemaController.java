@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -36,6 +37,7 @@ public class ApplicationTypeSchemaController {
         this.applicationSchemaService = context.getProxy().getApplicationSchemaService();
     }
 
+    @ApiOperation(method = "GET", path = "/v1/application_type_schemas/meta_schema", operationId = "getMetaSchemaOfCustomApplicationSchema", tags = {"Applications"})
     public Future<?> handleGetMetaSchema() {
         return taskExecutor.submit(MetaSchemaHolder::getCustomApplicationMetaSchema)
                 .onSuccess(metaSchema -> context.respond(HttpStatus.OK, metaSchema))
@@ -83,6 +85,7 @@ public class ApplicationTypeSchemaController {
         return schemaNode;
     }
 
+    @ApiOperation(method = "GET", path = "/v1/application_type_schemas/schema", operationId = "getCustomApplicationSchema", tags = {"Applications"})
     public Future<?> handleGetSchema() {
         return taskExecutor.submit(this::getSchema)
                 .onSuccess(schemaNode -> context.respond(HttpStatus.OK, schemaNode))
@@ -128,6 +131,7 @@ public class ApplicationTypeSchemaController {
         return filteredSchemas;
     }
 
+    @ApiOperation(method = "GET", path = "/v1/application_type_schemas/schemas", operationId = "listCustomApplicationSchemas", tags = {"Applications"})
     public Future<?> handleListSchemas() {
         return taskExecutor.submit(this::listSchemas)
                 .onSuccess(schemas -> context.respond(HttpStatus.OK, schemas))

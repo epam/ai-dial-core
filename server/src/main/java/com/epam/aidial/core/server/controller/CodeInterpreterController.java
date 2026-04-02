@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterInputFile
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterOutputFile;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterSession;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterSessionId;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
@@ -29,7 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.InputStream;
 
 @Slf4j
-class CodeInterpreterController {
+public class CodeInterpreterController {
 
     private final ProxyContext context;
     private final Vertx vertx;
@@ -46,6 +47,14 @@ class CodeInterpreterController {
         this.taskExecutor = context.getProxy().getTaskExecutor();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/code_interpreter/open_session",
+            operationId = "openSession",
+            requestBody = CodeInterpreterSessionId.class,
+            responseBody = CodeInterpreterSession.class,
+            tags = {"Code interpreter"}
+    )
     Future<?> openSession() {
         context.getRequest()
                 .body()
@@ -60,6 +69,14 @@ class CodeInterpreterController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/code_interpreter/close_session",
+            operationId = "closeSession",
+            requestBody = CodeInterpreterSessionId.class,
+            responseBody = CodeInterpreterSession.class,
+            tags = {"Code interpreter"}
+    )
     Future<?> closeSession() {
         context.getRequest()
                 .body()
@@ -73,6 +90,14 @@ class CodeInterpreterController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/code_interpreter/get_session",
+            operationId = "getSession",
+            requestBody = CodeInterpreterSessionId.class,
+            responseBody = CodeInterpreterSession.class,
+            tags = {"Code interpreter"}
+    )
     Future<?> getSession() {
         context.getRequest()
                 .body()
@@ -86,6 +111,13 @@ class CodeInterpreterController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/code_interpreter/execute_code",
+            operationId = "executeCode",
+            requestBody = CodeInterpreterExecuteRequest.class,
+            tags = {"Code interpreter"}
+    )
     Future<?> executeCode() {
         context.getRequest()
                 .body()
@@ -100,6 +132,13 @@ class CodeInterpreterController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/code_interpreter/upload_file",
+            operationId = "uploadFileToCodeInterpreter",
+            responseBody = CodeInterpreterFile.class,
+            tags = {"Code interpreter"}
+    )
     Future<?> uploadFile() {
         context.getRequest()
                 .setExpectMultipart(true)
@@ -131,6 +170,13 @@ class CodeInterpreterController {
         return service.uploadFile(context, sessionId, fileName, stream);
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/code_interpreter/download_file",
+            operationId = "downloadFileFromCodeInterpreter",
+            requestBody = CodeInterpreterFile.class,
+            tags = {"Code interpreter"}
+    )
     Future<?> downloadFile() {
         context.getRequest().body()
                 .compose(buffer -> taskExecutor.submit(() -> downloadFile(buffer)))
@@ -157,6 +203,13 @@ class CodeInterpreterController {
         });
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/code_interpreter/list_files",
+            operationId = "listFilesFromCodeInterpreter",
+            requestBody = CodeInterpreterSessionId.class,
+            tags = {"Code interpreter"}
+    )
     Future<?> listFiles() {
         context.getRequest()
                 .body()
@@ -170,6 +223,13 @@ class CodeInterpreterController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/code_interpreter/transfer_input_file",
+            operationId = "transferInputFile",
+            requestBody = CodeInterpreterInputFile.class,
+            tags = {"Code interpreter"}
+    )
     Future<?> transferInputFile() {
         context.getRequest()
                 .body()
@@ -183,12 +243,19 @@ class CodeInterpreterController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/code_interpreter/transfer_output_file",
+            operationId = "transferOutputFile",
+            requestBody = CodeInterpreterOutputFile.class,
+            tags = {"Code interpreter"}
+    )
     Future<?> transferOutputFile() {
         context.getRequest()
                 .body()
                 .compose(body -> {
                     CodeInterpreterOutputFile data = convertJson(body, CodeInterpreterOutputFile.class);
-                    return  taskExecutor.submit(() -> service.transferOutputFile(context, data));
+                    return taskExecutor.submit(() -> service.transferOutputFile(context, data));
                 })
                 .onSuccess(this::respondJson)
                 .onFailure(this::respondError);

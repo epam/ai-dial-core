@@ -8,6 +8,8 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
 import com.epam.aidial.core.server.data.Prompt;
+import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiOperations;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -76,6 +78,131 @@ public class ResourceController extends AccessControlBaseController {
     }
 
     @Override
+    @ApiOperations({
+            // Applications
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/applications/{bucket}/{application_path}",
+                    operationId = "saveCustomApplication",
+                    requestBody = com.epam.aidial.core.config.Application.class,
+                    responseBody = com.epam.aidial.core.config.Application.class,
+                    tags = {"Applications"}
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/applications/{bucket}/{application_path}",
+                    operationId = "getCustomApplication",
+                    responseBody = com.epam.aidial.core.config.Application.class,
+                    tags = {"Applications"}
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/applications/{bucket}/{application_path}",
+                    operationId = "deleteCustomApplication",
+                    tags = {"Applications"}
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/metadata/applications/{bucket}/{path}",
+                    operationId = "getApplicationMetadata",
+                    responseBody = com.epam.aidial.core.storage.data.MetadataBase.class,
+                    tags = {"Applications"}
+            ),
+            // Conversations
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/conversations/{bucket}/{conversation_path}",
+                    operationId = "saveConversation",
+                    requestBody = com.epam.aidial.core.server.data.Conversation.class,
+                    responseBody = com.epam.aidial.core.server.data.Conversation.class,
+                    tags = {"Conversations"}
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/conversations/{bucket}/{conversation_path}",
+                    operationId = "getConversation",
+                    responseBody = com.epam.aidial.core.server.data.Conversation.class,
+                    tags = {"Conversations"}
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/conversations/{bucket}/{conversation_path}",
+                    operationId = "deleteConversation",
+                    tags = {"Conversations"}
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/metadata/conversations/{bucket}/{path}",
+                    operationId = "getConversationMetadata",
+                    responseBody = com.epam.aidial.core.storage.data.MetadataBase.class,
+                    tags = {"Conversations"}
+            ),
+            // Prompts
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/prompts/{bucket}/{prompt_path}",
+                    operationId = "savePrompt",
+                    requestBody = com.epam.aidial.core.server.data.Prompt.class,
+                    responseBody = com.epam.aidial.core.server.data.Prompt.class,
+                    tags = {"Prompts"}
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/prompts/{bucket}/{prompt_path}",
+                    operationId = "getPrompt",
+                    responseBody = com.epam.aidial.core.server.data.Prompt.class,
+                    tags = {"Prompts"}
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/prompts/{bucket}/{prompt_path}",
+                    operationId = "deletePrompt",
+                    tags = {"Prompts"}
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/metadata/prompts/{bucket}/{path}",
+                    operationId = "getPromptMetadata",
+                    responseBody = com.epam.aidial.core.storage.data.MetadataBase.class,
+                    tags = {"Prompts"}
+            ),
+            // Toolsets
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/toolsets/{bucket}/{toolset_path}",
+                    operationId = "saveToolSet",
+                    requestBody = com.epam.aidial.core.config.ToolSet.class,
+                    responseBody = com.epam.aidial.core.config.ToolSet.class,
+                    tags = {"Toolsets"}
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/toolsets/{bucket}/{toolset_path}",
+                    operationId = "getCustomToolSet",
+                    responseBody = com.epam.aidial.core.config.ToolSet.class,
+                    tags = {"Toolsets"}
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/toolsets/{bucket}/{toolset_path}",
+                    operationId = "deleteToolSet",
+                    tags = {"Toolsets"}
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/metadata/toolsets/{bucket}/{path}",
+                    operationId = "getToolSetMetadata",
+                    responseBody = com.epam.aidial.core.storage.data.MetadataBase.class,
+                    tags = {"Toolsets"}
+            ),
+            // Files (delete only - upload/download handled by UploadFileController/DownloadFileController)
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/files/{bucket}/{file_path}",
+                    operationId = "deleteFile",
+                    tags = {"Files"}
+            )
+    })
     protected Future<?> handle(ResourceDescriptor descriptor, boolean hasWriteAccess) {
         if (context.getRequest().method() == HttpMethod.GET) {
             return metadata ? getMetadata(descriptor) : getResource(descriptor, hasWriteAccess);

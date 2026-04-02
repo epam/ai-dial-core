@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.CopyResourcesRequest;
 import com.epam.aidial.core.server.data.MoveResourcesRequest;
 import com.epam.aidial.core.server.data.SubscribeResourcesRequest;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.HeartbeatService;
@@ -58,6 +59,13 @@ public class ResourceOperationController {
         this.heartbeatService = proxy.getHeartbeatService();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/move",
+            operationId = "moveResource",
+            requestBody = com.epam.aidial.core.server.data.MoveResourcesRequest.class,
+            tags = {"Files"}
+    )
     public Future<?> move() {
         context.getRequest()
                 .body()
@@ -115,6 +123,13 @@ public class ResourceOperationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/copy",
+            operationId = "copyResource",
+            requestBody = com.epam.aidial.core.server.data.CopyResourcesRequest.class,
+            tags = {"Files"}
+    )
     public Future<?> copy() {
         context.getRequest()
                 .body()
@@ -176,6 +191,14 @@ public class ResourceOperationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/subscribe",
+            operationId = "subscribeToResources",
+            requestBody = com.epam.aidial.core.server.data.SubscribeResourcesRequest.class,
+            contentType = "text/event-stream",
+            tags = {"Notifications"}
+    )
     public Future<?> subscribe() {
         HttpServerResponse response = context.getResponse();
         Consumer<ResourceEvent> subscriber = this::sendSubscriptionEvent;

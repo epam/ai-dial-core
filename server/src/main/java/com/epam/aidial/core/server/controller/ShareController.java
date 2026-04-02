@@ -9,6 +9,8 @@ import com.epam.aidial.core.server.data.ResourceLinkCollection;
 import com.epam.aidial.core.server.data.RevokeResourcesRequest;
 import com.epam.aidial.core.server.data.ShareResourcesRequest;
 import com.epam.aidial.core.server.data.SharedResource;
+import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiOperations;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.ShareService;
@@ -49,6 +51,41 @@ public class ShareController {
         this.invitationService = proxy.getInvitationService();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/share/create",
+            operationId = "shareResource",
+            requestBody = com.epam.aidial.core.server.data.ShareResourcesRequest.class,
+            tags = {"Sharing"}
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/share/list",
+            operationId = "getSharedResources",
+            requestBody = com.epam.aidial.core.server.data.ListSharedResourcesRequest.class,
+            tags = {"Sharing"}
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/share/revoke",
+            operationId = "revokeSharedResources",
+            requestBody = com.epam.aidial.core.server.data.RevokeResourcesRequest.class,
+            tags = {"Sharing"}
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/share/discard",
+            operationId = "discardSharedResources",
+            requestBody = com.epam.aidial.core.server.data.ResourceLinkCollection.class,
+            tags = {"Sharing"}
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/share/copy",
+            operationId = "copySharedResources",
+            requestBody = com.epam.aidial.core.server.data.CopySharedAccessRequest.class,
+            tags = {"Sharing"}
+    )
     public Future<?> handle(Operation operation) {
         if (context.getApiKeyData().getPerRequestKey() != null) {
             context.respond(HttpStatus.FORBIDDEN, "The Share API is not allowed for per-request keys");

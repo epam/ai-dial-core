@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.consent.AcceptConsentRequest;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -18,6 +19,7 @@ public class ConsentController {
     private ProxyContext context;
     private Proxy proxy;
 
+    @ApiOperation(method = "GET", path = "/v1/consent/{deployment_id}", operationId = "requestUserConsent", tags = {"User Consent"})
     public Future<?> requestConsent(String deploymentId) {
         proxy.getTaskExecutor().submit(() -> proxy.getConsentService().buildConsent(context, deploymentId)).onSuccess(consent -> {
             context.respond(HttpStatus.OK, consent);
@@ -25,6 +27,7 @@ public class ConsentController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(method = "POST", path = "/v1/consent/{deployment_id}", operationId = "acceptUserConsent", requestBody = AcceptConsentRequest.class, tags = {"User Consent"})
     public Future<?> acceptConsent(String deploymentId) {
         context.getRequest()
                 .body()

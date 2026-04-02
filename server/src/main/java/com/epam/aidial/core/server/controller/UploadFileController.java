@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.stream.BlobWriteStream;
@@ -28,6 +29,7 @@ public class UploadFileController extends AccessControlBaseController {
     }
 
     @Override
+    @ApiOperation(method = "PUT", path = "/v1/files/{bucket}/{file_path}", operationId = "uploadFile", contentType = "application/octet-stream", tags = {"Files"})
     protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         if (resource.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "File name is missing");

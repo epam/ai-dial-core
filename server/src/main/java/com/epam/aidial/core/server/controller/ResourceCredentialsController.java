@@ -16,6 +16,7 @@ import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionSe
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -60,6 +61,7 @@ public class ResourceCredentialsController {
         this.resourceAuthSettingsEncryptionService = proxy.getResourceAuthSettingsEncryptionService();
     }
 
+    @ApiOperation(method = "POST", path = "/v1/ops/toolset/signin", operationId = "toolsetSignin", tags = {"Toolsets"})
     public Future<?> signIn() {
         context.getRequest()
                 .body()
@@ -97,6 +99,7 @@ public class ResourceCredentialsController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(method = "POST", path = "/v1/ops/toolset/signout", operationId = "toolSetSignout", tags = {"Toolsets"})
     public Future<?> signOut() {
         context.getRequest()
                 .body()

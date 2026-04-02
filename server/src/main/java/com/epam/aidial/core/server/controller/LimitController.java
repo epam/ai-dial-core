@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -20,6 +21,7 @@ public class LimitController {
         this.context = context;
     }
 
+    @ApiOperation(method = "GET", path = "/v1/deployments/{deployment_name}/limits", operationId = "getDeploymentLimits", tags = {"Limits"})
     public Future<?> getLimits(String deploymentId) {
         proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId))
                 .compose(dep -> proxy.getRateLimiter().getLimitStats(dep, context))

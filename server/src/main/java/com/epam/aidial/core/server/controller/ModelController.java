@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ModelData;
 import com.epam.aidial.core.server.data.PricingData;
 import com.epam.aidial.core.server.data.TokenLimitsData;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,13 @@ public class ModelController {
 
     private final ProxyContext context;
 
+    @ApiOperation(
+            method = "GET",
+            path = "/openai/models/{model_name}",
+            operationId = "getModel",
+            responseBody = ModelData.class,
+            tags = {"Deployment listing"}
+    )
     public Future<?> getModel(String modelId) {
         Config config = context.getConfig();
         Model model = config.getModels().get(modelId);
@@ -39,6 +47,14 @@ public class ModelController {
         return context.respond(HttpStatus.OK, data);
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/openai/models",
+            operationId = "getModels",
+            responseBody = ModelData.class,
+            responseWrapper = ListData.class,
+            tags = {"Deployment listing"}
+    )
     public Future<?> getModels() {
         Config config = context.getConfig();
         List<ModelData> models = new ArrayList<>();

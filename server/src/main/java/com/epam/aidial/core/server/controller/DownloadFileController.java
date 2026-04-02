@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.InputStreamReader;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -20,6 +21,7 @@ public class DownloadFileController extends AccessControlBaseController {
     }
 
     @Override
+    @ApiOperation(method = "GET", path = "/v1/files/{bucket}/{file_path}", operationId = "downloadFile", contentType = "application/octet-stream", tags = {"Files"})
     protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         if (resource.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Can't download a folder");

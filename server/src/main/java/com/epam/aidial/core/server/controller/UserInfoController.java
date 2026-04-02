@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -17,6 +18,7 @@ public class UserInfoController implements Controller {
 
     private final ProxyContext context;
 
+    @ApiOperation(method = "GET", path = "/v1/user/info", operationId = "getUserInfo")
     @Override
     public Future<?> handle() throws Exception {
         JsonObject response = new JsonObject();

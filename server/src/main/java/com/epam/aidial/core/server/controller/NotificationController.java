@@ -4,6 +4,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.DeleteNotificationRequest;
 import com.epam.aidial.core.server.data.Notifications;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -26,6 +27,13 @@ public class NotificationController {
         this.taskExecutor = proxy.getTaskExecutor();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/notification/list",
+            operationId = "getNotifications",
+            responseBody = com.epam.aidial.core.server.data.Notifications.class,
+            tags = {"Notifications"}
+    )
     public Future<?> listNotifications() {
         taskExecutor.submit(() -> service.listNotification(context))
                 .onSuccess(notifications -> context.respond(HttpStatus.OK, new Notifications(notifications)))
@@ -34,6 +42,13 @@ public class NotificationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/notification/delete",
+            operationId = "deleteNotifications",
+            requestBody = com.epam.aidial.core.server.data.DeleteNotificationRequest.class,
+            tags = {"Notifications"}
+    )
     public Future<?> deleteNotification() {
         context.getRequest()
                 .body()

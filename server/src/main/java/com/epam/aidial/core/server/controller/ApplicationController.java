@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.data.ApplicationData;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ResourceLink;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -57,6 +58,13 @@ public class ApplicationController {
         this.taskExecutor = context.getProxy().getTaskExecutor();
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/openai/applications/{application_name}",
+            operationId = "getApplication",
+            responseBody = ApplicationData.class,
+            tags = {"Deployment listing"}
+    )
     public Future<?> getApplication(String applicationId) {
         taskExecutor.submit(() -> deploymentService.findDeployment(context, applicationId))
                 .map(deployment -> {
@@ -75,6 +83,14 @@ public class ApplicationController {
 
 
 
+    @ApiOperation(
+            method = "GET",
+            path = "/openai/applications",
+            operationId = "getApplications",
+            responseBody = ApplicationData.class,
+            responseWrapper = ListData.class,
+            tags = {"Deployment listing"}
+    )
     public Future<?> getApplications() {
         Config config = context.getConfig();
         Proxy proxy = context.getProxy();
@@ -96,6 +112,14 @@ public class ApplicationController {
                 .onFailure(this::respondError);
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/application/deploy",
+            operationId = "deployApplication",
+            requestBody = ResourceLink.class,
+            responseBody = Application.class,
+            tags = {"Applications"}
+    )
     public Future<?> deployApplication() {
         context.getRequest()
                 .body()
@@ -111,6 +135,14 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/application/undeploy",
+            operationId = "undeployApplication",
+            requestBody = ResourceLink.class,
+            responseBody = Application.class,
+            tags = {"Applications"}
+    )
     public Future<?> undeployApplication() {
         context.getRequest()
                 .body()
@@ -126,6 +158,14 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/application/redeploy",
+            operationId = "redeployApplication",
+            requestBody = ResourceLink.class,
+            responseBody = Application.class,
+            tags = {"Applications"}
+    )
     public Future<?> redeployApplication() {
         context.getRequest()
                 .body()
@@ -141,6 +181,7 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(method = "POST", path = "/v1/ops/application/logs", operationId = "getApplicationLogs", requestBody = ResourceLink.class, tags = {"Applications"})
     public Future<?> getApplicationLogs() {
         context.getRequest()
                 .body()

@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -33,6 +34,13 @@ public class FileMetadataController extends AccessControlBaseController {
     }
 
     @Override
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/metadata/files/{bucket}/{path}",
+            operationId = "getFileMetadata",
+            responseBody = com.epam.aidial.core.storage.data.MetadataBase.class,
+            tags = {"Files"}
+    )
     protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         boolean recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));
         String token = context.getRequest().getParam("token");
