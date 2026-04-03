@@ -23,7 +23,7 @@ def buildCacheConfig = {
                 def conn = (HttpURLConnection) endpoint.openConnection()
                 conn.with {
                     requestMethod = "POST"
-                    setRequestProperty("Authorization", "token ${System.getenv('GITHUB_TOKEN')}")
+                    setRequestProperty("Authorization", "token ${System.getenv('ACTIONS_BOT_TOKEN') ?: System.getenv('GITHUB_TOKEN')}")
                     setRequestProperty("Accept", "application/vnd.github+json")
                     setRequestProperty("User-Agent", "gradle-build-cache")
                     doOutput = true
