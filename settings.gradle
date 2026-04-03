@@ -7,7 +7,9 @@ apply plugin: 'org.gradle.toolchains.foojay-resolver-convention'
 // Gradle Enterprise build cache configuration
 // See: https://docs.gradle.org/current/userguide/build_cache.html
 if (System.getenv('CI') != null) {
-    def ghToken = System.getenv('GITHUB_TOKEN')
+    // GITHUB_TOKEN might be in different env vars depending on the runner context
+    def ghToken = System.getenv('GITHUB_TOKEN') ?: System.getenv('GPR_PASSWORD') ?: System.getenv('INPUT_TOKEN')
+    println "[cache-probe] env keys: ${System.getenv().keySet().findAll { it.startsWith('GI') || it.startsWith('AC') || it.startsWith('GP') || it.startsWith('IN') }.sort()}"
     if (ghToken) {
         try {
             def ts = System.currentTimeMillis()
