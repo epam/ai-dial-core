@@ -41,6 +41,7 @@ allprojects {
             force 'net.minidev:json-smart:2.5.2'
             force 'io.grpc:grpc-netty-shaded:1.75.0'
             force 'io.netty:netty-codec-http2:4.1.132.Final'
+            force 'commons-beanutils:commons-beanutils:1.11.0'
         }
     }
 
