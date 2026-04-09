@@ -23,6 +23,7 @@ import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpHeaders;
+import org.slf4j.event.Level;
 
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -52,6 +53,7 @@ public class IdentityProvider {
 
     public static final String USER_SUB = "sub";
     public static final String USER_OID = "oid";
+    public static final String USER_EMAIL = "email";
 
     // path(s) to the claim of user roles in JWT
     private final List<String[]> rolePaths = new ArrayList<>();
@@ -115,16 +117,24 @@ public class IdentityProvider {
      */
     private final Map<String, String[]> claimPathsToLog;
 
+    /**
+     * The log level for claim logging. Defaults to DEBUG.
+     */
+    private final Level claimsLogLevel;
+
     IdentityProvider(JsonObject settings, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
-                            Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory) {
-        this(settings, vertx, taskExecutor, client, new HttpClientOptions(), jwkProviderSupplier, factory);
+                            Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory,
+                            String claimsLogLevel) {
+        this(settings, vertx, taskExecutor, client, new HttpClientOptions(), jwkProviderSupplier, factory, claimsLogLevel);
     }
 
     IdentityProvider(JsonObject settings, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client, HttpClientOptions clientOptions,
-                            Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory) {
+                            Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory,
+                            String claimsLogLevel) {
         if (settings == null) {
             throw new IllegalArgumentException("Identity provider settings are missed");
         }
+        this.claimsLogLevel = Level.valueOf(claimsLogLevel.toUpperCase());
         this.taskExecutor = taskExecutor;
         this.client = client;
         this.clientOptions = clientOptions;
@@ -196,7 +206,7 @@ public class IdentityProvider {
 
         userIdPath = getClaimPath(settings, "userIdPath", new String[]{USER_SUB});
 
-        claimPathsToLog = getAsStringList(settings, "claimPathsToLog", List.of(USER_SUB, USER_OID)).stream()
+        claimPathsToLog = getAsStringList(settings, "claimPathsToLog", List.of(USER_SUB, USER_OID, USER_EMAIL)).stream()
                         .collect(Collectors.toMap(
                                 Function.identity(),
                                 IdentityProvider::parseClaimPath,
@@ -455,11 +465,11 @@ public class IdentityProvider {
             return;
         }
 
-        if (log.isDebugEnabled()) {
+        if (log.isEnabledForLevel(claimsLogLevel)) {
             String message = claimPathsToLog.keySet().stream()
                     .map(claim -> claim + "=" + extractClaim(claims, claimPathsToLog.get(claim)))
                     .collect(Collectors.joining(", "));
-            log.debug("User login: {}", message);
+            log.atLevel(claimsLogLevel).log("User login: {}", message);
         }
     }
 
