@@ -34,11 +34,13 @@ public class AccessTokenValidator {
 
     private final ConcurrentMap<String, Future<UserInfoResult>> userInfoCache = new ConcurrentHashMap<>();
 
-    public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client) {
-        this(idpConfig, vertx, taskExecutor, client, new HttpClientOptions());
+    public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
+                                String claimsLogLevel) {
+        this(idpConfig, vertx, taskExecutor, client, new HttpClientOptions(), claimsLogLevel);
     }
 
-    public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client, HttpClientOptions clientOptions) {
+    public AccessTokenValidator(JsonObject idpConfig, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
+                                HttpClientOptions clientOptions, String claimsLogLevel) {
         int size = idpConfig.size();
         if (size < 1) {
             throw new IllegalArgumentException("At least one identity provider is required");
@@ -51,7 +53,7 @@ public class AccessTokenValidator {
                 } catch (MalformedURLException e) {
                     throw new IllegalArgumentException(e);
                 }
-            }, factory));
+            }, factory, claimsLogLevel));
         }
         vertx.setPeriodic(0, USER_INFO_EXP_PERIOD_MS, event -> evictExpiredUserInfo());
     }
