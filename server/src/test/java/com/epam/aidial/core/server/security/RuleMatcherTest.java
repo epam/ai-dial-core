@@ -118,6 +118,20 @@ class RuleMatcherTest {
     }
 
     @Test
+    void testRuleWithInvalidSourcePath_shouldNotThrow() {
+        // Rule source with special characters causes InvalidPathException in jayway JsonPath.
+        // Should be handled gracefully (no match) instead of crashing with 500.
+        verifyOnAccessToken(List.of(rule("custom claim", Rule.Function.EQUAL, "some-value")),
+                List.of("user"), Map.of("title", List.of("Engineer")), false);
+
+        verifyOnAccessToken(List.of(rule("user group", Rule.Function.TRUE)),
+                List.of("user"), Map.of("user group", List.of("value")), false);
+
+        verifyOnAccessToken(List.of(rule("department name", Rule.Function.CONTAIN, "Engineering")),
+                List.of("user"), Map.of("department name", List.of("Software Engineering")), false);
+    }
+
+    @Test
     void testCombinedRules() {
         // test access by access token
 
