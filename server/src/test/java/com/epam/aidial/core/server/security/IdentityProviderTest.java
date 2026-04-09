@@ -1012,6 +1012,96 @@ public class IdentityProviderTest {
     }
 
     @Test
+    public void testLogClaimsAtInfoLevel_Jwt() {
+        try (LogContext logContext = LogContext.create()) {
+            settings.put("disableJwtVerification", Boolean.TRUE);
+            settings.put("claimPathsToLog", List.of("email", "sub"));
+            settings.put("logClaimsAtInfoLevel", Boolean.TRUE);
+            IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory);
+            Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+            String token = JWT.create().withHeader(Map.of("kid", "kid1"))
+                    .withClaim("roles", List.of("role"))
+                    .withClaim("email", "test@email.com")
+                    .withClaim("sub", "sub-value").sign(algorithm);
+
+            Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+            verifyNoInteractions(jwkProvider);
+
+            assertNotNull(result);
+            result.onComplete(res -> {
+                assertTrue(res.succeeded());
+                logContext.assertMessages("[INFO] User login: email=test@email.com, sub=sub-value");
+            });
+        }
+    }
+
+    @Test
+    public void testLogClaimsAtDebugLevelByDefault() {
+        try (LogContext logContext = LogContext.create()) {
+            settings.put("disableJwtVerification", Boolean.TRUE);
+            settings.put("claimPathsToLog", List.of("email"));
+            // logClaimsAtInfoLevel NOT set - should default to false (DEBUG level)
+            IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory);
+            Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+            String token = JWT.create().withHeader(Map.of("kid", "kid1"))
+                    .withClaim("roles", List.of("role"))
+                    .withClaim("email", "test@email.com").sign(algorithm);
+
+            Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+            verifyNoInteractions(jwkProvider);
+
+            assertNotNull(result);
+            result.onComplete(res -> {
+                assertTrue(res.succeeded());
+                logContext.assertMessages("[DEBUG] User login: email=test@email.com");
+            });
+        }
+    }
+
+    @Test
+    public void testLogClaimsAtInfoLevel_UserInfo() {
+        try (LogContext logContext = LogContext.create()) {
+            settings.remove("jwksUrl");
+            settings.put("userInfoEndpoint", "http://host/userinfo");
+            settings.put("rolePath", "app.roles");
+            settings.put("claimPathsToLog", List.of("sub", "email"));
+            settings.put("logClaimsAtInfoLevel", Boolean.TRUE);
+            IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory);
+
+            String token = "opaqueToken";
+            HttpClientRequest request = mock(HttpClientRequest.class);
+            when(client.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(request));
+            HttpClientResponse response = mock(HttpClientResponse.class);
+            when(response.statusCode()).thenReturn(200);
+            when(request.send()).thenReturn(Future.succeededFuture(response));
+            Buffer buffer = Buffer.buffer("""
+                    {
+                      "sub": "sub",
+                      "email": "email@test.com",
+                      "app" : {
+                        "roles": ["role1"]
+                      }
+                    }
+                    """);
+            when(response.body()).thenReturn(Future.succeededFuture(buffer));
+
+            Future<ExtractedClaims> result = identityProvider.extractClaimsFromUserInfo(token);
+
+            verifyNoInteractions(jwkProvider);
+
+            assertNotNull(result);
+            result.onComplete(res -> {
+                assertTrue(res.succeeded());
+                logContext.assertMessages("[INFO] User login: sub=sub, email=email@test.com");
+            });
+        }
+    }
+
+    @Test
     public void testMatch_Failure() {
         IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory);
         Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
