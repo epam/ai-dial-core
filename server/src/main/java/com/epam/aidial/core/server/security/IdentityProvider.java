@@ -21,7 +21,9 @@ import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpHeaders;
+import org.slf4j.event.Level;
 
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -34,6 +36,7 @@ import java.security.interfaces.RSAPublicKey;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -41,6 +44,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static java.util.Collections.EMPTY_LIST;
 
@@ -48,6 +52,8 @@ import static java.util.Collections.EMPTY_LIST;
 public class IdentityProvider {
 
     public static final String USER_SUB = "sub";
+    public static final String USER_OID = "oid";
+    public static final String USER_EMAIL = "email";
 
     // path(s) to the claim of user roles in JWT
     private final List<String[]> rolePaths = new ArrayList<>();
@@ -106,16 +112,29 @@ public class IdentityProvider {
      */
     private final String[] userIdPath;
 
+    /**
+     * Claim paths to log for debugging purposes
+     */
+    private final Map<String, String[]> claimPathsToLog;
+
+    /**
+     * The log level for claim logging. Defaults to DEBUG.
+     */
+    private final Level claimsLogLevel;
+
     IdentityProvider(JsonObject settings, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
-                            Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory) {
-        this(settings, vertx, taskExecutor, client, new HttpClientOptions(), jwkProviderSupplier, factory);
+                            Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory,
+                            String claimsLogLevel) {
+        this(settings, vertx, taskExecutor, client, new HttpClientOptions(), jwkProviderSupplier, factory, claimsLogLevel);
     }
 
     IdentityProvider(JsonObject settings, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client, HttpClientOptions clientOptions,
-                            Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory) {
+                            Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory,
+                            String claimsLogLevel) {
         if (settings == null) {
             throw new IllegalArgumentException("Identity provider settings are missed");
         }
+        this.claimsLogLevel = Level.valueOf(claimsLogLevel.toUpperCase());
         this.taskExecutor = taskExecutor;
         this.client = client;
         this.clientOptions = clientOptions;
@@ -187,12 +206,50 @@ public class IdentityProvider {
 
         userIdPath = getClaimPath(settings, "userIdPath", new String[]{USER_SUB});
 
+        claimPathsToLog = getAsStringList(settings, "claimPathsToLog", List.of(USER_SUB, USER_OID, USER_EMAIL)).stream()
+                        .collect(Collectors.toMap(
+                                Function.identity(),
+                                IdentityProvider::parseClaimPath,
+                                (a, b) -> a,
+                                LinkedHashMap::new));
+
         long period = Math.min(negativeCacheExpirationMs, positiveCacheExpirationMs);
         vertx.setPeriodic(0, period, event -> evictExpiredJwks());
     }
 
     private static String[] getClaimPath(JsonObject settings, String claimName, String[] defaultPath) {
-        return settings.containsKey(claimName) ? settings.getString(claimName).split("\\.") : defaultPath;
+        return settings.containsKey(claimName) ? parseClaimPath(settings.getString(claimName)) : defaultPath;
+    }
+
+    private static List<String> getAsStringList(JsonObject settings, String key, List<String> defaultValue) {
+        if (!settings.containsKey(key)) {
+            return defaultValue;
+        }
+        Object value = settings.getValue(key);
+        if (value instanceof String string) {
+            if (StringUtils.isBlank(string)) {
+                throw new IllegalArgumentException(key + " should not contain blank values");
+            }
+            return List.of(string);
+        }
+
+        if (value instanceof JsonArray array) {
+            List<String> result = new ArrayList<>(array.size());
+            for (int i = 0; i < array.size(); i++) {
+                String string = array.getString(i);
+                if (StringUtils.isBlank(string)) {
+                    throw new IllegalArgumentException(key + " should not contain blank values");
+                }
+                result.add(string);
+            }
+            return result;
+        }
+
+        throw new IllegalArgumentException(key + " should be either String or Array");
+    }
+
+    private static String[] parseClaimPath(String claimPath) {
+        return claimPath.split("\\.");
     }
 
     private void evictExpiredJwks() {
@@ -379,6 +436,7 @@ public class IdentityProvider {
         for (Map.Entry<String, Claim> e : jwt.getClaims().entrySet()) {
             map.put(e.getKey(), e.getValue().as(Object.class));
         }
+        logClaims(map);
         return new ExtractedClaims(extractStringClaim(map, userIdPath), extractUserRoles(map), extractUserHash(userKey),
                 extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
     }
@@ -388,15 +446,30 @@ public class IdentityProvider {
         Map<String, Object> map = userInfo.getMap();
         if (getUserRoleFn != null) {
             getUserRoleFn.apply(accessToken, map).onFailure(promise::fail).onSuccess(roles -> {
+                logClaims(map);
                 ExtractedClaims extractedClaims = new ExtractedClaims(extractStringClaim(map, userIdPath), roles, extractUserHash(userKey),
                         extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
                 promise.complete(extractedClaims);
             });
         } else {
+            logClaims(map);
             ExtractedClaims extractedClaims =
                     new ExtractedClaims(extractStringClaim(map, userIdPath), extractUserRoles(map), extractUserHash(userKey),
                             extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
             promise.complete(extractedClaims);
+        }
+    }
+
+    private void logClaims(Map<String, Object> claims) {
+        if (claimPathsToLog.isEmpty()) {
+            return;
+        }
+
+        if (log.isEnabledForLevel(claimsLogLevel)) {
+            String message = claimPathsToLog.keySet().stream()
+                    .map(claim -> claim + "=" + extractClaim(claims, claimPathsToLog.get(claim)))
+                    .collect(Collectors.joining(", "));
+            log.atLevel(claimsLogLevel).log("User login: {}", message);
         }
     }
 
