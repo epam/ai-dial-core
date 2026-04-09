@@ -115,6 +115,12 @@ public class IdentityProvider {
      */
     private final Map<String, String[]> claimPathsToLog;
 
+    /**
+     * When true, claims are logged at INFO level instead of DEBUG.
+     * Defaults to false.
+     */
+    private final boolean logClaimsAtInfoLevel;
+
     IdentityProvider(JsonObject settings, Vertx vertx, AsyncTaskExecutor taskExecutor, HttpClient client,
                             Function<String, JwkProvider> jwkProviderSupplier, GetUserRoleFunctionFactory factory) {
         this(settings, vertx, taskExecutor, client, new HttpClientOptions(), jwkProviderSupplier, factory);
@@ -202,6 +208,8 @@ public class IdentityProvider {
                                 IdentityProvider::parseClaimPath,
                                 (a, b) -> a,
                                 LinkedHashMap::new));
+
+        logClaimsAtInfoLevel = settings.getBoolean("logClaimsAtInfoLevel", false);
 
         long period = Math.min(negativeCacheExpirationMs, positiveCacheExpirationMs);
         vertx.setPeriodic(0, period, event -> evictExpiredJwks());
@@ -455,11 +463,15 @@ public class IdentityProvider {
             return;
         }
 
-        if (log.isDebugEnabled()) {
+        if (logClaimsAtInfoLevel ? log.isInfoEnabled() : log.isDebugEnabled()) {
             String message = claimPathsToLog.keySet().stream()
                     .map(claim -> claim + "=" + extractClaim(claims, claimPathsToLog.get(claim)))
                     .collect(Collectors.joining(", "));
-            log.debug("User login: {}", message);
+            if (logClaimsAtInfoLevel) {
+                log.info("User login: {}", message);
+            } else {
+                log.debug("User login: {}", message);
+            }
         }
     }
 
