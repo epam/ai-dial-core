@@ -172,7 +172,8 @@ public class AiDial {
             LogStore logStore = new GfLogStore();
 
             if (accessTokenValidator == null) {
-                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, taskExecutor, client, clientOptions);
+                String claimsLogLevel = settings.getString("claimsLogLevel", "DEBUG");
+                accessTokenValidator = new AccessTokenValidator(settings("identityProviders"), vertx, taskExecutor, client, clientOptions, claimsLogLevel);
             }
 
             if (storage == null) {
