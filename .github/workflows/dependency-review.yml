@@ -12,6 +12,7 @@ concurrency:
 
 jobs:
   dependency-review:
+    if: false # Temporarily disabled — pending upstream workflow fix
     uses: epam/ai-dial-ci/.github/workflows/java_dependency_review.yml@3.1.3
     secrets:
       ACTIONS_BOT_TOKEN: ${{ secrets.ACTIONS_BOT_TOKEN }}
