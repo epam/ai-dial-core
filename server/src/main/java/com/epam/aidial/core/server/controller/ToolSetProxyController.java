@@ -14,7 +14,6 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
-import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.function.FilterAllowedToolsFn;
 import com.epam.aidial.core.server.function.enhancement.InjectApplicationPropsToMcpRequest;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
@@ -26,7 +25,6 @@ import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -40,7 +38,6 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
@@ -58,11 +55,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.io.InputStream;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
@@ -206,6 +201,10 @@ public class ToolSetProxyController implements Controller {
                 JsonNode tree = ProxyUtil.MAPPER.readTree(stream);
                 if (tree.has("method")) {
                     mcpMethodName = tree.get("method").asText();
+                }
+                if (!isToolCallAllowed(tree)) {
+                    respond(HttpStatus.FORBIDDEN, "Tool is not allowed");
+                    return;
                 }
                 if (tree.isObject() && ProxyUtil.processChain((ObjectNode) tree, enhancementFunctions)) {
                     context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
@@ -423,6 +422,25 @@ public class ToolSetProxyController implements Controller {
 
     private boolean requireToolFiltering() {
         return "tools/list".equalsIgnoreCase(mcpMethodName) && useAllowedTools;
+    }
+
+    private boolean isToolCallAllowed(JsonNode tree) {
+        if (!"tools/call".equalsIgnoreCase(mcpMethodName) || !useAllowedTools) {
+            return true;
+        }
+        List<String> allowedTools = FilterAllowedToolsFn.getAllowedTools(context.getDeployment());
+        if (allowedTools.isEmpty()) {
+            return true;
+        }
+        JsonNode params = tree.get("params");
+        if (params == null) {
+            return true;
+        }
+        JsonNode nameNode = params.get("name");
+        if (nameNode == null) {
+            return true;
+        }
+        return allowedTools.contains(nameNode.asText());
     }
 
     private Future<?> handleRateLimitSuccess(Deployment deployment) {
