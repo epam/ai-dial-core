@@ -10,15 +10,18 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectRequestDataFn;
+import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -26,6 +29,7 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
@@ -41,6 +45,7 @@ import org.apache.commons.lang3.Strings;
 
 import java.io.InputStream;
 import java.util.List;
+import java.util.function.Supplier;
 
 @Slf4j
 public class DeploymentPostController extends BaseDeploymentPostController {
@@ -281,7 +286,9 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             upstreamRoute.fail(proxyResponse);
         }
 
-        BufferingReadStream responseStream = createResponseStream(proxyResponse);
+        Supplier<BufferingReadStream.BaseEventListener> eventListenerSupplier = () ->
+                new ChatCompletionSseListener(new CollectResponseChatCompletionAttachmentsFn(proxy, context));
+        BufferingReadStream responseStream = createResponseStream(proxyResponse, eventListenerSupplier);
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
@@ -385,6 +392,29 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         } else {
             // drop connection to stop application responding
             context.getProxyRequest().reset();
+        }
+    }
+
+    public static class ChatCompletionSseListener extends BufferingReadStream.BaseEventListener {
+
+        public static final String CHAT_COMPLETION_FINAL_MESSAGE = "[DONE]";
+
+        public ChatCompletionSseListener(BaseResponseFunction function) {
+            super(function);
+        }
+
+        @Override
+        protected boolean isLastEvent(SseEvent event, JsonNode data) {
+            return isFinalEvent(event);
+        }
+
+        @Override
+        protected boolean skipEvent(SseEvent event) {
+            return isFinalEvent(event);
+        }
+
+        private static boolean isFinalEvent(SseEvent event) {
+            return CHAT_COMPLETION_FINAL_MESSAGE.equals(event.getData());
         }
     }
 }

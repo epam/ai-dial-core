@@ -8,7 +8,6 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
@@ -35,6 +34,7 @@ import java.io.InputStream;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
@@ -49,21 +49,28 @@ public class BaseDeploymentPostController {
     protected final Proxy proxy;
     protected final ProxyContext context;
 
-    protected BufferingReadStream createResponseStream(HttpClientResponse proxyResponse) {
+    protected BufferingReadStream createResponseStream(HttpClientResponse proxyResponse,
+                                                       Supplier<BufferingReadStream.BaseEventListener> listenerSupplier) {
+        BufferingReadStream.BaseEventListener eventListener = null;
+        if (isEventStreamResponse(proxyResponse)) {
+            eventListener = listenerSupplier.get();
+        }
+        return new BufferingReadStream(proxyResponse, ProxyUtil.contentLength(proxyResponse, 1024), eventListener);
+    }
+
+    protected boolean isEventStreamResponse(HttpClientResponse proxyResponse) {
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
-        boolean isEventStreamResponse = Strings.CI.contains(contentType, "text/event-stream") && context.isStreamingRequest();
-        CollectResponseAttachmentsFn handler = isEventStreamResponse ? new CollectResponseChatCompletionAttachmentsFn(proxy, context) : null;
-        return new BufferingReadStream(proxyResponse, ProxyUtil.contentLength(proxyResponse, 1024), handler);
+        return Strings.CI.contains(contentType, "text/event-stream") && context.isStreamingRequest();
     }
 
     protected Future<Void> collectResponseAttachments(Buffer responseBody) {
-        if (context.isStreamingRequest()) {
+        if (isEventStreamResponse(context.getProxyResponse())) {
             return Future.succeededFuture();
         }
         try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
             var fn = new CollectResponseChatCompletionAttachmentsFn(proxy, context);
-            return fn.apply(tree);
+            return fn.apply(tree).map(ignored -> null);
         } catch (Throwable e) {
             log.warn("Can't parse JSON response body. Error:", e);
             return Future.failedFuture(e);
