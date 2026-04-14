@@ -151,11 +151,16 @@ public class ApplicationSchemaService {
         if (schema.has(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT)) {
             String url = schema.get(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT).textValue();
             if (forceReload || !schemaCache.containsKey(schemaId)) {
-                ObjectNode appSchema = downloadAppSchema(url);
-                merge(appSchema, schema);
-                String result = appSchema.toString();
-                schemaCache.put(schemaId, result);
-                return result;
+                try {
+                    ObjectNode appSchema = downloadAppSchema(url);
+                    merge(appSchema, schema);
+                    String result = appSchema.toString();
+                    schemaCache.put(schemaId, result);
+                    return result;
+                } catch (Exception e) {
+                    log.warn("Failed to download application schema", e);
+                    throw new ApplicationTypeSchemaProcessingException("Failed to download application schema", e);
+                }
             } else {
                 return schemaCache.get(schemaId);
             }
