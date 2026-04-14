@@ -111,8 +111,9 @@ public class ToolSetToolsController implements Controller {
             }
             context.setUpstreamRoute(upstreamRoute);
             context.setDeployment(deployment);
+            fetchTools();
             return null;
-        }).onSuccess(ignore -> fetchTools()).onFailure(this::handleError);
+        }).onFailure(this::handleError);
     }
 
     private void checkWriteAccess() {
