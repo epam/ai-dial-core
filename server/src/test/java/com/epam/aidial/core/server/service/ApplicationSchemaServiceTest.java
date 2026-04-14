@@ -407,7 +407,7 @@ public class ApplicationSchemaServiceTest {
     }
 
     @Test
-    public void modifyEndpointForCustomApplication_throws_whenEndpointsNotFound() {
+    public void modifyEndpointForCustomApplication_ChatEndpointIsOptional() {
         when(configStore.get()).thenReturn(config);
         String schemaWithoutEndpoint = """
                 {
@@ -428,8 +428,7 @@ public class ApplicationSchemaServiceTest {
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         when(config.getCustomApplicationSchema(any())).thenReturn(schemaWithoutEndpoint);
 
-        Assertions.assertThrows(ApplicationTypeSchemaProcessingException.class, () ->
-                service.modifyEndpointsForCustomApplication(application));
+        Assertions.assertNull(service.modifyEndpointsForCustomApplication(application).getEndpoint());
     }
 
     @Test
