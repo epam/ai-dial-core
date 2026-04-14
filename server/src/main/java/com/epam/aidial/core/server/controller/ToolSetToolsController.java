@@ -207,6 +207,9 @@ public class ToolSetToolsController implements Controller {
         proxyResponse.body().map(responseBody -> {
             processToolsResponse(responseBody, statusCode, isSse);
             return null;
+        }).onFailure(error -> {
+            log.warn("Failed to receive response body from MCP server", error);
+            respond(new HttpException(HttpStatus.BAD_GATEWAY, "Failed to receive response body from MCP server"));
         });
     }
 
@@ -235,11 +238,11 @@ public class ToolSetToolsController implements Controller {
     }
 
     private void processToolsResponse(Buffer responseBody, int statusCode, boolean isSse) {
-        if (statusCode != 200 || !filterAllowed) {
-            context.respond(statusCode, responseBody);
-            return;
-        }
         try {
+            if (statusCode != 200 || !filterAllowed) {
+                context.respond(statusCode, responseBody);
+                return;
+            }
             JsonNode tree = parseResponseBody(responseBody, isSse);
             ArrayNode tools = (ArrayNode) Optional.ofNullable(tree.get("result"))
                     .map(result -> result.get("tools"))
