@@ -675,6 +675,104 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testProxyMcpPostCall_CallDisallowedTool() {
+        String mcpRequest = """
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "tag",
+                        "arguments": {}
+                    }
+                }
+                """;
+        String mcpResponse = """
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {
+                        "content": [{ "type": "text", "text": "done" }]
+                    }
+                }
+                """;
+        TestWebServer.Handler handler = request -> new MockResponse()
+                .setBody(mcpResponse).setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            // "git" toolset has allowed_tools: ["branch", "remote"], so "tag" should be rejected
+            Response resp = send(HttpMethod.POST, "/v1/toolset/git/mcp", null,
+                    mcpRequest, "Content-Type", "application/json");
+            assertEquals(403, resp.status());
+        }
+    }
+
+    @Test
+    void testProxyMcpPostCall_CallAllowedTool() {
+        String mcpRequest = """
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "branch",
+                        "arguments": {}
+                    }
+                }
+                """;
+        String mcpResponse = """
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {
+                        "content": [{ "type": "text", "text": "done" }]
+                    }
+                }
+                """;
+        TestWebServer.Handler handler = request -> new MockResponse()
+                .setBody(mcpResponse).setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            // "git" toolset has allowed_tools: ["branch", "remote"], so "branch" should be allowed
+            Response resp = send(HttpMethod.POST, "/v1/toolset/git/mcp", null,
+                    mcpRequest, "Content-Type", "application/json");
+            assertEquals(200, resp.status());
+            assertEquals(mcpResponse, resp.body());
+        }
+    }
+
+    @Test
+    void testProxyMcpPostCall_CallDisallowedToolAsAdmin() {
+        String mcpRequest = """
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "tag",
+                        "arguments": {}
+                    }
+                }
+                """;
+        String mcpResponse = """
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {
+                        "content": [{ "type": "text", "text": "done" }]
+                    }
+                }
+                """;
+        TestWebServer.Handler handler = request -> new MockResponse()
+                .setBody(mcpResponse).setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            // admin with useAllowedTools=false can bypass allowedTools enforcement
+            Response resp = send(HttpMethod.POST, "/v1/toolset/git/mcp?useAllowedTools=false", null,
+                    mcpRequest, "Content-Type", "application/json", "authorization", "admin");
+            assertEquals(200, resp.status());
+            assertEquals(mcpResponse, resp.body());
+        }
+    }
+
+    @Test
     void testProxyMcpGetCall() {
         String mcpResponse = """
                 {

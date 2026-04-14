@@ -45,7 +45,7 @@ public class FilterAllowedToolsFn extends BaseResponseFunction {
         return Future.succeededFuture(jsonNode);
     }
 
-    private List<String> getAllowedTools(Deployment deployment) {
+    public static List<String> getAllowedTools(Deployment deployment) {
         if (deployment instanceof ToolSet toolSet) {
             return toolSet.getAllowedTools();
         } else if (deployment instanceof Application application) {
