@@ -277,7 +277,7 @@ public class ApplicationSchemaService {
             String schema = getCustomApplicationSchemaOrThrow(application, false);
             JsonNode schemaNode = ProxyUtil.MAPPER.readTree(schema);
 
-            String completionEndpoint = getEndpoint(schemaNode, APPLICATION_TYPE_COMPLETION_ENDPOINT, true);
+            String completionEndpoint = getEndpoint(schemaNode, APPLICATION_TYPE_COMPLETION_ENDPOINT, false);
             String responsesEndpoint = getEndpoint(schemaNode, APPLICATION_TYPE_RESPONSES_ENDPOINT, false);
             String configurationEndpoint = getEndpoint(schemaNode, APPLICATION_TYPE_CONFIGURATION_ENDPOINT, false);
             String rateEndpoint = getEndpoint(schemaNode, APPLICATION_TYPE_RATE_ENDPOINT, false);
