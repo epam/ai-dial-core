@@ -175,6 +175,14 @@ public enum RouteTemplate {
             "^/+openai/toolsets$",
             "/openai/toolsets"
     ),
+    TOOL_SET_TOOLS(
+            "^/v1/toolset/(?<id>.+?)/tools$",
+            "/v1/toolset/{id}/tools"
+    ),
+    TOOL_SET_ALLOWED_TOOLS(
+            "^/v1/toolset/(?<id>.+?)/allowed-tools$",
+            "/v1/toolset/{id}/allowed-tools"
+    ),
     TOOL_SET_PROXY(
             "^/v1/toolset/(?<id>.+?)/mcp$",
             "/v1/toolset/{id}/mcp"
