@@ -34,7 +34,6 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -55,11 +54,10 @@ import java.util.Objects;
 import java.util.Optional;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
+import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM;
 
 @Slf4j
 public class ToolSetToolsController implements Controller {
-
-    private static final ArrayNode EMPTY_JSON_ARRAY = ProxyUtil.MAPPER.createArrayNode();
 
     private final String toolSetId;
     private final boolean filterAllowed;
@@ -167,16 +165,19 @@ public class ToolSetToolsController implements Controller {
         httpClient.request(options).onSuccess(proxyRequest -> taskExecutor.submit(() -> {
             handleProxyRequest(proxyRequest);
             return null;
+        }).onFailure(error -> {
+            log.warn("Failed to handle request to MCP server", error);
+            respond(new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to handle request to MCP server"));
         })).onFailure(this::handleProxyConnectionError);
     }
 
     private void handleProxyRequest(HttpClientRequest proxyRequest) {
         Deployment deployment = context.getDeployment();
 
-        setToolsetCredentials(proxyRequest, deployment);
+        injectToolsetCredentials(proxyRequest, deployment);
 
         proxyRequest.putHeader(HttpHeaders.CONTENT_TYPE, HEADER_CONTENT_TYPE_APPLICATION_JSON);
-        proxyRequest.putHeader(HttpHeaders.ACCEPT, List.of(HEADER_CONTENT_TYPE_APPLICATION_JSON, "text/event-stream"));
+        proxyRequest.putHeader(HttpHeaders.ACCEPT, List.of(HEADER_CONTENT_TYPE_APPLICATION_JSON, HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM));
 
         ObjectNode requestBody = ProxyUtil.MAPPER.createObjectNode();
         requestBody.put("jsonrpc", "2.0");
@@ -205,7 +206,18 @@ public class ToolSetToolsController implements Controller {
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
         int statusCode = proxyResponse.statusCode();
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
-        boolean isSse = !Strings.CI.contains(contentType, HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        boolean isSse;
+        if (Strings.CI.contains(contentType, HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
+            isSse = false;
+        } else if (Strings.CI.contains(contentType, HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM)) {
+            isSse = true;
+        } else {
+            String errorMessage = "MCP server returns wrong content-type: " + contentType;
+            log.warn(errorMessage);
+            respond(new HttpException(HttpStatus.BAD_GATEWAY, errorMessage));
+            return;
+        }
+
         proxyResponse.body().map(responseBody -> {
             processToolsResponse(responseBody, statusCode, isSse);
             return null;
@@ -241,15 +253,21 @@ public class ToolSetToolsController implements Controller {
 
     private void processToolsResponse(Buffer responseBody, int statusCode, boolean isSse) {
         try {
-            if (statusCode != 200 || !filterAllowed) {
+            if (statusCode != HttpStatus.OK.getCode()) {
                 context.respond(statusCode, responseBody);
+                finalizeRequest();
                 return;
             }
             JsonNode tree = parseResponseBody(responseBody, isSse);
-            ArrayNode tools = (ArrayNode) Optional.ofNullable(tree.get("result"))
-                    .map(result -> result.get("tools"))
-                    .filter(JsonNode::isArray)
-                    .orElse(EMPTY_JSON_ARRAY);
+            if (!filterAllowed) {
+                respond(tree);
+                return;
+            }
+            JsonNode tools = tree.path("result").path("tools");
+            if (!tools.isArray()) {
+                log.warn("Response doesn't have valid path to tools");
+                respond(new HttpException(HttpStatus.BAD_GATEWAY, "Response doesn't have valid path to tools"));
+            }
             List<String> allowedTools = getAllowedTools(context.getDeployment());
             if (!allowedTools.isEmpty()) {
                 for (Iterator<JsonNode> iter = tools.iterator(); iter.hasNext(); ) {
@@ -260,8 +278,7 @@ public class ToolSetToolsController implements Controller {
                     }
                 }
             }
-            context.respond(HttpStatus.OK, tree);
-            finalizeRequest();
+            respond(tree);
         } catch (Exception e) {
             log.error("Failed to parse tools/list response from MCP server", e);
             respond(new HttpException(HttpStatus.BAD_GATEWAY, "Failed to parse tools/list response from MCP server"));
@@ -276,6 +293,10 @@ public class ToolSetToolsController implements Controller {
             SseParser parser = new SseParser(512, new SseEventListener() {
                 @Override
                 public void onEvent(SseEvent event) {
+                    if (sseEventRef.get() != null) {
+                        log.warn("Multiple events in a single SSE response");
+                        throw new RuntimeException("Multiple events in a single SSE response");
+                    }
                     sseEventRef.setValue(event);
                 }
 
@@ -297,7 +318,7 @@ public class ToolSetToolsController implements Controller {
                 } catch (JsonProcessingException e) {
                     throw new RuntimeException(e);
                 }
-            }).orElse(ProxyUtil.MAPPER.createObjectNode());
+            }).orElseThrow(() -> new RuntimeException("No SSE event in the response"));
         } else {
             tree = ProxyUtil.MAPPER.readTree(responseBody.getBytes());
         }
@@ -320,28 +341,24 @@ public class ToolSetToolsController implements Controller {
         return deployment.getEndpoint();
     }
 
-    private void setToolsetCredentials(HttpClientRequest proxyRequest, Deployment deployment) {
-        try {
-            if (deployment instanceof ToolSet toolSet) {
-                ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
-                        credentialsLocator, toolSet.getAuthSettings(), context.getUserId()
-                );
-                if (resourceCredentials != null) {
-                    addAuthorizationHeader(proxyRequest, resourceCredentials);
-                }
-                if (toolSet.isForwardPerRequestKey()) {
-                    String perRequestKey = assignPerRequestKey();
-                    proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
-                }
-            } else if (deployment instanceof Application application) {
-                Application.Mcp mcp = application.getMcp();
-                if (mcp.isForwardPerRequestKey()) {
-                    String perRequestKey = assignPerRequestKey();
-                    proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
-                }
+    private void injectToolsetCredentials(HttpClientRequest proxyRequest, Deployment deployment) {
+        if (deployment instanceof ToolSet toolSet) {
+            ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
+                    credentialsLocator, toolSet.getAuthSettings(), context.getUserId()
+            );
+            if (resourceCredentials != null) {
+                addAuthorizationHeader(proxyRequest, resourceCredentials);
             }
-        } catch (Exception e) {
-            log.error("Can't provide credentials to toolset due to the error: {}", e.getMessage(), e);
+            if (toolSet.isForwardPerRequestKey()) {
+                String perRequestKey = assignPerRequestKey();
+                proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
+            }
+        } else if (deployment instanceof Application application) {
+            Application.Mcp mcp = application.getMcp();
+            if (mcp.isForwardPerRequestKey()) {
+                String perRequestKey = assignPerRequestKey();
+                proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
+            }
         }
     }
 
@@ -378,6 +395,11 @@ public class ToolSetToolsController implements Controller {
     private void respond(HttpException exception) {
         finalizeRequest();
         context.respond(exception);
+    }
+
+    private void respond(JsonNode response) {
+        finalizeRequest();
+        context.respond(HttpStatus.OK, response);
     }
 
     private void finalizeRequest() {

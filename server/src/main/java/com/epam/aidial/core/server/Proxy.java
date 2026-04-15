@@ -97,6 +97,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_CACHE_EXPIRE_AT = "X-DIAL-CACHE-EXPIRE-AT";
     public static final String HEADER_CACHE_EXTRA_METADATA = "X-DIAL-CACHE-EXTRA-METADATA";
     public static final String HEADER_CONTENT_TYPE_APPLICATION_JSON = "application/json";
+    public static final String HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM = "text/event-stream";
     public static final String HEADER_APPLICATION_PROPERTIES = "X-DIAL-APPLICATION-PROPERTIES";
     public static final String HEADER_APPLICATION_ID = "X-DIAL-APPLICATION-ID";
     public static final String HEADER_OVERRIDE_NAME = "X-DIAL-OVERRIDE-NAME";
