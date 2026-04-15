@@ -267,6 +267,7 @@ public class ToolSetToolsController implements Controller {
             if (!tools.isArray()) {
                 log.warn("Response doesn't have valid path to tools");
                 respond(new HttpException(HttpStatus.BAD_GATEWAY, "Response doesn't have valid path to tools"));
+                return;
             }
             List<String> allowedTools = getAllowedTools(context.getDeployment());
             if (!allowedTools.isEmpty()) {
