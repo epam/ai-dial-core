@@ -261,11 +261,10 @@ public class ToolSetToolsController implements Controller {
                 }
             }
             context.respond(HttpStatus.OK, tree);
+            finalizeRequest();
         } catch (Exception e) {
             log.error("Failed to parse tools/list response from MCP server", e);
             respond(new HttpException(HttpStatus.BAD_GATEWAY, "Failed to parse tools/list response from MCP server"));
-        } finally {
-            finalizeRequest();
         }
     }
 
