@@ -32,6 +32,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -291,7 +292,13 @@ public class ToolSetToolsController implements Controller {
             });
             parser.parse(responseBody);
             parser.finish();
-            tree = ProxyUtil.MAPPER.readTree(sseEventRef.get().getData());
+            tree = Optional.ofNullable(sseEventRef.get()).map(SseEvent::getData).map(json -> {
+                try {
+                    return ProxyUtil.MAPPER.readTree(json);
+                } catch (JsonProcessingException e) {
+                    throw new RuntimeException(e);
+                }
+            }).orElse(ProxyUtil.MAPPER.createObjectNode());
         } else {
             tree = ProxyUtil.MAPPER.readTree(responseBody.getBytes());
         }
