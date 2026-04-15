@@ -131,6 +131,14 @@ public class ControllerSelector {
             ToolSetController controller = new ToolSetController(context);
             return controller::getToolSets;
         });
+        get(RouteTemplate.TOOL_SET_TOOLS, ((proxy, context, pathMatcher) -> {
+            String toolSetId = UrlUtil.decodePath(pathMatcher.group(1));
+            return new ToolSetToolsController(proxy, context, toolSetId, false);
+        }));
+        get(RouteTemplate.TOOL_SET_ALLOWED_TOOLS, ((proxy, context, pathMatcher) -> {
+            String toolSetId = UrlUtil.decodePath(pathMatcher.group(1));
+            return new ToolSetToolsController(proxy, context, toolSetId, true);
+        }));
         get(RouteTemplate.TOOL_SET_PROXY, ((proxy, context, pathMatcher) -> {
             String toolSetId = UrlUtil.decodePath(pathMatcher.group(1));
             return new ToolSetProxyController(proxy, context, toolSetId);

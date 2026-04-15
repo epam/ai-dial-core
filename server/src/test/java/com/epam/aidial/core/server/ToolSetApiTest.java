@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -1541,6 +1542,202 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     }
                     """, "authorization", "admin");
             verify(response, 200, "true");
+        }
+    }
+
+    @Test
+    void testGetAllTools_AdminAccess() throws JsonProcessingException {
+        String mcpResponse = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 1,
+                   "result": {
+                     "tools": [
+                       {"name": "branch", "title": "Manage branches"},
+                       {"name": "tag", "title": "Manage tags"},
+                       {"name": "remote", "title": "Manage remotes"}
+                     ]
+                   }
+                 }
+                """;
+        TestWebServer.Handler handler = request -> new MockResponse()
+                .setBody(mcpResponse).setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response resp = send(HttpMethod.GET, "/v1/toolset/git/tools",
+                    null, null, "authorization", "admin");
+
+            assertEquals(200, resp.status());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = Optional.ofNullable(json.get("result"))
+                    .map(res -> res.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            assertEquals(3, tools.size());
+            assertEquals("branch", tools.get(0).get("name").asText());
+            assertEquals("tag", tools.get(1).get("name").asText());
+            assertEquals("remote", tools.get(2).get("name").asText());
+        }
+    }
+
+    @Test
+    void testGetAllTools_RegularUserForbidden() {
+        TestWebServer.Handler handler = request -> new MockResponse()
+                .setBody("{}").setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response resp = send(HttpMethod.GET, "/v1/toolset/git/tools");
+
+            assertEquals(403, resp.status());
+        }
+    }
+
+    @Test
+    void testGetAllowedTools_JsonResponse() throws JsonProcessingException {
+        String mcpResponse = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 1,
+                   "result": {
+                     "tools": [
+                       {"name": "branch", "title": "Manage branches"},
+                       {"name": "tag", "title": "Manage tags"},
+                       {"name": "remote", "title": "Manage remotes"}
+                     ]
+                   }
+                 }
+                """;
+        TestWebServer.Handler handler = request -> new MockResponse()
+                .setBody(mcpResponse).setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            // "git" toolset has allowedTools: ["branch", "remote"]
+            Response resp = send(HttpMethod.GET, "/v1/toolset/git/allowed-tools");
+
+            assertEquals(200, resp.status());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = Optional.ofNullable(json.get("result"))
+                    .map(res -> res.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            assertEquals(2, tools.size());
+            assertEquals("branch", tools.get(0).get("name").asText());
+            assertEquals("remote", tools.get(1).get("name").asText());
+        }
+    }
+
+    @SuppressWarnings("checkstyle:LineLength")
+    @Test
+    void testGetAllowedTools_SseResponse() throws JsonProcessingException {
+        String mcpResponse = """
+                event: message
+                data: {"jsonrpc": "2.0","id": 1,"result": {"tools": [{"name": "branch", "title": "Manage branches"},{"name": "tag", "title": "Manage tags"},{"name": "remote", "title": "Manage remotes"}]}}\n
+                """;
+        TestWebServer.Handler handler = request -> new MockResponse()
+                .setBody(mcpResponse).setHeader("Content-Type", "text/event-stream");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            // "git" toolset has allowedTools: ["branch", "remote"]
+            Response resp = send(HttpMethod.GET, "/v1/toolset/git/allowed-tools");
+
+            assertEquals(200, resp.status());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = Optional.ofNullable(json.get("result"))
+                    .map(res -> res.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            assertEquals(2, tools.size());
+            assertEquals("branch", tools.get(0).get("name").asText());
+            assertEquals("remote", tools.get(1).get("name").asText());
+        }
+    }
+
+    @DialConfigLocation("dial-config/filter-toolsets.json")
+    @Test
+    void testGetAllowedTools_EmptyFilter() throws JsonProcessingException {
+        String mcpResponse = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 1,
+                   "result": {
+                     "tools": [
+                       {"name": "tool1", "title": "Tool 1"},
+                       {"name": "tool2", "title": "Tool 2"}
+                     ]
+                   }
+                 }
+                """;
+        TestWebServer.Handler handler = request -> new MockResponse()
+                .setBody(mcpResponse).setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            // "my toolset 1" has no allowedTools filter (empty list)
+            Response resp = send(HttpMethod.GET, "/v1/toolset/git/allowed-tools");
+
+            assertEquals(200, resp.status());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = Optional.ofNullable(json.get("result"))
+                    .map(res -> res.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            assertEquals(2, tools.size());
+        }
+    }
+
+    @Test
+    void testGetAllTools_NotFound() {
+        Response resp = send(HttpMethod.GET, "/v1/toolset/unknown-toolset/tools",
+                null, null, "authorization", "admin");
+        assertEquals(404, resp.status());
+    }
+
+    @Test
+    void testGetAllTools_ResourceToolset_OwnerAccess() throws JsonProcessingException {
+        // create resource-based toolset (owner = default user)
+        Response response = send(HttpMethod.PUT,
+                "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-tools-test", null, """
+                {
+                    "endpoint": "http://localhost:9876",
+                    "transport": "HTTP",
+                    "allowedTools": ["tool1"]
+                }
+                """);
+        verify(response, 200);
+
+        String mcpResponse = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 1,
+                   "result": {
+                     "tools": [
+                       {"name": "tool1", "title": "Tool 1"},
+                       {"name": "tool2", "title": "Tool 2"}
+                     ]
+                   }
+                 }
+                """;
+        TestWebServer.Handler handler = request -> new MockResponse()
+                .setBody(mcpResponse).setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            // owner should have WRITE access and can access /tools (unfiltered)
+            Response resp = send(HttpMethod.GET,
+                    "/v1/toolset/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-tools-test/tools");
+
+            assertEquals(200, resp.status());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = Optional.ofNullable(json.get("result"))
+                    .map(res -> res.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            assertEquals(2, tools.size());
+
+            // /allowed-tools should filter
+            resp = send(HttpMethod.GET,
+                    "/v1/toolset/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-tools-test/allowed-tools");
+
+            assertEquals(200, resp.status());
+            json = ProxyUtil.MAPPER.readTree(resp.body());
+            tools = Optional.ofNullable(json.get("result"))
+                    .map(res -> res.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            assertEquals(1, tools.size());
+            assertEquals("tool1", tools.get(0).get("name").asText());
         }
     }
 

@@ -1,0 +1,17 @@
+{
+  "toolsets": {
+    "git": {
+      "transport": "http",
+      "endpoint": "http://localhost:9876",
+      "allowed_tools": [],
+      "description": "Git remote tool set",
+      "forwardPerRequestKey": true
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    }
+  }
+}
