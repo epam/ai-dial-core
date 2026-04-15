@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.function.AutoShareDeploymentFn;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectRequestDataFn;
+import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -27,6 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.InputStream;
 import java.util.List;
+import java.util.function.Supplier;
 
 @Slf4j
 public class InterceptorController extends BaseDeploymentPostController {
@@ -143,7 +145,9 @@ public class InterceptorController extends BaseDeploymentPostController {
                 context.getDeployment().getEndpoint(),
                 proxyResponse.statusCode(), proxyResponse.headers().size());
 
-        BufferingReadStream responseStream = createResponseStream(proxyResponse);
+        Supplier<BufferingReadStream.BaseEventListener> eventListenerSupplier = () ->
+                new DeploymentPostController.ChatCompletionSseListener(new CollectResponseChatCompletionAttachmentsFn(proxy, context));
+        BufferingReadStream responseStream = createResponseStream(proxyResponse, eventListenerSupplier);
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());

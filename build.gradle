@@ -7,7 +7,7 @@ plugins {
 
 allprojects {
     group = 'com.epam.aidial'
-    version = "0.42.0-rc"
+    version = "0.43.0-rc"
 
     apply plugin: 'java'
     apply plugin: 'checkstyle'
@@ -45,6 +45,7 @@ allprojects {
             dependencySubstitution {
                 substitute module('com.google.guava:guava:31.0.1-jre') using module("com.google.guava:guava:${guava_version}") because "CVE in 31.0.1-jre pulled transitively via com.google.inject:guice:7.0.0"
             }
+            force 'commons-beanutils:commons-beanutils:1.11.0'
         }
     }
 

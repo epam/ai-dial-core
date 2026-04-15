@@ -151,11 +151,16 @@ public class ApplicationSchemaService {
         if (schema.has(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT)) {
             String url = schema.get(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT).textValue();
             if (forceReload || !schemaCache.containsKey(schemaId)) {
-                ObjectNode appSchema = downloadAppSchema(url);
-                merge(appSchema, schema);
-                String result = appSchema.toString();
-                schemaCache.put(schemaId, result);
-                return result;
+                try {
+                    ObjectNode appSchema = downloadAppSchema(url);
+                    merge(appSchema, schema);
+                    String result = appSchema.toString();
+                    schemaCache.put(schemaId, result);
+                    return result;
+                } catch (Exception e) {
+                    log.warn("Failed to download application schema", e);
+                    throw new ApplicationTypeSchemaProcessingException("Failed to download application schema", e);
+                }
             } else {
                 return schemaCache.get(schemaId);
             }
@@ -277,7 +282,7 @@ public class ApplicationSchemaService {
             String schema = getCustomApplicationSchemaOrThrow(application, false);
             JsonNode schemaNode = ProxyUtil.MAPPER.readTree(schema);
 
-            String completionEndpoint = getEndpoint(schemaNode, APPLICATION_TYPE_COMPLETION_ENDPOINT, true);
+            String completionEndpoint = getEndpoint(schemaNode, APPLICATION_TYPE_COMPLETION_ENDPOINT, false);
             String responsesEndpoint = getEndpoint(schemaNode, APPLICATION_TYPE_RESPONSES_ENDPOINT, false);
             String configurationEndpoint = getEndpoint(schemaNode, APPLICATION_TYPE_CONFIGURATION_ENDPOINT, false);
             String rateEndpoint = getEndpoint(schemaNode, APPLICATION_TYPE_RATE_ENDPOINT, false);
