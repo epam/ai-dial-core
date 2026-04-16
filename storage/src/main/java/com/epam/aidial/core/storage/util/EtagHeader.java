@@ -16,8 +16,8 @@ import javax.annotation.Nullable;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class EtagHeader {
     public static final String ANY_TAG = "*";
-    public static final EtagHeader ANY = new EtagHeader(null, Set.of(), null);
-    public static final EtagHeader NEW_ONLY = new EtagHeader(null, null, null);
+    public static final EtagHeader ANY = new EtagHeader(null, Set.of(), null, null);
+    public static final EtagHeader NEW_ONLY = new EtagHeader(null, null, null, null);
     /**
      * <code>null</code> means any tag '*'
      */
@@ -31,6 +31,8 @@ public class EtagHeader {
      */
     private final String method;
 
+    private final String ifMatchVal;
+
     public void validate(String etag) {
         validate(() -> etag);
     }
@@ -38,17 +40,20 @@ public class EtagHeader {
     public void validate(Supplier<String> etagSupplier) {
 
         String etag = etagSupplier.get();
-        if (etag == null) {
-            // Resource doesn't exist
-            return;
-        }
 
         validateIfMatch(etag);
 
         validateIfNoneMatch(etag);
     }
 
-    private void validateIfNoneMatch(String etag) {
+    public boolean isIfMatchPresent() {
+        return StringUtils.isNotEmpty(ifMatchVal);
+    }
+
+    private void validateIfNoneMatch(@Nullable String etag) {
+        if (etag == null) {
+            return;
+        }
         // If-None-Match used with the * value can be used to save a file not known to exist,
         // guaranteeing that another upload didn't happen before
         if (ifNoneMatchTags == null) {
@@ -74,7 +79,13 @@ public class EtagHeader {
         return new HttpException(statusCode, message, headers);
     }
 
-    private void validateIfMatch(String etag) {
+    private void validateIfMatch(@Nullable String etag) {
+        if (etag == null) {
+            if (isIfMatchPresent()) {
+                throw new HttpException(HttpStatus.PRECONDITION_FAILED, "Resource must exist");
+            }
+            return;
+        }
         // if-match is not any and doesn't match the etag
         if (ifMatchTags != null && !ifMatchTags.contains(etag)) {
             throw new HttpException(HttpStatus.PRECONDITION_FAILED, "If-match condition is failed for etag: " + etag);
@@ -90,7 +101,7 @@ public class EtagHeader {
     public static EtagHeader fromHeader(String ifMatch, String ifNoneMatch, String method) {
         Set<String> ifMatchTags = parseIfMatch(StringUtils.strip(ifMatch));
         Set<String> ifNoneMatchTags = parseIfNoneMatch(StringUtils.strip(ifNoneMatch));
-        return new EtagHeader(ifMatchTags, ifNoneMatchTags, method);
+        return new EtagHeader(ifMatchTags, ifNoneMatchTags, method, ifMatch);
     }
 
     public static String quoteIfNeeded(String etag) {

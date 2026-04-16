@@ -146,6 +146,140 @@ class ResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testEtagIfMatchSpecCompliant() {
+
+        // region resource does not exists
+        Response response = resourceRequest(HttpMethod.GET, "/resource", "", "if-match", "some");
+        verify(response, 412);
+
+        response = resourceRequest(HttpMethod.GET, "/resource", "", "if-match", "*");
+        verify(response, 412);
+
+        response = resourceRequest(HttpMethod.PUT, "/resource", "", "if-match", "some");
+        verify(response, 412);
+
+        response = resourceRequest(HttpMethod.PUT, "/resource", "", "if-match", "*");
+        verify(response, 412);
+
+        response = resourceRequest(HttpMethod.DELETE, "/resource", "", "if-match", "some");
+        verify(response, 412);
+
+        response = resourceRequest(HttpMethod.DELETE, "/resource", "", "if-match", "*");
+        verify(response, 412);
+        // endregion
+
+        // region resource does exist
+        response = resourceRequest(HttpMethod.PUT, "/resource", "");
+        verify(response, 200);
+        String etag = response.headers().get("etag");
+        Assertions.assertNotNull(etag);
+
+        response = resourceRequest(HttpMethod.GET, "/resource", "", "if-match", etag);
+        verify(response, 200);
+
+        response = resourceRequest(HttpMethod.GET, "/resource", "", "if-match", "some");
+        verify(response, 412);
+
+        response = resourceRequest(HttpMethod.GET, "/resource", "", "if-match", "*");
+        verify(response, 200);
+
+        response = resourceRequest(HttpMethod.PUT, "/resource", "", "if-match", etag);
+        verify(response, 200);
+        etag = response.headers().get("etag");
+        Assertions.assertNotNull(etag);
+
+        response = resourceRequest(HttpMethod.PUT, "/resource", "", "if-match", "some");
+        verify(response, 412);
+
+        response = resourceRequest(HttpMethod.PUT, "/resource", "", "if-match", "*");
+        verify(response, 200);
+        etag = response.headers().get("etag");
+        Assertions.assertNotNull(etag);
+
+        response = resourceRequest(HttpMethod.DELETE, "/resource", "", "if-match", "some");
+        verify(response, 412);
+
+        response = resourceRequest(HttpMethod.DELETE, "/resource", "", "if-match", etag);
+        verify(response, 200);
+
+        response = resourceRequest(HttpMethod.PUT, "/resource", "", "if-match", "*");
+        verify(response, 412);
+
+        response = resourceRequest(HttpMethod.DELETE, "/resource", "", "if-match", "some");
+        verify(response, 412);
+
+        response = resourceRequest(HttpMethod.DELETE, "/resource", "", "if-match", "*");
+        verify(response, 412);
+        // endregion
+    }
+
+    @Test
+    void testEtagIfNoneMatchSpecCompliant() {
+
+        // region resource does not exists
+        Response response = resourceRequest(HttpMethod.GET, "/resource", "", "if-none-match", "some");
+        verify(response, 404);
+
+        response = resourceRequest(HttpMethod.GET, "/resource", "", "if-none-match", "*");
+        verify(response, 404);
+
+        response = resourceRequest(HttpMethod.PUT, "/resource", "", "if-none-match", "some");
+        verify(response, 200);
+
+        response = resourceRequest(HttpMethod.PUT, "/resource", "", "if-none-match", "*");
+        verify(response, 412);
+
+        response = resourceRequest(HttpMethod.DELETE, "/resource", "", "if-none-match", "some");
+        verify(response, 200);
+
+        response = resourceRequest(HttpMethod.DELETE, "/resource", "", "if-none-match", "*");
+        verify(response, 404);
+        // endregion
+
+        // region resource does exist
+        response = resourceRequest(HttpMethod.PUT, "/resource", "");
+        verify(response, 200);
+        String etag = response.headers().get("etag");
+        Assertions.assertNotNull(etag);
+
+        response = resourceRequest(HttpMethod.GET, "/resource", "", "if-none-match", etag);
+        verify(response, 304);
+
+        response = resourceRequest(HttpMethod.GET, "/resource", "", "if-none-match", "some");
+        verify(response, 200);
+
+        response = resourceRequest(HttpMethod.GET, "/resource", "", "if-none-match", "*");
+        verify(response, 304);
+
+        response = resourceRequest(HttpMethod.PUT, "/resource", "", "if-none-match", etag);
+        verify(response, 412);
+
+        response = resourceRequest(HttpMethod.PUT, "/resource", "", "if-none-match", "some");
+        verify(response, 200);
+        etag = response.headers().get("etag");
+        Assertions.assertNotNull(etag);
+
+        response = resourceRequest(HttpMethod.PUT, "/resource", "", "if-none-match", "*");
+        verify(response, 412);
+
+        response = resourceRequest(HttpMethod.DELETE, "/resource", "", "if-none-match", etag);
+        verify(response, 412);
+
+        response = resourceRequest(HttpMethod.DELETE, "/resource", "", "if-none-match", "some");
+        verify(response, 200);
+
+        response = resourceRequest(HttpMethod.PUT, "/resource", "", "if-none-match", "*");
+        verify(response, 200);
+
+        response = resourceRequest(HttpMethod.DELETE, "/resource", "", "if-none-match", "some");
+        verify(response, 200);
+
+        response = resourceRequest(HttpMethod.DELETE, "/resource", "", "if-none-match", "*");
+        verify(response, 404);
+        // endregion
+    }
+
+    @Test
     public void testFileUploadWithInvalidResourcePath() {
         Response response = resourceRequest(HttpMethod.PUT, "/folder/conversation.", CONVERSATION_BODY_1);
         verify(response, 400);
