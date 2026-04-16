@@ -490,8 +490,9 @@ public class ResourceService implements AutoCloseable {
             }
         }
 
+        etagHeader.validate(result.etag);
+
         if (result.exists()) {
-            etagHeader.validate(result.etag);
             return Pair.of(toResourceItemMetadata(descriptor, result), result.body);
         }
 
@@ -557,7 +558,7 @@ public class ResourceService implements AutoCloseable {
     private ResourceItemMetadata putResource(
             ResourceDescriptor descriptor,
             byte[] body,
-            EtagHeader etag,
+            EtagHeader etagHeader,
             String contentType,
             String author,
             boolean lock) {
@@ -566,10 +567,15 @@ public class ResourceService implements AutoCloseable {
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
             ResourceItemMetadata metadata = getResourceMetadata(descriptor);
 
+            String etag;
             if (metadata != null) {
-                etag.validate(metadata.getEtag());
+                etag = metadata.getEtag();
                 author = metadata.getAuthor();
+            } else {
+                etag = null;
             }
+
+            etagHeader.validate(etag);
 
             Long updatedAt = time();
             Long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
@@ -726,11 +732,11 @@ public class ResourceService implements AutoCloseable {
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
             ResourceItemMetadata metadata = getResourceMetadata(descriptor);
 
+            etag.validate(metadata == null ? null : metadata.getEtag());
+
             if (metadata == null) {
                 return false;
             }
-
-            etag.validate(metadata.getEtag());
 
             redisPut(redisKey, Result.DELETED_NOT_SYNCED);
             blobDelete(blobKey(descriptor));
