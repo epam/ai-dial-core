@@ -1,13 +1,14 @@
 # Trivy configuration file
 # https://aquasecurity.github.io/trivy/latest/docs/references/configuration/config-file/
-# Can be deleted after public ecr mirror will be added by default
 db:
   no-progress: true
   repository:
-    - ghcr.io/aquasecurity/trivy-db:2
+    - mirror.gcr.io/aquasec/trivy-db:2
     - public.ecr.aws/aquasecurity/trivy-db:2
+    - ghcr.io/aquasecurity/trivy-db:2
   java-repository:
-    - ghcr.io/aquasecurity/trivy-java-db:1
+    - mirror.gcr.io/aquasec/trivy-java-db:1
     - public.ecr.aws/aquasecurity/trivy-java-db:1
+    - ghcr.io/aquasecurity/trivy-java-db:1
 misconfiguration:
-  checks-bundle-repository: public.ecr.aws/aquasecurity/trivy-checks
+  checks-bundle-repository: mirror.gcr.io/aquasec/trivy-checks:1

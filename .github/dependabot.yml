@@ -20,3 +20,15 @@ updates:
     commit-message:
       # Prefix all commit messages with "chore: "
       prefix: "chore"
+    groups:
+      ai-dial-ci:
+        applies-to: version-updates
+        patterns:
+          - "epam/ai-dial-ci/*"
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "epam/ai-dial-ci/*"
+    open-pull-requests-limit: 10
