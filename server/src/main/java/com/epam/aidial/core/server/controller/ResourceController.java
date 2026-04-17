@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.Proxy;
@@ -10,6 +11,7 @@ import com.epam.aidial.core.server.data.Prompt;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
@@ -58,6 +60,7 @@ public class ResourceController extends AccessControlBaseController {
     private final AccessService accessService;
 
     private final ToolSetService toolSetService;
+    private final DeploymentService deploymentService;
 
     public ResourceController(Proxy proxy, ProxyContext context, boolean metadata) {
         // PUT and DELETE require write access, GET - read
@@ -68,6 +71,7 @@ public class ResourceController extends AccessControlBaseController {
         this.accessService = proxy.getAccessService();
         this.resourceService = proxy.getResourceService();
         this.applicationSchemaService = proxy.getApplicationSchemaService();
+        this.deploymentService = proxy.getDeploymentService();
         this.metadata = metadata;
     }
 
@@ -224,8 +228,23 @@ public class ResourceController extends AccessControlBaseController {
         try {
             checkCreateCodeApp(application);
             validateSchemaBasedApplication(application);
-            if (!application.getInterceptors().isEmpty() && !accessService.hasAdminAccess(context)) {
-                throw new HttpException(FORBIDDEN, "Only admins are allowed to set interceptors");
+            if (!application.getInterceptors().isEmpty()) {
+                if (!accessService.hasAdminAccess(context)) {
+                    throw new HttpException(FORBIDDEN, "Only admins are allowed to set interceptors");
+                }
+                Config config = context.getConfig();
+                for (String interceptor : application.getInterceptors()) {
+                    if (!config.getInterceptors().containsKey(interceptor)) {
+                        throw new HttpException(BAD_REQUEST, "Unknown interceptor: " + interceptor);
+                    }
+                }
+            }
+            for (String dependency : application.getDependencies()) {
+                try {
+                    deploymentService.findDeployment(context, dependency);
+                } catch (Exception e) {
+                    throw new HttpException(BAD_REQUEST, "Unknown or forbidden dependency: " + dependency);
+                }
             }
         } catch (IllegalArgumentException | ValidationException e) {
             throw new HttpException(BAD_REQUEST, String.format("Custom application validation failed %s", e.getMessage()), e);
@@ -355,23 +374,25 @@ public class ResourceController extends AccessControlBaseController {
     }
 
     private void handleError(ResourceDescriptor descriptor, Throwable error) {
-        if (error instanceof HttpException exception) {
-            context.respond(exception);
-        } else if (error instanceof IllegalArgumentException) {
-            context.respond(BAD_REQUEST, error.getMessage());
-        } else if (error instanceof ResourceNotFoundException) {
-            context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
-        } else if (error instanceof PermissionDeniedException) {
-            context.respond(HttpStatus.FORBIDDEN, error.getMessage());
-        } else if (error instanceof HttpConnectTimeoutException) {
-            log.error("Timeout connecting to upstream service: {}", descriptor.getUrl(), error);
-            context.respond(HttpStatus.GATEWAY_TIMEOUT, error.getMessage());
-        } else if (error instanceof ConnectException) {
-            log.error("Cannot connect to upstream service: {}", descriptor.getUrl(), error);
-            context.respond(BAD_GATEWAY, error.getMessage());
-        } else {
-            context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
-            log.warn("Can't handle resource request: {}", descriptor.getUrl(), error);
+        switch (error) {
+            case HttpException exception -> context.respond(exception);
+            case IllegalArgumentException ignored -> context.respond(BAD_REQUEST, error.getMessage());
+            case ResourceNotFoundException ignored ->
+                    context.respond(HttpStatus.NOT_FOUND, "Not found: " + descriptor.getUrl());
+            case PermissionDeniedException ignored ->
+                    context.respond(HttpStatus.FORBIDDEN, error.getMessage());
+            case HttpConnectTimeoutException ignored -> {
+                log.error("Timeout connecting to upstream service: {}", descriptor.getUrl(), error);
+                context.respond(HttpStatus.GATEWAY_TIMEOUT, error.getMessage());
+            }
+            case ConnectException ignored -> {
+                log.error("Cannot connect to upstream service: {}", descriptor.getUrl(), error);
+                context.respond(BAD_GATEWAY, error.getMessage());
+            }
+            case null, default -> {
+                context.respond(HttpStatus.INTERNAL_SERVER_ERROR);
+                log.warn("Can't handle resource request: {}", descriptor.getUrl(), error);
+            }
         }
     }
 
