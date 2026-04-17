@@ -141,6 +141,18 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 """, "authorization", "admin");
         verify(response, 400);
 
+        response = send(HttpMethod.PUT, "/v1/applications/%s/my-custom-application".formatted(adminBucket), null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description",
+                "interceptors": ["interceptor1"]
+                }
+                """, "authorization", "admin");
+        verify(response, 200);
+
     }
 
     @Test

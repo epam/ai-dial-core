@@ -242,8 +242,10 @@ public class ResourceController extends AccessControlBaseController {
             for (String dependency : application.getDependencies()) {
                 try {
                     deploymentService.findDeployment(context, dependency);
-                } catch (Exception e) {
-                    throw new HttpException(BAD_REQUEST, "Unknown or forbidden dependency: " + dependency);
+                } catch (ResourceNotFoundException | IllegalArgumentException e) {
+                    throw new HttpException(BAD_REQUEST, "Unknown dependency: " + dependency);
+                } catch (PermissionDeniedException e) {
+                    throw new HttpException(FORBIDDEN, "Forbidden dependency: " + dependency);
                 }
             }
         } catch (IllegalArgumentException | ValidationException e) {
