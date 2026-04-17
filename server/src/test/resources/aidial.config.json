@@ -1,4 +1,9 @@
 {
+  "interceptors": {
+    "interceptor1": {
+      "endpoint": "http://localhost:4088/api/v1/interceptor/handle"
+    }
+  },
   "routes" : {
     "route-rate" : {
       "paths": ["/+v1/rate"],

@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
@@ -110,6 +111,48 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 }
                 """);
         verify(response, 400);
+
+        // verify custom app creation fails if dependency is unknown
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description",
+                "dependencies": ["unknown-app"]
+                }
+                """);
+        verify(response, 400);
+
+        response = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "admin");
+        String adminBucket = new JsonObject(response.body()).getString("bucket");
+
+        // verify custom app creation fails if interceptor is unknown
+        response = send(HttpMethod.PUT, "/v1/applications/%s/my-custom-application".formatted(adminBucket), null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description",
+                "interceptors": ["unknown-interceptor"]
+                }
+                """, "authorization", "admin");
+        verify(response, 400);
+
+        response = send(HttpMethod.PUT, "/v1/applications/%s/my-custom-application".formatted(adminBucket), null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description",
+                "interceptors": ["interceptor1"]
+                }
+                """, "authorization", "admin");
+        verify(response, 200);
+
     }
 
     @Test
