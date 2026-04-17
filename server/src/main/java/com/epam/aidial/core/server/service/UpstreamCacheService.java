@@ -5,14 +5,10 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
-import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.function.request.CacheKey;
+import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.service.LockService;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.annotations.VisibleForTesting;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.BatchResult;
 import org.redisson.api.RBatch;
@@ -23,17 +19,13 @@ import org.redisson.client.codec.Codec;
 import org.redisson.client.codec.StringCodec;
 import org.redisson.codec.CompositeCodec;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.function.LongSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -44,8 +36,6 @@ public class UpstreamCacheService {
     private static final Pattern PREFIX_PATH = Pattern.compile("^prefix\\.body\\.(?<nodeName>(tools|messages))$");
     private static final Duration DEFAULT_TTL = Duration.ofMinutes(10);
 
-    private static final String CUSTOM_FIELDS_NODE = "custom_fields";
-    private static final String CACHE_BREAKPOINT_NODE = "cache_breakpoint";
     private static final String UPSTREAM_ENDPOINT_FIELD = "upstream_endpoint";
     private static final String PREFIX_PATH_FIELD = "prefix_path";
     private static final String EXTRA_METADATA_FIELD = "extra_metadata";
@@ -74,10 +64,9 @@ public class UpstreamCacheService {
         this.prefix = prefix;
     }
 
-    public CacheBreakpointContext buildCacheBreakpointContext(ObjectNode body, CachePolicy policy, Model model) {
+    public CacheBreakpointContext buildCacheBreakpointContext(RequestObject request, CachePolicy policy, Model model) {
         boolean autoCaching = isAutoCaching(model);
         List<String> fieldsOrder = model.getFieldsHashingOrder();
-        MessageDigest messageDigest = createMessageDigest();
         List<String> breakpoints = new ArrayList<>();
         Map<String, String> prefixToHash = new HashMap<>();
         for (String field : fieldsOrder) {
@@ -87,35 +76,17 @@ public class UpstreamCacheService {
                 continue;
             }
             String nodeName = matcher.group("nodeName");
-            JsonNode node = body.get(nodeName);
-            if (node == null || !node.isArray()) {
-                // embedding request is not supported yet
-                continue;
-            }
-            for (int index = 0; index < node.size(); index++) {
-                ObjectNode objectNode = (ObjectNode) sortObjectProperties(node.get(index));
-                for (Map.Entry<String, JsonNode> entry : objectNode.properties()) {
-                    if (entry.getKey().equals(CUSTOM_FIELDS_NODE)) {
-                        continue;
-                    }
-                    if (entry.getKey().equals("custom_content")) {
-                        // include attachments only
-                        JsonNode attachments = entry.getValue().get("attachments");
-                        if (attachments != null && !attachments.isEmpty()) {
-                            messageDigest.update(attachments.toString().getBytes(StandardCharsets.UTF_8));
-                        }
-                    } else {
-                        messageDigest.update(entry.getValue().toString().getBytes(StandardCharsets.UTF_8));
-                    }
-                }
-                String hash = toString(messageDigest.digest());
-                String prefix = field + "[" + index + "]";
-                if (autoCaching || (objectNode.has(CUSTOM_FIELDS_NODE) && objectNode.get(CUSTOM_FIELDS_NODE).has(CACHE_BREAKPOINT_NODE))) {
+            List<CacheKey> cacheKeys = "messages".equals(nodeName)
+                    ? request.buildMessageCacheKeys()
+                    : request.buildToolCacheKeys();
+            for (int i = 0; i < cacheKeys.size(); ++i) {
+                CacheKey cacheKey = cacheKeys.get(i);
+                String prefix = field + "[" + i + "]";
+                if (autoCaching || cacheKey.hasBreakpoint()) {
                     breakpoints.add(prefix);
                 }
-                prefixToHash.put(prefix, hash);
+                prefixToHash.put(prefix, cacheKey.hash());
             }
-
         }
         return new CacheBreakpointContext(breakpoints, prefixToHash, policy);
     }
@@ -186,23 +157,6 @@ public class UpstreamCacheService {
         }
     }
 
-    @VisibleForTesting
-    static JsonNode sortObjectProperties(JsonNode node) {
-        if (node.isArray()) {
-            ArrayNode arrayNode = (ArrayNode) node;
-            for (int i = 0; i < node.size(); i++) {
-                arrayNode.set(i, sortObjectProperties(arrayNode.get(i)));
-            }
-        } else if (node.isObject()) {
-            ObjectNode result = new ObjectNode(ProxyUtil.MAPPER.getNodeFactory(), new TreeMap<>());
-            for (Map.Entry<String, JsonNode> entry : node.properties()) {
-                result.set(entry.getKey(), sortObjectProperties(entry.getValue()));
-            }
-            node = result;
-        }
-        return node;
-    }
-
     private boolean isAutoCaching(Model model) {
         Features features = model.getFeatures();
         if (features == null) {
@@ -224,21 +178,7 @@ public class UpstreamCacheService {
         }
     }
 
-    private static String toString(byte[] digest) {
-        StringBuilder hexString = new StringBuilder();
-        for (byte b : digest) {
-            hexString.append(String.format("%02x", b));
-        }
-        return hexString.toString();
-    }
-
     private String getEntryKey(String modelName, String hash) {
         return "upstream_cache:" + BlobStorageUtil.toStoragePath(prefix, BlobStorageUtil.toStoragePath(modelName, hash));
     }
-
-    @SneakyThrows
-    private static MessageDigest createMessageDigest() {
-        return MessageDigest.getInstance("SHA-1");
-    }
-
 }

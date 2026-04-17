@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.function.request.CompletionRequest;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -79,8 +80,9 @@ class RouteRequestBodyHandler {
                 tree = ProxyUtil.MAPPER.createObjectNode();
             }
             try {
-                if (ProxyUtil.processChain(tree, controller.enhancementFunctions)) {
-                    context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
+                CompletionRequest request = new CompletionRequest(tree);
+                if (ProxyUtil.processChain(request, controller.enhancementFunctions)) {
+                    context.setRequestBody(Buffer.buffer(request.serialize()));
                 }
             } catch (Throwable e) {
                 if (e instanceof HttpException httpException) {

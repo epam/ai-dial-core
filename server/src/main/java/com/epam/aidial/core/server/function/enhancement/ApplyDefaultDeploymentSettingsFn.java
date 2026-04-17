@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -14,49 +15,43 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.Map;
 
 @Slf4j
-public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<ObjectNode> {
+public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<RequestObject> {
 
     public ApplyDefaultDeploymentSettingsFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }
 
     @Override
-    public Boolean apply(ObjectNode tree) {
-        applyInterceptorDefaults(tree);
-        applyDeploymentDefaults(tree);
+    public Boolean apply(RequestObject request) {
+        applyInterceptorDefaults(request);
+        applyDeploymentDefaults(request);
         return true;
     }
 
-    private void applyInterceptorDefaults(ObjectNode tree) {
-        ObjectNode customFields = (ObjectNode) tree.get("custom_fields");
-        if (customFields != null) {
-            customFields.remove("interceptor_configuration");
-            if (customFields.isEmpty()) {
-                tree.remove("custom_fields");
-            }
-        }
+    private void applyInterceptorDefaults(RequestObject request) {
+        request.clearInterceptorSettings();
         Deployment deployment = context.getDeployment();
         if (deployment instanceof Interceptor) {
-            applyDefaults(tree, deployment);
+            applyDefaults(request, deployment);
         }
     }
 
-    private void applyDeploymentDefaults(ObjectNode tree) {
+    private void applyDeploymentDefaults(RequestObject request) {
         if (shouldApply(context)) {
             Deployment deployment = context.getDeployment();
             if (deployment instanceof Interceptor) {
                 String deploymentId = context.getInitialDeployment();
                 deployment = proxy.getDeploymentService().findDeployment(context, deploymentId);
             }
-            applyDefaults(tree, deployment);
+            applyDefaults(request, deployment);
         }
     }
 
-    private void applyDefaults(ObjectNode tree, Deployment deployment) {
+    private void applyDefaults(RequestObject request, Deployment deployment) {
         for (Map.Entry<String, Object> e : deployment.getDefaults().entrySet()) {
             String key = e.getKey();
             JsonNode update = ProxyUtil.MAPPER.convertValue(e.getValue(), JsonNode.class);
-            tree.set(key, copy(tree.get(key), update));
+            request.update(key, oldValue -> copy(oldValue, update));
         }
     }
 

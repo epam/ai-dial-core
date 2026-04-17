@@ -4,13 +4,13 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.function.request.CompletionRequest;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,7 +51,7 @@ public class AutoShareDeploymentFnTest {
     @InjectMocks
     private AutoShareDeploymentFn fn;
 
-    private static final ObjectNode EMPTY_OBJECT = ProxyUtil.MAPPER.createObjectNode();
+    private static final CompletionRequest EMPTY_OBJECT = new CompletionRequest(ProxyUtil.MAPPER.createObjectNode());
 
     @BeforeEach
     public void beforeEach() {

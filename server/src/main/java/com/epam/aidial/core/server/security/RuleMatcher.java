@@ -2,7 +2,7 @@ package com.epam.aidial.core.server.security;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Rule;
-import com.epam.aidial.core.server.util.JsonPath;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.experimental.UtilityClass;
 
@@ -59,7 +59,7 @@ public class RuleMatcher {
     }
 
     private List<String> extract(JsonNode claims, String path) {
-        JsonNode node = JsonPath.read(claims, path);
+        JsonNode node = JsonUtil.read(claims, path);
         if (node == null) {
             return null;
         }

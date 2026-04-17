@@ -3,7 +3,7 @@ package com.epam.aidial.core.server.function;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.util.JsonPath;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.UrlUtil;
@@ -42,7 +42,7 @@ public abstract class BaseFunction<T, R> implements Function<T, R> {
         }
         Set<String> attachments = new HashSet<>();
         for (String pointer : jsonPaths) {
-            JsonNode node = JsonPath.read(tree, pointer);
+            JsonNode node = JsonUtil.read(tree, pointer);
             if (node == null) {
                 continue;
             }

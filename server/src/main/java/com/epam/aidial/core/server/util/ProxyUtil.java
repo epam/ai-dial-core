@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -28,18 +29,21 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
+import javax.annotation.Nullable;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import javax.annotation.Nullable;
 
 @UtilityClass
 @Slf4j
 public class ProxyUtil {
+    private static final String CUSTOM_FIELDS_NODE = "custom_fields";
 
     public static final JsonMapper MAPPER = JsonMapper.builder()
             .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
@@ -148,97 +152,6 @@ public class ProxyUtil {
                     }
                 }
             }
-        }
-    }
-
-    public static void collectAttachedFilesFromRequest(ObjectNode tree, Consumer<String> consumer) {
-        collectAttachedFilesChatCompletion(tree, consumer);
-        collectAttachedFilesEmbeddings(tree, consumer);
-    }
-
-    private static void collectAttachedFilesEmbeddings(ObjectNode tree, Consumer<String> consumer) {
-        JsonNode inputs = tree.get("custom_input");
-
-        if (inputs == null) {
-            return;
-        }
-
-        if (inputs.isArray()) {
-            for (int i = 0; i < inputs.size(); i++) {
-                collectAttachedFilesCustomInput(inputs.get(i), consumer);
-            }
-        }
-    }
-
-    private static void collectAttachedFilesCustomInput(JsonNode input, Consumer<String> consumer) {
-        if (input.isObject()) {
-            collectAttachedFile(input, consumer);
-        } else if (input.isArray()) {
-            for (int i = 0; i < input.size(); i++) {
-                collectAttachedFilesCustomInput(input.get(i), consumer);
-            }
-        }
-    }
-
-    private static void collectAttachedFilesFromContent(JsonNode content, Consumer<String> consumer) {
-        if (!(content instanceof ArrayNode contentParts)) {
-            return;
-        }
-
-        for (int i = 0; i < contentParts.size(); i++) {
-            JsonNode partNode = contentParts.get(i);
-            JsonNode partTypeNode = partNode.get("type");
-            if (partTypeNode == null || !partTypeNode.textValue().equals("image_url")) {
-                continue;
-            }
-            JsonNode imageNode = partNode.get("image_url");
-            if (imageNode == null) {
-                continue;
-            }
-            JsonNode urlNode = imageNode.get("url");
-            collectAttachedFilesFromUrl(urlNode, null, consumer);
-        }
-    }
-
-    private static void collectAttachedFilesFromCustomContent(JsonNode customContent, Consumer<String> consumer) {
-        if (customContent == null) {
-            return;
-        }
-        ArrayNode attachments = (ArrayNode) customContent.get("attachments");
-        if (attachments != null) {
-            for (int i = 0; i < attachments.size(); i++) {
-                JsonNode attachment = attachments.get(i);
-                collectAttachedFile(attachment, consumer);
-            }
-        }
-        ArrayNode stages = (ArrayNode) customContent.get("stages");
-        if (stages != null) {
-            for (int i = 0; i < stages.size(); i++) {
-                JsonNode stage = stages.get(i);
-                attachments = (ArrayNode) stage.get("attachments");
-                if (attachments == null) {
-                    continue;
-                }
-                for (int j = 0; j < attachments.size(); j++) {
-                    JsonNode attachment = attachments.get(j);
-                    collectAttachedFile(attachment, consumer);
-                }
-            }
-        }
-    }
-
-    private static void collectAttachedFilesChatCompletion(ObjectNode tree, Consumer<String> consumer) {
-        ArrayNode messages = (ArrayNode) tree.get("messages");
-        if (messages == null) {
-            return;
-        }
-        for (int i = 0; i < messages.size(); i++) {
-            JsonNode message = messages.get(i);
-            JsonNode content = message.get("content");
-            collectAttachedFilesFromContent(content, consumer);
-
-            JsonNode customContent = message.get("custom_content");
-            collectAttachedFilesFromCustomContent(customContent, consumer);
         }
     }
 
@@ -383,6 +296,61 @@ public class ProxyUtil {
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
         if (Strings.CI.contains(contentType, "text/event-stream")) {
             response.putHeader("X-Accel-Buffering", "no");
+        }
+    }
+
+    public ObjectNode parseObject(Buffer buffer) throws IOException {
+        try (InputStream stream = new ByteBufInputStream(buffer.getByteBuf())) {
+            JsonNode node = ProxyUtil.MAPPER.readTree(stream);
+            if (!node.isObject()) {
+                throw new IllegalArgumentException("Invalid json object");
+            }
+            return (ObjectNode) node;
+        }
+    }
+
+    public Set<String> collectAttachments(JsonNode root, List<String> paths) {
+        return JsonUtil.collectStrings(root, paths, ProxyUtil::readAttachment);
+    }
+
+    public Set<String> collectCustomAttachments(JsonNode node, List<String> paths) {
+        return JsonUtil.collectStrings(node, paths, ProxyUtil::readCustomAttachment);
+    }
+
+    private String readAttachment(JsonNode node) {
+        if (!node.isTextual()) {
+            throw new IllegalArgumentException("Invalid attachment.");
+        }
+        String value = node.textValue();
+        return StringUtils.isBlank(value) ? null : node.textValue();
+    }
+
+    private String readCustomAttachment(JsonNode node) {
+        if (!node.isObject()) {
+            return null;
+        }
+        String type = node.path("type").asText();
+        String url = node.path("url").asText();
+        if (StringUtils.isBlank(url)) {
+            return null;
+        }
+
+        if (MetadataBase.MIME_TYPE.equals(type)) {
+            if (!url.startsWith(ProxyUtil.METADATA_PREFIX)) {
+                throw new IllegalArgumentException("Url of metadata attachment must start with metadata/: " + url);
+            }
+            url = url.substring(ProxyUtil.METADATA_PREFIX.length());
+        }
+        return url;
+    }
+
+    public void removeInterceptorConfiguration(ObjectNode node) {
+        ObjectNode customFields = (ObjectNode) node.get(CUSTOM_FIELDS_NODE);
+        if (customFields != null) {
+            customFields.remove("interceptor_configuration");
+            if (customFields.isEmpty()) {
+                node.remove(CUSTOM_FIELDS_NODE);
+            }
         }
     }
 }

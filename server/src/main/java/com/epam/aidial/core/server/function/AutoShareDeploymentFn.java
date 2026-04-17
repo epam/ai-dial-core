@@ -7,26 +7,26 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import javax.annotation.Nullable;
 
 /**
  * The function auto shares an initial deployment and their dependent resources like files in the interceptor execution flow.
  */
-public class AutoShareDeploymentFn extends BaseRequestFunction<ObjectNode> {
+public class AutoShareDeploymentFn extends BaseRequestFunction<RequestObject> {
 
     public AutoShareDeploymentFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }
 
     @Override
-    public Boolean apply(ObjectNode tree) {
+    public Boolean apply(RequestObject tree) {
         String initialDeployment = context.getInitialDeployment();
         ResourceDescriptor descriptor = toResourceDescriptor(initialDeployment);
         if (descriptor == null || descriptor.isPublic()) {

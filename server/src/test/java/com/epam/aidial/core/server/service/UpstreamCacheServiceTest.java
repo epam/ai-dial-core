@@ -5,6 +5,9 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
+import com.epam.aidial.core.server.function.request.CompletionRequest;
+import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.service.LockService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -172,11 +175,11 @@ public class UpstreamCacheServiceTest {
                     ]
                 }
                 """;
-        ObjectNode objectNode = (ObjectNode) ProxyUtil.MAPPER.readTree(body);
+        RequestObject request = new CompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
         Model model = new Model();
         model.setName("gpt-4");
 
-        CacheBreakpointContext context = service.buildCacheBreakpointContext(objectNode, CachePolicy.AVAILABILITY_PRIORITY, model);
+        CacheBreakpointContext context = service.buildCacheBreakpointContext(request, CachePolicy.AVAILABILITY_PRIORITY, model);
 
         assertNotNull(context);
         assertEquals(4, context.breakpoints().size());
@@ -241,14 +244,14 @@ public class UpstreamCacheServiceTest {
                     ]
                 }
                 """;
-        ObjectNode objectNode = (ObjectNode) ProxyUtil.MAPPER.readTree(body);
+        RequestObject request = new CompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
         Model model = new Model();
         model.setName("gpt-4");
         Features features = new Features();
         features.setAutoCachingSupported(true);
         model.setFeatures(features);
 
-        CacheBreakpointContext context = service.buildCacheBreakpointContext(objectNode, CachePolicy.AVAILABILITY_PRIORITY, model);
+        CacheBreakpointContext context = service.buildCacheBreakpointContext(request, CachePolicy.AVAILABILITY_PRIORITY, model);
 
         assertNotNull(context);
         assertEquals(4, context.breakpoints().size());
@@ -347,11 +350,11 @@ public class UpstreamCacheServiceTest {
                     ]
                 }
                 """;
-        ObjectNode objectNode = (ObjectNode) ProxyUtil.MAPPER.readTree(body);
+        RequestObject request = new CompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
         Model model = new Model();
         model.setName("gpt-4");
 
-        CacheBreakpointContext context = service.buildCacheBreakpointContext(objectNode, CachePolicy.AVAILABILITY_PRIORITY, model);
+        CacheBreakpointContext context = service.buildCacheBreakpointContext(request, CachePolicy.AVAILABILITY_PRIORITY, model);
         Map<String, String> prefixToHash = context.prefixToHash();
         for (var breakpoint : context.breakpoints()) {
             CachedUpstreamEntry cachedUpstreamEntry = new CachedUpstreamEntry("http://host/chat", breakpoint, null);
@@ -453,11 +456,11 @@ public class UpstreamCacheServiceTest {
                     ]
                 }
                 """;
-        ObjectNode objectNode = (ObjectNode) ProxyUtil.MAPPER.readTree(body);
+        RequestObject request = new CompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
         Model model = new Model();
         model.setName("gpt-4");
 
-        CacheBreakpointContext context = service.buildCacheBreakpointContext(objectNode, CachePolicy.AVAILABILITY_PRIORITY, model);
+        CacheBreakpointContext context = service.buildCacheBreakpointContext(request, CachePolicy.AVAILABILITY_PRIORITY, model);
 
         CachedUpstreamEntry entry = service.getCacheEntry(context, model);
         assertNotNull(entry);
@@ -484,7 +487,7 @@ public class UpstreamCacheServiceTest {
                  }
                  """;
         JsonNode node = ProxyUtil.MAPPER.readTree(simpleJson);
-        JsonNode result = UpstreamCacheService.sortObjectProperties(node);
+        JsonNode result = JsonUtil.sort(node);
         assertEquals("""
                  {"a":{"f":2,"z":1},"c":[{"a":"text","d":true},{"a":false,"z":3}],"d":{"a":2,"b":1}}""", result.toString());
     }

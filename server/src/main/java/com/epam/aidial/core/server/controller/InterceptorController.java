@@ -10,6 +10,8 @@ import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachme
 import com.epam.aidial.core.server.function.CollectRequestDataFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
+import com.epam.aidial.core.server.function.request.CompletionRequest;
+import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -33,13 +35,12 @@ import java.util.function.Supplier;
 @Slf4j
 public class InterceptorController extends BaseDeploymentPostController {
 
-    private final List<BaseRequestFunction<ObjectNode>> enhancementFunctions;
+    private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
 
     public InterceptorController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
         this.enhancementFunctions = List.of(new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new CollectRequestChatCompletionAttachmentsFn(proxy, context),
-                new CollectRequestDataFn(proxy, context),
                 new AutoShareDeploymentFn(proxy, context));
     }
 
@@ -67,10 +68,11 @@ public class InterceptorController extends BaseDeploymentPostController {
     private void handleRequestBody(Buffer requestBody) {
         context.setRequestBody(requestBody);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
-        try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
-            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            if (ProxyUtil.processChain(tree, enhancementFunctions)) {
-                context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
+        try {
+            RequestObject request = new CompletionRequest(ProxyUtil.parseObject(requestBody));
+            context.setStreamingRequest(request.isStreaming());
+            if (ProxyUtil.processChain(request, enhancementFunctions)) {
+                context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(request)));
             }
             proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
         } catch (Throwable e) {
