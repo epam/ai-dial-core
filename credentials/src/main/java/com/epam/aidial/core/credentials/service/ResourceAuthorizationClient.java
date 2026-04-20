@@ -9,7 +9,6 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ContentType;
 
-import java.util.Map;
 import java.net.ConnectException;
 import java.net.ProxySelector;
 import java.net.URI;
@@ -20,6 +19,7 @@ import java.nio.channels.UnresolvedAddressException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
+import java.util.Map;
 import javax.annotation.Nullable;
 
 @Slf4j
