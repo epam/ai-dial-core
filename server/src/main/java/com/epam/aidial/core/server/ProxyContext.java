@@ -202,6 +202,16 @@ public class ProxyContext {
         return key == null ? null : key.getProject();
     }
 
+    /**
+     * Returns an identifier of the request initiator: the JWT user id when present,
+     * otherwise the API key project name. Mirrors the fallback used by
+     * {@link com.epam.aidial.core.server.util.BucketBuilder#buildInitiatorBucket(ProxyContext)}
+     * so features that track per-principal state work for both auth types.
+     */
+    public String getInitiatorId() {
+        return userId != null ? userId : getProject();
+    }
+
     public boolean isSecuredApiKey() {
         return key != null && key.isSecured();
     }
