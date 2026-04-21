@@ -20,7 +20,6 @@ import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactor
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.credentials.util.TimeProvider;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
-import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -434,9 +433,8 @@ class ResourceCredentialsServiceTest {
         }).when(resourceService).computeResourceBytes(any(), any());
 
         // When & Then
-        Assertions.assertThrows(ResourceNotFoundException.class, () -> {
-            service.getRefreshedResourceCredentials(credentialsLocator, authSettings, "userSub");
-        });
+        ResourceCredentials result = service.getRefreshedResourceCredentials(credentialsLocator, authSettings, "userSub");
+        Assertions.assertNull(result);
     }
 
     private CredentialsDescriptor createCredentialsDescriptor() {
