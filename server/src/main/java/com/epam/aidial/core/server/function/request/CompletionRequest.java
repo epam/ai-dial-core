@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.function.request;
 
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -15,7 +16,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
 
 @RequiredArgsConstructor
 public class CompletionRequest implements RequestObject {
@@ -104,8 +104,8 @@ public class CompletionRequest implements RequestObject {
     }
 
     @Override
-    public void update(String key, Function<JsonNode, JsonNode> mapper) {
-        JsonUtil.update(tree, key, mapper);
+    public void applyDefaults(Deployment deployment) {
+        ProxyUtil.applyDefaults(tree, deployment.getDefaults());
     }
 
     @Override

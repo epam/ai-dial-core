@@ -221,10 +221,6 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         private Handler<Void> chunkEndHandler;
         private volatile Buffer lastChunk;
 
-        public BaseEventListener() {
-            function = null;
-        }
-
         public BaseEventListener(BaseResponseFunction function) {
             this.function = function;
         }

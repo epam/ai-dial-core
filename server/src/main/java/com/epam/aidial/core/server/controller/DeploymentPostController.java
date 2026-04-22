@@ -318,7 +318,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             if (result.failed()) {
                 log.warn("Failed to collect token usage", result.cause());
             }
-            return collectResponseAttachments(responseBody);
+            return collectResponseAttachments(responseBody, new CollectResponseChatCompletionAttachmentsFn(proxy, context));
         });
 
         handleResponseFuture.onComplete(result -> {

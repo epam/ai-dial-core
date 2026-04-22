@@ -1,19 +1,18 @@
 package com.epam.aidial.core.server.function.request;
 
-import com.epam.aidial.core.server.util.JsonUtil;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
 import java.util.Set;
-import java.util.function.Function;
 
 @RequiredArgsConstructor
 public class ResponsesRequest implements RequestObject {
     private final ObjectNode tree;
+
 
     @Override
     public String getModel() {
@@ -33,11 +32,10 @@ public class ResponsesRequest implements RequestObject {
     @Override
     public Set<String> collectAttachments() {
         return ProxyUtil.collectAttachments(tree, List.of(
-                "$.input[?(@.type == 'message')].content[?(@.type == 'input_image')].image_url",
-                "$.input[?(@.type == 'message')].content[?(@.type == 'input_file')].file_url",
-                "$.input[?(@.type == 'function_call_output')].output[?(@.type == 'input_image')].image_url",
-                "$.input[?(@.type == 'function_call_output')].output[?(@.type == 'input_file')].file_url",
-                "$.input[?(@.type == 'code_interpreter_call')].outputs[?(@.type == 'image')].url",
+                "$.input[?(!@.type || @.type == 'message')].content[?(@.type == 'input_image')].image_url",
+                "$.input[?(!@.type || @.type == 'message')].content[?(@.type == 'input_file')].file_url",
+                "$.input[?(@.type == 'custom_tool_call_output' || @.type == 'function_call_output')].output[?(@.type == 'input_image')].image_url",
+                "$.input[?(@.type == 'custom_tool_call_output' || @.type == 'function_call_output')].output[?(@.type == 'input_file')].file_url",
                 "$.input[?(@.type == 'computer_call_output')].output.image_url",
                 "$.tools[?(@.type == 'image_generation')].input_image_mask.image_url"));
     }
@@ -63,8 +61,8 @@ public class ResponsesRequest implements RequestObject {
     }
 
     @Override
-    public void update(String key, Function<JsonNode, JsonNode> mapper) {
-        JsonUtil.update(tree, key, mapper);
+    public void applyDefaults(Deployment deployment) {
+        ProxyUtil.applyDefaults(tree, deployment.getResponsesDefaults());
     }
 
     @Override

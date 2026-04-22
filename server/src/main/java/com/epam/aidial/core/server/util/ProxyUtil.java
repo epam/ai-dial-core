@@ -33,11 +33,11 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 @UtilityClass
@@ -115,11 +115,12 @@ public class ProxyUtil {
         return defaultValue;
     }
 
-    public static void collectAttachmentsFromResponse(ObjectNode tree, boolean isStream, Consumer<String> consumer) {
+    public static Set<String> collectAttachmentsFromResponse(ObjectNode tree, boolean isStream) {
         ArrayNode choices = (ArrayNode) tree.get("choices");
         if (choices == null) {
-            return;
+            return Set.of();
         }
+        Set<String> result = new HashSet<>();
         for (int i = 0; i < choices.size(); i++) {
             JsonNode choice = choices.get(i);
             String messageNodeName = isStream ? "delta" : "message";
@@ -135,7 +136,10 @@ public class ProxyUtil {
             if (attachments != null) {
                 for (int j = 0; j < attachments.size(); j++) {
                     JsonNode attachment = attachments.get(j);
-                    collectAttachedFile(attachment, consumer);
+                    String url = readCustomAttachment(attachment);
+                    if (url != null) {
+                        result.add(url);
+                    }
                 }
             }
             ArrayNode stages = (ArrayNode) customContent.get("stages");
@@ -148,38 +152,16 @@ public class ProxyUtil {
                     }
                     for (int k = 0; k < attachments.size(); k++) {
                         JsonNode attachment = attachments.get(k);
-                        collectAttachedFile(attachment, consumer);
+                        String url = readCustomAttachment(attachment);
+                        if (url != null) {
+                            result.add(url);
+                        }
                     }
                 }
             }
         }
-    }
 
-    private static void collectAttachedFilesFromUrl(JsonNode urlNode, JsonNode typeNode, Consumer<String> consumer) {
-        if (urlNode == null) {
-            return;
-        }
-
-        String url = urlNode.textValue();
-
-        if (url == null) {
-            return;
-        }
-
-        if (typeNode != null && typeNode.textValue().equals(MetadataBase.MIME_TYPE)) {
-            if (!url.startsWith(METADATA_PREFIX)) {
-                throw new IllegalArgumentException("Url of metadata attachment must start with metadata/: " + url);
-            }
-            url = url.substring(METADATA_PREFIX.length());
-        }
-
-        consumer.accept(url);
-    }
-
-    private static void collectAttachedFile(JsonNode attachment, Consumer<String> consumer) {
-        JsonNode urlNode = attachment.get("url");
-        JsonNode typeNode = attachment.get("type");
-        collectAttachedFilesFromUrl(urlNode, typeNode, consumer);
+        return result;
     }
 
     public static <T> T convertToObject(Buffer json, Class<T> clazz) {
@@ -352,5 +334,45 @@ public class ProxyUtil {
                 node.remove(CUSTOM_FIELDS_NODE);
             }
         }
+    }
+
+    public void applyDefaults(ObjectNode node, Map<String, Object> defaults) {
+        for (Map.Entry<String, Object> e : defaults.entrySet()) {
+            String key = e.getKey();
+            JsonNode newValue = ProxyUtil.MAPPER.convertValue(e.getValue(), JsonNode.class);
+            JsonUtil.update(node, key, oldValue -> copy(oldValue, newValue));
+        }
+    }
+
+    /**
+     * Copies default values to the target node from the source.
+     * The default value is copied from the source to the target if it's missed in the target node.
+     *
+     * <p>
+     *     Note. Arrays are not copied.
+     * </p>
+     */
+    private JsonNode copy(JsonNode target, JsonNode source) {
+        if (target == null || target.isNull()) {
+            return source;
+        }
+        if (source == null || source.isNull()) {
+            return target;
+        }
+        if (target.getNodeType() != source.getNodeType()) {
+            return source;
+        }
+        if (source.isObject()) {
+            return copyObjects((ObjectNode) target, (ObjectNode) source);
+        }
+        return target;
+    }
+
+    private ObjectNode copyObjects(ObjectNode target, ObjectNode source) {
+        for (Map.Entry<String, JsonNode> entry : source.properties()) {
+            String name = entry.getKey();
+            target.set(name, copy(target.get(name), entry.getValue()));
+        }
+        return target;
     }
 }

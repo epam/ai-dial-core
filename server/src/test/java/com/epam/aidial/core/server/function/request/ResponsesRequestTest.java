@@ -1,12 +1,13 @@
 package com.epam.aidial.core.server.function.request;
 
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.TextNode;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -90,18 +91,22 @@ class ResponsesRequestTest {
     }
 
     @Test
-    void testUpdate() throws JsonProcessingException {
+    void testApplyDefaults() throws JsonProcessingException {
         String body = """
                 {
-                    "field": "old-value"
+                    "field": "kept-value"
                 }
                 """;
+        Model model = new Model();
+        model.setResponsesDefaults(
+                Map.of(
+                        "field", "skipped-value",
+                        "another-field", "added-value"));
 
         ResponsesRequest request = request(body);
-        request.update("field", node -> new TextNode("new-value"));
-        request.update("new-field", node -> new TextNode("added-value"));
+        request.applyDefaults(model);
         String expected = """
-                {"field":"new-value","new-field":"added-value"}""";
+                {"field":"kept-value","another-field":"added-value"}""";
 
         String actual = new String(request.serialize());
 
@@ -118,11 +123,11 @@ class ResponsesRequestTest {
                             "content": [
                                 {
                                     "type": "input_image",
-                                    "image_url": "https://example.com/a.png"
+                                    "image_url": "https://example.com/from-message.png"
                                 },
                                 {
                                     "type": "input_file",
-                                    "file_url": "https://example.com/report.pdf"
+                                    "file_url": "https://example.com/from-message.pdf"
                                 }
                             ]
                         },
@@ -131,20 +136,24 @@ class ResponsesRequestTest {
                             "output": [
                                 {
                                     "type": "input_image",
+                                    "image_url": "https://example.com/from-function.jpg"
+                                },
+                                {
+                                    "type": "input_file",
+                                    "file_url": "https://example.com/from-function.csv"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "custom_tool_call_output",
+                            "output": [
+                                {
+                                    "type": "input_image",
                                     "image_url": "https://example.com/from-tool.jpg"
                                 },
                                 {
                                     "type": "input_file",
                                     "file_url": "https://example.com/from-tool.csv"
-                                }
-                            ]
-                        },
-                        {
-                            "type": "code_interpreter_call",
-                            "outputs": [
-                                {
-                                    "type": "image",
-                                    "url": "https://example.com/code-output.png"
                                 }
                             ]
                         },
@@ -169,11 +178,12 @@ class ResponsesRequestTest {
 
         ResponsesRequest request = request(body);
         Set<String> expected = Set.of(
-                "https://example.com/a.png",
-                "https://example.com/report.pdf",
+                "https://example.com/from-message.png",
+                "https://example.com/from-message.pdf",
+                "https://example.com/from-function.jpg",
+                "https://example.com/from-function.csv",
                 "https://example.com/from-tool.jpg",
                 "https://example.com/from-tool.csv",
-                "https://example.com/code-output.png",
                 "https://example.com/screenshot.png",
                 "https://example.com/mask.png");
 

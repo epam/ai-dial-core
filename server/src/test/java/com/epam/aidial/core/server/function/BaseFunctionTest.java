@@ -129,7 +129,7 @@ public class BaseFunctionTest {
                 }
                 """;
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
-        Set<String> result = BaseFunction.collectAttachmentsFromJson(tree, List.of("@.messages[*].custom_content.attachments[*].url",
+        Set<String> result = ProxyUtil.collectAttachments(tree, List.of("@.messages[*].custom_content.attachments[*].url",
                 "@.messages[*].custom_content.stages[*].attachments[*].url",
                 "@.messages[*].content[*].image_url.url",
                 "@.url",

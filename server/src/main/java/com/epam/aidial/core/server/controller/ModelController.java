@@ -87,6 +87,7 @@ public class ModelController {
         data.setLimits(createLimits(model.getLimits()));
         data.setPricing(createPricing(model.getPricing()));
         data.setDefaults(model.getDefaults());
+        data.setResponsesDefaults(model.getResponsesDefaults());
         if (model.getAuthor() != null) {
             data.setOwner(model.getAuthor());
         }

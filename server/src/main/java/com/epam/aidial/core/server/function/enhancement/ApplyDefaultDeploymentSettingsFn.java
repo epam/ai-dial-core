@@ -7,12 +7,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.request.RequestObject;
-import com.epam.aidial.core.server.util.ProxyUtil;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
-
-import java.util.Map;
 
 @Slf4j
 public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<RequestObject> {
@@ -32,7 +27,7 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Reques
         request.clearInterceptorSettings();
         Deployment deployment = context.getDeployment();
         if (deployment instanceof Interceptor) {
-            applyDefaults(request, deployment);
+            request.applyDefaults(deployment);
         }
     }
 
@@ -43,48 +38,8 @@ public class ApplyDefaultDeploymentSettingsFn extends BaseRequestFunction<Reques
                 String deploymentId = context.getInitialDeployment();
                 deployment = proxy.getDeploymentService().findDeployment(context, deploymentId);
             }
-            applyDefaults(request, deployment);
+            request.applyDefaults(deployment);
         }
-    }
-
-    private void applyDefaults(RequestObject request, Deployment deployment) {
-        for (Map.Entry<String, Object> e : deployment.getDefaults().entrySet()) {
-            String key = e.getKey();
-            JsonNode update = ProxyUtil.MAPPER.convertValue(e.getValue(), JsonNode.class);
-            request.update(key, oldValue -> copy(oldValue, update));
-        }
-    }
-
-    /**
-     * Copies default values to the target node from the source.
-     * The default value is copied from the source to the target if it's missed in the target node.
-     *
-     * <p>
-     *     Note. Arrays are not copied.
-     * </p>
-     */
-    private static JsonNode copy(JsonNode target, JsonNode source) {
-        if (target == null || target.isNull()) {
-            return source;
-        }
-        if (source == null || source.isNull()) {
-            return target;
-        }
-        if (target.getNodeType() != source.getNodeType()) {
-            return source;
-        }
-        if (source.isObject()) {
-            return copyObjects((ObjectNode) target, (ObjectNode) source);
-        }
-        return target;
-    }
-
-    private static ObjectNode copyObjects(ObjectNode target, ObjectNode source) {
-        for (Map.Entry<String, JsonNode> entry : source.properties()) {
-            String name = entry.getKey();
-            target.set(name, copy(target.get(name), entry.getValue()));
-        }
-        return target;
     }
 
     /**

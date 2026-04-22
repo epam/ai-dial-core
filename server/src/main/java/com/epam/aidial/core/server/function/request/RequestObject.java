@@ -1,11 +1,10 @@
 package com.epam.aidial.core.server.function.request;
 
+import com.epam.aidial.core.config.Deployment;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.List;
 import java.util.Set;
-import java.util.function.Function;
 
 public interface RequestObject {
     String getModel();
@@ -16,6 +15,6 @@ public interface RequestObject {
     List<CacheKey> buildMessageCacheKeys();
     List<CacheKey> buildToolCacheKeys();
     void clearInterceptorSettings();
-    void update(String key, Function<JsonNode, JsonNode> mapper);
+    void applyDefaults(Deployment deployment);
     byte[] serialize() throws JsonProcessingException;
 }

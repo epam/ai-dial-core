@@ -219,6 +219,7 @@ public class ApplicationController {
         data.setInputAttachmentTypes(application.getInputAttachmentTypes());
         data.setMaxInputAttachments(application.getMaxInputAttachments());
         data.setDefaults(application.getDefaults());
+        data.setResponsesDefaults(application.getResponsesDefaults());
         data.setDescriptionKeywords(application.getDescriptionKeywords());
 
         data.setApplicationTypeSchemaId(application.getApplicationTypeSchemaId());

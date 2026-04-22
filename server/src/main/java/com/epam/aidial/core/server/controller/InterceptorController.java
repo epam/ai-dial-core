@@ -7,7 +7,6 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.AutoShareDeploymentFn;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
-import com.epam.aidial.core.server.function.CollectRequestDataFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.request.CompletionRequest;
@@ -16,8 +15,6 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -28,7 +25,6 @@ import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.InputStream;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -169,7 +165,8 @@ public class InterceptorController extends BaseDeploymentPostController {
 
     void handleResponse(BufferingReadStream responseStream) {
         Buffer responseBody = context.getResponseStream().getContent();
-        collectResponseAttachments(responseBody).onComplete(result -> {
+        CollectResponseChatCompletionAttachmentsFn fn = new CollectResponseChatCompletionAttachmentsFn(proxy, context);
+        collectResponseAttachments(responseBody, fn).onComplete(result -> {
             if (result.failed()) {
                 log.warn("Failed to collect attachments from response. Error:", result.cause());
             }

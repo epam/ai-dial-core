@@ -9,9 +9,11 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectResponseResponsesAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
@@ -38,7 +40,6 @@ import org.apache.commons.lang3.Strings;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.function.Supplier;
 
 @Slf4j
 public class ResponsesController extends BaseDeploymentPostController {
@@ -141,7 +142,7 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         Deployment deployment = context.getDeployment();
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
-                .get(deployment, context.getCacheBreakpointContext(), Deployment::getResponsesEndpoint);
+                .get(deployment, context.getCacheBreakpointContext());
 
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
@@ -198,8 +199,8 @@ public class ResponsesController extends BaseDeploymentPostController {
             upstreamRoute.fail(proxyResponse);
         }
 
-        Supplier<BufferingReadStream.BaseEventListener> eventListenerSupplier = ResponsesSseListener::new;
-        BufferingReadStream responseStream = createResponseStream(proxyResponse, eventListenerSupplier);
+        BufferingReadStream responseStream = createResponseStream(proxyResponse, () ->
+                new ResponsesSseListener(new CollectResponseResponsesAttachmentsFn(proxy, context)));
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
@@ -223,7 +224,14 @@ public class ResponsesController extends BaseDeploymentPostController {
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         Future<TokenUsage> tokenUsageFuture = collectTokenUsage(responseBody);
 
-        tokenUsageFuture.onComplete(result -> {
+        Future<Void> handleResponseFuture = tokenUsageFuture.transform(result -> {
+            if (result.failed()) {
+                log.warn("Failed to collect token usage", result.cause());
+            }
+            return collectResponseAttachments(responseBody, new CollectResponseResponsesAttachmentsFn(proxy, context));
+        });
+
+        handleResponseFuture.onComplete(result -> {
             if (result.failed()) {
                 log.warn("Failed to collect attachments from response", result.cause());
             }
@@ -292,8 +300,8 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     private static class ResponsesSseListener extends BufferingReadStream.BaseEventListener {
 
-        public ResponsesSseListener() {
-            super();
+        public ResponsesSseListener(BaseResponseFunction function) {
+            super(function);
         }
 
         @Override

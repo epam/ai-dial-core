@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-import java.util.HashSet;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -173,8 +172,8 @@ public class ProxyUtilTest {
                   }
                 }
                 """;
-        Set<String> files =  new HashSet<>();
-        ProxyUtil.collectAttachmentsFromResponse((ObjectNode) ProxyUtil.MAPPER.readTree(response), false, files::add);
+        Set<String> files =
+                ProxyUtil.collectAttachmentsFromResponse((ObjectNode) ProxyUtil.MAPPER.readTree(response), false);
 
         assertEquals(Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file1.txt",
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file2.txt"), files);
@@ -226,8 +225,8 @@ public class ProxyUtilTest {
                   }
                 }
                 """;
-        Set<String> files =  new HashSet<>();
-        ProxyUtil.collectAttachmentsFromResponse((ObjectNode) ProxyUtil.MAPPER.readTree(response), true, files::add);
+        Set<String> files =
+                ProxyUtil.collectAttachmentsFromResponse((ObjectNode) ProxyUtil.MAPPER.readTree(response), true);
 
         assertEquals(Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file1.txt",
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file2.txt"), files);
