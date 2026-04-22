@@ -267,7 +267,7 @@ public class ToolSetProxyController implements Controller {
         try {
             if (deployment instanceof ToolSet toolSet) {
                 ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
-                        credentialsLocator, toolSet.getAuthSettings(), context.getUserId()
+                        credentialsLocator, toolSet.getAuthSettings(), context.getInitiatorId()
                 );
 
                 if (resourceCredentials != null) {
