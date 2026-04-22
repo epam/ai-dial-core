@@ -18,8 +18,10 @@ import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactor
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.credentials.util.TimeProvider;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.fasterxml.jackson.core.type.TypeReference;
 import jakarta.annotation.Nullable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +30,7 @@ import org.apache.commons.lang3.mutable.MutableObject;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Slf4j
@@ -211,6 +214,7 @@ public class ResourceCredentialsService {
         log.debug("Updating resource credentials for resourceId={}, bucket={}", resourceId, bucketName);
 
         MutableObject<ResourceCredentials> reference = new MutableObject<>();
+        MutableObject<Exception> refreshFailure = new MutableObject<>();
         resourceService.computeResourceBytes(credentialsDescriptor.toResourceDescriptor(), existingCredentialsBytesEncrypted -> {
             if (existingCredentialsBytesEncrypted == null) {
                 throw new ResourceNotFoundException("Credentials for %s not found".formatted(credentialsDescriptor.getResourceId()));
@@ -219,7 +223,16 @@ public class ResourceCredentialsService {
             ResourceCredentials resourceCredentials = decrypt(credentialsDescriptor, existingCredentialsBytesEncrypted);
 
             if (tokenRefreshStrategyFactory.getTokenValidatorStrategy(authSettings.getAuthenticationType()).requiresTokenRefresh(resourceCredentials)) {
-                updateExpiredResourceCredentials(resourceCredentials, resourceId, authSettings);
+                try {
+                    updateExpiredResourceCredentials(resourceCredentials, resourceId, authSettings);
+                } catch (HttpException e) {
+                    if (isInvalidGrant(e)) {
+                        log.warn("Failed to refresh token for resourceId={}, bucket={}. Removing credentials", resourceId, bucketName, e);
+                        refreshFailure.setValue(e);
+                        return null;
+                    }
+                    throw e;
+                }
                 reference.setValue(resourceCredentials);
                 log.debug("Encrypting and storing refreshed credentials for resourceId={}, bucket={}", resourceId, bucketName);
                 return encrypt(credentialsDescriptor, resourceCredentials);
@@ -229,7 +242,21 @@ public class ResourceCredentialsService {
             reference.setValue(resourceCredentials);
             return existingCredentialsBytesEncrypted;
         });
+
+        if (refreshFailure.get() != null) {
+            throw new ResourceNotFoundException("Failed to refresh token for resource %s".formatted(resourceId));
+        }
+
         return reference.get();
+    }
+
+    private static boolean isInvalidGrant(HttpException e) {
+        String body = e.getBody();
+        if (body == null || body.isBlank()) {
+            return false;
+        }
+        Map<String, Object> parsed = JsonMapperUtil.convertToObject(body, new TypeReference<>() {});
+        return parsed != null && "invalid_grant".equals(parsed.get("error"));
     }
 
     private void updateExpiredResourceCredentials(ResourceCredentials resourceCredentials,
