@@ -4,7 +4,7 @@
     <p align="center">
         <p align="center">
         <a href="https://dialx.ai/">
-          <img src="https://dialx.ai/dialx_logo.svg" alt="About DIALX">
+          <img src="https://dialx.ai/logo/dialx_logo.svg" alt="About DIALX">
         </a>
     </p>
 <h4 align="center">
