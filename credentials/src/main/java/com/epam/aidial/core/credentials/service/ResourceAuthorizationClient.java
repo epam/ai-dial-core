@@ -83,8 +83,8 @@ public class ResourceAuthorizationClient {
             String body = response.body();
 
             if (status != 200 && status != 201) {
-                log.info("Error executing request {}: status {}, response {}, headers: {}",
-                        request.uri(), response.statusCode(), response.body(), response.headers());
+                log.info("Error executing request {}: status {}, response {}",
+                        request.uri(), response.statusCode(), response.body());
                 if (status == 401) {
                     throw new HttpException(HttpStatus.UNAUTHORIZED, "Authorization server returns 401 error code",
                             httpHeadersHandler.convertHttpHeadersToMap(response.headers()), body);
