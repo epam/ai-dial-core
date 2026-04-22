@@ -171,6 +171,7 @@ public class ResourceCredentialsService {
         }
     }
 
+    @Nullable
     public ResourceCredentials getRefreshedResourceCredentials(CredentialsLocator credentialsLocator,
                                                                ResourceAuthSettings authSettings,
                                                                String userSub) {
