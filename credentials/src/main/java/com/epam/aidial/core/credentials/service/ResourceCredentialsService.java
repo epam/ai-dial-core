@@ -174,6 +174,7 @@ public class ResourceCredentialsService {
         }
     }
 
+    @Nullable
     public ResourceCredentials getRefreshedResourceCredentials(CredentialsLocator credentialsLocator,
                                                                ResourceAuthSettings authSettings,
                                                                String userSub) {
@@ -181,18 +182,14 @@ public class ResourceCredentialsService {
             return null;
         }
 
-        try {
-            ResourceCredentials userCredentials = getAndRefreshCredentials(
-                    credentialsLocator.getCredentialsDescriptors().get(CredentialsLevel.USER),
-                    authSettings
-            );
-            if (userCredentials != null
-                    && userCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
-                    && userCredentials.getUserId().equals(userSub)) {
-                return userCredentials;
-            }
-        } catch (ResourceNotFoundException e) {
-            log.debug(e.getMessage(), e); // if User credentials are not found - let's look for Global one
+        ResourceCredentials userCredentials = getAndRefreshCredentials(
+                credentialsLocator.getCredentialsDescriptors().get(CredentialsLevel.USER),
+                authSettings
+        );
+        if (userCredentials != null
+                && userCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
+                && userCredentials.getUserId().equals(userSub)) {
+            return userCredentials;
         }
 
         ResourceCredentials globalCredentials = getAndRefreshCredentials(
@@ -204,7 +201,7 @@ public class ResourceCredentialsService {
             return globalCredentials;
         }
 
-        throw new ResourceNotFoundException("Credentials (Global or Personal) for Resource %s not found".formatted(credentialsLocator.getResourceId()));
+        return null;
     }
 
     private ResourceCredentials getAndRefreshCredentials(CredentialsDescriptor credentialsDescriptor,
@@ -217,7 +214,8 @@ public class ResourceCredentialsService {
         MutableObject<Exception> refreshFailure = new MutableObject<>();
         resourceService.computeResourceBytes(credentialsDescriptor.toResourceDescriptor(), existingCredentialsBytesEncrypted -> {
             if (existingCredentialsBytesEncrypted == null) {
-                throw new ResourceNotFoundException("Credentials for %s not found".formatted(credentialsDescriptor.getResourceId()));
+                log.debug("No credentials found for resourceId={}, bucket={}", resourceId, bucketName);
+                return null;
             }
 
             ResourceCredentials resourceCredentials = decrypt(credentialsDescriptor, existingCredentialsBytesEncrypted);
