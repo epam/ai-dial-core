@@ -11,12 +11,12 @@ import java.util.Set;
 public class CollectResponseResponsesAttachmentsFn extends CollectResponseAttachmentsFn {
 
     public static final List<String> STREAMING_PATHS = List.of(
-            "$[?(@.type == 'response.output_item.done' && @.item.type == 'code_interpreter_call')]" +
-                    ".item.outputs[?(@.type == 'image')].url",
-            "$[?(@.type == 'response.output_item.done' && (@.item.type == 'custom_tool_call_output' || @.item.type == 'function_call_output'))]" +
-                    ".item.output[?(@.type == 'input_image')].image_url",
-            "$[?(@.type == 'response.output_item.done' && (@.item.type == 'custom_tool_call_output' || @.item.type == 'function_call_output'))]" +
-                    ".item.output[?(@.type == 'input_file')].file_url");
+            "$[?(@.type == 'response.output_item.done' && @.item.type == 'code_interpreter_call')]"
+                    + ".item.outputs[?(@.type == 'image')].url",
+            "$[?(@.type == 'response.output_item.done' && (@.item.type == 'custom_tool_call_output' || @.item.type == 'function_call_output'))]"
+                    + ".item.output[?(@.type == 'input_image')].image_url",
+            "$[?(@.type == 'response.output_item.done' && (@.item.type == 'custom_tool_call_output' || @.item.type == 'function_call_output'))]"
+                    + ".item.output[?(@.type == 'input_file')].file_url");
     public static final List<String> NON_STREAMING_PATHS = List.of(
             "$.output[?(@.type == 'code_interpreter_call')].outputs[?(@.type == 'image')].url",
             "$.output[?(@.type == 'custom_tool_call_output' || @.type == 'function_call_output')].output[?(@.type == 'input_image')].image_url",
