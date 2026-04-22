@@ -18,6 +18,8 @@ import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactor
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.credentials.util.TimeProvider;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import jakarta.annotation.Nullable;
@@ -45,7 +47,7 @@ public class ResourceCredentialsService {
                                        ResourceAuthSettings resourceAuthSettings,
                                        ResourceSignInRequest resourceSignInRequest,
                                        String userId) {
-        log.debug("Adding resource credentials for resourceId={}, bucket={}, credentialsLevel={}",
+        log.info("Adding resource credentials for resourceId={}, bucket={}, credentialsLevel={}",
                 credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName(), resourceSignInRequest.getCredentialsLevel());
         ResourceCredentialsFactory factory = resourceCredentialsFactoryProvider.getFactory(resourceSignInRequest.getAuthenticationType());
         ResourceCredentials resourceCredentials = factory.createCredentials(resourceSignInRequest.getUrl(), resourceAuthSettings, resourceSignInRequest);
@@ -56,13 +58,13 @@ public class ResourceCredentialsService {
 
         byte[] encryptedBody = encrypt(credentialsDescriptor, resourceCredentials);
         resourceService.putResourceBytes(credentialsDescriptor.toResourceDescriptor(), encryptedBody, EtagHeader.ANY);
-        log.debug("Resource credentials for resourceId={}, bucket={} stored successfully",
+        log.info("Resource credentials for resourceId={}, bucket={} stored successfully",
                 credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
     }
 
     public boolean copyResourceCredentials(CredentialsDescriptor from, CredentialsDescriptor to,
                                            CredentialsLevel credentialsLevel, boolean overwrite) {
-        log.debug("Copying resource credentials for resourceId={} from bucket={} to bucket={}",
+        log.info("Copying resource credentials for resourceId={} from bucket={} to bucket={}",
                 from.getResourceId(), from.getBucketName(), to.getBucketName());
 
         ResourceCredentials resourceCredentials = getResourceCredentials(from);
@@ -82,7 +84,7 @@ public class ResourceCredentialsService {
         byte[] encryptedBody = encrypt(to, resourceCredentials);
         EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
         resourceService.putResourceBytes(to.toResourceDescriptor(), encryptedBody, etag);
-        log.debug("Resource credentials for resourceId={} copied successfully from bucket={} to bucket={}",
+        log.info("Resource credentials for resourceId={} copied successfully from bucket={} to bucket={}",
                 from.getResourceId(), from.getBucketName(), to.getBucketName());
         return true;
     }
@@ -95,7 +97,7 @@ public class ResourceCredentialsService {
                     .filter(Objects::nonNull)
                     .toList();
         } catch (EncryptionException encryptionException) {
-            log.debug("Encryption error. No valid Resource Credentials found.");
+            log.warn("Encryption error. No valid Resource Credentials found.");
             return new ArrayList<>();
         }
     }
@@ -119,7 +121,7 @@ public class ResourceCredentialsService {
     public boolean deleteResourceCredentials(CredentialsLocator credentialsLocator,
                                              ResourceSignOutRequest resourceSignOutRequest,
                                              String userSub) {
-        log.debug("Deleting resource credentials for resourceId={}.", credentialsLocator.getResourceId());
+        log.info("Deleting resource credentials for resourceId={}.", credentialsLocator.getResourceId());
         CredentialsLevel signOutRequestCredentialsLevel = resourceSignOutRequest.getCredentialsLevel();
         CredentialsDescriptor credentialsDescriptor = credentialsLocator.getCredentialsDescriptors().get(signOutRequestCredentialsLevel);
         MutableObject<Boolean> result = new MutableObject<>(false);
@@ -135,13 +137,13 @@ public class ResourceCredentialsService {
             return null;
         });
 
-        log.debug("Deleting resource credentials for resourceId={}, bucket={} finished. Result: {}",
+        log.info("Deleting resource credentials for resourceId={}, bucket={} finished. Result: {}",
                 credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName(), result.get());
         return result.get();
     }
 
     public void deleteResourceCredentials(CredentialsLocator credentialsLocator) {
-        log.debug("Deleting all resource credentials for resourceId={}.", credentialsLocator.getResourceId());
+        log.info("Deleting all resource credentials for resourceId={}.", credentialsLocator.getResourceId());
 
         credentialsLocator.getUniqueCredentialsDescriptors().forEach(credentialsDescriptor -> {
             resourceService.deleteResource(credentialsDescriptor.toResourceDescriptor(), EtagHeader.ANY);
@@ -149,7 +151,7 @@ public class ResourceCredentialsService {
                     credentialsLocator.getResourceId(), credentialsDescriptor.getBucketName());
         });
 
-        log.debug("Deleting all resource credentials for resourceId={} finished", credentialsLocator.getResourceId());
+        log.info("Deleting all resource credentials for resourceId={} finished", credentialsLocator.getResourceId());
     }
 
     private void validateDeleteOperation(ResourceCredentials existingCredentials,
@@ -211,6 +213,7 @@ public class ResourceCredentialsService {
         log.debug("Updating resource credentials for resourceId={}, bucket={}", resourceId, bucketName);
 
         MutableObject<ResourceCredentials> reference = new MutableObject<>();
+        MutableObject<Exception> refreshFailure = new MutableObject<>();
         resourceService.computeResourceBytes(credentialsDescriptor.toResourceDescriptor(), existingCredentialsBytesEncrypted -> {
             if (existingCredentialsBytesEncrypted == null) {
                 throw new ResourceNotFoundException("Credentials for %s not found".formatted(credentialsDescriptor.getResourceId()));
@@ -219,7 +222,16 @@ public class ResourceCredentialsService {
             ResourceCredentials resourceCredentials = decrypt(credentialsDescriptor, existingCredentialsBytesEncrypted);
 
             if (tokenRefreshStrategyFactory.getTokenValidatorStrategy(authSettings.getAuthenticationType()).requiresTokenRefresh(resourceCredentials)) {
-                updateExpiredResourceCredentials(resourceCredentials, resourceId, authSettings);
+                try {
+                    updateExpiredResourceCredentials(resourceCredentials, resourceId, authSettings);
+                } catch (HttpException e) {
+                    if (isPermanentRefreshFailure(e)) {
+                        log.warn("Failed to refresh token for resourceId={}, bucket={}. Removing credentials", resourceId, bucketName, e);
+                        refreshFailure.setValue(e);
+                        return null;
+                    }
+                    throw e;
+                }
                 reference.setValue(resourceCredentials);
                 log.debug("Encrypting and storing refreshed credentials for resourceId={}, bucket={}", resourceId, bucketName);
                 return encrypt(credentialsDescriptor, resourceCredentials);
@@ -229,13 +241,26 @@ public class ResourceCredentialsService {
             reference.setValue(resourceCredentials);
             return existingCredentialsBytesEncrypted;
         });
+
+        if (refreshFailure.get() != null) {
+            throw new ResourceNotFoundException("Failed to refresh token for resource %s".formatted(resourceId));
+        }
+
         return reference.get();
+    }
+
+    // 4xx on a token endpoint indicates a client-side problem — refresh token revoked/expired,
+    // client auth rejected, or malformed request. Safe to drop stored credentials so the user
+    // is prompted to sign in again. Transient issues (5xx, network) are rethrown and leave creds in place.
+    private static boolean isPermanentRefreshFailure(HttpException e) {
+        HttpStatus status = e.getStatus();
+        return status == HttpStatus.BAD_REQUEST || status == HttpStatus.UNAUTHORIZED;
     }
 
     private void updateExpiredResourceCredentials(ResourceCredentials resourceCredentials,
                                                   String resourceId,
                                                   ResourceAuthSettings authSettings) {
-        log.debug("Start updating expired token for Resource: {}", resourceId);
+        log.info("Start updating expired token for Resource: {}", resourceId);
         TokenResponse newAccessTokenResponse = tokenService.getToken(resourceId,
                 authSettings, resourceCredentials.getRefreshToken());
 

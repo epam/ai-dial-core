@@ -1787,6 +1787,410 @@ public class ToolSetApiTest extends ResourceBaseTest {
         }
     }
 
+    @Test
+    void testOauthTokenRefresh_Success() {
+        // Token endpoint: returns expired token on sign-in, fresh token on refresh
+        String signInTokenResponse = """
+                {
+                    "access_token": "expired-access-token",
+                    "refresh_token": "test-refresh-token",
+                    "expires_in": 0
+                }
+                """;
+        String refreshTokenResponse = """
+                {
+                    "access_token": "refreshed-access-token",
+                    "refresh_token": "new-refresh-token",
+                    "expires_in": 3600
+                }
+                """;
+
+        String mcpResponse = """
+                {
+                  "jsonrpc": "2.0",
+                  "id": 1,
+                  "result": {
+                    "content": [{ "type": "text", "text": "ok" }]
+                  }
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            // Token endpoint: differentiate sign-in vs refresh by grant_type
+            server.map(HttpMethod.POST, "/token", request -> {
+                String body = request.getBody().readUtf8();
+                if (body.contains("grant_type=refresh_token")) {
+                    return new MockResponse()
+                            .setBody(refreshTokenResponse)
+                            .setHeader("Content-Type", "application/json");
+                }
+                // sign-in (authorization_code grant)
+                return new MockResponse()
+                        .setBody(signInTokenResponse)
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            // MCP endpoint: verify the refreshed token is used
+            server.map(HttpMethod.POST, "/", request -> {
+                String auth = request.getHeader("Authorization");
+                assertEquals("Bearer refreshed-access-token", auth);
+                return new MockResponse()
+                        .setBody(mcpResponse)
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            // Sign in with OAuth (token expires immediately due to expires_in: 0)
+            Response response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "oauth-toolset",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            // MCP call should trigger token refresh and use the refreshed token
+            ApiKeyData apiKey = createAdminAppKey();
+            apiKeyStore.assignPerRequestApiKey(apiKey);
+
+            Response resp = send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+
+            assertEquals(200, resp.status());
+            assertEquals(mcpResponse, resp.body());
+        }
+    }
+
+    @Test
+    void testOauthTokenRefresh_InvalidGrant_RemovesCredentials() {
+        // Token endpoint: returns expired token on sign-in
+        String signInTokenResponse = """
+                {
+                    "access_token": "expired-access-token",
+                    "refresh_token": "revoked-refresh-token",
+                    "expires_in": 0
+                }
+                """;
+
+        String invalidGrantResponse = """
+                {
+                    "error": "invalid_grant",
+                    "error_description": "Token has been expired or revoked."
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            // Token endpoint
+            server.map(HttpMethod.POST, "/token", request -> {
+                String body = request.getBody().readUtf8();
+                if (body.contains("grant_type=refresh_token")) {
+                    // Refresh fails with invalid_grant
+                    return new MockResponse()
+                            .setResponseCode(400)
+                            .setBody(invalidGrantResponse)
+                            .setHeader("Content-Type", "application/json");
+                }
+                // sign-in succeeds
+                return new MockResponse()
+                        .setBody(signInTokenResponse)
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            // MCP endpoint (will receive request without auth after credential failure)
+            server.map(HttpMethod.POST, "/", request ->
+                    new MockResponse()
+                            .setBody(MCP_TOOL_CALL_RESPONSE)
+                            .setHeader("Content-Type", "application/json"));
+
+            // Sign in with OAuth
+            Response response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "oauth-toolset",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            // Verify auth status is SIGNED_IN after sign-in
+            response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_IN\""),
+                    "Expected SIGNED_IN after sign-in but got: " + response.body());
+
+            // MCP call triggers refresh → invalid_grant → credentials removed
+            ApiKeyData apiKey = createAdminAppKey();
+            apiKeyStore.assignPerRequestApiKey(apiKey);
+
+            send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+
+            // Verify credentials were removed (auth status back to SIGNED_OUT)
+            response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""),
+                    "Expected SIGNED_OUT after invalid_grant but got: " + response.body());
+        }
+    }
+
+    @Test
+    void testOauthTokenRefresh_Unauthorized_RemovesCredentials() {
+        // Token endpoint: returns expired token on sign-in
+        String signInTokenResponse = """
+                {
+                    "access_token": "expired-access-token",
+                    "refresh_token": "revoked-refresh-token",
+                    "expires_in": 0
+                }
+                """;
+
+        // Notion-style 401 from /token with non-spec invalid_token error body
+        String invalidTokenResponse = """
+                {
+                    "error": "invalid_token",
+                    "error_description": "Missing or invalid access token"
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            // Token endpoint
+            server.map(HttpMethod.POST, "/token", request -> {
+                String body = request.getBody().readUtf8();
+                if (body.contains("grant_type=refresh_token")) {
+                    // Refresh fails with 401 (Notion behavior on expired refresh token)
+                    return new MockResponse()
+                            .setResponseCode(401)
+                            .setBody(invalidTokenResponse)
+                            .setHeader("Content-Type", "application/json");
+                }
+                // sign-in succeeds
+                return new MockResponse()
+                        .setBody(signInTokenResponse)
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            // MCP endpoint (will receive request without auth after credential failure)
+            server.map(HttpMethod.POST, "/", request ->
+                    new MockResponse()
+                            .setBody(MCP_TOOL_CALL_RESPONSE)
+                            .setHeader("Content-Type", "application/json"));
+
+            // Sign in with OAuth
+            Response response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "oauth-toolset",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            // Verify auth status is SIGNED_IN after sign-in
+            response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_IN\""),
+                    "Expected SIGNED_IN after sign-in but got: " + response.body());
+
+            // MCP call triggers refresh → 401 → credentials removed
+            ApiKeyData apiKey = createAdminAppKey();
+            apiKeyStore.assignPerRequestApiKey(apiKey);
+
+            send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+
+            // Verify credentials were removed (auth status back to SIGNED_OUT)
+            response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""),
+                    "Expected SIGNED_OUT after 401 refresh failure but got: " + response.body());
+        }
+    }
+
+    @Test
+    void testOauthTokenRefresh_BadRequest_RemovesCredentials() {
+        // Token endpoint: returns expired token on sign-in
+        String signInTokenResponse = """
+                {
+                    "access_token": "expired-access-token",
+                    "refresh_token": "revoked-refresh-token",
+                    "expires_in": 0
+                }
+                """;
+
+        // Generic 400 without invalid_grant (e.g., provider-specific error code)
+        String genericBadRequestResponse = """
+                {
+                    "error": "unauthorized_client",
+                    "error_description": "Client is not authorized to use refresh token grant"
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/token", request -> {
+                String body = request.getBody().readUtf8();
+                if (body.contains("grant_type=refresh_token")) {
+                    return new MockResponse()
+                            .setResponseCode(400)
+                            .setBody(genericBadRequestResponse)
+                            .setHeader("Content-Type", "application/json");
+                }
+                return new MockResponse()
+                        .setBody(signInTokenResponse)
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            server.map(HttpMethod.POST, "/", request ->
+                    new MockResponse()
+                            .setBody(MCP_TOOL_CALL_RESPONSE)
+                            .setHeader("Content-Type", "application/json"));
+
+            Response response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "oauth-toolset",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            ApiKeyData apiKey = createAdminAppKey();
+            apiKeyStore.assignPerRequestApiKey(apiKey);
+
+            send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+
+            response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""),
+                    "Expected SIGNED_OUT after 400 refresh failure but got: " + response.body());
+        }
+    }
+
+    @Test
+    void testOauthTokenRefresh_TwoHundredWithErrorBody_RemovesCredentials() {
+        // Token endpoint: returns expired token on sign-in
+        String signInTokenResponse = """
+                {
+                    "access_token": "expired-access-token",
+                    "refresh_token": "revoked-refresh-token",
+                    "expires_in": 0
+                }
+                """;
+
+        // Non-spec: some OAuth servers return HTTP 200 with an error payload instead of 4xx
+        String twoHundredErrorResponse = """
+                {
+                    "error": "invalid_grant",
+                    "error_description": "Token has been expired or revoked."
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/token", request -> {
+                String body = request.getBody().readUtf8();
+                if (body.contains("grant_type=refresh_token")) {
+                    return new MockResponse()
+                            .setResponseCode(200)
+                            .setBody(twoHundredErrorResponse)
+                            .setHeader("Content-Type", "application/json");
+                }
+                return new MockResponse()
+                        .setBody(signInTokenResponse)
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            server.map(HttpMethod.POST, "/", request ->
+                    new MockResponse()
+                            .setBody(MCP_TOOL_CALL_RESPONSE)
+                            .setHeader("Content-Type", "application/json"));
+
+            Response response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "oauth-toolset",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            ApiKeyData apiKey = createAdminAppKey();
+            apiKeyStore.assignPerRequestApiKey(apiKey);
+
+            send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+
+            response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""),
+                    "Expected SIGNED_OUT after 200-with-error-body refresh but got: " + response.body());
+        }
+    }
+
+    @Test
+    void testOauthTokenRefresh_ServerError_KeepsCredentials() {
+        // Token endpoint: returns expired token on sign-in
+        String signInTokenResponse = """
+                {
+                    "access_token": "expired-access-token",
+                    "refresh_token": "test-refresh-token",
+                    "expires_in": 0
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            // Token endpoint
+            server.map(HttpMethod.POST, "/token", request -> {
+                String body = request.getBody().readUtf8();
+                if (body.contains("grant_type=refresh_token")) {
+                    // Refresh fails with server error (not invalid_grant)
+                    return new MockResponse()
+                            .setResponseCode(500)
+                            .setBody("Internal Server Error")
+                            .setHeader("Content-Type", "text/plain");
+                }
+                // sign-in succeeds
+                return new MockResponse()
+                        .setBody(signInTokenResponse)
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            // MCP endpoint
+            server.map(HttpMethod.POST, "/", request ->
+                    new MockResponse()
+                            .setBody(MCP_TOOL_CALL_RESPONSE)
+                            .setHeader("Content-Type", "application/json"));
+
+            // Sign in with OAuth
+            Response response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "oauth-toolset",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            // MCP call triggers refresh → server error → credentials kept
+            ApiKeyData apiKey = createAdminAppKey();
+            apiKeyStore.assignPerRequestApiKey(apiKey);
+
+            send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+
+            // Verify credentials are still present (auth status still SIGNED_IN)
+            response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_IN\""),
+                    "Expected SIGNED_IN after server error but got: " + response.body());
+        }
+    }
+
     private String replaceValueInJsonArray(
             String originalJson,
             String arrayFieldName,
