@@ -8,13 +8,22 @@ import java.util.Set;
 
 public interface RequestObject {
     String getModel();
+
     void setModel(String model);
+
     boolean isStreaming();
+
     Set<String> collectAttachments();
+
     Set<String> collectAppAttachments(List<String> paths);
+
     List<CacheKey> buildMessageCacheKeys();
+
     List<CacheKey> buildToolCacheKeys();
+
     void clearInterceptorSettings();
+
     void applyDefaults(Deployment deployment);
+
     byte[] serialize() throws JsonProcessingException;
 }
