@@ -84,7 +84,7 @@ public class ResourceCredentialsController {
                             CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceUrl, context, ResourceTypes.TOOL_SET);
                             CredentialsDescriptor credentialsDescriptor = credentialsLocator.getCredentialsDescriptors().get(resourceSignInRequest.getCredentialsLevel());
                             resourceCredentialsService.addResourceCredentials(credentialsDescriptor, resourceAuthSettings,
-                                    resourceSignInRequest, context.getUserId());
+                                    resourceSignInRequest, context.getInitiatorId());
                             return true;
                         }
                         throw new ResourceNotFoundException("Resource is not found: " + resourceId);
@@ -124,7 +124,7 @@ public class ResourceCredentialsController {
                     return resourceCredentialsService.deleteResourceCredentials(
                             credentialsLocator,
                             resourceSignOutRequest,
-                            context.getUserId());
+                            context.getInitiatorId());
                 }))
                 .onSuccess(removed -> context.respond(HttpStatus.OK, removed))
                 .onFailure(error ->

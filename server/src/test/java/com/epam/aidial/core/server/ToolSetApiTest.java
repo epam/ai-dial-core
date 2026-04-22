@@ -1252,6 +1252,52 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testUserLevelSignInAndSignOutWithApiKeyAuthenticatedCaller() {
+        // Regression for #1470: USER-level sign-in/sign-out must work when the caller is authenticated
+        // by an API key (not JWT). Previously context.getUserId() was null for API-key callers,
+        // which stored null into ResourceCredentials.userId and later NPE'd on refresh/sign-out/status.
+        String bucket = "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST"; // proxyKey1's bucket (project EPM-RTC-GPT)
+
+        // create toolset owned by the API key
+        Response response = send(HttpMethod.PUT, "/v1/toolsets/" + bucket + "/toolset%201@", null,
+                TOOLSET_CREATE_REQEUST_BODY, "api-key", "proxyKey1");
+        verifyNotExact(response, 200, "\"url\":\"toolsets/" + bucket + "/toolset%201@\"");
+
+        // USER-level sign-in authenticated by the API key (pre-fix: stored userId=null)
+        response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                {
+                    "url": "toolsets/%s/toolset 1@",
+                    "credentialsLevel": "USER",
+                    "authenticationType": "API_KEY",
+                    "api_key": "Bearer api_key"
+                }
+                """.formatted(bucket), "api-key", "proxyKey1");
+        verify(response, 200, "true");
+
+        // GET the toolset via the same API key - user_level_auth_status should be SIGNED_IN.
+        // Pre-fix: ResourceAuthSettingsService.setUserAuthStatus NPE'd on userId.equals(...) when userId was null.
+        response = send(HttpMethod.GET, "/v1/toolsets/" + bucket + "/toolset%201@", null, null,
+                "api-key", "proxyKey1");
+        verifyNotExact(response, 200, "\"user_level_auth_status\":\"SIGNED_IN\"");
+
+        // USER-level sign-out authenticated by the same API key.
+        // Pre-fix: validateDeleteOperation NPE'd on Objects.requireNonNull(existingCredentialsUserId).
+        response = send(HttpMethod.POST, "/v1/ops/toolset/signout", null, """
+                {
+                    "url": "toolsets/%s/toolset 1@",
+                    "credentialsLevel": "USER",
+                    "authenticationType": "API_KEY"
+                }
+                """.formatted(bucket), "api-key", "proxyKey1");
+        verify(response, 200, "true");
+
+        // Verify the toolset reports SIGNED_OUT after sign-out.
+        response = send(HttpMethod.GET, "/v1/toolsets/" + bucket + "/toolset%201@", null, null,
+                "api-key", "proxyKey1");
+        verifyNotExact(response, 200, "\"user_level_auth_status\":\"SIGNED_OUT\"");
+    }
+
+    @Test
     void testSignOutFromApiCreatedToolsetWithIncorrectAuthType() {
         // create ToolSet with admin JWT
         Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset%201@", null,  TOOLSET_CREATE_REQEUST_BODY,
