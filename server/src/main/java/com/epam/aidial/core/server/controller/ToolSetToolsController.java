@@ -345,7 +345,7 @@ public class ToolSetToolsController implements Controller {
     private void injectToolsetCredentials(HttpClientRequest proxyRequest, Deployment deployment) {
         if (deployment instanceof ToolSet toolSet) {
             ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
-                    credentialsLocator, toolSet.getAuthSettings(), context.getUserId()
+                    credentialsLocator, toolSet.getAuthSettings(), context.getInitiatorId()
             );
             if (resourceCredentials != null) {
                 addAuthorizationHeader(proxyRequest, resourceCredentials);

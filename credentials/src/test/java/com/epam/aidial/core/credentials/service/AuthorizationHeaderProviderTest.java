@@ -6,7 +6,6 @@ import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.credentials.AuthorizationHeader;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
-import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -21,7 +20,6 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -116,12 +114,15 @@ class AuthorizationHeaderProviderTest {
         ResourceAuthSettings authSettings = Mockito.mock(ResourceAuthSettings.class);
 
         when(resourceCredentialsService.getRefreshedResourceCredentials(any(), any(), any()))
-                .thenThrow(new ResourceNotFoundException());
+                .thenReturn(null);
 
-        // When & Then
-        assertThrows(ResourceNotFoundException.class, () -> {
-            authorizationHeaderProvider.createAuthorizationHeader(credentialsLocator, authSettings, "userSub");
-        });
+        // When
+        AuthorizationHeader header = authorizationHeaderProvider.createAuthorizationHeader(
+                credentialsLocator, authSettings, "userSub"
+        );
+
+        // Then
+        assertNull(header);
     }
 
     @Test
