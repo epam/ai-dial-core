@@ -83,7 +83,7 @@ public class ResourceAuthorizationClient {
             String body = response.body();
 
             if (status != 200 && status != 201) {
-                log.debug("Error executing request {}: status {}, response {}, headers: {}",
+                log.info("Error executing request {}: status {}, response {}, headers: {}",
                         request.uri(), response.statusCode(), response.body(), response.headers());
                 if (status == 401) {
                     throw new HttpException(HttpStatus.UNAUTHORIZED, "Authorization server returns 401 error code",
@@ -134,7 +134,7 @@ public class ResourceAuthorizationClient {
             String description = node.containsKey("error_description")
                     ? String.valueOf(node.get("error_description"))
                     : "no description";
-            log.debug("OAuth error in 200 response from {}: error={}, description={}", uri, error, description);
+            log.info("OAuth error in 200 response from {}: error={}, description={}", uri, error, description);
             throw new HttpException(HttpStatus.BAD_REQUEST, "Authorization server returned error: %s (%s)".formatted(error, description),
                     Map.of(), body);
         }
