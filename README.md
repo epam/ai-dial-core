@@ -21,6 +21,7 @@
     - [Static settings](#static-settings)
     - [Storage requirements](#storage-requirements)
     - [Dynamic settings](#dynamic-settings)
+- [Claude Code commands](#claude-code-commands)
 - [License](#license)
 
 
@@ -303,6 +304,17 @@ DIAL Core stores user data in the following storages:
 | keys                   | API keys and their parameters. Refer to [API Keys](/docs/dynamic-settings/keys.md) to see dynamic settings.                                                                                                                                                                     |
 | retriableErrorCodes    | List of Retriable Error Codes for handling outages at LLM Providers. This list extends the existing error codes (429, 502, 503, 504) but doesn't override them.                                                                                                                 |
 | applicationTypeSchemas | Map of application schemas where key - schema ID, value - schema itself in JSON format. All schemas must be conformed to the root schema `https://dial.epam.com/application_type_schemas/schema#`. See [link](config/src/main/resources/custom-application-schemas/schema.json) |
+
+## Claude Code commands
+
+This repository ships custom [Claude Code](https://claude.com/claude-code) slash commands under [`.claude/commands/`](.claude/commands). Each command file documents its own usage and prerequisites.
+
+| Command         | Description                                                                            | Prerequisites                                                            |
+|-----------------|----------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
+| [`/issue`](.claude/commands/issue.md) | Start work on a GitHub issue: fetch it, create a branch, and scaffold the commit & PR. | [GitHub CLI (`gh`)](https://cli.github.com/) installed and authenticated (`gh auth login`).  |
+
+> [!NOTE]
+> To add a new command, drop a Markdown file into [`.claude/commands/`](.claude/commands) and append a row to the table above.
 
 ## License
 

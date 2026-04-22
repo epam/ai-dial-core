@@ -2,6 +2,10 @@
 
 You are starting work on a GitHub issue. The issue number is: $ARGUMENTS
 
+## Prerequisites
+
+- [GitHub CLI (`gh`)](https://cli.github.com/) must be installed and authenticated (`gh auth login`).
+
 ## Steps
 
 1. **Fetch the issue** from GitHub:
