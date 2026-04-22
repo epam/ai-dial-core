@@ -41,7 +41,9 @@ public class ToolSetData extends SecuredResourceData {
         data.setDescription(toolSet.getDescription());
         data.setDescriptionKeywords(toolSet.getDescriptionKeywords());
         data.setReference(toolSet.getReference() == null ? toolSet.getName() : toolSet.getReference());
-        data.setFeatures(FeaturesData.createFeatures(toolSet.getFeatures()));
+        FeaturesData featuresData = FeaturesData.createFeatures(toolSet.getFeatures());
+        featuresData.setMcp(true);
+        data.setFeatures(featuresData);
 
         data.setMaxRetryAttempts(toolSet.getMaxRetryAttempts());
 
