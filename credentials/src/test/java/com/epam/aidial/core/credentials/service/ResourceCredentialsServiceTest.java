@@ -467,18 +467,7 @@ class ResourceCredentialsServiceTest {
             return new ResourceItemMetadata();
         }).when(resourceService).computeResourceBytes(eq(userResourceDescriptor), any());
 
-        // Global credentials not found
-        ResourceDescriptor globalResourceDescriptor = Mockito.mock(ResourceDescriptor.class);
-        Mockito.when(globalCredentialsDescriptor.getResourceId()).thenReturn("testResourceId");
-        Mockito.when(globalCredentialsDescriptor.toResourceDescriptor()).thenReturn(globalResourceDescriptor);
-
-        Mockito.doAnswer(invocation -> {
-            Function<byte[], byte[]> callbackFunction = invocation.getArgument(1);
-            callbackFunction.apply(null);
-            return null;
-        }).when(resourceService).computeResourceBytes(eq(globalResourceDescriptor), any());
-
-        // When & Then - should throw because refresh failed
+        // When & Then - should throw because refresh failed; GLOBAL fallback is skipped
         assertThrows(ResourceNotFoundException.class, () -> {
             service.getRefreshedResourceCredentials(credentialsLocator, authSettings, "userSub");
         });
