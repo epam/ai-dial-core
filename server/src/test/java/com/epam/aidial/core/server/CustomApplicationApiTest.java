@@ -536,7 +536,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "cache" : false,
                                 "auto_caching" : false,
                                 "parallel_tool_calls" : true,
-                                "assistant_attachments_in_request": false
+                                "assistant_attachments_in_request": false,
+                                "mcp" : false
                                 },
                             "defaults":{},
                             "responses_defaults":{},
@@ -574,7 +575,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                "cache" : false,
                                "auto_caching" : false,
                                "parallel_tool_calls" : true,
-                               "assistant_attachments_in_request": false
+                               "assistant_attachments_in_request": false,
+                               "mcp" : false
                              },
                              "defaults" : { },
                              "responses_defaults" : { },
@@ -655,7 +657,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "cache" : false,
                         "auto_caching" : false,
                         "parallel_tool_calls" : true,
-                        "assistant_attachments_in_request": false
+                        "assistant_attachments_in_request": false,
+                        "mcp" : false
                     },
                     "defaults":{},
                     "responses_defaults":{},
@@ -702,7 +705,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "cache" : false,
                                 "auto_caching" : false,
                                 "parallel_tool_calls" : true,
-                                "assistant_attachments_in_request": false
+                                "assistant_attachments_in_request": false,
+                                "mcp" : false
                                 },
                             "defaults":{},
                             "responses_defaults":{},
@@ -741,7 +745,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "cache" : false,
                               "auto_caching" : false,
                               "parallel_tool_calls" : true,
-                              "assistant_attachments_in_request": false
+                              "assistant_attachments_in_request": false,
+                              "mcp" : false
                             },
                             "defaults" : { },
                             "responses_defaults" : { },
@@ -798,7 +803,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "cache" : false,
                               "auto_caching" : false,
                               "parallel_tool_calls" : true,
-                              "assistant_attachments_in_request": false
+                              "assistant_attachments_in_request": false,
+                              "mcp" : false
                             },
                             "defaults" : { },
                             "responses_defaults" : { },
@@ -1299,7 +1305,8 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                        "cache" : false,
                        "auto_caching" : false,
                        "parallel_tool_calls" : true,
-                       "assistant_attachments_in_request": false
+                       "assistant_attachments_in_request": false,
+                       "mcp" : false
                      },
                      "defaults" : { },
                      "responses_defaults" : { },

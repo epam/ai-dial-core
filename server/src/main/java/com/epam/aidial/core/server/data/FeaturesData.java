@@ -29,6 +29,7 @@ public class FeaturesData {
     private boolean autoCaching = false;
     private boolean parallelToolCalls = true;
     private boolean assistantAttachmentsInRequest = false;
+    private boolean mcp = false;
 
     @JsonIgnore
     public static FeaturesData createFeatures(Features features) {

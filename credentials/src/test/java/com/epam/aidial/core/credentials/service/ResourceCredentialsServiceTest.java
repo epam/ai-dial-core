@@ -21,6 +21,8 @@ import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.credentials.util.TimeProvider;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -410,6 +412,71 @@ class ResourceCredentialsServiceTest {
     }
 
     @Test
+    void testGetAndRefreshCredentials_RefreshFails_InvalidatesRefreshToken() {
+        // Given
+        CredentialsLocator credentialsLocator = Mockito.mock(CredentialsLocator.class);
+        CredentialsDescriptor userCredentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
+        CredentialsDescriptor globalCredentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
+        Map<CredentialsLevel, CredentialsDescriptor> descriptors = new EnumMap<>(CredentialsLevel.class);
+        descriptors.put(CredentialsLevel.USER, userCredentialsDescriptor);
+        descriptors.put(CredentialsLevel.GLOBAL, globalCredentialsDescriptor);
+        when(credentialsLocator.getCredentialsDescriptors()).thenReturn(descriptors);
+        ResourceAuthSettings authSettings = Mockito.mock(ResourceAuthSettings.class);
+        when(authSettings.getAuthenticationType()).thenReturn(AuthenticationType.OAUTH);
+
+        Mockito.when(userCredentialsDescriptor.getResourceId()).thenReturn("testResourceId");
+        Mockito.when(userCredentialsDescriptor.getBucketName()).thenReturn("testBucket");
+
+        byte[] encryptedBytes = "mockEncryptedData".getBytes(StandardCharsets.UTF_8);
+        byte[] decryptedBytes = """
+                {
+                    "resourceId": "testResourceId",
+                    "credentialsLevel": "USER",
+                    "userSub": "userSub",
+                    "authenticationType": "OAUTH",
+                    "accessToken": "expiredAccessToken",
+                    "refreshToken": "expiredRefreshToken",
+                    "updatedAt": "1",
+                    "expiresInSeconds": "100"
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+
+        ResourceDescriptor userResourceDescriptor = Mockito.mock(ResourceDescriptor.class);
+        when(userCredentialsDescriptor.toResourceDescriptor()).thenReturn(userResourceDescriptor);
+        when(userCredentialsDescriptor.getFullPath()).thenReturn("path");
+
+        Mockito.when(credentialEncryptionService.decrypt(any(), eq(encryptedBytes), any())).thenReturn(decryptedBytes);
+        ResourceCredentials decryptedResourceCredentials = JsonMapperUtil.convertToObject(decryptedBytes, ResourceCredentials.class);
+        when(tokenRefreshStrategyFactory.getTokenValidatorStrategy(AuthenticationType.OAUTH))
+                .thenReturn(oauthTokenRefreshStrategy);
+        when(oauthTokenRefreshStrategy.requiresTokenRefresh(decryptedResourceCredentials)).thenReturn(true);
+
+        // Simulate refresh token expired - auth server returns 400 with invalid_grant
+        String errorBody = """
+                {"error": "invalid_grant", "error_description": "Token has been expired or revoked."}
+                """;
+        Mockito.when(tokenService.getToken("testResourceId", authSettings, "expiredRefreshToken"))
+                .thenThrow(new HttpException(HttpStatus.BAD_REQUEST, "Authorization server returns error code",
+                        Map.of(), errorBody));
+
+        Mockito.doAnswer(invocation -> {
+            Function<byte[], byte[]> callbackFunction = invocation.getArgument(1);
+            byte[] result = callbackFunction.apply(encryptedBytes);
+            // Lambda should return null to trigger credential deletion
+            Assertions.assertNull(result);
+            return new ResourceItemMetadata();
+        }).when(resourceService).computeResourceBytes(eq(userResourceDescriptor), any());
+
+        // When & Then - should throw because refresh failed; GLOBAL fallback is skipped
+        assertThrows(ResourceNotFoundException.class, () -> {
+            service.getRefreshedResourceCredentials(credentialsLocator, authSettings, "userSub");
+        });
+
+        // Verify token service was called with the expired refresh token
+        Mockito.verify(tokenService).getToken("testResourceId", authSettings, "expiredRefreshToken");
+    }
+
+    @Test
     void testGetAndRefreshCredentials_CredentialsNotFound() {
         // Given
         CredentialsDescriptor globalCredentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
@@ -434,9 +501,8 @@ class ResourceCredentialsServiceTest {
         }).when(resourceService).computeResourceBytes(any(), any());
 
         // When & Then
-        Assertions.assertThrows(ResourceNotFoundException.class, () -> {
-            service.getRefreshedResourceCredentials(credentialsLocator, authSettings, "userSub");
-        });
+        ResourceCredentials result = service.getRefreshedResourceCredentials(credentialsLocator, authSettings, "userSub");
+        Assertions.assertNull(result);
     }
 
     private CredentialsDescriptor createCredentialsDescriptor() {

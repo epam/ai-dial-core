@@ -270,7 +270,7 @@ public class ToolSetProxyController implements Controller {
         try {
             if (deployment instanceof ToolSet toolSet) {
                 ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
-                        credentialsLocator, toolSet.getAuthSettings(), context.getUserId()
+                        credentialsLocator, toolSet.getAuthSettings(), context.getInitiatorId()
                 );
 
                 if (resourceCredentials != null) {
@@ -486,17 +486,21 @@ public class ToolSetProxyController implements Controller {
     }
 
     private void handleError(Throwable error) {
-        if (error instanceof PermissionDeniedException) {
-            respond(HttpStatus.FORBIDDEN, error.getMessage());
-            log.warn("Forbidden toolset {}", toolSetId);
-        } else if (error instanceof HttpException httpException) {
-            respond(httpException);
-        } else if (error instanceof ResourceNotFoundException) {
-            respond(HttpStatus.NOT_FOUND, error.getMessage());
-        } else {
-            String errorMsg = "Error occurred on processing MCP request by toolset: %s".formatted(toolSetId);
-            respond(HttpStatus.INTERNAL_SERVER_ERROR, errorMsg);
-            log.error(errorMsg, error);
+        switch (error) {
+            case PermissionDeniedException ignored -> {
+                respond(HttpStatus.FORBIDDEN, error.getMessage());
+                log.warn("Forbidden toolset {}", toolSetId);
+            }
+            case HttpException httpException -> respond(httpException);
+            case ResourceNotFoundException ignored ->
+                    respond(HttpStatus.NOT_FOUND, error.getMessage());
+            case IllegalArgumentException ignored ->
+                    respond(HttpStatus.BAD_REQUEST, error.getMessage());
+            case null, default -> {
+                String errorMsg = "Error occurred on processing MCP request by toolset: %s".formatted(toolSetId);
+                respond(HttpStatus.INTERNAL_SERVER_ERROR, errorMsg);
+                log.error(errorMsg, error);
+            }
         }
     }
 

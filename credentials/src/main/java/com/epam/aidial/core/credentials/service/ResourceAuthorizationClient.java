@@ -19,6 +19,7 @@ import java.nio.channels.UnresolvedAddressException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
+import java.util.Map;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -82,13 +83,14 @@ public class ResourceAuthorizationClient {
             String body = response.body();
 
             if (status != 200 && status != 201) {
-                log.debug("Error executing request {}: status {}, response {}, headers: {}",
-                        request.uri(), response.statusCode(), response.body(), response.headers());
+                log.warn("Error executing request {}: status {}, response {}",
+                        request.uri(), response.statusCode(), response.body());
                 if (status == 401) {
-                    throw new HttpException(status, "Authorization server returns 401 error code",
-                            httpHeadersHandler.convertHttpHeadersToMap(response.headers()));
+                    throw new HttpException(HttpStatus.UNAUTHORIZED, "Authorization server returns 401 error code",
+                            httpHeadersHandler.convertHttpHeadersToMap(response.headers()), body);
                 } else {
-                    throw new HttpException(status, "Authorization server returns error code");
+                    throw new HttpException(HttpStatus.fromStatusCode(status, HttpStatus.INTERNAL_SERVER_ERROR),
+                            "Authorization server returns error code", Map.of(), body);
                 }
             }
 
@@ -132,8 +134,9 @@ public class ResourceAuthorizationClient {
             String description = node.containsKey("error_description")
                     ? String.valueOf(node.get("error_description"))
                     : "no description";
-            log.debug("OAuth error in 200 response from {}: error={}, description={}", uri, error, description);
-            throw new HttpException(HttpStatus.BAD_REQUEST, "Authorization server returned error: %s (%s)".formatted(error, description));
+            log.info("OAuth error in 200 response from {}: error={}, description={}", uri, error, description);
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Authorization server returned error: %s (%s)".formatted(error, description),
+                    Map.of(), body);
         }
     }
 }

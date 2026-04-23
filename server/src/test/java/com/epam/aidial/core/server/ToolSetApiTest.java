@@ -22,6 +22,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -86,7 +87,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "cache" : false,
                            "auto_caching" : false,
                            "parallel_tool_calls" : true,
-                           "assistant_attachments_in_request": false
+                           "assistant_attachments_in_request": false,
+                           "mcp" : true
                       },
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
@@ -125,7 +127,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                           "cache" : false,
                           "auto_caching" : false,
                           "parallel_tool_calls" : true,
-                          "assistant_attachments_in_request" : false
+                          "assistant_attachments_in_request" : false,
+                          "mcp" : true
                         },
                         "description_keywords" : [ ],
                         "max_retry_attempts" : 1,
@@ -165,7 +168,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                           "cache" : false,
                           "auto_caching" : false,
                           "parallel_tool_calls" : true,
-                          "assistant_attachments_in_request" : false
+                          "assistant_attachments_in_request" : false,
+                          "mcp" : true
                         },
                         "description_keywords" : [ ],
                         "max_retry_attempts" : 1,
@@ -214,7 +218,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "cache" : false,
                            "auto_caching" : false,
                            "parallel_tool_calls" : true,
-                           "assistant_attachments_in_request": false
+                           "assistant_attachments_in_request": false,
+                           "mcp" : true
                       },
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
@@ -347,7 +352,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                         "cache" : false,
                         "auto_caching" : false,
                         "parallel_tool_calls" : true,
-                        "assistant_attachments_in_request": false
+                        "assistant_attachments_in_request": false,
+                        "mcp" : true
                   },
                   "description_keywords": [],
                   "max_retry_attempts": 1,
@@ -395,7 +401,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                             "cache" : false,
                             "auto_caching" : false,
                             "parallel_tool_calls" : true,
-                            "assistant_attachments_in_request": false
+                            "assistant_attachments_in_request": false,
+                            "mcp" : true
                           },
                       "description_keywords" : [ ],
                       "max_retry_attempts" : 1,
@@ -436,7 +443,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                             "cache" : false,
                             "auto_caching" : false,
                             "parallel_tool_calls" : true,
-                            "assistant_attachments_in_request": false
+                            "assistant_attachments_in_request": false,
+                            "mcp" : true
                           },
                         "description_keywords" : [ ],
                         "max_retry_attempts" : 1,
@@ -457,6 +465,27 @@ public class ToolSetApiTest extends ResourceBaseTest {
     void testProxyMcpPostCall_WhenToolsetIsAppType() {
         var response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app", null, """
                 {
+                "displayName": "Test Application",
+                "description": "For testing purposes only",
+                "endpoint": "http://<app host>/openai/deployments/test-app/chat/completions",
+                "forwardAuthToken": true
+                }
+                """);
+        verify(response, 200);
+
+        String mcpRequest = """
+                {
+                   "payload": "foo"
+                }
+                """;
+
+        Response resp = send(HttpMethod.POST, "/v1/toolset/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app/mcp",
+                null, mcpRequest, "Content-type", "application/json");
+        // application doesn't support MCP interface
+        assertEquals(400, resp.status());
+
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app", null, """
+                {
                 "display_name": "My App",
                 "display_version": "1.0",
                 "icon_url": "http://apprunner/icon.svg",
@@ -470,11 +499,6 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 """);
         verify(response, 200);
 
-        String mcpRequest = """
-                {
-                   "payload": "foo"
-                }
-                """;
         String mcpResponse = """
                 {
                   "result": "success"
@@ -498,7 +522,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
             }
         };
         try (TestWebServer ignore = new TestWebServer(9876, handler)) {
-            Response resp = send(HttpMethod.POST, "/v1/toolset/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app/mcp",
+            resp = send(HttpMethod.POST, "/v1/toolset/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app/mcp",
                     null, mcpRequest, "Content-type", "application/json");
 
             assertEquals(200, resp.status());
@@ -1254,6 +1278,52 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testUserLevelSignInAndSignOutWithApiKeyAuthenticatedCaller() {
+        // Regression for #1470: USER-level sign-in/sign-out must work when the caller is authenticated
+        // by an API key (not JWT). Previously context.getUserId() was null for API-key callers,
+        // which stored null into ResourceCredentials.userId and later NPE'd on refresh/sign-out/status.
+        String bucket = "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST"; // proxyKey1's bucket (project EPM-RTC-GPT)
+
+        // create toolset owned by the API key
+        Response response = send(HttpMethod.PUT, "/v1/toolsets/" + bucket + "/toolset%201@", null,
+                TOOLSET_CREATE_REQEUST_BODY, "api-key", "proxyKey1");
+        verifyNotExact(response, 200, "\"url\":\"toolsets/" + bucket + "/toolset%201@\"");
+
+        // USER-level sign-in authenticated by the API key (pre-fix: stored userId=null)
+        response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                {
+                    "url": "toolsets/%s/toolset 1@",
+                    "credentialsLevel": "USER",
+                    "authenticationType": "API_KEY",
+                    "api_key": "Bearer api_key"
+                }
+                """.formatted(bucket), "api-key", "proxyKey1");
+        verify(response, 200, "true");
+
+        // GET the toolset via the same API key - user_level_auth_status should be SIGNED_IN.
+        // Pre-fix: ResourceAuthSettingsService.setUserAuthStatus NPE'd on userId.equals(...) when userId was null.
+        response = send(HttpMethod.GET, "/v1/toolsets/" + bucket + "/toolset%201@", null, null,
+                "api-key", "proxyKey1");
+        verifyNotExact(response, 200, "\"user_level_auth_status\":\"SIGNED_IN\"");
+
+        // USER-level sign-out authenticated by the same API key.
+        // Pre-fix: validateDeleteOperation NPE'd on Objects.requireNonNull(existingCredentialsUserId).
+        response = send(HttpMethod.POST, "/v1/ops/toolset/signout", null, """
+                {
+                    "url": "toolsets/%s/toolset 1@",
+                    "credentialsLevel": "USER",
+                    "authenticationType": "API_KEY"
+                }
+                """.formatted(bucket), "api-key", "proxyKey1");
+        verify(response, 200, "true");
+
+        // Verify the toolset reports SIGNED_OUT after sign-out.
+        response = send(HttpMethod.GET, "/v1/toolsets/" + bucket + "/toolset%201@", null, null,
+                "api-key", "proxyKey1");
+        verifyNotExact(response, 200, "\"user_level_auth_status\":\"SIGNED_OUT\"");
+    }
+
+    @Test
     void testSignOutFromApiCreatedToolsetWithIncorrectAuthType() {
         // create ToolSet with admin JWT
         Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset%201@", null,  TOOLSET_CREATE_REQEUST_BODY,
@@ -1348,6 +1418,99 @@ public class ToolSetApiTest extends ResourceBaseTest {
             assertEquals("https://static.auth.example.com/token", authSettings.get("token_endpoint").asText());
             // codeChallengeMethod should be filled from discovery
             assertEquals("S256", authSettings.get("code_challenge_method").asText());
+        }
+    }
+
+    @Test
+    void testUpdateOauthToolSetRegeneratesPkceWhenCodeChallengeMethodChanges() throws JsonProcessingException {
+        String createRequestBody = """
+                {
+                    "endpoint": "http://localhost:9876/mcp",
+                    "transport": "HTTP",
+                    "allowedTools": [],
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "my-client-id",
+                        "client_secret": "my-client-secret",
+                        "redirect_uri": "http://localhost:3000/auth/signin",
+                        "authorization_endpoint": "https://auth.example.com/authorize",
+                        "token_endpoint": "https://auth.example.com/token"
+                    }
+                }
+                """;
+
+        String authServerMetadata = """
+                {
+                    "issuer": "http://localhost:9876",
+                    "authorization_endpoint": "https://auth.example.com/authorize",
+                    "token_endpoint": "https://auth.example.com/token",
+                    "code_challenge_methods_supported": ["S256", "plain"]
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+            server.map(HttpMethod.GET, "/.well-known/oauth-authorization-server",
+                    200, authServerMetadata, "Content-Type", "application/json");
+
+            // Create with S256 (picked from discovery as preferred)
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-pkce@",
+                    null, createRequestBody, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-pkce@",
+                    null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            JsonNode authSettings = ProxyUtil.MAPPER.readTree(response.body()).get("auth_settings");
+            assertEquals("S256", authSettings.get("code_challenge_method").asText());
+            String initialChallenge = authSettings.get("code_challenge").asText();
+            assertNotNull(initialChallenge);
+            assertFalse(initialChallenge.isEmpty());
+
+            // Update the same toolset, switching code_challenge_method to plain
+            String updateRequestBody = """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "redirect_uri": "http://localhost:3000/auth/signin",
+                            "authorization_endpoint": "https://auth.example.com/authorize",
+                            "token_endpoint": "https://auth.example.com/token",
+                            "code_challenge_method": "plain"
+                        }
+                    }
+                    """;
+            response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-pkce@",
+                    null, updateRequestBody, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-pkce@",
+                    null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            authSettings = ProxyUtil.MAPPER.readTree(response.body()).get("auth_settings");
+            assertEquals("plain", authSettings.get("code_challenge_method").asText());
+            String updatedChallenge = authSettings.get("code_challenge").asText();
+            assertNotNull(updatedChallenge);
+            assertFalse(updatedChallenge.isEmpty());
+            assertNotEquals(initialChallenge, updatedChallenge);
+
+            // Re-update without changing method - challenge must be preserved
+            response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-pkce@",
+                    null, updateRequestBody, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-pkce@",
+                    null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            authSettings = ProxyUtil.MAPPER.readTree(response.body()).get("auth_settings");
+            assertEquals("plain", authSettings.get("code_challenge_method").asText());
+            assertEquals(updatedChallenge, authSettings.get("code_challenge").asText());
         }
     }
 
@@ -1740,6 +1903,410 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     .orElse(ProxyUtil.MAPPER.createArrayNode());
             assertEquals(1, tools.size());
             assertEquals("tool1", tools.get(0).get("name").asText());
+        }
+    }
+
+    @Test
+    void testOauthTokenRefresh_Success() {
+        // Token endpoint: returns expired token on sign-in, fresh token on refresh
+        String signInTokenResponse = """
+                {
+                    "access_token": "expired-access-token",
+                    "refresh_token": "test-refresh-token",
+                    "expires_in": 0
+                }
+                """;
+        String refreshTokenResponse = """
+                {
+                    "access_token": "refreshed-access-token",
+                    "refresh_token": "new-refresh-token",
+                    "expires_in": 3600
+                }
+                """;
+
+        String mcpResponse = """
+                {
+                  "jsonrpc": "2.0",
+                  "id": 1,
+                  "result": {
+                    "content": [{ "type": "text", "text": "ok" }]
+                  }
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            // Token endpoint: differentiate sign-in vs refresh by grant_type
+            server.map(HttpMethod.POST, "/token", request -> {
+                String body = request.getBody().readUtf8();
+                if (body.contains("grant_type=refresh_token")) {
+                    return new MockResponse()
+                            .setBody(refreshTokenResponse)
+                            .setHeader("Content-Type", "application/json");
+                }
+                // sign-in (authorization_code grant)
+                return new MockResponse()
+                        .setBody(signInTokenResponse)
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            // MCP endpoint: verify the refreshed token is used
+            server.map(HttpMethod.POST, "/", request -> {
+                String auth = request.getHeader("Authorization");
+                assertEquals("Bearer refreshed-access-token", auth);
+                return new MockResponse()
+                        .setBody(mcpResponse)
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            // Sign in with OAuth (token expires immediately due to expires_in: 0)
+            Response response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "oauth-toolset",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            // MCP call should trigger token refresh and use the refreshed token
+            ApiKeyData apiKey = createAdminAppKey();
+            apiKeyStore.assignPerRequestApiKey(apiKey);
+
+            Response resp = send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+
+            assertEquals(200, resp.status());
+            assertEquals(mcpResponse, resp.body());
+        }
+    }
+
+    @Test
+    void testOauthTokenRefresh_InvalidGrant_RemovesCredentials() {
+        // Token endpoint: returns expired token on sign-in
+        String signInTokenResponse = """
+                {
+                    "access_token": "expired-access-token",
+                    "refresh_token": "revoked-refresh-token",
+                    "expires_in": 0
+                }
+                """;
+
+        String invalidGrantResponse = """
+                {
+                    "error": "invalid_grant",
+                    "error_description": "Token has been expired or revoked."
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            // Token endpoint
+            server.map(HttpMethod.POST, "/token", request -> {
+                String body = request.getBody().readUtf8();
+                if (body.contains("grant_type=refresh_token")) {
+                    // Refresh fails with invalid_grant
+                    return new MockResponse()
+                            .setResponseCode(400)
+                            .setBody(invalidGrantResponse)
+                            .setHeader("Content-Type", "application/json");
+                }
+                // sign-in succeeds
+                return new MockResponse()
+                        .setBody(signInTokenResponse)
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            // MCP endpoint (will receive request without auth after credential failure)
+            server.map(HttpMethod.POST, "/", request ->
+                    new MockResponse()
+                            .setBody(MCP_TOOL_CALL_RESPONSE)
+                            .setHeader("Content-Type", "application/json"));
+
+            // Sign in with OAuth
+            Response response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "oauth-toolset",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            // Verify auth status is SIGNED_IN after sign-in
+            response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_IN\""),
+                    "Expected SIGNED_IN after sign-in but got: " + response.body());
+
+            // MCP call triggers refresh → invalid_grant → credentials removed
+            ApiKeyData apiKey = createAdminAppKey();
+            apiKeyStore.assignPerRequestApiKey(apiKey);
+
+            send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+
+            // Verify credentials were removed (auth status back to SIGNED_OUT)
+            response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""),
+                    "Expected SIGNED_OUT after invalid_grant but got: " + response.body());
+        }
+    }
+
+    @Test
+    void testOauthTokenRefresh_Unauthorized_RemovesCredentials() {
+        // Token endpoint: returns expired token on sign-in
+        String signInTokenResponse = """
+                {
+                    "access_token": "expired-access-token",
+                    "refresh_token": "revoked-refresh-token",
+                    "expires_in": 0
+                }
+                """;
+
+        // Notion-style 401 from /token with non-spec invalid_token error body
+        String invalidTokenResponse = """
+                {
+                    "error": "invalid_token",
+                    "error_description": "Missing or invalid access token"
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            // Token endpoint
+            server.map(HttpMethod.POST, "/token", request -> {
+                String body = request.getBody().readUtf8();
+                if (body.contains("grant_type=refresh_token")) {
+                    // Refresh fails with 401 (Notion behavior on expired refresh token)
+                    return new MockResponse()
+                            .setResponseCode(401)
+                            .setBody(invalidTokenResponse)
+                            .setHeader("Content-Type", "application/json");
+                }
+                // sign-in succeeds
+                return new MockResponse()
+                        .setBody(signInTokenResponse)
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            // MCP endpoint (will receive request without auth after credential failure)
+            server.map(HttpMethod.POST, "/", request ->
+                    new MockResponse()
+                            .setBody(MCP_TOOL_CALL_RESPONSE)
+                            .setHeader("Content-Type", "application/json"));
+
+            // Sign in with OAuth
+            Response response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "oauth-toolset",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            // Verify auth status is SIGNED_IN after sign-in
+            response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_IN\""),
+                    "Expected SIGNED_IN after sign-in but got: " + response.body());
+
+            // MCP call triggers refresh → 401 → credentials removed
+            ApiKeyData apiKey = createAdminAppKey();
+            apiKeyStore.assignPerRequestApiKey(apiKey);
+
+            send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+
+            // Verify credentials were removed (auth status back to SIGNED_OUT)
+            response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""),
+                    "Expected SIGNED_OUT after 401 refresh failure but got: " + response.body());
+        }
+    }
+
+    @Test
+    void testOauthTokenRefresh_BadRequest_RemovesCredentials() {
+        // Token endpoint: returns expired token on sign-in
+        String signInTokenResponse = """
+                {
+                    "access_token": "expired-access-token",
+                    "refresh_token": "revoked-refresh-token",
+                    "expires_in": 0
+                }
+                """;
+
+        // Generic 400 without invalid_grant (e.g., provider-specific error code)
+        String genericBadRequestResponse = """
+                {
+                    "error": "unauthorized_client",
+                    "error_description": "Client is not authorized to use refresh token grant"
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/token", request -> {
+                String body = request.getBody().readUtf8();
+                if (body.contains("grant_type=refresh_token")) {
+                    return new MockResponse()
+                            .setResponseCode(400)
+                            .setBody(genericBadRequestResponse)
+                            .setHeader("Content-Type", "application/json");
+                }
+                return new MockResponse()
+                        .setBody(signInTokenResponse)
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            server.map(HttpMethod.POST, "/", request ->
+                    new MockResponse()
+                            .setBody(MCP_TOOL_CALL_RESPONSE)
+                            .setHeader("Content-Type", "application/json"));
+
+            Response response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "oauth-toolset",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            ApiKeyData apiKey = createAdminAppKey();
+            apiKeyStore.assignPerRequestApiKey(apiKey);
+
+            send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+
+            response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""),
+                    "Expected SIGNED_OUT after 400 refresh failure but got: " + response.body());
+        }
+    }
+
+    @Test
+    void testOauthTokenRefresh_TwoHundredWithErrorBody_RemovesCredentials() {
+        // Token endpoint: returns expired token on sign-in
+        String signInTokenResponse = """
+                {
+                    "access_token": "expired-access-token",
+                    "refresh_token": "revoked-refresh-token",
+                    "expires_in": 0
+                }
+                """;
+
+        // Non-spec: some OAuth servers return HTTP 200 with an error payload instead of 4xx
+        String twoHundredErrorResponse = """
+                {
+                    "error": "invalid_grant",
+                    "error_description": "Token has been expired or revoked."
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/token", request -> {
+                String body = request.getBody().readUtf8();
+                if (body.contains("grant_type=refresh_token")) {
+                    return new MockResponse()
+                            .setResponseCode(200)
+                            .setBody(twoHundredErrorResponse)
+                            .setHeader("Content-Type", "application/json");
+                }
+                return new MockResponse()
+                        .setBody(signInTokenResponse)
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            server.map(HttpMethod.POST, "/", request ->
+                    new MockResponse()
+                            .setBody(MCP_TOOL_CALL_RESPONSE)
+                            .setHeader("Content-Type", "application/json"));
+
+            Response response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "oauth-toolset",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            ApiKeyData apiKey = createAdminAppKey();
+            apiKeyStore.assignPerRequestApiKey(apiKey);
+
+            send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+
+            response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""),
+                    "Expected SIGNED_OUT after 200-with-error-body refresh but got: " + response.body());
+        }
+    }
+
+    @Test
+    void testOauthTokenRefresh_ServerError_KeepsCredentials() {
+        // Token endpoint: returns expired token on sign-in
+        String signInTokenResponse = """
+                {
+                    "access_token": "expired-access-token",
+                    "refresh_token": "test-refresh-token",
+                    "expires_in": 0
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            // Token endpoint
+            server.map(HttpMethod.POST, "/token", request -> {
+                String body = request.getBody().readUtf8();
+                if (body.contains("grant_type=refresh_token")) {
+                    // Refresh fails with server error (not invalid_grant)
+                    return new MockResponse()
+                            .setResponseCode(500)
+                            .setBody("Internal Server Error")
+                            .setHeader("Content-Type", "text/plain");
+                }
+                // sign-in succeeds
+                return new MockResponse()
+                        .setBody(signInTokenResponse)
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            // MCP endpoint
+            server.map(HttpMethod.POST, "/", request ->
+                    new MockResponse()
+                            .setBody(MCP_TOOL_CALL_RESPONSE)
+                            .setHeader("Content-Type", "application/json"));
+
+            // Sign in with OAuth
+            Response response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "oauth-toolset",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            // MCP call triggers refresh → server error → credentials kept
+            ApiKeyData apiKey = createAdminAppKey();
+            apiKeyStore.assignPerRequestApiKey(apiKey);
+
+            send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+
+            // Verify credentials are still present (auth status still SIGNED_IN)
+            response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_IN\""),
+                    "Expected SIGNED_IN after server error but got: " + response.body());
         }
     }
 

@@ -120,6 +120,7 @@ class ResourceCredentialsControllerTest {
         when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
         when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
         when(context.getUserId()).thenReturn("userSub");
+        when(context.getInitiatorId()).thenReturn("userSub");
         when(context.getConfig()).thenReturn(mock(Config.class));
         when(context.getProxy()).thenReturn(proxy);
 
@@ -130,7 +131,7 @@ class ResourceCredentialsControllerTest {
         controller.signIn();
 
         // Then
-        verify(resourceCredentialsService).addResourceCredentials(any(), any(), any(), any());
+        verify(resourceCredentialsService).addResourceCredentials(any(), any(), any(), eq("userSub"));
         verify(context).respond(expectedResponseStatus, true);
     }
 
@@ -230,6 +231,7 @@ class ResourceCredentialsControllerTest {
         when(context.getProxy()).thenReturn(proxy);
         when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
         when(context.getUserId()).thenReturn("userSub");
+        when(context.getInitiatorId()).thenReturn("userSub");
         when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
         when(context.getConfig()).thenReturn(mock(Config.class));
 
@@ -242,6 +244,7 @@ class ResourceCredentialsControllerTest {
         controller.signOut();
 
         // Then
+        verify(resourceCredentialsService).deleteResourceCredentials(any(), any(), eq("userSub"));
         verify(context).respond(expectedResponseStatus, expectedResponse);
     }
 
@@ -287,6 +290,58 @@ class ResourceCredentialsControllerTest {
     }
 
     @Test
+    void testSignIn_UserLevelWithApiKeyAuthentication() {
+        // Given - request is authenticated by API Key (no JWT), so userId is null and project name is the initiator.
+        String resourceName = "toolset-1";
+        mockRequest(resourceName, CredentialsLevel.USER, AuthenticationType.OAUTH);
+
+        when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
+        when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Keys/api-key-project/");
+        when(context.getUserId()).thenReturn(null);
+        when(context.getProject()).thenReturn("api-key-project");
+        when(context.getInitiatorId()).thenReturn("api-key-project");
+        when(context.getConfig()).thenReturn(mock(Config.class));
+        when(context.getProxy()).thenReturn(proxy);
+
+        mockToolset();
+        setPermissions(resourceName, "Keys/api-key-project/", ResourceAccessType.ALL);
+
+        // When
+        controller.signIn();
+
+        // Then - project name is persisted as the owner so subsequent lookups do not NPE.
+        verify(resourceCredentialsService).addResourceCredentials(any(), any(), any(), eq("api-key-project"));
+        verify(context).respond(HttpStatus.OK, true);
+    }
+
+    @Test
+    void testSignOut_UserLevelWithApiKeyAuthentication() {
+        // Given - API Key authenticated sign-out must pass the project name as the owner to avoid NPE.
+        String resourceName = "toolset-1";
+        mockRequest(resourceName, CredentialsLevel.USER, AuthenticationType.OAUTH);
+
+        when(context.getProxy()).thenReturn(proxy);
+        when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Keys/api-key-project/");
+        when(context.getUserId()).thenReturn(null);
+        when(context.getProject()).thenReturn("api-key-project");
+        when(context.getInitiatorId()).thenReturn("api-key-project");
+        when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
+        when(context.getConfig()).thenReturn(mock(Config.class));
+
+        mockToolset();
+        setPermissions(resourceName, "Keys/api-key-project/", ResourceAccessType.ALL);
+
+        when(resourceCredentialsService.deleteResourceCredentials(any(), any(), any())).thenReturn(true);
+
+        // When
+        controller.signOut();
+
+        // Then
+        verify(resourceCredentialsService).deleteResourceCredentials(any(), any(), eq("api-key-project"));
+        verify(context).respond(HttpStatus.OK, true);
+    }
+
+    @Test
     void testSignIn_WrongAuthenticationType() {
         // Given
         mockRequest("toolset 1", CredentialsLevel.USER, AuthenticationType.API_KEY);
@@ -315,12 +370,20 @@ class ResourceCredentialsControllerTest {
     }
 
     private ResourceDescriptor createResourceDescriptor(String resourceName) {
+        return createResourceDescriptor(resourceName, "Users/userSub/");
+    }
+
+    private ResourceDescriptor createResourceDescriptor(String resourceName, String bucketLocation) {
         return new ResourceDescriptor(ResourceTypes.TOOL_SET, resourceName, List.of(),
-                "encrypted-user-bucket", "Users/userSub/", false);
+                "encrypted-user-bucket", bucketLocation, false);
     }
 
     private void setPermissions(String resourceName, Set<ResourceAccessType> userPermissions) {
-        ResourceDescriptor resourceDescriptor = createResourceDescriptor(resourceName);
+        setPermissions(resourceName, "Users/userSub/", userPermissions);
+    }
+
+    private void setPermissions(String resourceName, String bucketLocation, Set<ResourceAccessType> userPermissions) {
+        ResourceDescriptor resourceDescriptor = createResourceDescriptor(resourceName, bucketLocation);
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = Map.of(resourceDescriptor, userPermissions);
         when(accessService.lookupPermissions(any(), eq(context))).thenReturn(permissions);
     }

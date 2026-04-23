@@ -74,9 +74,24 @@ public class ResourceAuthSettingsService {
                 resourceAuthSettings.setClientSecret(existingResourceAuthSettings.getClientSecret());
             }
 
-            // do not re-write auto-generated codeChallenge/codeVerifier fields
+            resolveCodeChallengeSettings(resourceAuthSettings, existingResourceAuthSettings);
+        }
+    }
+
+    /**
+     * Preserves existing auto-generated codeChallenge/codeVerifier when codeChallengeMethod is unchanged (or omitted),
+     * otherwise regenerates the pair under the new method.
+     */
+    private void resolveCodeChallengeSettings(ResourceAuthSettings resourceAuthSettings,
+                                              ResourceAuthSettings existingResourceAuthSettings) {
+        String newCodeChallengeMethod = resourceAuthSettings.getCodeChallengeMethod();
+        String existingCodeChallengeMethod = existingResourceAuthSettings.getCodeChallengeMethod();
+        if (newCodeChallengeMethod == null || newCodeChallengeMethod.equals(existingCodeChallengeMethod)) {
+            resourceAuthSettings.setCodeChallengeMethod(existingCodeChallengeMethod);
             resourceAuthSettings.setCodeChallenge(existingResourceAuthSettings.getCodeChallenge());
             resourceAuthSettings.setCodeVerifier(existingResourceAuthSettings.getCodeVerifier());
+        } else {
+            setCodeChallengeProperties(resourceAuthSettings, newCodeChallengeMethod);
         }
     }
 
