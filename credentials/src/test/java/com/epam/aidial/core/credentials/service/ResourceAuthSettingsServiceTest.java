@@ -15,6 +15,9 @@ import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactor
 import com.epam.aidial.core.credentials.validation.ApiKeyAuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.credentials.validation.OauthAuthSettingsValidator;
+import com.nimbusds.oauth2.sdk.pkce.CodeChallenge;
+import com.nimbusds.oauth2.sdk.pkce.CodeChallengeMethod;
+import com.nimbusds.oauth2.sdk.pkce.CodeVerifier;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -244,6 +247,84 @@ class ResourceAuthSettingsServiceTest {
     }
 
     @Test
+    void testProcessResourceAuthSettings_OauthUpdate_CodeChallengeMethodUnchanged_PreservesPkce() {
+        // Given
+        ToolSet updatedToolSet = createOauthToolSetWithPkce("clientId", "clientSecret",
+                CodeChallengeMethod.S256.getValue(), "origChallenge", "origVerifier");
+        ToolSet existingToolSet = createOauthToolSetWithPkce("clientId", "clientSecret",
+                CodeChallengeMethod.S256.getValue(), "origChallenge", "origVerifier");
+
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        // When
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+
+        // Then
+        verify(oauthAuthSettingsValidator, times(1)).validate(
+                any(ResourceAuthSettings.class), eq(ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES));
+        verifyNoInteractions(resourceRegistrationService);
+
+        ResourceAuthSettings result = updatedToolSet.getAuthSettings();
+        assertEquals(CodeChallengeMethod.S256.getValue(), result.getCodeChallengeMethod());
+        assertEquals("origChallenge", result.getCodeChallenge());
+        assertEquals("origVerifier", result.getCodeVerifier());
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_OauthUpdate_CodeChallengeMethodNull_PreservesPkce() {
+        // Given
+        ToolSet updatedToolSet = createOauthToolSetWithPkce("clientId", "clientSecret",
+                null, null, null);
+        ToolSet existingToolSet = createOauthToolSetWithPkce("clientId", "clientSecret",
+                CodeChallengeMethod.S256.getValue(), "origChallenge", "origVerifier");
+
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        // When
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+
+        // Then
+        verify(oauthAuthSettingsValidator, times(1)).validate(
+                any(ResourceAuthSettings.class), eq(ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES));
+        verifyNoInteractions(resourceRegistrationService);
+
+        ResourceAuthSettings result = updatedToolSet.getAuthSettings();
+        assertEquals(CodeChallengeMethod.S256.getValue(), result.getCodeChallengeMethod());
+        assertEquals("origChallenge", result.getCodeChallenge());
+        assertEquals("origVerifier", result.getCodeVerifier());
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_OauthUpdate_CodeChallengeMethodChanged_RegeneratesPkce() {
+        // Given
+        CodeVerifier originalVerifier = new CodeVerifier();
+        String originalChallenge = CodeChallenge.compute(CodeChallengeMethod.S256, originalVerifier).getValue();
+        ToolSet updatedToolSet = createOauthToolSetWithPkce("clientId", "clientSecret",
+                CodeChallengeMethod.PLAIN.getValue(), originalChallenge, originalVerifier.getValue());
+        ToolSet existingToolSet = createOauthToolSetWithPkce("clientId", "clientSecret",
+                CodeChallengeMethod.S256.getValue(), originalChallenge, originalVerifier.getValue());
+
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        // When
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+
+        // Then
+        verify(oauthAuthSettingsValidator, times(1)).validate(
+                any(ResourceAuthSettings.class), eq(ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES));
+        verifyNoInteractions(resourceRegistrationService);
+
+        ResourceAuthSettings result = updatedToolSet.getAuthSettings();
+        assertEquals(CodeChallengeMethod.PLAIN.getValue(), result.getCodeChallengeMethod());
+        Assertions.assertNotNull(result.getCodeVerifier());
+        Assertions.assertNotNull(result.getCodeChallenge());
+        Assertions.assertNotEquals(originalVerifier.getValue(), result.getCodeVerifier());
+        Assertions.assertNotEquals(originalChallenge, result.getCodeChallenge());
+        // PLAIN method: challenge equals verifier
+        assertEquals(result.getCodeVerifier(), result.getCodeChallenge());
+    }
+
+    @Test
     void testProcessResourceAuthSettings_UpdatedApiKeyToolSet() {
         // Given
         ToolSet updatedToolSet = createApiKeyToolSet("newApiKeyHeader");
@@ -410,6 +491,21 @@ class ResourceAuthSettingsServiceTest {
         authSettings.setAuthenticationType(AuthenticationType.OAUTH);
         authSettings.setClientId(clientId);
         authSettings.setClientSecret(clientSecret);
+        authSettings.setCodeVerifier(codeVerifier);
+        return createToolSet(authSettings);
+    }
+
+    private static ToolSet createOauthToolSetWithPkce(String clientId,
+                                                      String clientSecret,
+                                                      String codeChallengeMethod,
+                                                      String codeChallenge,
+                                                      String codeVerifier) {
+        ResourceAuthSettings authSettings = new ResourceAuthSettings();
+        authSettings.setAuthenticationType(AuthenticationType.OAUTH);
+        authSettings.setClientId(clientId);
+        authSettings.setClientSecret(clientSecret);
+        authSettings.setCodeChallengeMethod(codeChallengeMethod);
+        authSettings.setCodeChallenge(codeChallenge);
         authSettings.setCodeVerifier(codeVerifier);
         return createToolSet(authSettings);
     }
