@@ -4,7 +4,6 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
-import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -13,7 +12,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.MultiMap;
@@ -32,10 +30,8 @@ import org.apache.commons.lang3.Strings;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -43,8 +39,6 @@ import javax.annotation.Nullable;
 @UtilityClass
 @Slf4j
 public class ProxyUtil {
-    private static final String CUSTOM_FIELDS_NODE = "custom_fields";
-
     public static final JsonMapper MAPPER = JsonMapper.builder()
             .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
             .build();
@@ -113,55 +107,6 @@ public class ProxyUtil {
             }
         }
         return defaultValue;
-    }
-
-    public static Set<String> collectAttachmentsFromResponse(ObjectNode tree, boolean isStream) {
-        ArrayNode choices = (ArrayNode) tree.get("choices");
-        if (choices == null) {
-            return Set.of();
-        }
-        Set<String> result = new HashSet<>();
-        for (int i = 0; i < choices.size(); i++) {
-            JsonNode choice = choices.get(i);
-            String messageNodeName = isStream ? "delta" : "message";
-            JsonNode message = choice.get(messageNodeName);
-            if (message == null) {
-                continue;
-            }
-            JsonNode customContent = message.get("custom_content");
-            if (customContent == null) {
-                continue;
-            }
-            ArrayNode attachments = (ArrayNode) customContent.get("attachments");
-            if (attachments != null) {
-                for (int j = 0; j < attachments.size(); j++) {
-                    JsonNode attachment = attachments.get(j);
-                    String url = readCustomAttachment(attachment);
-                    if (url != null) {
-                        result.add(url);
-                    }
-                }
-            }
-            ArrayNode stages = (ArrayNode) customContent.get("stages");
-            if (stages != null) {
-                for (int j = 0; j < stages.size(); j++) {
-                    JsonNode stage = stages.get(j);
-                    attachments = (ArrayNode) stage.get("attachments");
-                    if (attachments == null) {
-                        continue;
-                    }
-                    for (int k = 0; k < attachments.size(); k++) {
-                        JsonNode attachment = attachments.get(k);
-                        String url = readCustomAttachment(attachment);
-                        if (url != null) {
-                            result.add(url);
-                        }
-                    }
-                }
-            }
-        }
-
-        return result;
     }
 
     public static <T> T convertToObject(Buffer json, Class<T> clazz) {
@@ -288,59 +233,6 @@ public class ProxyUtil {
                 throw new IllegalArgumentException("Invalid json object");
             }
             return (ObjectNode) node;
-        }
-    }
-
-    public Set<String> collectAttachments(JsonNode root, List<String> paths) {
-        return JsonUtil.collectStrings(root, paths, ProxyUtil::readAttachment);
-    }
-
-    public Set<String> collectCustomAttachments(JsonNode node, List<String> paths) {
-        return JsonUtil.collectStrings(node, paths, ProxyUtil::readCustomAttachment);
-    }
-
-    private String readAttachment(JsonNode node) {
-        if (!node.isTextual()) {
-            throw new IllegalArgumentException("Invalid attachment.");
-        }
-        String value = node.textValue();
-        return StringUtils.isBlank(value) ? null : node.textValue();
-    }
-
-    private String readCustomAttachment(JsonNode node) {
-        if (!node.isObject()) {
-            return null;
-        }
-        String type = node.path("type").asText();
-        String url = node.path("url").asText();
-        if (StringUtils.isBlank(url)) {
-            return null;
-        }
-
-        if (MetadataBase.MIME_TYPE.equals(type)) {
-            if (!url.startsWith(ProxyUtil.METADATA_PREFIX)) {
-                throw new IllegalArgumentException("Url of metadata attachment must start with metadata/: " + url);
-            }
-            url = url.substring(ProxyUtil.METADATA_PREFIX.length());
-        }
-        return url;
-    }
-
-    public void removeInterceptorConfiguration(ObjectNode node) {
-        ObjectNode customFields = (ObjectNode) node.get(CUSTOM_FIELDS_NODE);
-        if (customFields != null) {
-            customFields.remove("interceptor_configuration");
-            if (customFields.isEmpty()) {
-                node.remove(CUSTOM_FIELDS_NODE);
-            }
-        }
-    }
-
-    public void applyDefaults(ObjectNode node, Map<String, Object> defaults) {
-        for (Map.Entry<String, Object> e : defaults.entrySet()) {
-            String key = e.getKey();
-            JsonNode defaultValue = ProxyUtil.MAPPER.convertValue(e.getValue(), JsonNode.class);
-            JsonUtil.applyDefault(node, key, defaultValue);
         }
     }
 }

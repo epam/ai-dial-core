@@ -3,7 +3,7 @@ package com.epam.aidial.core.server.function;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ChatUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.List;
@@ -18,6 +18,6 @@ public class CollectResponseCustomAttachmentsFn extends CollectResponseAttachmen
     protected Set<String> collectAttachments(ObjectNode tree) {
         Route route = context.getRoute();
         List<String> jsonPaths = route.getAttachmentPaths().getResponseBody();
-        return ProxyUtil.collectAttachments(tree, jsonPaths);
+        return ChatUtil.collectAttachments(tree, jsonPaths);
     }
 }

@@ -2,8 +2,6 @@ package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.server.data.Conversation;
 import com.epam.aidial.core.server.data.Prompt;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.http.HttpConnection;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.net.SocketAddress;
@@ -125,112 +123,6 @@ public class ProxyUtilTest {
 
         error = assertThrows(IllegalArgumentException.class, () -> ProxyUtil.convertToObject("12345", Conversation.class));
         assertEquals("Provided payload do not match required schema", error.getMessage());
-    }
-
-    @Test
-    public void testCollectAttachmentsFromResponse_ChatSingleResponse() throws JsonProcessingException {
-        String response = """
-                {
-                  "id": "chatcmpl-7VfMTgj3ljKdGKS2BEIwloII3IoO0",
-                  "object": "chat.completion",
-                  "created": 1687781517,
-                  "model": "gpt-35-turbo",
-                  "choices": [
-                    {
-                      "index": 0,
-                      "finish_reason": "stop",
-                      "message": {
-                        "role": "assistant",
-                        "content": "some text",
-                        "custom_content": {
-                           "attachments": [
-                              {
-                               "type": "application/octet-stream",
-                               "title": "LICENSE",
-                               "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file1.txt"
-                              },
-                              {
-                                "type": "application/octet-stream",
-                                "title": "LICENSE",
-                                "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file2.txt"
-                              }
-                           ]
-                        }
-                      }
-                    }
-                  ],
-                  "usage" : {
-                    "junk_string": "junk",
-                    "junk_integer" : 1,
-                    "junk_float" : 1.0,
-                    "junk_null" : null,
-                    "junk_true" : true,
-                    "junk_false" : false,
-                    "completion_tokens": 33,
-                    "prompt_tokens": 19,
-                    "total_tokens": 52
-                  }
-                }
-                """;
-        Set<String> files =
-                ProxyUtil.collectAttachmentsFromResponse((ObjectNode) ProxyUtil.MAPPER.readTree(response), false);
-
-        assertEquals(Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file1.txt",
-                "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file2.txt"), files);
-
-    }
-
-    @Test
-    public void testCollectAttachmentsFromResponse_ChatStreamingResponse() throws JsonProcessingException {
-        String response = """
-                {
-                  "id": "chatcmpl-7VfMTgj3ljKdGKS2BEIwloII3IoO0",
-                  "object": "chat.completion",
-                  "created": 1687781517,
-                  "model": "gpt-35-turbo",
-                  "choices": [
-                    {
-                      "index": 0,
-                      "finish_reason": "stop",
-                      "delta": {
-                        "role": "assistant",
-                        "content": "some text",
-                        "custom_content": {
-                           "attachments": [
-                              {
-                               "type": "application/octet-stream",
-                               "title": "LICENSE",
-                               "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file1.txt"
-                              },
-                              {
-                                "type": "application/octet-stream",
-                                "title": "LICENSE",
-                                "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file2.txt"
-                              }
-                           ]
-                        }
-                      }
-                    }
-                  ],
-                  "usage" : {
-                    "junk_string": "junk",
-                    "junk_integer" : 1,
-                    "junk_float" : 1.0,
-                    "junk_null" : null,
-                    "junk_true" : true,
-                    "junk_false" : false,
-                    "completion_tokens": 33,
-                    "prompt_tokens": 19,
-                    "total_tokens": 52
-                  }
-                }
-                """;
-        Set<String> files =
-                ProxyUtil.collectAttachmentsFromResponse((ObjectNode) ProxyUtil.MAPPER.readTree(response), true);
-
-        assertEquals(Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file1.txt",
-                "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/file2.txt"), files);
-
     }
 
     @Test

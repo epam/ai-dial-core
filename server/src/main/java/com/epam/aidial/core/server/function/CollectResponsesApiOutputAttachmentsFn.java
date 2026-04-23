@@ -2,7 +2,7 @@ package com.epam.aidial.core.server.function;
 
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ChatUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.List;
@@ -33,6 +33,6 @@ public class CollectResponsesApiOutputAttachmentsFn extends CollectResponseAttac
         List<String> paths = context.isStreamingRequest()
                 ? STREAMING_PATHS
                 : NON_STREAMING_PATHS;
-        return ProxyUtil.collectAttachments(tree, paths);
+        return ChatUtil.collectAttachments(tree, paths);
     }
 }

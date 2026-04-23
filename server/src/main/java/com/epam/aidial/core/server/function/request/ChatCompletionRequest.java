@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.function.request;
 
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.server.util.ChatUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -45,9 +46,9 @@ public class ChatCompletionRequest implements RequestObject {
     @Override
     public Set<String> collectAttachments() {
         Set<String> result = new HashSet<>();
-        result.addAll(ProxyUtil.collectAttachments(tree, List.of(
+        result.addAll(ChatUtil.collectAttachments(tree, List.of(
                 "$.messages[*].content[?(@.type == 'image_url')].image_url.url")));
-        result.addAll(ProxyUtil.collectCustomAttachments(tree, List.of(
+        result.addAll(ChatUtil.collectCustomAttachments(tree, List.of(
                 "$.messages[*].custom_content.attachments[*]",
                 "$.messages[*].custom_content.stages[*].attachments[*]",
                 "$.custom_input[*]")));
@@ -56,7 +57,7 @@ public class ChatCompletionRequest implements RequestObject {
 
     @Override
     public Set<String> collectAppAttachments(List<String> paths) {
-        return ProxyUtil.collectAttachments(tree, paths);
+        return ChatUtil.collectAttachments(tree, paths);
     }
 
     @Override
@@ -103,12 +104,12 @@ public class ChatCompletionRequest implements RequestObject {
 
     @Override
     public void clearInterceptorSettings() {
-        ProxyUtil.removeInterceptorConfiguration(tree);
+        ChatUtil.removeInterceptorConfiguration(tree);
     }
 
     @Override
     public void applyDefaults(Deployment deployment) {
-        ProxyUtil.applyDefaults(tree, deployment.getDefaults());
+        ChatUtil.applyDefaults(tree, deployment.getDefaults());
     }
 
     @Override
