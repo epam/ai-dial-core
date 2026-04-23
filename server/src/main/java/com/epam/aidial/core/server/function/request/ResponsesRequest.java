@@ -13,7 +13,6 @@ import java.util.Set;
 public class ResponsesRequest implements RequestObject {
     private final ObjectNode tree;
 
-
     @Override
     public String getModel() {
         return tree.path("model").asText();

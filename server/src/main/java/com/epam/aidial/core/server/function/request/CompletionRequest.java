@@ -17,6 +17,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Represents a wrapper for completion and embedding requests, providing a strict interface.
+ */
 @RequiredArgsConstructor
 public class CompletionRequest implements RequestObject {
     private static final String CUSTOM_FIELDS_NODE = "custom_fields";

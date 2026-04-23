@@ -19,6 +19,8 @@ public class CollectResponseResponsesAttachmentsFn extends CollectResponseAttach
                     + ".item.output[?(@.type == 'input_file')].file_url");
     public static final List<String> NON_STREAMING_PATHS = List.of(
             "$.output[?(@.type == 'code_interpreter_call')].outputs[?(@.type == 'image')].url",
+            // custom_tool_call_output/function_call_output do not seem to make sense as model outputs.
+            // They are included to adhere to the documentation https://developers.openai.com/api/reference/resources/responses/methods/create
             "$.output[?(@.type == 'custom_tool_call_output' || @.type == 'function_call_output')].output[?(@.type == 'input_image')].image_url",
             "$.output[?(@.type == 'custom_tool_call_output' || @.type == 'function_call_output')].output[?(@.type == 'input_file')].file_url");
 
