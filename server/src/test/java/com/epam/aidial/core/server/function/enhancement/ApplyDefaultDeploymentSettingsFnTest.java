@@ -5,7 +5,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.function.request.CompletionRequest;
+import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -48,7 +48,7 @@ public class ApplyDefaultDeploymentSettingsFnTest {
         when(context.getDeployment()).thenReturn(model);
         ObjectNode result = (ObjectNode) ProxyUtil.MAPPER.readTree("{}");
 
-        assertTrue(fn.apply(new CompletionRequest(result)));
+        assertTrue(fn.apply(new ChatCompletionRequest(result)));
         assertEquals(123, result.get("key2").asInt());
         assertEquals(0.45, result.get("key3").asDouble());
         assertEquals("str", result.get("key4").asText());
@@ -70,7 +70,7 @@ public class ApplyDefaultDeploymentSettingsFnTest {
                 }
                 """);
 
-        assertTrue(fn.apply(new CompletionRequest(result)));
+        assertTrue(fn.apply(new ChatCompletionRequest(result)));
         assertEquals(2, result.get("a").get("b").asInt());
         assertEquals("foo", result.get("a").get("d").asText());
         assertEquals("test", result.get("a").get("c").asText());
@@ -99,7 +99,7 @@ public class ApplyDefaultDeploymentSettingsFnTest {
 
         ObjectNode result = (ObjectNode) ProxyUtil.MAPPER.readTree("{}");
 
-        assertTrue(fn.apply(new CompletionRequest(result)));
+        assertTrue(fn.apply(new ChatCompletionRequest(result)));
         assertEquals(123, result.get("key2").asInt());
         assertEquals(0.45, result.get("key3").asDouble());
         assertEquals("str", result.get("key4").asText());
@@ -125,7 +125,7 @@ public class ApplyDefaultDeploymentSettingsFnTest {
         when(context.getDeployment()).thenReturn(model);
         ObjectNode result = (ObjectNode) ProxyUtil.MAPPER.readTree("{}");
 
-        assertTrue(fn.apply(new CompletionRequest(result)));
+        assertTrue(fn.apply(new ChatCompletionRequest(result)));
         assertEquals(123, result.get("key2").asInt());
         assertEquals(0.45, result.get("key3").asDouble());
         assertEquals("str", result.get("key4").asText());
@@ -155,7 +155,7 @@ public class ApplyDefaultDeploymentSettingsFnTest {
                 }
                 """);
 
-        assertTrue(fn.apply(new CompletionRequest(result)));
+        assertTrue(fn.apply(new ChatCompletionRequest(result)));
         assertEquals("""
                 {"custom_fields":{"interceptor_configuration":{"foo":"bar"}}}""", result.toString());
     }
@@ -187,7 +187,7 @@ public class ApplyDefaultDeploymentSettingsFnTest {
                 }
                 """);
 
-        assertTrue(fn.apply(new CompletionRequest(result)));
+        assertTrue(fn.apply(new ChatCompletionRequest(result)));
         assertEquals("{}", result.toString());
     }
 }

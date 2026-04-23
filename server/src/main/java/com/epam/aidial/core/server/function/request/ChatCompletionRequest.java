@@ -21,7 +21,7 @@ import java.util.Set;
  * Represents a wrapper for completion and embedding requests, providing a strict interface.
  */
 @RequiredArgsConstructor
-public class CompletionRequest implements RequestObject {
+public class ChatCompletionRequest implements RequestObject {
     private static final String CUSTOM_FIELDS_NODE = "custom_fields";
     private static final String CACHE_BREAKPOINT_NODE = "cache_breakpoint";
 

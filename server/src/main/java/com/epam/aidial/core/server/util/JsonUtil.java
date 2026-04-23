@@ -71,8 +71,40 @@ public class JsonUtil {
         }
     }
 
-    public void update(ObjectNode object, String key, Function<JsonNode, JsonNode> mapper) {
-        object.set(key, mapper.apply(object.get(key)));
+    public void applyDefault(ObjectNode object, String key, JsonNode defaultValue) {
+        object.set(key, copy(object.get(key), defaultValue));
+    }
+
+    /**
+     * Copies default values to the target node from the source.
+     * The default value is copied from the source to the target if it's missed in the target node.
+     *
+     * <p>
+     *     Note. Arrays are not copied.
+     * </p>
+     */
+    private JsonNode copy(JsonNode target, JsonNode source) {
+        if (target == null || target.isNull()) {
+            return source;
+        }
+        if (source == null || source.isNull()) {
+            return target;
+        }
+        if (target.getNodeType() != source.getNodeType()) {
+            return source;
+        }
+        if (source.isObject()) {
+            return copyObjects((ObjectNode) target, (ObjectNode) source);
+        }
+        return target;
+    }
+
+    private ObjectNode copyObjects(ObjectNode target, ObjectNode source) {
+        for (Map.Entry<String, JsonNode> entry : source.properties()) {
+            String name = entry.getKey();
+            target.set(name, copy(target.get(name), entry.getValue()));
+        }
+        return target;
     }
 
     public JsonNode sort(JsonNode node) {

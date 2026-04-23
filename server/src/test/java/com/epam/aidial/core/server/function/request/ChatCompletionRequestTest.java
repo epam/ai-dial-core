@@ -11,7 +11,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class CompletionRequestTest {
+class ChatCompletionRequestTest {
     @Test
     void testCollectAttachedFiles_ChatRequest() throws IOException {
         String body = """
@@ -126,7 +126,7 @@ class CompletionRequestTest {
                   "id": "id"
                 }
                 """;
-        CompletionRequest request = request(body);
+        ChatCompletionRequest request = request(body);
         Set<String> expected = Set.of(
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile",
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE",
@@ -164,7 +164,7 @@ class CompletionRequestTest {
                 }
                 """;
 
-        CompletionRequest request = request(body);
+        ChatCompletionRequest request = request(body);
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class, request::collectAttachments);
 
@@ -201,7 +201,7 @@ class CompletionRequestTest {
                   "user": "user_id"
                 }
                 """;
-        CompletionRequest request = request(content);
+        ChatCompletionRequest request = request(content);
         Set<String> expected = Set.of(
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/image.png",
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b2/video.mp4");
@@ -220,14 +220,14 @@ class CompletionRequestTest {
                   "user": "user_id"
                 }
                 """;
-        CompletionRequest request = request(content);
+        ChatCompletionRequest request = request(content);
 
         Set<String> actual = request.collectAttachments();
 
         assertEquals(Set.of(), actual);
     }
 
-    private static CompletionRequest request(String body) throws JsonProcessingException {
-        return new CompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
+    private static ChatCompletionRequest request(String body) throws JsonProcessingException {
+        return new ChatCompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
     }
 }

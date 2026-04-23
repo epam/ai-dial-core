@@ -6,7 +6,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
-import com.epam.aidial.core.server.function.request.CompletionRequest;
+import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import org.junit.jupiter.api.Test;
@@ -42,7 +42,7 @@ public class BuildUpstreamCacheFnTest {
         model.setFeatures(features);
         when(context.getDeployment()).thenReturn(model);
         when(context.getRequestHeader(eq(Proxy.HEADER_CACHE_POLICY))).thenReturn("cache-priority");
-        RequestObject request = new CompletionRequest(ProxyUtil.MAPPER.createObjectNode());
+        RequestObject request = new ChatCompletionRequest(ProxyUtil.MAPPER.createObjectNode());
 
         Boolean res = fn.apply(request);
 
@@ -59,7 +59,7 @@ public class BuildUpstreamCacheFnTest {
         model.setFeatures(features);
         when(context.getDeployment()).thenReturn(model);
         when(context.getRequestHeader(eq(Proxy.HEADER_CACHE_POLICY))).thenReturn("cache-priority");
-        RequestObject request = new CompletionRequest(ProxyUtil.MAPPER.createObjectNode());
+        RequestObject request = new ChatCompletionRequest(ProxyUtil.MAPPER.createObjectNode());
 
         Boolean res = fn.apply(request);
 

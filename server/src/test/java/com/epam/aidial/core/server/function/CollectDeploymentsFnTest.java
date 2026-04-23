@@ -8,7 +8,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
-import com.epam.aidial.core.server.function.request.CompletionRequest;
+import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -56,7 +56,7 @@ public class CollectDeploymentsFnTest {
     @InjectMocks
     private CollectDeploymentsFn fn;
 
-    private static final RequestObject EMPTY_REQUEST = new CompletionRequest(ProxyUtil.MAPPER.createObjectNode());
+    private static final RequestObject EMPTY_REQUEST = new ChatCompletionRequest(ProxyUtil.MAPPER.createObjectNode());
 
     @Test
     public void testApply_NotApplication() {

@@ -339,40 +339,8 @@ public class ProxyUtil {
     public void applyDefaults(ObjectNode node, Map<String, Object> defaults) {
         for (Map.Entry<String, Object> e : defaults.entrySet()) {
             String key = e.getKey();
-            JsonNode newValue = ProxyUtil.MAPPER.convertValue(e.getValue(), JsonNode.class);
-            JsonUtil.update(node, key, oldValue -> copy(oldValue, newValue));
+            JsonNode defaultValue = ProxyUtil.MAPPER.convertValue(e.getValue(), JsonNode.class);
+            JsonUtil.applyDefault(node, key, defaultValue);
         }
-    }
-
-    /**
-     * Copies default values to the target node from the source.
-     * The default value is copied from the source to the target if it's missed in the target node.
-     *
-     * <p>
-     *     Note. Arrays are not copied.
-     * </p>
-     */
-    private JsonNode copy(JsonNode target, JsonNode source) {
-        if (target == null || target.isNull()) {
-            return source;
-        }
-        if (source == null || source.isNull()) {
-            return target;
-        }
-        if (target.getNodeType() != source.getNodeType()) {
-            return source;
-        }
-        if (source.isObject()) {
-            return copyObjects((ObjectNode) target, (ObjectNode) source);
-        }
-        return target;
-    }
-
-    private ObjectNode copyObjects(ObjectNode target, ObjectNode source) {
-        for (Map.Entry<String, JsonNode> entry : source.properties()) {
-            String name = entry.getKey();
-            target.set(name, copy(target.get(name), entry.getValue()));
-        }
-        return target;
     }
 }

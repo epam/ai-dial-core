@@ -5,7 +5,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.function.request.CompletionRequest;
+import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -80,7 +80,7 @@ class RouteRequestBodyHandler {
                 tree = ProxyUtil.MAPPER.createObjectNode();
             }
             try {
-                CompletionRequest request = new CompletionRequest(tree);
+                ChatCompletionRequest request = new ChatCompletionRequest(tree);
                 if (ProxyUtil.processChain(request, controller.enhancementFunctions)) {
                     context.setRequestBody(Buffer.buffer(request.serialize()));
                 }

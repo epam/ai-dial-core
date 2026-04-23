@@ -8,7 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Set;
 
-public class CollectResponseResponsesAttachmentsFn extends CollectResponseAttachmentsFn {
+public class CollectResponsesApiOutputAttachmentsFn extends CollectResponseAttachmentsFn {
 
     public static final List<String> STREAMING_PATHS = List.of(
             "$[?(@.type == 'response.output_item.done' && @.item.type == 'code_interpreter_call')]"
@@ -24,7 +24,7 @@ public class CollectResponseResponsesAttachmentsFn extends CollectResponseAttach
             "$.output[?(@.type == 'custom_tool_call_output' || @.type == 'function_call_output')].output[?(@.type == 'input_image')].image_url",
             "$.output[?(@.type == 'custom_tool_call_output' || @.type == 'function_call_output')].output[?(@.type == 'input_file')].file_url");
 
-    public CollectResponseResponsesAttachmentsFn(Proxy proxy, ProxyContext context) {
+    public CollectResponsesApiOutputAttachmentsFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }
 

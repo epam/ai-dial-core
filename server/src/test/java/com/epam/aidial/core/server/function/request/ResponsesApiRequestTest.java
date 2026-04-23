@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class ResponsesRequestTest {
+class ResponsesApiRequestTest {
     @Test
     void testGetModel() throws JsonProcessingException {
         String body = """
@@ -23,7 +23,7 @@ class ResponsesRequestTest {
                 }
                 """;
 
-        ResponsesRequest request = request(body);
+        ResponsesApiRequest request = request(body);
 
         assertEquals("test-model", request.getModel());
     }
@@ -35,7 +35,7 @@ class ResponsesRequestTest {
                     "model": "old-model"
                 }
                 """;
-        ResponsesRequest request = request(body);
+        ResponsesApiRequest request = request(body);
 
         request.setModel("new-model");
 
@@ -50,7 +50,7 @@ class ResponsesRequestTest {
                 }
                 """;
 
-        ResponsesRequest request = request(body);
+        ResponsesApiRequest request = request(body);
 
         assertTrue(request.isStreaming());
     }
@@ -62,7 +62,7 @@ class ResponsesRequestTest {
                     "stream": false
                 }
                 """;
-        ResponsesRequest request = request(body);
+        ResponsesApiRequest request = request(body);
 
         assertFalse(request.isStreaming());
     }
@@ -74,7 +74,7 @@ class ResponsesRequestTest {
                 }
                 """;
 
-        ResponsesRequest request = request(body);
+        ResponsesApiRequest request = request(body);
 
         assertFalse(request.isStreaming());
     }
@@ -83,7 +83,7 @@ class ResponsesRequestTest {
     void testSerialize() throws JsonProcessingException {
         String expected = """
                 {"model":"test-model","stream":true}""";
-        ResponsesRequest request = request(expected);
+        ResponsesApiRequest request = request(expected);
 
         String actual = new String(request.serialize());
 
@@ -103,7 +103,7 @@ class ResponsesRequestTest {
                         "field", "skipped-value",
                         "another-field", "added-value"));
 
-        ResponsesRequest request = request(body);
+        ResponsesApiRequest request = request(body);
         request.applyDefaults(model);
         String expected = """
                 {"field":"kept-value","another-field":"added-value"}""";
@@ -176,7 +176,7 @@ class ResponsesRequestTest {
                 }
                 """;
 
-        ResponsesRequest request = request(body);
+        ResponsesApiRequest request = request(body);
         Set<String> expected = Set.of(
                 "https://example.com/from-message.png",
                 "https://example.com/from-message.pdf",
@@ -204,7 +204,7 @@ class ResponsesRequestTest {
                 }
                 """;
 
-        ResponsesRequest request = request(body);
+        ResponsesApiRequest request = request(body);
         Set<String> expected = Set.of("https://example.com/app-file1.txt");
 
         Set<String> actual = request.collectAppAttachments(List.of("$.app_attachments[*].url"));
@@ -212,7 +212,7 @@ class ResponsesRequestTest {
         assertEquals(expected, actual);
     }
 
-    private static ResponsesRequest request(String body) throws JsonProcessingException {
-        return new ResponsesRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
+    private static ResponsesApiRequest request(String body) throws JsonProcessingException {
+        return new ResponsesApiRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
     }
 }

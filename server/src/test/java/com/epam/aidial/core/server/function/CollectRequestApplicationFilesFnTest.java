@@ -6,7 +6,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.function.request.CompletionRequest;
+import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -68,7 +68,7 @@ public class CollectRequestApplicationFilesFnTest {
     @BeforeEach
     void setUp() {
         application = new Application();
-        request = new CompletionRequest(JsonNodeFactory.instance.objectNode());
+        request = new ChatCompletionRequest(JsonNodeFactory.instance.objectNode());
     }
 
     @Test

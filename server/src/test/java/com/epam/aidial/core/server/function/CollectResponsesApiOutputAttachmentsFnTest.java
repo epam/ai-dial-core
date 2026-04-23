@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class CollectResponseResponsesAttachmentsFnTest {
+class CollectResponsesApiOutputAttachmentsFnTest {
     @Mock
     private ProxyContext context;
 
@@ -67,7 +67,7 @@ class CollectResponseResponsesAttachmentsFnTest {
         when(context.isStreamingRequest()).thenReturn(false);
 
         ObjectNode node = parse(body);
-        CollectResponseResponsesAttachmentsFn function = new CollectResponseResponsesAttachmentsFn(null, context);
+        CollectResponsesApiOutputAttachmentsFn function = new CollectResponsesApiOutputAttachmentsFn(null, context);
         Set<String> expected = Set.of(
                 "https://example.com/code-output.png",
                 "https://example.com/from-function.jpg",
@@ -132,7 +132,7 @@ class CollectResponseResponsesAttachmentsFnTest {
                 """);
         when(context.isStreamingRequest()).thenReturn(true);
 
-        CollectResponseResponsesAttachmentsFn function = new CollectResponseResponsesAttachmentsFn(null, context);
+        CollectResponsesApiOutputAttachmentsFn function = new CollectResponsesApiOutputAttachmentsFn(null, context);
         Set<String> expected = Set.of(
                 "https://example.com/code-output.png",
                 "https://example.com/from-function.jpg",
@@ -140,7 +140,7 @@ class CollectResponseResponsesAttachmentsFnTest {
                 "https://example.com/from-tool.jpg",
                 "https://example.com/from-tool.csv");
 
-        Set<String> actual = events.stream().map(CollectResponseResponsesAttachmentsFnTest::parse)
+        Set<String> actual = events.stream().map(CollectResponsesApiOutputAttachmentsFnTest::parse)
                 .map(function::collectAttachments)
                 .flatMap(Set::stream)
                 .collect(Collectors.toUnmodifiableSet());

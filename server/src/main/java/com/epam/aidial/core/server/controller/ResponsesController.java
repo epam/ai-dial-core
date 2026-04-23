@@ -13,11 +13,11 @@ import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
-import com.epam.aidial.core.server.function.CollectResponseResponsesAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
-import com.epam.aidial.core.server.function.request.ResponsesRequest;
+import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -107,10 +107,10 @@ public class ResponsesController extends BaseDeploymentPostController {
                 });
     }
 
-    private ResponsesRequest parseBody(Buffer body) {
+    private ResponsesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
-            return new ResponsesRequest(ProxyUtil.parseObject(body));
+            return new ResponsesApiRequest(ProxyUtil.parseObject(body));
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
@@ -201,7 +201,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         }
 
         BufferingReadStream responseStream = createResponseStream(proxyResponse, () ->
-                new ResponsesSseListener(new CollectResponseResponsesAttachmentsFn(proxy, context)));
+                new ResponsesSseListener(new CollectResponsesApiOutputAttachmentsFn(proxy, context)));
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
@@ -229,7 +229,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             if (result.failed()) {
                 log.warn("Failed to collect token usage", result.cause());
             }
-            return collectResponseAttachments(responseBody, new CollectResponseResponsesAttachmentsFn(proxy, context));
+            return collectResponseAttachments(responseBody, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
         });
 
         handleResponseFuture.onComplete(result -> {

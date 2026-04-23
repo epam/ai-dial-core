@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Set;
 
 @RequiredArgsConstructor
-public class ResponsesRequest implements RequestObject {
+public class ResponsesApiRequest implements RequestObject {
     private final ObjectNode tree;
 
     @Override

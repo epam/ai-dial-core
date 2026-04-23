@@ -9,7 +9,7 @@ import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
-import com.epam.aidial.core.server.function.request.CompletionRequest;
+import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -65,7 +65,7 @@ public class InterceptorController extends BaseDeploymentPostController {
         context.setRequestBody(requestBody);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         try {
-            RequestObject request = new CompletionRequest(ProxyUtil.parseObject(requestBody));
+            RequestObject request = new ChatCompletionRequest(ProxyUtil.parseObject(requestBody));
             context.setStreamingRequest(request.isStreaming());
             if (ProxyUtil.processChain(request, enhancementFunctions)) {
                 context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(request)));

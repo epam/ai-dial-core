@@ -5,7 +5,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
-import com.epam.aidial.core.server.function.request.CompletionRequest;
+import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -175,7 +175,7 @@ public class UpstreamCacheServiceTest {
                     ]
                 }
                 """;
-        RequestObject request = new CompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
+        RequestObject request = new ChatCompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
         Model model = new Model();
         model.setName("gpt-4");
 
@@ -244,7 +244,7 @@ public class UpstreamCacheServiceTest {
                     ]
                 }
                 """;
-        RequestObject request = new CompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
+        RequestObject request = new ChatCompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
         Model model = new Model();
         model.setName("gpt-4");
         Features features = new Features();
@@ -350,7 +350,7 @@ public class UpstreamCacheServiceTest {
                     ]
                 }
                 """;
-        RequestObject request = new CompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
+        RequestObject request = new ChatCompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
         Model model = new Model();
         model.setName("gpt-4");
 
@@ -456,7 +456,7 @@ public class UpstreamCacheServiceTest {
                     ]
                 }
                 """;
-        RequestObject request = new CompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
+        RequestObject request = new ChatCompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
         Model model = new Model();
         model.setName("gpt-4");
 

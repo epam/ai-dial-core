@@ -4,7 +4,7 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.function.request.CompletionRequest;
+import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -51,7 +51,7 @@ public class AutoShareDeploymentFnTest {
     @InjectMocks
     private AutoShareDeploymentFn fn;
 
-    private static final CompletionRequest EMPTY_OBJECT = new CompletionRequest(ProxyUtil.MAPPER.createObjectNode());
+    private static final ChatCompletionRequest EMPTY_OBJECT = new ChatCompletionRequest(ProxyUtil.MAPPER.createObjectNode());
 
     @BeforeEach
     public void beforeEach() {
