@@ -62,6 +62,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "reference": "@ignore",
                 "forward_auth_token":false,
                 "defaults": {},
+                "responses_defaults": {},
                 "interceptors": [],
                 "description_keywords": [],
                 "max_retry_attempts" : 1,
@@ -293,6 +294,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                  "configuration_endpoint": "http://application1/configuration"
                  },
                 "defaults": {},
+                "responses_defaults": {},
                 "interceptors": [],
                 "description_keywords":[],
                 "max_retry_attempts" : 1,
@@ -408,6 +410,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                    "forward_auth_token" : false,
                    "features" : { },
                    "defaults" : { },
+                   "responses_defaults" : { },
                    "interceptors" : [ ],
                    "description_keywords" : [ ],
                    "max_retry_attempts" : 1,
@@ -536,6 +539,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "assistant_attachments_in_request": false
                                 },
                             "defaults":{},
+                            "responses_defaults":{},
                             "description_keywords":[],
                             "max_retry_attempts" : 1,
                             "routes" : { },
@@ -573,6 +577,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                "assistant_attachments_in_request": false
                              },
                              "defaults" : { },
+                             "responses_defaults" : { },
                              "description_keywords" : [ ],
                              "max_retry_attempts" : 1,
                              "routes" : {
@@ -653,6 +658,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "assistant_attachments_in_request": false
                     },
                     "defaults":{},
+                    "responses_defaults":{},
                     "description_keywords":[],
                     "max_retry_attempts" : 1,
                     "owner" : "EPM-RTC-GPT",
@@ -699,6 +705,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "assistant_attachments_in_request": false
                                 },
                             "defaults":{},
+                            "responses_defaults":{},
                             "description_keywords":[],
                             "max_retry_attempts" : 1,
                             "routes" : { },
@@ -737,6 +744,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "assistant_attachments_in_request": false
                             },
                             "defaults" : { },
+                            "responses_defaults" : { },
                             "description_keywords" : [ ],
                             "max_retry_attempts" : 1,
                             "routes" : {
@@ -793,6 +801,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "assistant_attachments_in_request": false
                             },
                             "defaults" : { },
+                            "responses_defaults" : { },
                             "description_keywords":[],
                             "max_retry_attempts" : 1,
                             "owner" : "EPM-RTC-GPT",
@@ -869,6 +878,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "reference": "@ignore",
                 "forward_auth_token": false,
                 "defaults": {},
+                "responses_defaults": {},
                 "interceptors": [],
                 "description_keywords": [],
                 "max_retry_attempts" : 1,
@@ -895,6 +905,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "reference": "@ignore",
                 "forward_auth_token": false,
                 "defaults": {},
+                "responses_defaults": {},
                 "interceptors": [],
                 "description_keywords": [],
                 "max_retry_attempts" : 1,
@@ -943,6 +954,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "reference": "@ignore",
                 "forward_auth_token": false,
                 "defaults": {},
+                "responses_defaults": {},
                 "interceptors": [],
                 "description_keywords": [],
                 "max_retry_attempts" : 1,
@@ -1010,6 +1022,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                   "reference": "@ignore",
                   "forward_auth_token" : false,
                   "defaults" : { },
+                  "responses_defaults" : { },
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
@@ -1055,6 +1068,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                   "reference": "@ignore",
                   "forward_auth_token" : false,
                   "defaults" : { },
+                  "responses_defaults" : { },
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
@@ -1288,6 +1302,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                        "assistant_attachments_in_request": false
                      },
                      "defaults" : { },
+                     "responses_defaults" : { },
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
                      "invalid" : true,
