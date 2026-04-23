@@ -463,6 +463,27 @@ public class ToolSetApiTest extends ResourceBaseTest {
     void testProxyMcpPostCall_WhenToolsetIsAppType() {
         var response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app", null, """
                 {
+                "displayName": "Test Application",
+                "description": "For testing purposes only",
+                "endpoint": "http://<app host>/openai/deployments/test-app/chat/completions",
+                "forwardAuthToken": true
+                }
+                """);
+        verify(response, 200);
+
+        String mcpRequest = """
+                {
+                   "payload": "foo"
+                }
+                """;
+
+        Response resp = send(HttpMethod.POST, "/v1/toolset/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app/mcp",
+                null, mcpRequest, "Content-type", "application/json");
+        // application doesn't support MCP interface
+        assertEquals(400, resp.status());
+
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app", null, """
+                {
                 "display_name": "My App",
                 "display_version": "1.0",
                 "icon_url": "http://apprunner/icon.svg",
@@ -476,11 +497,6 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 """);
         verify(response, 200);
 
-        String mcpRequest = """
-                {
-                   "payload": "foo"
-                }
-                """;
         String mcpResponse = """
                 {
                   "result": "success"
@@ -504,7 +520,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
             }
         };
         try (TestWebServer ignore = new TestWebServer(9876, handler)) {
-            Response resp = send(HttpMethod.POST, "/v1/toolset/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app/mcp",
+            resp = send(HttpMethod.POST, "/v1/toolset/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app/mcp",
                     null, mcpRequest, "Content-type", "application/json");
 
             assertEquals(200, resp.status());
