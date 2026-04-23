@@ -87,7 +87,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "cache" : false,
                            "auto_caching" : false,
                            "parallel_tool_calls" : true,
-                           "assistant_attachments_in_request": false
+                           "assistant_attachments_in_request": false,
+                           "mcp" : true
                       },
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
@@ -126,7 +127,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                           "cache" : false,
                           "auto_caching" : false,
                           "parallel_tool_calls" : true,
-                          "assistant_attachments_in_request" : false
+                          "assistant_attachments_in_request" : false,
+                          "mcp" : true
                         },
                         "description_keywords" : [ ],
                         "max_retry_attempts" : 1,
@@ -166,7 +168,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                           "cache" : false,
                           "auto_caching" : false,
                           "parallel_tool_calls" : true,
-                          "assistant_attachments_in_request" : false
+                          "assistant_attachments_in_request" : false,
+                          "mcp" : true
                         },
                         "description_keywords" : [ ],
                         "max_retry_attempts" : 1,
@@ -215,7 +218,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "cache" : false,
                            "auto_caching" : false,
                            "parallel_tool_calls" : true,
-                           "assistant_attachments_in_request": false
+                           "assistant_attachments_in_request": false,
+                           "mcp" : true
                       },
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
@@ -347,7 +351,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                         "cache" : false,
                         "auto_caching" : false,
                         "parallel_tool_calls" : true,
-                        "assistant_attachments_in_request": false
+                        "assistant_attachments_in_request": false,
+                        "mcp" : true
                   },
                   "description_keywords": [],
                   "max_retry_attempts": 1,
@@ -395,7 +400,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                             "cache" : false,
                             "auto_caching" : false,
                             "parallel_tool_calls" : true,
-                            "assistant_attachments_in_request": false
+                            "assistant_attachments_in_request": false,
+                            "mcp" : true
                           },
                       "description_keywords" : [ ],
                       "max_retry_attempts" : 1,
@@ -436,7 +442,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                             "cache" : false,
                             "auto_caching" : false,
                             "parallel_tool_calls" : true,
-                            "assistant_attachments_in_request": false
+                            "assistant_attachments_in_request": false,
+                            "mcp" : true
                           },
                         "description_keywords" : [ ],
                         "max_retry_attempts" : 1,
