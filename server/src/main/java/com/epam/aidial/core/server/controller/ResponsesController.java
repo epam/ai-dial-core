@@ -136,6 +136,11 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     @SneakyThrows
     private Void handleRequestBody(RequestObject request) {
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        context.setProxyApiKeyData(proxyApiKeyData);
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
+        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+
         context.setStreamingRequest(request.isStreaming());
         ProxyUtil.processChain(request, enhancementFunctions);
         context.setRequestBody(Buffer.buffer(request.serialize()));
@@ -146,10 +151,6 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
-        ApiKeyData proxyApiKeyData = new ApiKeyData();
-        context.setProxyApiKeyData(proxyApiKeyData);
-        ApiKeyData.initFromContext(proxyApiKeyData, context);
-        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
         sendRequest();
 
         return null;
