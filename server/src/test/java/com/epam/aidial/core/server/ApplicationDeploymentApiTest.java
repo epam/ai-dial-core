@@ -933,7 +933,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "cache" : false,
                       "auto_caching" : false,
                       "parallel_tool_calls" : true,
-                      "assistant_attachments_in_request": false
+                      "assistant_attachments_in_request": false,
+                      "mcp" : false
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
@@ -991,7 +992,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "cache" : false,
                       "auto_caching" : false,
                       "parallel_tool_calls" : true,
-                      "assistant_attachments_in_request": false
+                      "assistant_attachments_in_request": false,
+                      "mcp" : false
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
@@ -1029,7 +1031,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                         "cache" : false,
                         "auto_caching" : false,
                         "parallel_tool_calls" : true,
-                      "assistant_attachments_in_request": false
+                        "assistant_attachments_in_request": false,
+                        "mcp" : false
                       },
                       "defaults" : { },
                       "description_keywords" : [ ],
@@ -1085,7 +1088,8 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "cache" : false,
                       "auto_caching" : false,
                       "parallel_tool_calls" : true,
-                      "assistant_attachments_in_request": false
+                      "assistant_attachments_in_request": false,
+                      "mcp" : false
                     },
                     "defaults" : { },
                     "description_keywords" : [ ],
