@@ -22,6 +22,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -1392,6 +1393,99 @@ public class ToolSetApiTest extends ResourceBaseTest {
             assertEquals("https://static.auth.example.com/token", authSettings.get("token_endpoint").asText());
             // codeChallengeMethod should be filled from discovery
             assertEquals("S256", authSettings.get("code_challenge_method").asText());
+        }
+    }
+
+    @Test
+    void testUpdateOauthToolSetRegeneratesPkceWhenCodeChallengeMethodChanges() throws JsonProcessingException {
+        String createRequestBody = """
+                {
+                    "endpoint": "http://localhost:9876/mcp",
+                    "transport": "HTTP",
+                    "allowedTools": [],
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "my-client-id",
+                        "client_secret": "my-client-secret",
+                        "redirect_uri": "http://localhost:3000/auth/signin",
+                        "authorization_endpoint": "https://auth.example.com/authorize",
+                        "token_endpoint": "https://auth.example.com/token"
+                    }
+                }
+                """;
+
+        String authServerMetadata = """
+                {
+                    "issuer": "http://localhost:9876",
+                    "authorization_endpoint": "https://auth.example.com/authorize",
+                    "token_endpoint": "https://auth.example.com/token",
+                    "code_challenge_methods_supported": ["S256", "plain"]
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+            server.map(HttpMethod.GET, "/.well-known/oauth-authorization-server",
+                    200, authServerMetadata, "Content-Type", "application/json");
+
+            // Create with S256 (picked from discovery as preferred)
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-pkce@",
+                    null, createRequestBody, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-pkce@",
+                    null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            JsonNode authSettings = ProxyUtil.MAPPER.readTree(response.body()).get("auth_settings");
+            assertEquals("S256", authSettings.get("code_challenge_method").asText());
+            String initialChallenge = authSettings.get("code_challenge").asText();
+            assertNotNull(initialChallenge);
+            assertFalse(initialChallenge.isEmpty());
+
+            // Update the same toolset, switching code_challenge_method to plain
+            String updateRequestBody = """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "redirect_uri": "http://localhost:3000/auth/signin",
+                            "authorization_endpoint": "https://auth.example.com/authorize",
+                            "token_endpoint": "https://auth.example.com/token",
+                            "code_challenge_method": "plain"
+                        }
+                    }
+                    """;
+            response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-pkce@",
+                    null, updateRequestBody, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-pkce@",
+                    null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            authSettings = ProxyUtil.MAPPER.readTree(response.body()).get("auth_settings");
+            assertEquals("plain", authSettings.get("code_challenge_method").asText());
+            String updatedChallenge = authSettings.get("code_challenge").asText();
+            assertNotNull(updatedChallenge);
+            assertFalse(updatedChallenge.isEmpty());
+            assertNotEquals(initialChallenge, updatedChallenge);
+
+            // Re-update without changing method - challenge must be preserved
+            response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-pkce@",
+                    null, updateRequestBody, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-pkce@",
+                    null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            authSettings = ProxyUtil.MAPPER.readTree(response.body()).get("auth_settings");
+            assertEquals("plain", authSettings.get("code_challenge_method").asText());
+            assertEquals(updatedChallenge, authSettings.get("code_challenge").asText());
         }
     }
 
