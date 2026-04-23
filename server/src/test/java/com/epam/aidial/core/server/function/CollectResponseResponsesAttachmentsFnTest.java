@@ -22,7 +22,7 @@ class CollectResponseResponsesAttachmentsFnTest {
     private ProxyContext context;
 
     @Test
-    void testCollectAttachmentsNonStreaming(){
+    void testCollectAttachmentsNonStreaming() {
         String body = """
                 {
                     "output": [
