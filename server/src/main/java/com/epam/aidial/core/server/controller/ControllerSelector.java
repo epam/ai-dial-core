@@ -139,9 +139,13 @@ public class ControllerSelector {
             String toolSetId = UrlUtil.decodePath(pathMatcher.group(1));
             return new ToolSetToolsController(proxy, context, toolSetId, true);
         }));
-        get(RouteTemplate.TOOL_SET_PROXY, ((proxy, context, pathMatcher) -> {
+        get(RouteTemplate.TOOL_SET_MCP_PROXY, ((proxy, context, pathMatcher) -> {
             String toolSetId = UrlUtil.decodePath(pathMatcher.group(1));
-            return new ToolSetProxyController(proxy, context, toolSetId);
+            return new ToolSetMcpProxyController(proxy, context, toolSetId);
+        }));
+        get(RouteTemplate.APPLICATION_MCP_PROXY, ((proxy, context, pathMatcher) -> {
+            String applicationId = UrlUtil.decodePath(pathMatcher.group(1));
+            return new ApplicationMcpProxyController(proxy, context, applicationId);
         }));
         get(RouteTemplate.DEPLOYMENT_LISTING, (((proxy, context, pathMatcher) -> {
             DeploymentController controller = new DeploymentController(proxy, context);
@@ -288,9 +292,13 @@ public class ControllerSelector {
             ConsentController controller = new ConsentController(context, proxy);
             return () -> controller.acceptConsent(deploymentId);
         });
-        post(RouteTemplate.TOOL_SET_PROXY, ((proxy, context, pathMatcher) -> {
+        post(RouteTemplate.TOOL_SET_MCP_PROXY, ((proxy, context, pathMatcher) -> {
             String toolSetId = UrlUtil.decodePath(pathMatcher.group(1));
-            return new ToolSetProxyController(proxy, context, toolSetId);
+            return new ToolSetMcpProxyController(proxy, context, toolSetId);
+        }));
+        post(RouteTemplate.APPLICATION_MCP_PROXY, ((proxy, context, pathMatcher) -> {
+            String applicationId = UrlUtil.decodePath(pathMatcher.group(1));
+            return new ApplicationMcpProxyController(proxy, context, applicationId);
         }));
         post(RouteTemplate.PER_REQUEST_PERMISSION, (proxy, context, pathMatcher) -> {
             String operation = pathMatcher.group(1);
@@ -325,9 +333,13 @@ public class ControllerSelector {
             InvitationController controller = new InvitationController(proxy, context);
             return () -> controller.deleteInvitation(invitationId);
         });
-        delete(RouteTemplate.TOOL_SET_PROXY, ((proxy, context, pathMatcher) -> {
+        delete(RouteTemplate.TOOL_SET_MCP_PROXY, ((proxy, context, pathMatcher) -> {
             String toolSetId = UrlUtil.decodePath(pathMatcher.group(1));
-            return new ToolSetProxyController(proxy, context, toolSetId);
+            return new ToolSetMcpProxyController(proxy, context, toolSetId);
+        }));
+        delete(RouteTemplate.APPLICATION_MCP_PROXY, ((proxy, context, pathMatcher) -> {
+            String applicationId = UrlUtil.decodePath(pathMatcher.group(1));
+            return new ApplicationMcpProxyController(proxy, context, applicationId);
         }));
         // PUT routes
         put(RouteTemplate.FILES, (proxy, context, pathMatcher) -> {
