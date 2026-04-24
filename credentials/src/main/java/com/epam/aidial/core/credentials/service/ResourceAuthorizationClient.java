@@ -9,6 +9,7 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ContentType;
 
+import java.io.ByteArrayInputStream;
 import java.net.ConnectException;
 import java.net.ProxySelector;
 import java.net.URI;
@@ -20,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
+import java.util.zip.GZIPInputStream;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -77,14 +79,14 @@ public class ResourceAuthorizationClient {
     @SneakyThrows
     private <R> R execute(HttpRequest request, Class<R> responseType) {
         try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
 
             int status = response.statusCode();
-            String body = response.body();
+            String body = decodeBody(response);
 
             if (status != 200 && status != 201) {
                 log.warn("Error executing request {}: status {}, response {}",
-                        request.uri(), response.statusCode(), response.body());
+                        request.uri(), response.statusCode(), body);
                 if (status == 401) {
                     throw new HttpException(HttpStatus.UNAUTHORIZED, "Authorization server returns 401 error code",
                             httpHeadersHandler.convertHttpHeadersToMap(response.headers()), body);
@@ -114,6 +116,23 @@ public class ResourceAuthorizationClient {
             ex = ex.getCause();
         }
         return false;
+    }
+
+    // Some OAuth servers (e.g., CDN-fronted) return Content-Encoding: gzip even when the client
+    // did not request it. Java's built-in HttpClient does not auto-decompress, so we do it here.
+    @SneakyThrows
+    private static String decodeBody(HttpResponse<byte[]> response) {
+        byte[] body = response.body();
+        if (body == null || body.length == 0) {
+            return "";
+        }
+        String encoding = response.headers().firstValue("Content-Encoding").orElse("");
+        if ("gzip".equalsIgnoreCase(encoding)) {
+            try (GZIPInputStream gzip = new GZIPInputStream(new ByteArrayInputStream(body))) {
+                return new String(gzip.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        }
+        return new String(body, StandardCharsets.UTF_8);
     }
 
     private java.time.Duration createRequestConfig() {
