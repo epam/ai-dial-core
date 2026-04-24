@@ -80,7 +80,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEALTH_CHECK_PATH = "/health";
     public static final String VERSION_PATH = "/version";
 
-    public static final Pattern TOOLSET_PROXY_PATTERN = RouteTemplate.TOOL_SET_PROXY.getPattern();
+    public static final Pattern TOOLSET_PROXY_PATTERN = RouteTemplate.TOOL_SET_MCP_PROXY.getPattern();
     public static final Pattern TOOLSET_PROXY_METADATA_PATTERN = RouteTemplate.TOOL_SET_PROXY_METADATA.getPattern();
 
     // All new headers should start with X-DIAL- while existing may stay untouched
