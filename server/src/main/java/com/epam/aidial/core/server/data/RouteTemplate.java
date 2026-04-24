@@ -183,9 +183,13 @@ public enum RouteTemplate {
             "^/v1/toolset/(?<id>.+?)/allowed-tools$",
             "/v1/toolset/{id}/allowed-tools"
     ),
-    TOOL_SET_PROXY(
+    TOOL_SET_MCP_PROXY(
             "^/v1/toolset/(?<id>.+?)/mcp$",
             "/v1/toolset/{id}/mcp"
+    ),
+    APPLICATION_MCP_PROXY(
+            "^/v1/deployments/(?<id>.+?)/mcp$",
+            "/v1/deployments/{id}/mcp"
     ),
     TOOL_SET_PROXY_METADATA(
             "^/\\.well-known/oauth-protected-resource/v1/toolset/(?<id>.+?)/mcp$",

@@ -2,10 +2,12 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.data.InvitationLink;
+import com.epam.aidial.core.server.util.JsonPath;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
@@ -17,6 +19,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -1400,6 +1403,76 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 """);
         verify(response, 200);
     }
+
+    @Test
+    void testMcpCall() {
+        var response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app", null, """
+                {
+                "displayName": "Test Application",
+                "description": "For testing purposes only",
+                "endpoint": "http://<app host>/openai/deployments/test-app/chat/completions",
+                "forwardAuthToken": true
+                }
+                """);
+        verify(response, 200);
+
+        String mcpRequest = """
+                {
+                   "payload": "foo"
+                }
+                """;
+
+        Response resp = send(HttpMethod.POST, "/v1/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app/mcp",
+                null, mcpRequest, "Content-type", "application/json");
+        // application doesn't support MCP interface
+        assertEquals(400, resp.status());
+
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app", null, """
+                {
+                "display_name": "My App",
+                "display_version": "1.0",
+                "icon_url": "http://apprunner/icon.svg",
+                "description": "My app Description",
+                "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_toolset_type",
+                "applicationProperties": {
+                  "property1": "foo",
+                  "property2": "bar"
+                  }
+                }
+                """);
+        verify(response, 200);
+
+        String mcpResponse = """
+                {
+                  "result": "success"
+                }
+                """;
+        TestWebServer.Handler handler = request -> {
+            try {
+                assertNotNull(request.getHeader(Proxy.HEADER_API_KEY));
+                String body = request.getBody().readString(StandardCharsets.UTF_8);
+                JsonNode tree = ProxyUtil.MAPPER.readTree(body);
+                String basePath = "params._meta.ai_dial_config";
+                JsonNode node = JsonPath.read(tree, basePath + ".property1");
+                assertNotNull(node);
+                assertEquals("foo", node.asText());
+                node = JsonPath.read(tree, basePath + ".property2");
+                assertNotNull(node);
+                assertEquals("bar", node.asText());
+                return new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "application/json");
+            } catch (Throwable e) {
+                return new MockResponse().setResponseCode(500);
+            }
+        };
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            resp = send(HttpMethod.POST, "/v1/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app/mcp",
+                    null, mcpRequest, "Content-type", "application/json");
+
+            assertEquals(200, resp.status());
+            assertEquals(mcpResponse, resp.body());
+        }
+    }
+
 
     private HttpUriRequest createHttpUriRequest(int port, String deployment, String apiKey) {
         String uri = "http://127.0.0.1:" + port + "/openai/deployments/" + deployment + "/chat/completions";
