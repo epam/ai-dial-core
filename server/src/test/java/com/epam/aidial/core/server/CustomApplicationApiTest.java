@@ -2,12 +2,12 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.data.InvitationLink;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.jayway.jsonpath.JsonPath;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
@@ -1468,10 +1468,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 String body = request.getBody().readString(StandardCharsets.UTF_8);
                 JsonNode tree = ProxyUtil.MAPPER.readTree(body);
                 String basePath = "params._meta.ai_dial_config";
-                JsonNode node = JsonPath.read(tree, basePath + ".property1");
+                JsonNode node = JsonUtil.read(tree, basePath + ".property1");
                 assertNotNull(node);
                 assertEquals("foo", node.asText());
-                node = JsonPath.read(tree, basePath + ".property2");
+                node = JsonUtil.read(tree, basePath + ".property2");
                 assertNotNull(node);
                 assertEquals("bar", node.asText());
                 return new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "application/json");
