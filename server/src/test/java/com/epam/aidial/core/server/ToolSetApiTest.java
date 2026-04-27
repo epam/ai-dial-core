@@ -11,13 +11,16 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
+import okio.Buffer;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -1349,6 +1352,74 @@ public class ToolSetApiTest extends ResourceBaseTest {
             // codeChallengeMethod should be filled from discovery
             assertEquals("S256", authSettings.get("code_challenge_method").asText());
         }
+    }
+
+    @Test
+    void testCreateToolSetWithOauthWhenDiscoveryResponseIsGzipped() {
+        // Regression test for #1493: CDN-fronted OAuth discovery endpoints (e.g., Akamai) return
+        // Content-Encoding: gzip. ResourceAuthorizationClient must handle compressed responses.
+        String requestBody = """
+                {
+                    "endpoint": "http://localhost:9876/mcp",
+                    "transport": "HTTP",
+                    "allowedTools": [],
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "my-client-id",
+                        "client_secret": "my-client-secret",
+                        "redirect_uri": "http://localhost:3000/auth/signin",
+                        "authorization_endpoint": "https://static.auth.example.com/authorize",
+                        "token_endpoint": "https://static.auth.example.com/token"
+                    }
+                }
+                """;
+
+        String protectedResourceMetadata = """
+                {
+                    "resource": "http://localhost:9876/mcp",
+                    "authorization_servers": ["http://localhost:9876"],
+                    "scopes_supported": ["read", "write"]
+                }
+                """;
+
+        String authServerMetadata = """
+                {
+                    "issuer": "http://localhost:9876",
+                    "authorization_endpoint": "https://discovered.auth.example.com/authorize",
+                    "token_endpoint": "https://discovered.auth.example.com/token",
+                    "code_challenge_methods_supported": ["S256"]
+                }
+                """;
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+            // Simulate a CDN (e.g., Akamai) that always gzips JSON responses regardless of
+            // the client's Accept-Encoding preference. The fix must decompress on receive.
+            server.map(HttpMethod.GET, "/.well-known/oauth-protected-resource/mcp",
+                    gzippedJsonResponse(protectedResourceMetadata));
+            server.map(HttpMethod.GET, "/.well-known/oauth-authorization-server",
+                    gzippedJsonResponse(authServerMetadata));
+
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-oauth-gzip@",
+                    null, requestBody, "authorization", "admin");
+
+            assertEquals(200, response.status(), "PUT should succeed when OAuth discovery response is gzipped");
+        }
+    }
+
+    private static MockResponse gzippedJsonResponse(String body) {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (GZIPOutputStream gz = new GZIPOutputStream(baos)) {
+            gz.write(body.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        MockResponse response = new MockResponse();
+        response.setResponseCode(200);
+        response.setBody(new Buffer().write(baos.toByteArray()));
+        response.setHeader("Content-Type", "application/json");
+        response.setHeader("Content-Encoding", "gzip");
+        return response;
     }
 
     @Test
