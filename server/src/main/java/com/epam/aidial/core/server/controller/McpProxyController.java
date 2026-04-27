@@ -1,42 +1,30 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Upstream;
-import com.epam.aidial.core.credentials.data.credentials.AuthorizationHeader;
-import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
-import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
-import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
-import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.FilterAllowedToolsFn;
-import com.epam.aidial.core.server.function.enhancement.InjectApplicationPropsToMcpRequest;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
-import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
-import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.epam.aidial.core.storage.resource.ResourceTypes;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
@@ -59,20 +47,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
-import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
 import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 
 @Slf4j
-public class ToolSetProxyController implements Controller {
+public class McpProxyController implements Controller {
 
-    private final String toolSetId;
+    protected final String deploymentId;
 
-    private final CredentialsLocator credentialsLocator;
+    protected final ProxyContext context;
 
-    private final ProxyContext context;
-
-    private final AsyncTaskExecutor taskExecutor;
+    protected final AsyncTaskExecutor taskExecutor;
 
     private final DeploymentService deploymentService;
 
@@ -86,26 +70,20 @@ public class ToolSetProxyController implements Controller {
 
     private final LogStore logStore;
 
-    private final AuthorizationHeaderProvider authorizationHeaderProvider;
-
     private final ApiKeyStore apiKeyStore;
 
     private final TokenStatsTracker tokenStatsTracker;
 
     private final AccessService accessService;
 
-    private final List<BaseRequestFunction<ObjectNode>> enhancementFunctions;
-
-    private final Proxy proxy;
+    protected final Proxy proxy;
 
     private String mcpMethodName;
 
     private boolean useAllowedTools;
 
-    private final ResourceCredentialsService resourceCredentialsService;
-    private final ApplicationSchemaService applicationSchemaService;
 
-    public ToolSetProxyController(Proxy proxy, ProxyContext context, String toolSetId) {
+    public McpProxyController(Proxy proxy, ProxyContext context, String deploymentId) {
         this.taskExecutor = proxy.getTaskExecutor();
         this.deploymentService = proxy.getDeploymentService();
         this.rateLimiter = proxy.getRateLimiter();
@@ -114,15 +92,10 @@ public class ToolSetProxyController implements Controller {
         this.upstreamRouteProvider = proxy.getUpstreamRouteProvider();
         this.logStore = proxy.getLogStore();
         this.context = context;
-        this.authorizationHeaderProvider = proxy.getAuthorizationHeaderProvider();
         this.apiKeyStore = proxy.getApiKeyStore();
         this.tokenStatsTracker = proxy.getTokenStatsTracker();
-        this.toolSetId = toolSetId;
-        this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(UrlUtil.encodePath(toolSetId), context, ResourceTypes.TOOL_SET);
+        this.deploymentId = deploymentId;
         this.consentService = proxy.getConsentService();
-        this.resourceCredentialsService = proxy.getResourceCredentialsService();
-        this.applicationSchemaService = proxy.getApplicationSchemaService();
-        this.enhancementFunctions = List.of(new InjectApplicationPropsToMcpRequest(proxy, context));
         this.proxy = proxy;
     }
 
@@ -133,16 +106,10 @@ public class ToolSetProxyController implements Controller {
             if (!useAllowedTools && !accessService.hasAdminAccess(context)) {
                 throw new HttpException(HttpStatus.FORBIDDEN, "Only admin is allowed to view all tools");
             }
-            Deployment deployment = deploymentService.findDeployment(context, toolSetId);
-            if (deployment instanceof ToolSet toolSet) {
-                consentService.verifyUserConsent(context, deployment);
-                return toolSet;
-            } else if (deployment instanceof Application application) {
-                consentService.verifyUserConsent(context, deployment);
-                resolveMcpProperties(application);
-                return application;
-            }
-            throw new ResourceNotFoundException("Toolset is not found: " + toolSetId);
+            Deployment deployment = deploymentService.findDeployment(context, deploymentId);
+            consentService.verifyUserConsent(context, deployment);
+            validateDeployment(deployment);
+            return deployment;
         }).compose(deployment -> rateLimiter.limit(context, deployment)
                 .compose(rateLimitResult -> {
                     Future<?> future;
@@ -159,17 +126,7 @@ public class ToolSetProxyController implements Controller {
                 });
     }
 
-    private void resolveMcpProperties(Application application) {
-        Application.Mcp mcp;
-        if (application.hasApplicationTypeSchemaId()) {
-            mcp = applicationSchemaService.getMcp(application);
-            application.setMcp(mcp);
-        } else {
-            mcp = application.getMcp();
-        }
-        if (mcp == null) {
-            throw new IllegalArgumentException("Application doesn't support MCP protocol: " + application.getName());
-        }
+    protected void validateDeployment(Deployment deployment) {
     }
 
     private void sendRequest() {
@@ -188,7 +145,7 @@ public class ToolSetProxyController implements Controller {
                 .onSuccess(proxyRequest -> taskExecutor.submit(() -> {
                     handleProxyRequest(proxyRequest);
                     return null;
-                }))
+                }).onFailure(this::handleError))
                 .onFailure(this::handleProxyConnectionError);
     }
 
@@ -206,7 +163,7 @@ public class ToolSetProxyController implements Controller {
                     respond(HttpStatus.FORBIDDEN, "Tool is not allowed");
                     return;
                 }
-                if (tree.isObject() && ProxyUtil.processChain((ObjectNode) tree, enhancementFunctions)) {
+                if (tree.isObject() && ProxyUtil.processChain((ObjectNode) tree, getRequestEnhancementFunctions())) {
                     context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
                 }
             } catch (Throwable e) {
@@ -220,6 +177,10 @@ public class ToolSetProxyController implements Controller {
             }
         }
         sendRequest();
+    }
+
+    protected List<BaseRequestFunction<ObjectNode>> getRequestEnhancementFunctions() {
+        return List.of();
     }
 
     /**
@@ -238,25 +199,10 @@ public class ToolSetProxyController implements Controller {
         if (!deployment.isForwardAuthToken()) {
             excludeHeaders.add(HttpHeaders.AUTHORIZATION, "whatever");
         }
-        excludeHeaders.add(HEADER_APPLICATION_PROPERTIES, "whatever");
-        excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
+        injectProxyRequestHeaders(proxyRequest, excludeHeaders);
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
 
-        if ((deployment instanceof Application application
-                && application.hasApplicationTypeSchemaId()
-                && application.getMcp().getConfigDelivery() == Application.McpConfigDelivery.HEADER)) {
-            proxyRequest.putHeader(HEADER_APPLICATION_ID, deployment.getName());
-
-            applicationSchemaService.consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
-                if (appendApplicationPropertiesHeader) {
-                    String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
-                    proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
-                }
-            });
-        }
-
-        setToolsetCredentials(proxyRequest);
         Buffer proxyRequestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
 
@@ -265,49 +211,10 @@ public class ToolSetProxyController implements Controller {
                 .onFailure(this::handleProxyRequestError);
     }
 
-    private void setToolsetCredentials(HttpClientRequest proxyRequest) {
-        Deployment deployment = context.getDeployment();
-        try {
-            if (deployment instanceof ToolSet toolSet) {
-                ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
-                        credentialsLocator, toolSet.getAuthSettings(), context.getUserId()
-                );
-
-                if (resourceCredentials != null) {
-                    log.debug("Credentials found: User: {}, Resource: {}, CredentialsLevel: {}",
-                            context.getUserId(), toolSetId, resourceCredentials.getCredentialsLevel());
-                    addAuthorizationHeader(proxyRequest, resourceCredentials);
-                } else {
-                    log.debug("Credentials not found - User: {}, Resource: {}", context.getUserId(), toolSetId);
-                }
-
-                if (toolSet.isForwardPerRequestKey()) {
-                    String perRequestKey = assignPerRequestKey();
-                    proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
-                }
-
-            } else if (deployment instanceof Application application) {
-                Application.Mcp mcp = application.getMcp();
-                if (mcp.isForwardPerRequestKey()) {
-                    String perRequestKey = assignPerRequestKey();
-                    proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
-                }
-            }
-        } catch (Exception e) {
-            log.error("Can't provide credentials to toolset due to the error: {}", e.getMessage(), e);
-        }
+    protected void injectProxyRequestHeaders(HttpClientRequest proxyRequest, MultiMap excludeHeaders) {
     }
 
-    private void addAuthorizationHeader(HttpClientRequest proxyRequest,
-                                        ResourceCredentials resourceCredentials) {
-        AuthorizationHeader authorizationHeader = authorizationHeaderProvider.createAuthorizationHeader(resourceCredentials);
-        if (authorizationHeader != null) {
-            log.debug("AuthorizationHeader added: User: {}, Resource: {}", context.getUserId(), toolSetId);
-            proxyRequest.putHeader(authorizationHeader.getHeaderName(), authorizationHeader.getHeaderValue());
-        }
-    }
-
-    private String assignPerRequestKey() {
+    protected String assignPerRequestKey() {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
@@ -451,7 +358,7 @@ public class ToolSetProxyController implements Controller {
             }
             context.setUpstreamRoute(upstreamRoute);
             context.setDeployment(deployment);
-            context.setTraceOperation("Send request to %s toolset".formatted(deployment.getName()));
+            context.setTraceOperation("Send request to %s deployment".formatted(deployment.getName()));
             context.getRequest().body()
                     .onFailure(this::handleRequestBodyError)
                     .onSuccess(this::handleRequestBody);
@@ -459,10 +366,7 @@ public class ToolSetProxyController implements Controller {
         });
     }
 
-    private String getUpstreamEndpoint(Deployment deployment) {
-        if (deployment instanceof Application application) {
-            return application.getMcp().getEndpoint();
-        }
+    protected String getUpstreamEndpoint(Deployment deployment) {
         return deployment.getEndpoint();
     }
 
@@ -486,17 +390,21 @@ public class ToolSetProxyController implements Controller {
     }
 
     private void handleError(Throwable error) {
-        if (error instanceof PermissionDeniedException) {
-            respond(HttpStatus.FORBIDDEN, error.getMessage());
-            log.warn("Forbidden toolset {}", toolSetId);
-        } else if (error instanceof HttpException httpException) {
-            respond(httpException);
-        } else if (error instanceof ResourceNotFoundException) {
-            respond(HttpStatus.NOT_FOUND, error.getMessage());
-        } else {
-            String errorMsg = "Error occurred on processing MCP request by toolset: %s".formatted(toolSetId);
-            respond(HttpStatus.INTERNAL_SERVER_ERROR, errorMsg);
-            log.error(errorMsg, error);
+        switch (error) {
+            case PermissionDeniedException ignored -> {
+                respond(HttpStatus.FORBIDDEN, error.getMessage());
+                log.warn("Forbidden deployment {}", deploymentId);
+            }
+            case HttpException httpException -> respond(httpException);
+            case ResourceNotFoundException ignored ->
+                    respond(HttpStatus.NOT_FOUND, error.getMessage());
+            case IllegalArgumentException ignored ->
+                    respond(HttpStatus.BAD_REQUEST, error.getMessage());
+            case null, default -> {
+                String errorMsg = "Error occurred on processing MCP request by deployment: %s".formatted(deploymentId);
+                respond(HttpStatus.INTERNAL_SERVER_ERROR, errorMsg);
+                log.error(errorMsg, error);
+            }
         }
     }
 

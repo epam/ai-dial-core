@@ -17,7 +17,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class ToolSetProxyControllerTest {
+class ToolSetMcpProxyControllerTest {
 
     @Mock
     private Proxy proxy;
@@ -44,7 +44,7 @@ class ToolSetProxyControllerTest {
         when(encryptionService.decrypt("encrypted-bucket")).thenReturn("decrypted-bucket/");
 
         // When
-        ToolSetProxyController toolSetProxyController = new ToolSetProxyController(proxy, context, toolSetId);
+        ToolSetMcpProxyController toolSetProxyController = new ToolSetMcpProxyController(proxy, context, toolSetId);
 
         // Then
         assertNotNull(toolSetProxyController);

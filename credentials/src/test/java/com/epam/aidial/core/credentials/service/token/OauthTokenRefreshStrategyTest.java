@@ -60,17 +60,33 @@ class OauthTokenRefreshStrategyTest {
                         .updatedAt(now)
                         .expiresInSeconds(null)
                         .build(), true),
+                // expired access token + refresh token present → SIGNED_IN (can refresh)
                 Arguments.of(ResourceCredentials.builder()
                         .authenticationType(AuthenticationType.OAUTH)
                         .accessToken("access")
                         .refreshToken("refresh")
                         .updatedAt(0)
                         .expiresInSeconds(10L)
-                        .build(), false),
+                        .build(), true),
                 Arguments.of(ResourceCredentials.builder()
                         .authenticationType(AuthenticationType.OAUTH)
                         .accessToken("access")
                         .refreshToken("refresh")
+                        .updatedAt(now)
+                        .expiresInSeconds(0L)
+                        .build(), true),
+                // expired access token + no refresh token → SIGNED_OUT
+                Arguments.of(ResourceCredentials.builder()
+                        .authenticationType(AuthenticationType.OAUTH)
+                        .accessToken("access")
+                        .refreshToken(null)
+                        .updatedAt(0)
+                        .expiresInSeconds(10L)
+                        .build(), false),
+                Arguments.of(ResourceCredentials.builder()
+                        .authenticationType(AuthenticationType.OAUTH)
+                        .accessToken("access")
+                        .refreshToken(null)
                         .updatedAt(now)
                         .expiresInSeconds(0L)
                         .build(), false)

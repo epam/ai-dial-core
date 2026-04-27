@@ -215,7 +215,9 @@ public class ApplicationController {
         data.setDisplayVersion(application.getDisplayVersion());
         data.setIconUrl(application.getIconUrl());
         data.setDescription(application.getDescription());
-        data.setFeatures(FeaturesData.createFeatures(application.getFeatures()));
+        FeaturesData featuresData = FeaturesData.createFeatures(application.getFeatures());
+        featuresData.setMcp(application.getMcp() != null);
+        data.setFeatures(featuresData);
         data.setInputAttachmentTypes(application.getInputAttachmentTypes());
         data.setMaxInputAttachments(application.getMaxInputAttachments());
         data.setDefaults(application.getDefaults());
