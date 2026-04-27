@@ -12,6 +12,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import java.io.ByteArrayOutputStream;
 import java.net.ConnectException;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
@@ -22,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -314,6 +316,82 @@ class ResourceAuthorizationClientTest {
         // Then
         assertNotNull(actualResponse);
         assertEquals("value", actualResponse.getKey());
+    }
+
+    @Test
+    void testExecuteGet_DecodesXgzipAsGzip() throws Exception {
+        String url = "https://example.com/resource";
+        String jsonResponse = "{\"key\":\"value\"}";
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(200);
+        when(httpResponseMock.body()).thenReturn(gzip(jsonResponse));
+        when(httpResponseMock.headers()).thenReturn(
+                HttpHeaders.of(Map.of("Content-Encoding", List.of("x-gzip")), (k, v) -> true));
+
+        TestResponse actualResponse = resourceAuthorizationClient.executeGet(url, TestResponse.class);
+
+        assertNotNull(actualResponse);
+        assertEquals("value", actualResponse.getKey());
+    }
+
+    @Test
+    void testExecuteGet_FailsOnStackedCodings() throws Exception {
+        String url = "https://example.com/resource";
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(200);
+        when(httpResponseMock.body()).thenReturn("ignored".getBytes(StandardCharsets.UTF_8));
+        when(httpResponseMock.headers()).thenReturn(
+                HttpHeaders.of(Map.of("Content-Encoding", List.of("gzip, deflate")), (k, v) -> true));
+
+        HttpException exception = assertThrows(HttpException.class,
+                () -> resourceAuthorizationClient.executeGet(url, TestResponse.class));
+
+        assertTrue(exception.getMessage().contains("gzip"));
+        assertTrue(exception.getMessage().contains("deflate"));
+    }
+
+    @Test
+    void testExecuteGet_FailsWhenContentEncodingIsUnsupported() throws Exception {
+        String url = "https://example.com/resource";
+        String jsonResponse = "{\"key\":\"value\"}";
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(200);
+        when(httpResponseMock.body()).thenReturn(jsonResponse.getBytes(StandardCharsets.UTF_8));
+        when(httpResponseMock.headers()).thenReturn(
+                HttpHeaders.of(Map.of("Content-Encoding", List.of("br")), (k, v) -> true));
+
+        HttpException exception = assertThrows(HttpException.class,
+                () -> resourceAuthorizationClient.executeGet(url, TestResponse.class));
+
+        assertTrue(exception.getMessage().contains("br"));
+    }
+
+    @Test
+    void testExecuteGet_TreatsBodyAsRawWhenContentEncodingIsIdentity() throws Exception {
+        String url = "https://example.com/resource";
+        String jsonResponse = "{\"key\":\"value\"}";
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(200);
+        when(httpResponseMock.body()).thenReturn(jsonResponse.getBytes(StandardCharsets.UTF_8));
+        when(httpResponseMock.headers()).thenReturn(
+                HttpHeaders.of(Map.of("Content-Encoding", List.of("identity")), (k, v) -> true));
+
+        TestResponse actualResponse = resourceAuthorizationClient.executeGet(url, TestResponse.class);
+
+        assertNotNull(actualResponse);
+        assertEquals("value", actualResponse.getKey());
+    }
+
+    private static byte[] gzip(String value) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (GZIPOutputStream gz = new GZIPOutputStream(baos)) {
+            gz.write(value.getBytes(StandardCharsets.UTF_8));
+        }
+        return baos.toByteArray();
     }
 
     @Data
