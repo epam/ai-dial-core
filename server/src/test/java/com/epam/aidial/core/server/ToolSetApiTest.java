@@ -4,7 +4,6 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.InvitationLink;
-import com.epam.aidial.core.server.util.JsonPath;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -281,6 +280,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                    "reference": "@ignore",
                    "forward_auth_token" : false,
                    "defaults" : { },
+                   "responses_defaults" : { },
                    "interceptors" : [ ],
                    "description_keywords" : [ ],
                    "max_retry_attempts" : 1,
@@ -801,6 +801,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     "reference" : "@ignore",
                     "forward_auth_token" : false,
                     "defaults" : { },
+                    "responses_defaults" : { },
                     "interceptors" : [ ],
                     "description_keywords" : [ ],
                     "max_retry_attempts" : 1,

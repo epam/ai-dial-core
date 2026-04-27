@@ -9,12 +9,12 @@ import com.epam.aidial.core.server.controller.Controller;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
@@ -40,7 +40,7 @@ abstract class BaseRouteController implements Controller {
     protected final Proxy proxy;
     protected final ProxyContext context;
 
-    protected final List<BaseRequestFunction<ObjectNode>> enhancementFunctions = new ArrayList<>();
+    protected final List<BaseRequestFunction<RequestObject>> enhancementFunctions = new ArrayList<>();
 
     @Override
     public Future<?> handle() {

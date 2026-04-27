@@ -8,12 +8,13 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
+import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -55,12 +56,12 @@ public class CollectDeploymentsFnTest {
     @InjectMocks
     private CollectDeploymentsFn fn;
 
-    private static final ObjectNode EMPTY_OBJECT = ProxyUtil.MAPPER.createObjectNode();
+    private static final RequestObject EMPTY_REQUEST = new ChatCompletionRequest(ProxyUtil.MAPPER.createObjectNode());
 
     @Test
     public void testApply_NotApplication() {
         when(context.getDeployment()).thenReturn(new Model());
-        assertFalse(fn.apply(EMPTY_OBJECT));
+        assertFalse(fn.apply(EMPTY_REQUEST));
     }
 
     @Test
@@ -69,7 +70,7 @@ public class CollectDeploymentsFnTest {
         when(context.getDeployment()).thenReturn(application);
         when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
         when(applicationSchemaService.getDeployments(application)).thenReturn(List.of());
-        assertFalse(fn.apply(EMPTY_OBJECT));
+        assertFalse(fn.apply(EMPTY_REQUEST));
     }
 
     @Test
@@ -97,7 +98,7 @@ public class CollectDeploymentsFnTest {
         ApiKeyData dest = new ApiKeyData();
         when(context.getProxyApiKeyData()).thenReturn(dest);
 
-        assertFalse(fn.apply(EMPTY_OBJECT));
+        assertFalse(fn.apply(EMPTY_REQUEST));
 
         Assertions.assertEquals(1, dest.getAttachedDeployments().size());
         String toolsetId = dest.getAttachedDeployments().keySet().iterator().next();
@@ -131,7 +132,7 @@ public class CollectDeploymentsFnTest {
         ApiKeyData dest = new ApiKeyData();
         when(context.getProxyApiKeyData()).thenReturn(dest);
 
-        assertFalse(fn.apply(EMPTY_OBJECT));
+        assertFalse(fn.apply(EMPTY_REQUEST));
 
         Assertions.assertEquals(1, dest.getAttachedDeployments().size());
         String toolsetId = dest.getAttachedDeployments().keySet().iterator().next();

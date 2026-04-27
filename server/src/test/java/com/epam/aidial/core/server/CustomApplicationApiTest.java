@@ -2,7 +2,7 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.data.InvitationLink;
-import com.epam.aidial.core.server.util.JsonPath;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -65,6 +65,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "reference": "@ignore",
                 "forward_auth_token":false,
                 "defaults": {},
+                "responses_defaults": {},
                 "interceptors": [],
                 "description_keywords": [],
                 "max_retry_attempts" : 1,
@@ -296,6 +297,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                  "configuration_endpoint": "http://application1/configuration"
                  },
                 "defaults": {},
+                "responses_defaults": {},
                 "interceptors": [],
                 "description_keywords":[],
                 "max_retry_attempts" : 1,
@@ -411,6 +413,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                    "forward_auth_token" : false,
                    "features" : { },
                    "defaults" : { },
+                   "responses_defaults" : { },
                    "interceptors" : [ ],
                    "description_keywords" : [ ],
                    "max_retry_attempts" : 1,
@@ -540,6 +543,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "mcp" : false
                                 },
                             "defaults":{},
+                            "responses_defaults":{},
                             "description_keywords":[],
                             "max_retry_attempts" : 1,
                             "routes" : { },
@@ -578,6 +582,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                "mcp" : false
                              },
                              "defaults" : { },
+                             "responses_defaults" : { },
                              "description_keywords" : [ ],
                              "max_retry_attempts" : 1,
                              "routes" : {
@@ -659,6 +664,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "mcp" : false
                     },
                     "defaults":{},
+                    "responses_defaults":{},
                     "description_keywords":[],
                     "max_retry_attempts" : 1,
                     "owner" : "EPM-RTC-GPT",
@@ -706,6 +712,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "mcp" : false
                                 },
                             "defaults":{},
+                            "responses_defaults":{},
                             "description_keywords":[],
                             "max_retry_attempts" : 1,
                             "routes" : { },
@@ -745,6 +752,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "mcp" : false
                             },
                             "defaults" : { },
+                            "responses_defaults" : { },
                             "description_keywords" : [ ],
                             "max_retry_attempts" : 1,
                             "routes" : {
@@ -802,6 +810,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "mcp" : false
                             },
                             "defaults" : { },
+                            "responses_defaults" : { },
                             "description_keywords":[],
                             "max_retry_attempts" : 1,
                             "owner" : "EPM-RTC-GPT",
@@ -878,6 +887,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "reference": "@ignore",
                 "forward_auth_token": false,
                 "defaults": {},
+                "responses_defaults": {},
                 "interceptors": [],
                 "description_keywords": [],
                 "max_retry_attempts" : 1,
@@ -904,6 +914,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "reference": "@ignore",
                 "forward_auth_token": false,
                 "defaults": {},
+                "responses_defaults": {},
                 "interceptors": [],
                 "description_keywords": [],
                 "max_retry_attempts" : 1,
@@ -952,6 +963,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "reference": "@ignore",
                 "forward_auth_token": false,
                 "defaults": {},
+                "responses_defaults": {},
                 "interceptors": [],
                 "description_keywords": [],
                 "max_retry_attempts" : 1,
@@ -1019,6 +1031,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                   "reference": "@ignore",
                   "forward_auth_token" : false,
                   "defaults" : { },
+                  "responses_defaults" : { },
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
@@ -1064,6 +1077,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                   "reference": "@ignore",
                   "forward_auth_token" : false,
                   "defaults" : { },
+                  "responses_defaults" : { },
                   "interceptors" : [ ],
                   "description_keywords" : [ ],
                   "max_retry_attempts" : 1,
@@ -1298,6 +1312,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                        "mcp" : false
                      },
                      "defaults" : { },
+                     "responses_defaults" : { },
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
                      "invalid" : true,
@@ -1453,10 +1468,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 String body = request.getBody().readString(StandardCharsets.UTF_8);
                 JsonNode tree = ProxyUtil.MAPPER.readTree(body);
                 String basePath = "params._meta.ai_dial_config";
-                JsonNode node = JsonPath.read(tree, basePath + ".property1");
+                JsonNode node = JsonUtil.read(tree, basePath + ".property1");
                 assertNotNull(node);
                 assertEquals("foo", node.asText());
-                node = JsonPath.read(tree, basePath + ".property2");
+                node = JsonUtil.read(tree, basePath + ".property2");
                 assertNotNull(node);
                 assertEquals("bar", node.asText());
                 return new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "application/json");

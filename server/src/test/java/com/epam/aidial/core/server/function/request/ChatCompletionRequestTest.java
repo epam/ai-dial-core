@@ -1,25 +1,22 @@
-package com.epam.aidial.core.server.function;
+package com.epam.aidial.core.server.function.request;
 
-import com.epam.aidial.core.server.util.ChatUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-public class BaseFunctionTest {
-
+class ChatCompletionRequestTest {
     @Test
-    public void testCollectAttachmentsFromJson() throws IOException {
-        String content = """
+    void testCollectAttachedFiles_ChatRequest() throws IOException {
+        String body = """
                 {
                   "modelId": "model",
-                  "url": "/files/file1",
                   "messages": [
                     {
                       "content": "test",
@@ -101,7 +98,7 @@ public class BaseFunctionTest {
                           {
                             "type": "application/vnd.dial.metadata+json",
                             "title": ".dockerignore",
-                            "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore"
+                            "url": "metadata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore"
                           }
                         ],
                         "stages": [
@@ -129,19 +126,108 @@ public class BaseFunctionTest {
                   "id": "id"
                 }
                 """;
-        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content.getBytes());
-        Set<String> result = ChatUtil.collectAttachments(tree, List.of("@.messages[*].custom_content.attachments[*].url",
-                "@.messages[*].custom_content.stages[*].attachments[*].url",
-                "@.messages[*].content[*].image_url.url",
-                "@.url",
-                "@.unknownProperty.url"));
-        assertNotNull(result);
-        assertEquals(Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile",
+        ChatCompletionRequest request = request(body);
+        Set<String> expected = Set.of(
+                "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/Dockerfile",
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/LICENSE",
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/README.md",
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore",
                 "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file0",
-                "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file1",
-                "/files/file1"), result);
+                "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/stage0_file1");
+
+        Set<String> actual = request.collectAttachments();
+
+        assertEquals(expected, actual);
+    }
+
+    @Test
+    void testCollectAttachedFiles_Fail() throws IOException {
+        String body = """
+                {
+                  "modelId": "model",
+                  "messages": [
+                    {
+                      "content": "test",
+                      "role": "user",
+                      "custom_content": {
+                        "attachments": [
+                          {
+                            "type": "application/vnd.dial.metadata+json",
+                            "title": ".dockerignore",
+                            "url": "metadatata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "id": "id"
+                }
+                """;
+
+        ChatCompletionRequest request = request(body);
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, request::collectAttachments);
+
+        assertEquals("Url of metadata attachment must start with metadata/: metadatata/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/.dockerignore", error.getMessage());
+    }
+
+    @Test
+    void testCollectAttachedFiles_EmbeddingRequest_valid() throws IOException {
+        String content = """
+                {
+                  "input": "some input",
+                  "custom_input": [
+                    "test text 1",
+                    {
+                      "type": "image/png",
+                      "data": "data:image/png;base64,iVBORw0KGg"
+                    },
+                    {
+                      "type": "image/png",
+                      "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/image.png"
+                    },
+                    [
+                      "test text 2",
+                      {
+                        "type": "image/png",
+                        "data": "data:image/png;base64,iVBORw0KGg"
+                      },
+                      {
+                        "type": "video/mp4",
+                        "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b2/video.mp4"
+                      }
+                    ]
+                  ],
+                  "user": "user_id"
+                }
+                """;
+        ChatCompletionRequest request = request(content);
+        Set<String> expected = Set.of(
+                "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b1/image.png",
+                "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/b2/video.mp4");
+
+        Set<String> actual = request.collectAttachments();
+
+        assertEquals(expected, actual);
+    }
+
+    @Test
+    void testCollectAttachedFiles_EmbeddingRequest_invalid() throws IOException {
+        String content = """
+                {
+                  "input": "some input",
+                  "custom_input": "invalid_custom_input",
+                  "user": "user_id"
+                }
+                """;
+        ChatCompletionRequest request = request(content);
+
+        Set<String> actual = request.collectAttachments();
+
+        assertEquals(Set.of(), actual);
+    }
+
+    private static ChatCompletionRequest request(String body) throws JsonProcessingException {
+        return new ChatCompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
     }
 }

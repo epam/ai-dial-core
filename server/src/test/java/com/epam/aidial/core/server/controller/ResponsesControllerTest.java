@@ -4,10 +4,12 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ConsentService;
@@ -15,6 +17,8 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -39,7 +43,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.IOException;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
@@ -49,7 +56,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
@@ -206,11 +212,46 @@ public class ResponsesControllerTest {
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setSourceDeployment("test-deployment");
+        apiKeyData.setPerRequestKey("per-request-key");
+        apiKeyData.setExecutionPath(List.of());
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey("per-request-key");
-        Buffer requestBody = Buffer.buffer("{\"model\":\"test\"}");
+        Map<String, AutoSharedData> inputFiles = Map.of(
+                "files/public/file.txt", new AutoSharedData(ResourceAccessType.READ_ONLY));
+        Map<String, AutoSharedData> outputFiles = Map.of(
+                "files/public/image.png", new AutoSharedData(Set.of(ResourceAccessType.READ)));
+        ApiKeyData updatedApiKeyData = new ApiKeyData();
+        updatedApiKeyData.setAttachedFiles(outputFiles);
+        Buffer requestBody = Buffer.buffer(normalizeJson("""
+                {
+                    "model": "test",
+                    "input": [
+                        {
+                            "content": [
+                                {
+                                    "type": "input_file",
+                                    "file_url": "files/public/file.txt"
+                                }
+                            ]
+                        }
+                    ]
+                }
+                """));
         Buffer responseBody = Buffer.buffer("""
                 {
+                    "output": [
+                        {
+                            "type": "code_interpreter_call",
+                            "outputs": [
+                                {
+                                    "type": "image",
+                                    "url": "files/public/image.png"
+                                }
+                            ]
+                        }
+                    ],
                     "usage": {
                         "input_tokens": 19,
                         "input_tokens_details": {
@@ -242,8 +283,9 @@ public class ResponsesControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(context.getResponse()).thenReturn(response);
         when(context.getConfig()).thenReturn(new Config());
-        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
         when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+        when(context.copyWith(proxyApiKeyData)).thenReturn(context);
         when(proxyRequest.headers()).thenReturn(new HeadersMultiMap());
         when(proxyRequest.send(requestBody)).thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
@@ -264,6 +306,12 @@ public class ResponsesControllerTest {
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getTokenStatsTracker().startSpan(context))
                 .thenReturn(Future.succeededFuture());
+        when(proxy.getAccessService().hasReadAccess(
+                ResourceDescriptorFactory.fromPublicUrl("files/public/image.png"), context))
+                .thenReturn(true);
+        when(proxy.getAccessService().hasReadAccess(
+                ResourceDescriptorFactory.fromPublicUrl("files/public/file.txt"), context))
+                .thenReturn(true);
         when(proxyResponse.handler(any())).thenAnswer(inv -> {
             Handler<Buffer> handler = inv.getArgument(0);
             handler.handle(responseBody);
@@ -284,6 +332,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getResponseStream();
         doCallRealMethod().when(context).setTokenUsage(any());
         doCallRealMethod().when(context).getTokenUsage();
+        doCallRealMethod().when(context).setProxyResponse(any());
+        doCallRealMethod().when(context).getProxyResponse();
 
         controller.handle();
 
@@ -293,6 +343,11 @@ public class ResponsesControllerTest {
                 "/responses?arg=value".equals(req.getURI().toString())));
         assertEquals(responseBody, context.getResponseBody());
         assertEquals(tokenUsage, context.getTokenUsage());
+        assertEquals(inputFiles, proxyApiKeyData.getAttachedFiles());
+        verify(proxy.getApiKeyStore()).updatePerRequestApiKey(
+                eq("per-request-key"),
+                argThat(arg ->
+                        ProxyUtil.convertToString(updatedApiKeyData).equals(arg.apply("{}"))));
     }
 
     @Test
@@ -355,7 +410,7 @@ public class ResponsesControllerTest {
         when(proxy.getTokenStatsTracker().updateModelStats(context))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getUpstreamRouteProvider().get(any(), any(), any())).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
         when(proxy.getClient().request(any()))
                 .thenReturn(Future.succeededFuture(proxyRequest));
         when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
@@ -392,11 +447,6 @@ public class ResponsesControllerTest {
 
         await(textContext);
 
-        verify(proxy.getUpstreamRouteProvider()).get(
-                eq(deployment),
-                isNull(),
-                argThat(arg -> "http://adapter/responses".equals(arg.apply(deployment))));
-
         assertEquals(responseBody, context.getResponseBody());
         assertEquals(tokenUsage, context.getTokenUsage());
     }
@@ -415,5 +465,9 @@ public class ResponsesControllerTest {
 
     private static AsyncTaskExecutor taskExecutor(Vertx vertx) {
         return new AsyncTaskExecutor(vertx, new JsonObject(Map.of("useVirtualThreads", false)));
+    }
+
+    private static String normalizeJson(String json) throws IOException {
+        return ProxyUtil.convertToString(ProxyUtil.MAPPER.readTree(json));
     }
 }

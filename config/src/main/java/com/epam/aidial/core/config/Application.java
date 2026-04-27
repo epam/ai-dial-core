@@ -167,6 +167,7 @@ public class Application extends Deployment {
         this.setInputAttachmentTypes(source.getInputAttachmentTypes());
         this.setMaxInputAttachments(source.getMaxInputAttachments());
         this.setDefaults(source.getDefaults());
+        this.setResponsesDefaults(source.getResponsesDefaults());
         this.setInterceptors(source.getInterceptors());
         this.setDescriptionKeywords(source.getDescriptionKeywords());
         this.setFunction(source.getFunction());

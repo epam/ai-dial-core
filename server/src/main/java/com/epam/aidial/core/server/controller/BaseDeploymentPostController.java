@@ -9,7 +9,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
-import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -64,13 +64,12 @@ public class BaseDeploymentPostController {
         return Strings.CI.contains(contentType, "text/event-stream") && context.isStreamingRequest();
     }
 
-    protected Future<Void> collectResponseAttachments(Buffer responseBody) {
+    protected Future<Void> collectResponseAttachments(Buffer responseBody, CollectResponseAttachmentsFn fn) {
         if (isEventStreamResponse(context.getProxyResponse())) {
             return Future.succeededFuture();
         }
         try (InputStream stream = new ByteBufInputStream(responseBody.getByteBuf())) {
             ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            var fn = new CollectResponseChatCompletionAttachmentsFn(proxy, context);
             return fn.apply(tree).map(ignored -> null);
         } catch (Throwable e) {
             log.warn("Can't parse JSON response body. Error:", e);

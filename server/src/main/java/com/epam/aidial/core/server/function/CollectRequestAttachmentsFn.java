@@ -5,11 +5,11 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Set;
@@ -21,21 +21,21 @@ import java.util.Set;
  * </p>
  */
 @Slf4j
-public abstract class CollectRequestAttachmentsFn extends BaseRequestFunction<ObjectNode> {
+public abstract class CollectRequestAttachmentsFn extends BaseRequestFunction<RequestObject> {
     public CollectRequestAttachmentsFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }
 
     @Override
-    public Boolean apply(ObjectNode tree) {
-        Set<String> attachments = collectAttachments(tree);
+    public Boolean apply(RequestObject request) {
+        Set<String> attachments = collectAttachments(request);
         for (String attachment : attachments) {
             tryToAutoShareAttachedFile(attachment);
         }
         return false;
     }
 
-    protected abstract Set<String> collectAttachments(ObjectNode tree);
+    protected abstract Set<String> collectAttachments(RequestObject tree);
 
     protected void tryToAutoShareAttachedFile(String url) {
         ResourceDescriptor resource = fromAnyUrl(url, proxy.getEncryptionService());

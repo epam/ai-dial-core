@@ -648,6 +648,7 @@ class ResourceApiTest extends ResourceBaseTest {
                     "description" : "My application description",
                     "forward_auth_token" : false,
                     "defaults" : { },
+                    "responses_defaults" : { },
                     "interceptors" : [ ],
                     "description_keywords" : [ ],
                     "max_retry_attempts" : 1,

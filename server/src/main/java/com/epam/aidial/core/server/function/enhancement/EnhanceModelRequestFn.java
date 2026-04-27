@@ -5,25 +5,25 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.epam.aidial.core.server.function.request.RequestObject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class EnhanceModelRequestFn extends BaseRequestFunction<ObjectNode> {
+public class EnhanceModelRequestFn extends BaseRequestFunction<RequestObject> {
     public EnhanceModelRequestFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }
 
     @Override
-    public Boolean apply(ObjectNode tree) {
+    public Boolean apply(RequestObject request) {
         Deployment deployment = context.getDeployment();
         if (deployment instanceof Model) {
-            return enhanceModelRequest(context, tree);
+            return enhanceModelRequest(context, request);
         }
         return false;
     }
 
-    private static boolean enhanceModelRequest(ProxyContext context, ObjectNode tree) {
+    private static boolean enhanceModelRequest(ProxyContext context, RequestObject request) {
         Model model = (Model) context.getDeployment();
         String overrideName = model.getOverrideName();
 
@@ -31,8 +31,7 @@ public class EnhanceModelRequestFn extends BaseRequestFunction<ObjectNode> {
             return false;
         }
 
-        tree.remove("model");
-        tree.put("model", overrideName);
+        request.setModel(overrideName);
 
         return true;
     }

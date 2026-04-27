@@ -15,10 +15,11 @@ import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
-import com.epam.aidial.core.server.function.CollectRequestDataFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
+import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
+import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.sse.SseEvent;
@@ -30,9 +31,7 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
-import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -43,18 +42,16 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
-import java.io.InputStream;
 import java.util.List;
 import java.util.function.Supplier;
 
 @Slf4j
 public class DeploymentPostController extends BaseDeploymentPostController {
-    private final List<BaseRequestFunction<ObjectNode>> enhancementFunctions;
+    private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
 
     public DeploymentPostController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
         this.enhancementFunctions = List.of(new CollectRequestChatCompletionAttachmentsFn(proxy, context),
-                new CollectRequestDataFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
@@ -221,10 +218,11 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         context.setRequestBody(requestBody);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
 
-        try (InputStream stream = new ByteBufInputStream(requestBody.getByteBuf())) {
-            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(stream);
-            if (ProxyUtil.processChain(tree, enhancementFunctions)) {
-                context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree)));
+        try {
+            RequestObject request = new ChatCompletionRequest(ProxyUtil.parseObject(requestBody));
+            context.setStreamingRequest(request.isStreaming());
+            if (ProxyUtil.processChain(request, enhancementFunctions)) {
+                context.setRequestBody(Buffer.buffer(request.serialize()));
             }
             proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
         } catch (Throwable e) {
@@ -320,7 +318,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             if (result.failed()) {
                 log.warn("Failed to collect token usage", result.cause());
             }
-            return collectResponseAttachments(responseBody);
+            return collectResponseAttachments(responseBody, new CollectResponseChatCompletionAttachmentsFn(proxy, context));
         });
 
         handleResponseFuture.onComplete(result -> {

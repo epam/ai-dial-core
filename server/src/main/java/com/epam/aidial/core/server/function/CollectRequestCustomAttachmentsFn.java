@@ -3,7 +3,7 @@ package com.epam.aidial.core.server.function;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.epam.aidial.core.server.function.request.RequestObject;
 
 import java.util.List;
 import java.util.Set;
@@ -14,9 +14,9 @@ public class CollectRequestCustomAttachmentsFn extends CollectRequestAttachments
     }
 
     @Override
-    protected Set<String> collectAttachments(ObjectNode tree) {
+    protected Set<String> collectAttachments(RequestObject request) {
         Route route = context.getRoute();
         List<String> jsonPaths = route.getAttachmentPaths().getRequestBody();
-        return collectAttachmentsFromJson(tree, jsonPaths);
+        return request.collectAppAttachments(jsonPaths);
     }
 }
