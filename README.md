@@ -21,6 +21,7 @@
     - [Static settings](#static-settings)
     - [Storage requirements](#storage-requirements)
     - [Dynamic settings](#dynamic-settings)
+- [Claude Code commands](#claude-code-commands)
 - [License](#license)
 
 
@@ -303,6 +304,21 @@ DIAL Core stores user data in the following storages:
 | keys                   | API keys and their parameters. Refer to [API Keys](/docs/dynamic-settings/keys.md) to see dynamic settings.                                                                                                                                                                     |
 | retriableErrorCodes    | List of Retriable Error Codes for handling outages at LLM Providers. This list extends the existing error codes (429, 502, 503, 504) but doesn't override them.                                                                                                                 |
 | applicationTypeSchemas | Map of application schemas where key - schema ID, value - schema itself in JSON format. All schemas must be conformed to the root schema `https://dial.epam.com/application_type_schemas/schema#`. See [link](config/src/main/resources/custom-application-schemas/schema.json) |
+
+## Claude Code commands
+
+This repository ships custom [Claude Code](https://claude.com/claude-code) slash commands under [`.claude/commands/`](.claude/commands). Each command file documents its own usage and prerequisites.
+
+The workflow is split across three commands so each invocation maps to a single phase. Use them in order: `/start-issue` → implement → `/finish-issue` → `/open-pr`.
+
+| Command         | Description                                                                            | Prerequisites                                                            |
+|-----------------|----------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
+| [`/start-issue <issue-number>`](.claude/commands/start-issue.md) | Fetch a GitHub issue and create a branch from latest `development`.                  | [GitHub CLI (`gh`)](https://cli.github.com/) installed and authenticated (`gh auth login`). |
+| [`/finish-issue`](.claude/commands/finish-issue.md)              | Run pre-commit checks (`checkstyleMain`, `checkstyleTest`, relevant tests) and commit using conventional commit format. |                                                                                              |
+| [`/open-pr`](.claude/commands/open-pr.md)                        | Push the current branch and open a PR against `development`.                          | [GitHub CLI (`gh`)](https://cli.github.com/) installed and authenticated (`gh auth login`). |
+
+> [!NOTE]
+> To add a new command, drop a Markdown file into [`.claude/commands/`](.claude/commands) and append a row to the table above.
 
 ## License
 
