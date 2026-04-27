@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
@@ -114,7 +115,12 @@ public class BaseDeploymentPostController {
      * Called when proxy failed to connect to the origin.
      */
     protected void handleProxyConnectionError(Throwable error) {
-        respond(HttpStatus.BAD_GATEWAY, "Failed to connect to origin");
+        ErrorData response = new ErrorData();
+        response.getError().setCode(String.valueOf(HttpStatus.BAD_GATEWAY));
+        String errorMessage = "Failed to connect to upstream server";
+        response.getError().setMessage(errorMessage);
+        response.getError().setDisplayMessage(errorMessage);
+        respond(HttpStatus.BAD_GATEWAY, response);
         log.warn("Can't connect to origin.  Deployment: {}. Address: {}. Error: {}",
                 context.getDeployment().getName(),
                 context.getDeployment().getEndpoint(), error.getMessage());
