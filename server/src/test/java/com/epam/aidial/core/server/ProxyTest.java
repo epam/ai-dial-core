@@ -217,6 +217,22 @@ public class ProxyTest {
         verify(response).putHeader("WWW-Authenticate", "Bearer resource_metadata=\"example.com\"");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"GET", "POST"})
+    public void testHandle_MissingApiKeyAndToken_PathMatchesApplicationMcpProxyPattern(String method) {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.valueOf(method));
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(request.path()).thenReturn("/v1/deployments/test-app/mcp");
+        when(resourceMetadataService.resolveResourceMetadataPath(request)).thenReturn(Optional.of("example.com"));
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(UNAUTHORIZED.getCode());
+        verify(response).putHeader("WWW-Authenticate", "Bearer resource_metadata=\"example.com\"");
+    }
+
     @Test
     public void testHandle_BothApiKeyAndToken_ApiKeyNotFound() {
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);

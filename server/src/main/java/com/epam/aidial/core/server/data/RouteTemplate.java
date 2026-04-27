@@ -195,6 +195,10 @@ public enum RouteTemplate {
             "^/\\.well-known/oauth-protected-resource/v1/toolset/(?<id>.+?)/mcp$",
             "/.well-known/oauth-protected-resource/v1/toolset/{id}/mcp"
     ),
+    APPLICATION_MCP_PROXY_METADATA(
+            "^/\\.well-known/oauth-protected-resource/v1/deployments/(?<id>.+?)/mcp$",
+            "/.well-known/oauth-protected-resource/v1/deployments/{id}/mcp"
+    ),
     PER_REQUEST_PERMISSION("^/v1/ops/resource/per-request-permissions/(grant|revoke|list)",
             "/v1/ops/resource/per-request-permissions/{operation}"),
 

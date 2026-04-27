@@ -16,4 +16,16 @@ public class WellKnownResourceMetadataApiTest extends ResourceBaseTest {
                 }
                 """);
     }
+
+    @Test
+    public void testWellKnownResourceMetadataForApplicationMcp() {
+        Response response = send(HttpMethod.GET, "/.well-known/oauth-protected-resource/v1/deployments/test-app/mcp");
+
+        verifyJsonNotExact(response, 200, """
+                {
+                  "resource" : "https://localhost/v1/deployments/test-app/mcp",
+                  "authorization_servers" : [ "https://example.com" ]
+                }
+                """);
+    }
 }

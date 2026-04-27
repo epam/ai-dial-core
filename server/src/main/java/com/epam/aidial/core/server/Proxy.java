@@ -82,6 +82,8 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     public static final Pattern TOOLSET_PROXY_PATTERN = RouteTemplate.TOOL_SET_MCP_PROXY.getPattern();
     public static final Pattern TOOLSET_PROXY_METADATA_PATTERN = RouteTemplate.TOOL_SET_PROXY_METADATA.getPattern();
+    public static final Pattern APPLICATION_MCP_PROXY_PATTERN = RouteTemplate.APPLICATION_MCP_PROXY.getPattern();
+    public static final Pattern APPLICATION_MCP_PROXY_METADATA_PATTERN = RouteTemplate.APPLICATION_MCP_PROXY_METADATA.getPattern();
 
     // All new headers should start with X-DIAL- while existing may stay untouched
 
@@ -233,7 +235,7 @@ public class Proxy implements Handler<HttpServerRequest> {
             return;
         }
 
-        if (request.method() == HttpMethod.GET && TOOLSET_PROXY_METADATA_PATTERN.matcher(request.path()).matches()) {
+        if (request.method() == HttpMethod.GET && isMcpResourceMetadataPath(request.path())) {
             resourceMetadataController.handle(request);
             return;
         }
@@ -285,7 +287,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         String clientIpAddress = ProxyUtil.getClientIpAddress(request, apiKeyValidation.getProxyCount());
         if (apiKey == null && authorization == null) {
             Map<String, String> headers = Map.of();
-            if ((request.method() == HttpMethod.GET || request.method() == HttpMethod.POST) && TOOLSET_PROXY_PATTERN.matcher(request.path()).matches()) {
+            if ((request.method() == HttpMethod.GET || request.method() == HttpMethod.POST) && isMcpResourcePath(request.path())) {
                 headers = resourceMetadataService.resolveResourceMetadataPath(request)
                         .map(path -> Map.of("WWW-Authenticate", "Bearer resource_metadata=\"" + path + "\""))
                         .orElse(Map.of());
@@ -390,5 +392,15 @@ public class Proxy implements Handler<HttpServerRequest> {
     private void respond(HttpServerRequest request, HttpStatus status, String body, Map<String, String> headers) {
         headers.forEach(request.response()::putHeader);
         respond(request, status, body);
+    }
+
+    private static boolean isMcpResourcePath(String path) {
+        return TOOLSET_PROXY_PATTERN.matcher(path).matches()
+                || APPLICATION_MCP_PROXY_PATTERN.matcher(path).matches();
+    }
+
+    private static boolean isMcpResourceMetadataPath(String path) {
+        return TOOLSET_PROXY_METADATA_PATTERN.matcher(path).matches()
+                || APPLICATION_MCP_PROXY_METADATA_PATTERN.matcher(path).matches();
     }
 }
