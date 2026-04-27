@@ -12,15 +12,18 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import java.io.ByteArrayOutputStream;
 import java.net.ConnectException;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.channels.UnresolvedAddressException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -31,6 +34,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class ResourceAuthorizationClientTest {
+
+    private static final HttpHeaders EMPTY_HEADERS = HttpHeaders.of(Map.of(), (k, v) -> true);
 
     @Mock
     private HttpClient httpClientMock;
@@ -51,11 +56,12 @@ class ResourceAuthorizationClientTest {
         // Given
         String url = "https://example.com/resource";
         String jsonResponse = "{\"key\":\"value\"}";
-        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
         TestResponse expectedResponse = new TestResponse("value");
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
         when(httpResponseMock.statusCode()).thenReturn(200);
-        when(httpResponseMock.body()).thenReturn(jsonResponse);
+        when(httpResponseMock.body()).thenReturn(jsonResponse.getBytes(StandardCharsets.UTF_8));
+        when(httpResponseMock.headers()).thenReturn(EMPTY_HEADERS);
 
         // When
         TestResponse actualResponse = resourceAuthorizationClient.executeGet(url, TestResponse.class);
@@ -69,7 +75,7 @@ class ResourceAuthorizationClientTest {
     void testExecuteGet_NotFoundStatus() throws Exception {
         // Given
         String url = "https://example.com/resource";
-        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
         HttpHeaders httpHeadersMock = mock(HttpHeaders.class);
         when(httpHeadersMock.map()).thenReturn(new HashMap<>());
@@ -89,7 +95,7 @@ class ResourceAuthorizationClientTest {
     void testExecuteGet_UnauthorizedStatus() throws Exception {
         // Given
         String url = "https://example.com/resource";
-        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
         when(httpResponseMock.statusCode()).thenReturn(401);
         HttpHeaders httpHeadersMock = mock(HttpHeaders.class);
@@ -112,10 +118,11 @@ class ResourceAuthorizationClientTest {
         TestRequest requestPayload = new TestRequest("testValue");
 
         String jsonResponse = "{\"key\":\"responseValue\"}";
-        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
         when(httpResponseMock.statusCode()).thenReturn(201);
-        when(httpResponseMock.body()).thenReturn(jsonResponse);
+        when(httpResponseMock.body()).thenReturn(jsonResponse.getBytes(StandardCharsets.UTF_8));
+        when(httpResponseMock.headers()).thenReturn(EMPTY_HEADERS);
 
         // When
         TestResponse actualResponse = resourceAuthorizationClient.executePost(
@@ -132,7 +139,7 @@ class ResourceAuthorizationClientTest {
         String url = "https://example.com/resource";
         TestRequest requestPayload = new TestRequest("testValue");
 
-        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
         when(httpResponseMock.statusCode()).thenReturn(404);
 
@@ -157,7 +164,7 @@ class ResourceAuthorizationClientTest {
         String url = "https://example.com/resource";
         TestRequest requestPayload = new TestRequest("testValue");
 
-        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
         when(httpResponseMock.statusCode()).thenReturn(401);
 
@@ -231,10 +238,11 @@ class ResourceAuthorizationClientTest {
         // Given
         String url = "https://example.com/token";
         String errorResponse = "{\"error\":\"invalid_grant\",\"error_description\":\"The authorization code has expired\"}";
-        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
         when(httpResponseMock.statusCode()).thenReturn(200);
-        when(httpResponseMock.body()).thenReturn(errorResponse);
+        when(httpResponseMock.body()).thenReturn(errorResponse.getBytes(StandardCharsets.UTF_8));
+        when(httpResponseMock.headers()).thenReturn(EMPTY_HEADERS);
 
         // When
         HttpException exception = assertThrows(HttpException.class,
@@ -252,10 +260,11 @@ class ResourceAuthorizationClientTest {
         String url = "https://example.com/token";
         TestRequest requestPayload = new TestRequest("testValue");
         String errorResponse = "{\"error\":\"invalid_client\",\"error_description\":\"Invalid redirect_uri\"}";
-        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
         when(httpResponseMock.statusCode()).thenReturn(200);
-        when(httpResponseMock.body()).thenReturn(errorResponse);
+        when(httpResponseMock.body()).thenReturn(errorResponse.getBytes(StandardCharsets.UTF_8));
+        when(httpResponseMock.headers()).thenReturn(EMPTY_HEADERS);
 
         // When
         HttpException exception = assertThrows(HttpException.class,
@@ -274,10 +283,11 @@ class ResourceAuthorizationClientTest {
         String url = "https://example.com/token";
         TestRequest requestPayload = new TestRequest("testValue");
         String errorResponse = "{\"error\":\"server_error\"}";
-        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
         when(httpResponseMock.statusCode()).thenReturn(200);
-        when(httpResponseMock.body()).thenReturn(errorResponse);
+        when(httpResponseMock.body()).thenReturn(errorResponse.getBytes(StandardCharsets.UTF_8));
+        when(httpResponseMock.headers()).thenReturn(EMPTY_HEADERS);
 
         // When
         HttpException exception = assertThrows(HttpException.class,
@@ -294,10 +304,11 @@ class ResourceAuthorizationClientTest {
     void testExecuteGet_ValidResponseNotTreatedAsOauthError() throws Exception {
         String url = "https://example.com/resource";
         String jsonResponse = "{\"key\":\"value\"}";
-        HttpResponse<String> httpResponseMock = mock(HttpResponse.class);
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
         when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
         when(httpResponseMock.statusCode()).thenReturn(200);
-        when(httpResponseMock.body()).thenReturn(jsonResponse);
+        when(httpResponseMock.body()).thenReturn(jsonResponse.getBytes(StandardCharsets.UTF_8));
+        when(httpResponseMock.headers()).thenReturn(EMPTY_HEADERS);
 
         // When
         TestResponse actualResponse = resourceAuthorizationClient.executeGet(url, TestResponse.class);
@@ -305,6 +316,82 @@ class ResourceAuthorizationClientTest {
         // Then
         assertNotNull(actualResponse);
         assertEquals("value", actualResponse.getKey());
+    }
+
+    @Test
+    void testExecuteGet_DecodesXgzipAsGzip() throws Exception {
+        String url = "https://example.com/resource";
+        String jsonResponse = "{\"key\":\"value\"}";
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(200);
+        when(httpResponseMock.body()).thenReturn(gzip(jsonResponse));
+        when(httpResponseMock.headers()).thenReturn(
+                HttpHeaders.of(Map.of("Content-Encoding", List.of("x-gzip")), (k, v) -> true));
+
+        TestResponse actualResponse = resourceAuthorizationClient.executeGet(url, TestResponse.class);
+
+        assertNotNull(actualResponse);
+        assertEquals("value", actualResponse.getKey());
+    }
+
+    @Test
+    void testExecuteGet_FailsOnStackedCodings() throws Exception {
+        String url = "https://example.com/resource";
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(200);
+        when(httpResponseMock.body()).thenReturn("ignored".getBytes(StandardCharsets.UTF_8));
+        when(httpResponseMock.headers()).thenReturn(
+                HttpHeaders.of(Map.of("Content-Encoding", List.of("gzip, deflate")), (k, v) -> true));
+
+        HttpException exception = assertThrows(HttpException.class,
+                () -> resourceAuthorizationClient.executeGet(url, TestResponse.class));
+
+        assertTrue(exception.getMessage().contains("gzip"));
+        assertTrue(exception.getMessage().contains("deflate"));
+    }
+
+    @Test
+    void testExecuteGet_FailsWhenContentEncodingIsUnsupported() throws Exception {
+        String url = "https://example.com/resource";
+        String jsonResponse = "{\"key\":\"value\"}";
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(200);
+        when(httpResponseMock.body()).thenReturn(jsonResponse.getBytes(StandardCharsets.UTF_8));
+        when(httpResponseMock.headers()).thenReturn(
+                HttpHeaders.of(Map.of("Content-Encoding", List.of("br")), (k, v) -> true));
+
+        HttpException exception = assertThrows(HttpException.class,
+                () -> resourceAuthorizationClient.executeGet(url, TestResponse.class));
+
+        assertTrue(exception.getMessage().contains("br"));
+    }
+
+    @Test
+    void testExecuteGet_TreatsBodyAsRawWhenContentEncodingIsIdentity() throws Exception {
+        String url = "https://example.com/resource";
+        String jsonResponse = "{\"key\":\"value\"}";
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(200);
+        when(httpResponseMock.body()).thenReturn(jsonResponse.getBytes(StandardCharsets.UTF_8));
+        when(httpResponseMock.headers()).thenReturn(
+                HttpHeaders.of(Map.of("Content-Encoding", List.of("identity")), (k, v) -> true));
+
+        TestResponse actualResponse = resourceAuthorizationClient.executeGet(url, TestResponse.class);
+
+        assertNotNull(actualResponse);
+        assertEquals("value", actualResponse.getKey());
+    }
+
+    private static byte[] gzip(String value) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (GZIPOutputStream gz = new GZIPOutputStream(baos)) {
+            gz.write(value.getBytes(StandardCharsets.UTF_8));
+        }
+        return baos.toByteArray();
     }
 
     @Data
