@@ -309,9 +309,13 @@ DIAL Core stores user data in the following storages:
 
 This repository ships custom [Claude Code](https://claude.com/claude-code) slash commands under [`.claude/commands/`](.claude/commands). Each command file documents its own usage and prerequisites.
 
+The workflow is split across three commands so each invocation maps to a single phase. Use them in order: `/start-issue` → implement → `/finish-issue` → `/open-pr`.
+
 | Command         | Description                                                                            | Prerequisites                                                            |
 |-----------------|----------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
-| [`/issue`](.claude/commands/issue.md) | Start work on a GitHub issue: fetch it, create a branch, and scaffold the commit & PR. | [GitHub CLI (`gh`)](https://cli.github.com/) installed and authenticated (`gh auth login`).  |
+| [`/start-issue <issue-number>`](.claude/commands/start-issue.md) | Fetch a GitHub issue and create a branch from latest `development`.                  | [GitHub CLI (`gh`)](https://cli.github.com/) installed and authenticated (`gh auth login`). |
+| [`/finish-issue`](.claude/commands/finish-issue.md)              | Run pre-commit checks (`checkstyleMain`, `checkstyleTest`, relevant tests) and commit using conventional commit format. |                                                                                              |
+| [`/open-pr`](.claude/commands/open-pr.md)                        | Push the current branch and open a PR against `development`.                          | [GitHub CLI (`gh`)](https://cli.github.com/) installed and authenticated (`gh auth login`). |
 
 > [!NOTE]
 > To add a new command, drop a Markdown file into [`.claude/commands/`](.claude/commands) and append a row to the table above.
