@@ -139,10 +139,12 @@ public class ResponsesController extends BaseDeploymentPostController {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
-        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
 
         context.setStreamingRequest(request.isStreaming());
         ProxyUtil.processChain(request, enhancementFunctions);
+        // Enhancement functions update the api key, and it should be saved after that
+        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+
         context.setRequestBody(Buffer.buffer(request.serialize()));
 
         Deployment deployment = context.getDeployment();

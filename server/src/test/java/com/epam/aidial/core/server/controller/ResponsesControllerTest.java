@@ -57,6 +57,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -65,6 +66,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith({MockitoExtension.class, VertxExtension.class})
 public class ResponsesControllerTest {
+    private static final String PER_REQUEST_KEY = "per-request-key";
+
     @Mock
     private ProxyContext context;
 
@@ -214,10 +217,8 @@ public class ResponsesControllerTest {
         Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0);
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setSourceDeployment("test-deployment");
-        apiKeyData.setPerRequestKey("per-request-key");
+        apiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         apiKeyData.setExecutionPath(List.of());
-        ApiKeyData proxyApiKeyData = new ApiKeyData();
-        proxyApiKeyData.setPerRequestKey("per-request-key");
         Map<String, AutoSharedData> inputFiles = Map.of(
                 "files/public/file.txt", new AutoSharedData(ResourceAccessType.READ_ONLY));
         Map<String, AutoSharedData> outputFiles = Map.of(
@@ -284,8 +285,7 @@ public class ResponsesControllerTest {
         when(context.getResponse()).thenReturn(response);
         when(context.getConfig()).thenReturn(new Config());
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
-        when(context.copyWith(proxyApiKeyData)).thenReturn(context);
+        when(context.copyWith(any())).thenReturn(context);
         when(proxyRequest.headers()).thenReturn(new HeadersMultiMap());
         when(proxyRequest.send(requestBody)).thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
@@ -322,6 +322,12 @@ public class ResponsesControllerTest {
             handler.handle(null);
             return proxyResponse;
         });
+        doAnswer(invocation -> {
+            ApiKeyData proxyApiKeyData = invocation.getArgument(0);
+            // side effect
+            proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
+            return null;
+        }).when(apiKeyStore).assignPerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setRequestBody(any());
@@ -334,6 +340,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getTokenUsage();
         doCallRealMethod().when(context).setProxyResponse(any());
         doCallRealMethod().when(context).getProxyResponse();
+        doCallRealMethod().when(context).setProxyApiKeyData(any());
+        doCallRealMethod().when(context).getProxyApiKeyData();
 
         controller.handle();
 
@@ -343,9 +351,11 @@ public class ResponsesControllerTest {
                 "/responses?arg=value".equals(req.getURI().toString())));
         assertEquals(responseBody, context.getResponseBody());
         assertEquals(tokenUsage, context.getTokenUsage());
-        assertEquals(inputFiles, proxyApiKeyData.getAttachedFiles());
-        verify(proxy.getApiKeyStore()).updatePerRequestApiKey(
-                eq("per-request-key"),
+        // Ensure the list of attached files is updated before it's saved
+        verify(apiKeyStore).assignPerRequestApiKey(argThat(arg ->
+                inputFiles.equals(arg.getAttachedFiles())));
+        verify(apiKeyStore).updatePerRequestApiKey(
+                eq(PER_REQUEST_KEY),
                 argThat(arg ->
                         ProxyUtil.convertToString(updatedApiKeyData).equals(arg.apply("{}"))));
     }
@@ -361,7 +371,7 @@ public class ResponsesControllerTest {
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
-        proxyApiKeyData.setPerRequestKey("per-request-key");
+        proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\"}");
         Buffer responseBody = Buffer.buffer("""
                 {
