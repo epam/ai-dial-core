@@ -1,8 +1,10 @@
 package com.epam.aidial.core.openapi;
 
 import com.epam.aidial.core.server.controller.ApplicationController;
+import com.epam.aidial.core.server.controller.ApplicationMcpProxyController;
 import com.epam.aidial.core.server.controller.ApplicationTypeSchemaController;
 import com.epam.aidial.core.server.controller.BucketController;
+import com.epam.aidial.core.server.controller.ClientChannelController;
 import com.epam.aidial.core.server.controller.CodeInterpreterController;
 import com.epam.aidial.core.server.controller.ConfigController;
 import com.epam.aidial.core.server.controller.ConsentController;
@@ -21,9 +23,11 @@ import com.epam.aidial.core.server.controller.RateResponseController;
 import com.epam.aidial.core.server.controller.ResourceController;
 import com.epam.aidial.core.server.controller.ResourceCredentialsController;
 import com.epam.aidial.core.server.controller.ResourceOperationController;
+import com.epam.aidial.core.server.controller.ResponsesController;
 import com.epam.aidial.core.server.controller.ShareController;
 import com.epam.aidial.core.server.controller.ToolSetController;
-import com.epam.aidial.core.server.controller.ToolSetProxyController;
+import com.epam.aidial.core.server.controller.ToolSetMcpProxyController;
+import com.epam.aidial.core.server.controller.ToolSetToolsController;
 import com.epam.aidial.core.server.controller.UploadFileController;
 import com.epam.aidial.core.server.controller.UserInfoController;
 import com.epam.aidial.core.server.openapi.ApiOperation;
@@ -40,8 +44,10 @@ public final class AnnotationEndpointCollector {
 
     private static final List<Class<?>> CONTROLLER_CLASSES = List.of(
             ApplicationController.class,
+            ApplicationMcpProxyController.class,
             ApplicationTypeSchemaController.class,
             BucketController.class,
+            ClientChannelController.class,
             CodeInterpreterController.class,
             ConfigController.class,
             ConsentController.class,
@@ -60,9 +66,11 @@ public final class AnnotationEndpointCollector {
             ResourceController.class,
             ResourceCredentialsController.class,
             ResourceOperationController.class,
+            ResponsesController.class,
             ShareController.class,
             ToolSetController.class,
-            ToolSetProxyController.class,
+            ToolSetMcpProxyController.class,
+            ToolSetToolsController.class,
             UploadFileController.class,
             UserInfoController.class
     );

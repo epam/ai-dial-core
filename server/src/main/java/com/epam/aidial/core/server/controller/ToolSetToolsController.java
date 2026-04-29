@@ -12,6 +12,7 @@ import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -93,6 +94,16 @@ public class ToolSetToolsController implements Controller {
     }
 
     @Override
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/toolset/{toolset_name}/tools",
+            operationId = "getToolSetTools",
+            tags = {"Toolsets"})
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/toolset/{toolset_name}/allowed-tools",
+            operationId = "getToolSetAllowedTools",
+            tags = {"Toolsets"})
     public Future<?> handle() {
         return taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);

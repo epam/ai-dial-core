@@ -6,10 +6,13 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.enhancement.InjectApplicationPropsToMcpRequest;
+import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiOperations;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.http.HttpClientRequest;
 
@@ -29,6 +32,19 @@ public class ApplicationMcpProxyController extends McpProxyController {
         super(proxy, context, toolSetId);
         this.applicationSchemaService = proxy.getApplicationSchemaService();
         this.enhancementFunctions = List.of(new InjectApplicationPropsToMcpRequest(proxy, context));
+    }
+
+    @Override
+    @ApiOperations({
+            @ApiOperation(method = "GET", path = "/v1/deployments/{deployment_name}/mcp",
+                    operationId = "getApplicationMcp", tags = {"Deployments", "MCP"}),
+            @ApiOperation(method = "POST", path = "/v1/deployments/{deployment_name}/mcp",
+                    operationId = "postApplicationMcp", tags = {"Deployments", "MCP"}),
+            @ApiOperation(method = "DELETE", path = "/v1/deployments/{deployment_name}/mcp",
+                    operationId = "deleteApplicationMcp", tags = {"Deployments", "MCP"})
+    })
+    public Future<?> handle() {
+        return super.handle();
     }
 
     @Override

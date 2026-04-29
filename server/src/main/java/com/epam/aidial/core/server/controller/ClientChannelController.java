@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.jsonrpc.domain.ErrorMessage;
 import com.epam.aidial.core.server.jsonrpc.domain.RpcRequest;
 import com.epam.aidial.core.server.jsonrpc.domain.RpcResponse;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.clientchannel.ClientChannelService;
@@ -54,6 +55,12 @@ public class ClientChannelController {
         this.heartbeatService = proxy.getHeartbeatService();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/client-channel/subscribe",
+            operationId = "subscribeClientChannel",
+            contentType = "text/event-stream",
+            tags = {"Client channel"})
     public Future<?> subscribe() {
         HttpServerResponse response = context.getResponse();
         Consumer<RpcRequest> subscriber = this::sendMessage;
@@ -84,6 +91,12 @@ public class ClientChannelController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/client-channel/report",
+            operationId = "reportClientChannel",
+            requestBody = RpcResponse.class,
+            tags = {"Client channel"})
     public Future<?> report() {
         String channelId = context.getRequest().getHeader(Proxy.HEADER_CLIENT_CHANNEL_ID);
         if (channelId == null) {
@@ -104,6 +117,11 @@ public class ClientChannelController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/client-channel/unsubscribe",
+            operationId = "unsubscribeClientChannel",
+            tags = {"Client channel"})
     public Future<?> unsubscribe() {
         String channelId = context.getRequest().getHeader(Proxy.HEADER_CLIENT_CHANNEL_ID);
         if (channelId == null) {
@@ -124,6 +142,13 @@ public class ClientChannelController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/client-channel/interact",
+            operationId = "interactClientChannel",
+            requestBody = RpcRequest.class,
+            contentType = "text/event-stream",
+            tags = {"Client channel"})
     public Future<?> interact() {
         HttpServerResponse response = context.getResponse();
         setupEventStreamResponse(response);

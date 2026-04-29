@@ -9,4 +9,5 @@ include 'config'
 include 'server'
 include 'storage'
 include 'credentials'
+include 'openapi-generator'
 

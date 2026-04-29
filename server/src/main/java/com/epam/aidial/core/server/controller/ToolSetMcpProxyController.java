@@ -9,10 +9,13 @@ import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiOperations;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
+import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.http.HttpClientRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +35,19 @@ public class ToolSetMcpProxyController extends McpProxyController {
         this.authorizationHeaderProvider = proxy.getAuthorizationHeaderProvider();
         this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(UrlUtil.encodePath(toolSetId), context, ResourceTypes.TOOL_SET);
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
+    }
+
+    @Override
+    @ApiOperations({
+            @ApiOperation(method = "GET", path = "/v1/toolset/{toolset_name}/mcp",
+                    operationId = "getToolSetMcp", tags = {"Toolsets", "MCP"}),
+            @ApiOperation(method = "POST", path = "/v1/toolset/{toolset_name}/mcp",
+                    operationId = "postToolSetMcp", tags = {"Toolsets", "MCP"}),
+            @ApiOperation(method = "DELETE", path = "/v1/toolset/{toolset_name}/mcp",
+                    operationId = "deleteToolSetMcp", tags = {"Toolsets", "MCP"})
+    })
+    public Future<?> handle() {
+        return super.handle();
     }
 
     @Override

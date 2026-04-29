@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSe
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
+import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -55,6 +56,12 @@ public class ResponsesController extends BaseDeploymentPostController {
                 new CollectDeploymentsFn(proxy, context));
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/openai/v1/responses",
+            operationId = "createResponse",
+            requestBody = ResponsesApiRequest.class,
+            tags = {"LLM"})
     public Future<?> handle() {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
         if (!Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {

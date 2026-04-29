@@ -1,0 +1,41 @@
+dependencies {
+    implementation project(':server')
+    implementation project(':config')
+    implementation project(':storage')
+    implementation project(':credentials')
+
+    implementation("com.github.victools:jsonschema-generator:${jsonschema_generator_version}")
+    implementation("com.github.victools:jsonschema-module-jackson:${jsonschema_generator_version}")
+    implementation("io.swagger.core.v3:swagger-core-jakarta:${swagger_core_version}")
+    implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${jackson_core_version}")
+
+    testImplementation("org.junit.jupiter:junit-jupiter-api:${junit_version}")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:${junit_version}")
+}
+
+test {
+    testLogging {
+        events "passed", "skipped", "failed", "standardOut", "standardError"
+        exceptionFormat = "full"
+    }
+    useJUnitPlatform()
+}
+
+task generateOpenApiSkeleton(type: JavaExec) {
+    dependsOn classes
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.epam.aidial.core.openapi.OpenApiSkeletonGenerator'
+    args = ["${layout.buildDirectory.get()}/generated/openapi-skeleton.yaml", "${project.version}"]
+}
+
+task mergeOpenApiSpec(type: JavaExec) {
+    dependsOn generateOpenApiSkeleton
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.epam.aidial.core.openapi.SpecMerger'
+    args = [
+        "${layout.buildDirectory.get()}/generated/openapi-skeleton.yaml",
+        "${rootDir}/raillanding/public/universal_chat_api.yaml",
+        "${layout.buildDirectory.get()}/generated/openapi-merged.yaml"
+    ]
+}
