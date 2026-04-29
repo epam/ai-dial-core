@@ -269,7 +269,7 @@ public class PublicationService {
                     if (existingResource == null) {
                         ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(resource.getSourceUrl(), encryption);
                         if (!resourceService.hasResource(from)) {
-                            throw new IllegalArgumentException("Source resource does not exists: " + resource.getSourceUrl());
+                            throw new IllegalArgumentException("Source resource does not exist: " + resource.getSourceUrl());
                         }
                         reviewResourcesToAdd.add(resource);
                         ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(resource.getReviewUrl(), encryption);
@@ -547,7 +547,7 @@ public class PublicationService {
         }
 
         if (isPublicationNew && !resourceService.hasResource(source)) {
-            throw new IllegalArgumentException("Source resource does not exists: " + sourceUrl);
+            throw new IllegalArgumentException("Source resource does not exist: " + sourceUrl);
         }
 
         if (resource.getAction() == Publication.ResourceAction.ADD && resourceService.hasResource(target)) {
