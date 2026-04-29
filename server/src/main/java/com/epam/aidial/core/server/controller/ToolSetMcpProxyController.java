@@ -9,6 +9,7 @@ import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -23,6 +24,7 @@ public class ToolSetMcpProxyController extends McpProxyController {
     private final CredentialsLocator credentialsLocator;
     private final AuthorizationHeaderProvider authorizationHeaderProvider;
     private final ResourceCredentialsService resourceCredentialsService;
+    private final AuthSettingsResolver authSettingsResolver;
 
 
     private ToolSet toolSet;
@@ -32,6 +34,7 @@ public class ToolSetMcpProxyController extends McpProxyController {
         this.authorizationHeaderProvider = proxy.getAuthorizationHeaderProvider();
         this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(UrlUtil.encodePath(toolSetId), context, ResourceTypes.TOOL_SET);
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
+        this.authSettingsResolver = proxy.getAuthSettingsResolver();
     }
 
     @Override
@@ -45,7 +48,7 @@ public class ToolSetMcpProxyController extends McpProxyController {
     @Override
     protected void injectProxyRequestHeaders(HttpClientRequest proxyRequest, MultiMap excludeHeaders) {
         ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
-                credentialsLocator, toolSet.getAuthSettings(), context.getInitiatorId()
+                credentialsLocator, authSettingsResolver.resolve(toolSet, context), context.getInitiatorId()
         );
 
         if (resourceCredentials != null) {

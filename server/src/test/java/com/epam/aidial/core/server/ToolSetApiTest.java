@@ -1667,6 +1667,108 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testStoredOauthToolsetSendsPlaintextClientSecretOnRefresh() {
+        // Resource-stored toolsets persist authSettings.clientSecret encrypted at rest. The MCP
+        // proxy controller used to forward toolset.getAuthSettings() to the credential refresh
+        // path WITHOUT decrypting first, so the auth server received Base64-wrapped ciphertext
+        // as client_secret and rejected with invalid_client. Reproduces and guards the fix.
+        String signInTokenResponse = """
+                {
+                    "access_token": "expired-access-token",
+                    "refresh_token": "valid-refresh-token",
+                    "expires_in": 0
+                }
+                """;
+        String refreshedTokenResponse = """
+                {
+                    "access_token": "refreshed-access-token",
+                    "refresh_token": "valid-refresh-token",
+                    "expires_in": 3600
+                }
+                """;
+        String plaintextClientSecret = "plaintext-client-secret";
+        java.util.concurrent.atomic.AtomicReference<String> refreshBody = new java.util.concurrent.atomic.AtomicReference<>();
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            // Mirror real OAuth servers (e.g. Notion): reject refresh requests whose client_secret
+            // doesn't match the registered value with 401 invalid_client.
+            server.map(HttpMethod.POST, "/token", request -> {
+                String body = request.getBody().readUtf8();
+                if (body.contains("grant_type=refresh_token")) {
+                    refreshBody.set(body);
+                    if (!body.contains("client_secret=" + plaintextClientSecret)) {
+                        return new MockResponse()
+                                .setResponseCode(401)
+                                .setBody("{\"error\":\"invalid_client\",\"error_description\":\"Invalid client_secret\"}")
+                                .setHeader("Content-Type", "application/json");
+                    }
+                    return new MockResponse()
+                            .setBody(refreshedTokenResponse)
+                            .setHeader("Content-Type", "application/json");
+                }
+                return new MockResponse()
+                        .setBody(signInTokenResponse)
+                        .setHeader("Content-Type", "application/json");
+            });
+            server.map(HttpMethod.POST, "/mcp", request ->
+                    new MockResponse()
+                            .setBody(MCP_TOOL_CALL_RESPONSE)
+                            .setHeader("Content-Type", "application/json"));
+
+            Response response = send(HttpMethod.PUT,
+                    "/v1/toolsets/4X25dj1mja51jykqxsXnCH/notion-toolset@", null, """
+                            {
+                                "endpoint": "http://localhost:9876/mcp",
+                                "transport": "HTTP",
+                                "allowedTools": [],
+                                "auth_settings": {
+                                    "authentication_type": "OAUTH",
+                                    "client_id": "stored-client-id",
+                                    "client_secret": "%s",
+                                    "redirect_uri": "http://admin/callback",
+                                    "authorization_endpoint": "http://localhost:9876/authorize",
+                                    "token_endpoint": "http://localhost:9876/token"
+                                }
+                            }
+                            """.formatted(plaintextClientSecret), "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "toolsets/4X25dj1mja51jykqxsXnCH/notion-toolset@",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            ApiKeyData apiKey = createAppKey("admin", Map.of(
+                    "toolsets/4X25dj1mja51jykqxsXnCH/notion-toolset@",
+                    new AutoSharedData(Set.of(ResourceAccessType.READ))));
+            apiKey.setExecutionPath(List.of("applications/4X25dj1mja51jykqxsXnCH/my-app"));
+            apiKeyStore.assignPerRequestApiKey(apiKey);
+
+            Response mcpResponse = send(HttpMethod.POST,
+                    "/v1/toolset/toolsets/4X25dj1mja51jykqxsXnCH/notion-toolset@/mcp", null,
+                    MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+            assertEquals(200, mcpResponse.status(),
+                    "MCP call should succeed when stored client_secret is decrypted before refresh, got: " + mcpResponse.status());
+
+            String capturedRefreshBody = refreshBody.get();
+            assertNotNull(capturedRefreshBody, "Token refresh should have been triggered (expires_in=0 on sign-in)");
+            assertTrue(capturedRefreshBody.contains("client_secret=" + plaintextClientSecret),
+                    "Refresh request must send plaintext client_secret, got: " + capturedRefreshBody);
+
+            response = send(HttpMethod.GET,
+                    "/openai/toolsets/toolsets/4X25dj1mja51jykqxsXnCH/notion-toolset@", null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_IN\""),
+                    "Toolset should remain SIGNED_IN after a successful refresh, got: " + response.body());
+        }
+    }
+
+    @Test
     void testStaticOauthToolsetSecretPreservedAfterListing() {
         String tokenResponse = """
                 {
@@ -2044,8 +2146,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
             ApiKeyData apiKey = createAdminAppKey();
             apiKeyStore.assignPerRequestApiKey(apiKey);
 
-            send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+            Response mcpResponse = send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
                     MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+            assertEquals(401, mcpResponse.status(),
+                    "Expected 401 (re-auth needed) when refresh fails permanently, got: " + mcpResponse.status());
 
             // Verify credentials were removed (auth status back to SIGNED_OUT)
             response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
@@ -2118,8 +2222,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
             ApiKeyData apiKey = createAdminAppKey();
             apiKeyStore.assignPerRequestApiKey(apiKey);
 
-            send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+            Response mcpResponse = send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
                     MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+            assertEquals(401, mcpResponse.status(),
+                    "Expected 401 (re-auth needed) when refresh fails permanently, got: " + mcpResponse.status());
 
             // Verify credentials were removed (auth status back to SIGNED_OUT)
             response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
@@ -2180,8 +2286,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
             ApiKeyData apiKey = createAdminAppKey();
             apiKeyStore.assignPerRequestApiKey(apiKey);
 
-            send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+            Response mcpResponse = send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
                     MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+            assertEquals(401, mcpResponse.status(),
+                    "Expected 401 (re-auth needed) when refresh fails permanently, got: " + mcpResponse.status());
 
             response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
             assertEquals(200, response.status());
@@ -2241,8 +2349,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
             ApiKeyData apiKey = createAdminAppKey();
             apiKeyStore.assignPerRequestApiKey(apiKey);
 
-            send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
+            Response mcpResponse = send(HttpMethod.POST, "/v1/toolset/oauth-toolset/mcp", null,
                     MCP_TOOL_CALL_REQUEST, "Content-Type", "application/json", "api-key", apiKey.getPerRequestKey());
+            assertEquals(401, mcpResponse.status(),
+                    "Expected 401 (re-auth needed) when refresh fails permanently, got: " + mcpResponse.status());
 
             response = send(HttpMethod.GET, "/openai/toolsets/oauth-toolset", null, null, "authorization", "admin");
             assertEquals(200, response.status());

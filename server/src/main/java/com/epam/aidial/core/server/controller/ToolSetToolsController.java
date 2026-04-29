@@ -22,6 +22,7 @@ import com.epam.aidial.core.server.sse.SseEventListener;
 import com.epam.aidial.core.server.sse.SseParser;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -73,6 +74,7 @@ public class ToolSetToolsController implements Controller {
     private final AccessService accessService;
     private final ResourceCredentialsService resourceCredentialsService;
     private final ApplicationSchemaService applicationSchemaService;
+    private final AuthSettingsResolver authSettingsResolver;
 
     public ToolSetToolsController(Proxy proxy, ProxyContext context, String toolSetId, boolean filterAllowed) {
         this.proxy = proxy;
@@ -88,6 +90,7 @@ public class ToolSetToolsController implements Controller {
         this.accessService = proxy.getAccessService();
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.applicationSchemaService = proxy.getApplicationSchemaService();
+        this.authSettingsResolver = proxy.getAuthSettingsResolver();
         this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
                 UrlUtil.encodePath(toolSetId), context, ResourceTypes.TOOL_SET);
     }
@@ -345,7 +348,7 @@ public class ToolSetToolsController implements Controller {
     private void injectToolsetCredentials(HttpClientRequest proxyRequest, Deployment deployment) {
         if (deployment instanceof ToolSet toolSet) {
             ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
-                    credentialsLocator, toolSet.getAuthSettings(), context.getInitiatorId()
+                    credentialsLocator, authSettingsResolver.resolve(toolSet, context), context.getInitiatorId()
             );
             if (resourceCredentials != null) {
                 addAuthorizationHeader(proxyRequest, resourceCredentials);

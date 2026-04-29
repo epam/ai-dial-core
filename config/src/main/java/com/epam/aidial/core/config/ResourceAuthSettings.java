@@ -9,6 +9,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 import lombok.experimental.Accessors;
 
 import java.util.List;
@@ -16,7 +17,7 @@ import java.util.List;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-@Builder
+@Builder(toBuilder = true)
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -31,6 +32,7 @@ public class ResourceAuthSettings {
     private String clientId;
 
     @JsonAlias({"clientSecret", "client_secret"})
+    @ToString.Exclude
     private String clientSecret;
 
     @JsonAlias({"authorizationEndpoint", "authorization_endpoint"})
@@ -49,6 +51,7 @@ public class ResourceAuthSettings {
     private String codeChallengeMethod;
 
     @JsonAlias({"codeVerifier", "code_verifier"})
+    @ToString.Exclude
     private String codeVerifier;
 
     @JsonAlias({"apiKeyHeader", "api_key_header"})
