@@ -31,6 +31,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ToolSetApiTest extends ResourceBaseTest {
 
     private static TestWebServer.Handler mcpToolsHandler(String toolsResponse) {
+        return mcpToolsHandler(toolsResponse, "application/json");
+    }
+
+    private static TestWebServer.Handler mcpToolsHandler(String toolsResponse, String contentType) {
         return request -> {
             String body = request.getBody().readString(StandardCharsets.UTF_8);
             if ("GET".equals(request.getMethod())) {
@@ -54,7 +58,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 String adjustedResponse = toolsResponse.replaceFirst("\"id\"\\s*:\\s*\\d+", "\"id\":" + id);
                 return new MockResponse()
                         .setBody(adjustedResponse)
-                        .setHeader("Content-Type", "application/json");
+                        .setHeader("Content-Type", contentType);
             }
             return new MockResponse().setResponseCode(400).setBody("Unknown method");
         };
@@ -1934,36 +1938,12 @@ public class ToolSetApiTest extends ResourceBaseTest {
     @SuppressWarnings("checkstyle:LineLength")
     @Test
     void testGetAllowedTools_SseResponse() throws JsonProcessingException {
-        TestWebServer.Handler handler = request -> {
-            String body = request.getBody().readString(StandardCharsets.UTF_8);
-            if ("GET".equals(request.getMethod())) {
-                return new MockResponse().setResponseCode(405);
-            }
-            if (body.contains("\"method\":\"initialize\"") || body.contains("\"method\": \"initialize\"")) {
-                String id = extractJsonRpcId(body);
-                String initResponse = "{\"jsonrpc\":\"2.0\",\"id\":" + id
-                        + ",\"result\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"test\",\"version\":\"1.0\"}}}";
-                return new MockResponse()
-                        .setBody(initResponse)
-                        .setHeader("Content-Type", "application/json");
-            } else if (body.contains("\"method\":\"notifications/initialized\"")
-                    || body.contains("\"method\": \"notifications/initialized\"")) {
-                return new MockResponse().setResponseCode(202)
-                        .setHeader("Content-Type", "application/json");
-            } else if (body.contains("\"method\":\"tools/list\"") || body.contains("\"method\": \"tools/list\"")) {
-                String id = extractJsonRpcId(body);
-                String sseResponse = "event: message\n"
-                        + "data: {\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"tools\":["
-                        + "{\"name\":\"branch\",\"description\":\"Manage branches\"},"
-                        + "{\"name\":\"tag\",\"description\":\"Manage tags\"},"
-                        + "{\"name\":\"remote\",\"description\":\"Manage remotes\"}]}}\n\n";
-                return new MockResponse()
-                        .setBody(sseResponse)
-                        .setHeader("Content-Type", "text/event-stream");
-            }
-            return new MockResponse().setResponseCode(400).setBody("Unknown method");
-        };
-        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+        String sseResponse = "event: message\n"
+                + "data: {\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"tools\":["
+                + "{\"name\":\"branch\",\"description\":\"Manage branches\"},"
+                + "{\"name\":\"tag\",\"description\":\"Manage tags\"},"
+                + "{\"name\":\"remote\",\"description\":\"Manage remotes\"}]}}\n\n";
+        try (TestWebServer ignore = new TestWebServer(9876, mcpToolsHandler(sseResponse, "text/event-stream"))) {
             // "git" toolset has allowedTools: ["branch", "remote"]
             Response resp = send(HttpMethod.GET, "/v1/toolset/git/allowed-tools");
 
