@@ -19,6 +19,10 @@ dependencies {
     implementation("com.google.protobuf:protobuf-java:${google_protobuf_version}")
     implementation("com.jayway.jsonpath:json-path:${jayway_jsonpath_version}")
     implementation("com.networknt:json-schema-validator:${networknt_version}")
+    implementation("io.modelcontextprotocol.sdk:mcp-core:${mcp_sdk_version}")
+    implementation("io.modelcontextprotocol.sdk:mcp-json-jackson2:${mcp_sdk_version}") {
+        exclude group: 'com.networknt', module: 'json-schema-validator'
+    }
     implementation("io.micrometer:micrometer-registry-otlp:${micrometer_version}")
     implementation("io.micrometer:micrometer-registry-prometheus:${micrometer_version}")
     implementation("io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0:${opentelemetry_instrumentation_version}")

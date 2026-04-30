@@ -30,6 +30,52 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ToolSetApiTest extends ResourceBaseTest {
 
+    private static TestWebServer.Handler mcpToolsHandler(String toolsResponse) {
+        return request -> {
+            String body = request.getBody().readString(StandardCharsets.UTF_8);
+            if ("GET".equals(request.getMethod())) {
+                // SSE stream connection - return 405 to signal no streaming support
+                return new MockResponse().setResponseCode(405);
+            }
+            if (body.contains("\"method\":\"initialize\"") || body.contains("\"method\": \"initialize\"")) {
+                String id = extractJsonRpcId(body);
+                String initResponse = """
+                        {"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":"test-server","version":"1.0"}}}
+                        """.formatted(id);
+                return new MockResponse()
+                        .setBody(initResponse)
+                        .setHeader("Content-Type", "application/json");
+            } else if (body.contains("\"method\":\"notifications/initialized\"")
+                    || body.contains("\"method\": \"notifications/initialized\"")) {
+                return new MockResponse().setResponseCode(202)
+                        .setHeader("Content-Type", "application/json");
+            } else if (body.contains("\"method\":\"tools/list\"") || body.contains("\"method\": \"tools/list\"")) {
+                String id = extractJsonRpcId(body);
+                String adjustedResponse = toolsResponse.replaceFirst("\"id\"\\s*:\\s*\\d+", "\"id\":" + id);
+                return new MockResponse()
+                        .setBody(adjustedResponse)
+                        .setHeader("Content-Type", "application/json");
+            }
+            return new MockResponse().setResponseCode(400).setBody("Unknown method");
+        };
+    }
+
+    private static String extractJsonRpcId(String body) {
+        try {
+            JsonNode node = ProxyUtil.MAPPER.readTree(body);
+            JsonNode idNode = node.get("id");
+            if (idNode == null) {
+                return "null";
+            }
+            if (idNode.isTextual()) {
+                return "\"" + idNode.asText() + "\"";
+            }
+            return idNode.toString();
+        } catch (Exception e) {
+            return "1";
+        }
+    }
+
     private static final String MCP_TOOL_CALL_REQUEST = """
                 {
                     "jsonrpc": "2.0",
@@ -1815,22 +1861,20 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
     @Test
     void testGetAllTools_AdminAccess() throws JsonProcessingException {
-        String mcpResponse = """
+        String mcpToolsListResponse = """
                 {
                    "jsonrpc": "2.0",
-                   "id": 1,
+                   "id": 2,
                    "result": {
                      "tools": [
-                       {"name": "branch", "title": "Manage branches"},
-                       {"name": "tag", "title": "Manage tags"},
-                       {"name": "remote", "title": "Manage remotes"}
+                       {"name": "branch", "description": "Manage branches"},
+                       {"name": "tag", "description": "Manage tags"},
+                       {"name": "remote", "description": "Manage remotes"}
                      ]
                    }
                  }
                 """;
-        TestWebServer.Handler handler = request -> new MockResponse()
-                .setBody(mcpResponse).setHeader("Content-Type", "application/json");
-        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+        try (TestWebServer ignore = new TestWebServer(9876, mcpToolsHandler(mcpToolsListResponse))) {
             Response resp = send(HttpMethod.GET, "/v1/toolset/git/tools",
                     null, null, "authorization", "admin");
 
@@ -1849,9 +1893,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
     @Test
     void testGetAllTools_RegularUserForbidden() {
-        TestWebServer.Handler handler = request -> new MockResponse()
-                .setBody("{}").setHeader("Content-Type", "application/json");
-        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+        try (TestWebServer ignore = new TestWebServer(9876, mcpToolsHandler("{}"))) {
             Response resp = send(HttpMethod.GET, "/v1/toolset/git/tools");
 
             assertEquals(403, resp.status());
@@ -1860,22 +1902,20 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
     @Test
     void testGetAllowedTools_JsonResponse() throws JsonProcessingException {
-        String mcpResponse = """
+        String mcpToolsListResponse = """
                 {
                    "jsonrpc": "2.0",
-                   "id": 1,
+                   "id": 2,
                    "result": {
                      "tools": [
-                       {"name": "branch", "title": "Manage branches"},
-                       {"name": "tag", "title": "Manage tags"},
-                       {"name": "remote", "title": "Manage remotes"}
+                       {"name": "branch", "description": "Manage branches"},
+                       {"name": "tag", "description": "Manage tags"},
+                       {"name": "remote", "description": "Manage remotes"}
                      ]
                    }
                  }
                 """;
-        TestWebServer.Handler handler = request -> new MockResponse()
-                .setBody(mcpResponse).setHeader("Content-Type", "application/json");
-        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+        try (TestWebServer ignore = new TestWebServer(9876, mcpToolsHandler(mcpToolsListResponse))) {
             // "git" toolset has allowedTools: ["branch", "remote"]
             Response resp = send(HttpMethod.GET, "/v1/toolset/git/allowed-tools");
 
@@ -1894,12 +1934,35 @@ public class ToolSetApiTest extends ResourceBaseTest {
     @SuppressWarnings("checkstyle:LineLength")
     @Test
     void testGetAllowedTools_SseResponse() throws JsonProcessingException {
-        String mcpResponse = """
-                event: message
-                data: {"jsonrpc": "2.0","id": 1,"result": {"tools": [{"name": "branch", "title": "Manage branches"},{"name": "tag", "title": "Manage tags"},{"name": "remote", "title": "Manage remotes"}]}}\n
-                """;
-        TestWebServer.Handler handler = request -> new MockResponse()
-                .setBody(mcpResponse).setHeader("Content-Type", "text/event-stream");
+        TestWebServer.Handler handler = request -> {
+            String body = request.getBody().readString(StandardCharsets.UTF_8);
+            if ("GET".equals(request.getMethod())) {
+                return new MockResponse().setResponseCode(405);
+            }
+            if (body.contains("\"method\":\"initialize\"") || body.contains("\"method\": \"initialize\"")) {
+                String id = extractJsonRpcId(body);
+                String initResponse = "{\"jsonrpc\":\"2.0\",\"id\":" + id
+                        + ",\"result\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"test\",\"version\":\"1.0\"}}}";
+                return new MockResponse()
+                        .setBody(initResponse)
+                        .setHeader("Content-Type", "application/json");
+            } else if (body.contains("\"method\":\"notifications/initialized\"")
+                    || body.contains("\"method\": \"notifications/initialized\"")) {
+                return new MockResponse().setResponseCode(202)
+                        .setHeader("Content-Type", "application/json");
+            } else if (body.contains("\"method\":\"tools/list\"") || body.contains("\"method\": \"tools/list\"")) {
+                String id = extractJsonRpcId(body);
+                String sseResponse = "event: message\n"
+                        + "data: {\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"tools\":["
+                        + "{\"name\":\"branch\",\"description\":\"Manage branches\"},"
+                        + "{\"name\":\"tag\",\"description\":\"Manage tags\"},"
+                        + "{\"name\":\"remote\",\"description\":\"Manage remotes\"}]}}\n\n";
+                return new MockResponse()
+                        .setBody(sseResponse)
+                        .setHeader("Content-Type", "text/event-stream");
+            }
+            return new MockResponse().setResponseCode(400).setBody("Unknown method");
+        };
         try (TestWebServer ignore = new TestWebServer(9876, handler)) {
             // "git" toolset has allowedTools: ["branch", "remote"]
             Response resp = send(HttpMethod.GET, "/v1/toolset/git/allowed-tools");
@@ -1919,21 +1982,19 @@ public class ToolSetApiTest extends ResourceBaseTest {
     @DialConfigLocation("dial-config/filter-toolsets.json")
     @Test
     void testGetAllowedTools_EmptyFilter() throws JsonProcessingException {
-        String mcpResponse = """
+        String mcpToolsListResponse = """
                 {
                    "jsonrpc": "2.0",
-                   "id": 1,
+                   "id": 2,
                    "result": {
                      "tools": [
-                       {"name": "tool1", "title": "Tool 1"},
-                       {"name": "tool2", "title": "Tool 2"}
+                       {"name": "tool1", "description": "Tool 1"},
+                       {"name": "tool2", "description": "Tool 2"}
                      ]
                    }
                  }
                 """;
-        TestWebServer.Handler handler = request -> new MockResponse()
-                .setBody(mcpResponse).setHeader("Content-Type", "application/json");
-        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+        try (TestWebServer ignore = new TestWebServer(9876, mcpToolsHandler(mcpToolsListResponse))) {
             // "my toolset 1" has no allowedTools filter (empty list)
             Response resp = send(HttpMethod.GET, "/v1/toolset/git/allowed-tools");
 
@@ -1967,21 +2028,19 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 """);
         verify(response, 200);
 
-        String mcpResponse = """
+        String mcpToolsListResponse = """
                 {
                    "jsonrpc": "2.0",
-                   "id": 1,
+                   "id": 2,
                    "result": {
                      "tools": [
-                       {"name": "tool1", "title": "Tool 1"},
-                       {"name": "tool2", "title": "Tool 2"}
+                       {"name": "tool1", "description": "Tool 1"},
+                       {"name": "tool2", "description": "Tool 2"}
                      ]
                    }
                  }
                 """;
-        TestWebServer.Handler handler = request -> new MockResponse()
-                .setBody(mcpResponse).setHeader("Content-Type", "application/json");
-        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+        try (TestWebServer ignore = new TestWebServer(9876, mcpToolsHandler(mcpToolsListResponse))) {
             // owner should have WRITE access and can access /tools (unfiltered)
             Response resp = send(HttpMethod.GET,
                     "/v1/toolset/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-tools-test/tools");
