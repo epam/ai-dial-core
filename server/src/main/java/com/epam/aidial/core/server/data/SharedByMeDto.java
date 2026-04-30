@@ -43,7 +43,7 @@ public class SharedByMeDto {
         this.writableResourcesToUsers = Objects.requireNonNullElseGet(writableResourcesToUsers, HashMap::new);
         this.shareableResourcesToUsers = Objects.requireNonNullElseGet(shareableResourcesToUsers, HashMap::new);
         this.userIdToDisplayName = Objects.requireNonNullElseGet(userIdToDisplayName, HashMap::new);
-        this.limits = limits;
+        this.limits = Objects.requireNonNullElseGet(limits, HashMap::new);
     }
 
     public Set<String> collectUsersForPermissions(String url, Set<ResourceAccessType> permissions) {

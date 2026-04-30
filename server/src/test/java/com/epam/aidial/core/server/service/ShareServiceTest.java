@@ -10,8 +10,10 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Invitation;
 import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.data.ShareResourcesRequest;
+import com.epam.aidial.core.server.data.SharedByMeDto;
 import com.epam.aidial.core.server.data.SharedResource;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -285,5 +287,25 @@ class ShareServiceTest {
                     ]
                 }
                 """;
+    }
+
+    @Test
+    void testSharedByMeDtoLimitsNotNullWhenDeserializedWithoutLimitsField() {
+        String json = """
+                {
+                    "resourceToUsers": {
+                        "files/bucket/folder/": ["Users/user1/"]
+                    },
+                    "writableResourcesToUsers": {},
+                    "shareableResourcesToUsers": {},
+                    "userIdToDisplayName": {
+                        "Users/user1/": "user1"
+                    }
+                }
+                """;
+        SharedByMeDto dto = ProxyUtil.convertToObject(json, SharedByMeDto.class);
+        assertNotNull(dto);
+        assertNotNull(dto.getLimits());
+        assertTrue(dto.getLimits().isEmpty());
     }
 }
