@@ -20,7 +20,6 @@ import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactor
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.credentials.util.TimeProvider;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
-import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -467,10 +466,12 @@ class ResourceCredentialsServiceTest {
             return new ResourceItemMetadata();
         }).when(resourceService).computeResourceBytes(eq(userResourceDescriptor), any());
 
-        // When & Then - should throw because refresh failed; GLOBAL fallback is skipped
-        assertThrows(ResourceNotFoundException.class, () -> {
+        // When & Then - should throw 401 because refresh failed; GLOBAL fallback is skipped.
+        // 401 (not 404) tells the client the toolset exists but its OAuth state needs refreshing.
+        HttpException ex = assertThrows(HttpException.class, () -> {
             service.getRefreshedResourceCredentials(credentialsLocator, authSettings, "userSub");
         });
+        assertEquals(HttpStatus.UNAUTHORIZED, ex.getStatus());
 
         // Verify token service was called with the expired refresh token
         Mockito.verify(tokenService).getToken("testResourceId", authSettings, "expiredRefreshToken");

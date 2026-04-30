@@ -241,7 +241,9 @@ public class ResourceCredentialsService {
         });
 
         if (refreshFailure.get() != null) {
-            throw new ResourceNotFoundException("Failed to refresh token for resource %s".formatted(resourceId));
+            // The toolset still exists; only its OAuth state is gone. 401 tells the client to re-auth
+            // rather than implying the resource itself is missing.
+            throw new HttpException(HttpStatus.UNAUTHORIZED, "Failed to refresh token for resource %s".formatted(resourceId));
         }
 
         return reference.get();
