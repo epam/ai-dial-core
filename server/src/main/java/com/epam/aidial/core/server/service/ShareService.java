@@ -220,14 +220,14 @@ public class ShareService {
                     throw new IllegalArgumentException("Duplicated resource: %s".formatted(resource.getUrl()));
                 }
                 if (resource.getBucketName().equals(bucket)) {
-                    ownerResources.add(sharedResource);
+                    ownerResources.add(sharedResource.withUrl(resource.getUrl()));
                 }
                 String author = reshareableResourceUrls.containsKey(resource.getUrl())
                         ? reshareableResourceUrls.get(resource.getUrl()).getAuthor()
                         : context.getUserDisplayName();
                 normalizedResourceLinks.add(sharedResource.withUrl(resource.getUrl()).withAuthor(author));
-                updateLimits(context, resourceType, limit, ownerResources);
             }
+            updateLimits(context, resourceType, limit, ownerResources);
         }
 
         Invitation invitation = invitationService.createInvitation(bucket, bucketLocation, normalizedResourceLinks,

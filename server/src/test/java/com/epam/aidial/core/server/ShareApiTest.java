@@ -2521,4 +2521,88 @@ public class ShareApiTest extends ResourceBaseTest {
                 }
                 """);
     }
+
+    @Test
+    @DialConfigLocation("dial-config/share-limit-config.json")
+    void testShareFileLimitEnforced() {
+        // upload a file with a percent-encoded special character in the path
+        Response response = upload(HttpMethod.PUT, "/v1/files/%s/folder%%40name/test.txt".formatted(bucket), null, "test content");
+        Assertions.assertEquals(200, response.status());
+
+        // initialize share request using the percent-encoded URL
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "files/%s/folder%%40name/test.txt"
+                    }
+                  ]
+                }
+                """.formatted(bucket));
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        // user2 accepts invitation - should succeed (0 < 1)
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        // create another invitation for the same file
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "files/%s/folder%%40name/test.txt"
+                    }
+                  ]
+                }
+                """.formatted(bucket));
+        verify(response, 200);
+        invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        // user3 accepts invitation - should fail (1 >= 1, limit exceeded)
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey3");
+        verify(response, 400);
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/share-limit-config.json")
+    void testShareFileLimitEnforcedForFolder() {
+        // upload files in a folder
+        Response response = upload(HttpMethod.PUT, "/v1/files/%s/shared-folder/file1.txt".formatted(bucket), null, "content1");
+        Assertions.assertEquals(200, response.status());
+
+        // create conversation referencing files
+        response = resourceRequest(HttpMethod.PUT, "/test-conversation", CONVERSATION_BODY_1);
+        verifyNotExact(response, 200, "\"url\":");
+
+        // share both conversation and folder
+        response = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "conversations/%s/test-conversation"
+                    },
+                    {
+                      "url": "metadata/files/%s/shared-folder/"
+                    }
+                  ]
+                }
+                """.formatted(bucket, bucket));
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        // user2 accepts - should succeed (file limit: 0 < 1)
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2");
+        verify(response, 200);
+
+        // user3 accepts - should fail (file limit exceeded: 1 >= 1)
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey3");
+        verify(response, 400);
+    }
 }
