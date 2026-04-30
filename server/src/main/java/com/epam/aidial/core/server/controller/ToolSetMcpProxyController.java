@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.AuthorizationHeader;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
@@ -47,8 +48,9 @@ public class ToolSetMcpProxyController extends McpProxyController {
 
     @Override
     protected void injectProxyRequestHeaders(HttpClientRequest proxyRequest, MultiMap excludeHeaders) {
+        ResourceAuthSettings authSettings = authSettingsResolver.resolve(toolSet, context);
         ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
-                credentialsLocator, authSettingsResolver.resolve(toolSet, context), context.getInitiatorId()
+                credentialsLocator, authSettings, context.getInitiatorId()
         );
 
         if (resourceCredentials != null) {

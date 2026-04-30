@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.data.credentials.AuthorizationHeader;
@@ -347,8 +348,9 @@ public class ToolSetToolsController implements Controller {
 
     private void injectToolsetCredentials(HttpClientRequest proxyRequest, Deployment deployment) {
         if (deployment instanceof ToolSet toolSet) {
+            ResourceAuthSettings authSettings = authSettingsResolver.resolve(toolSet, context);
             ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
-                    credentialsLocator, authSettingsResolver.resolve(toolSet, context), context.getInitiatorId()
+                    credentialsLocator, authSettings, context.getInitiatorId()
             );
             if (resourceCredentials != null) {
                 addAuthorizationHeader(proxyRequest, resourceCredentials);
