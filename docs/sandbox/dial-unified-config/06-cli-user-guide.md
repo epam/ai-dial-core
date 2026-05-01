@@ -356,7 +356,19 @@ dial-cli get settings --env prod                  # alias, identical behavior
 dial-cli get settings --env prod -o yaml          # YAML output
 ```
 
-Pre-bootstrap behavior: until the first `PUT /v1/settings/platform/global` lands, `GET` returns the **default settings document** (empty `globalInterceptors`, default `retriableErrorCodes`) — not `404`. The singleton is conceptually always present; reads on a fresh environment surface the in-memory default rather than an error. Operators do not need to "create" the singleton before reading it.
+Pre-`PUT` behavior: until the first `PUT /v1/settings/platform/global` lands, `GET` returns the **effective projection** of `globalSettings` — file-sourced fields if `aidial.config.json` defines `globalInterceptors` / `retriableErrorCodes`, otherwise the schema defaults (empty `globalInterceptors`, default `retriableErrorCodes`). Never `404`. The `source` field on the response discloses which projection won: `"api"` (a `PUT` has landed and the API blob is in effect), `"file"` (no API blob; values come from `aidial.config.json`), or `"default"` (no API blob, file silent). Operators do not need to "create" the singleton before reading it.
+
+**Reverting from API control to file/default — `settings reset`.** Once `dial-cli settings update` (a `PUT`) has landed, the API blob shadows the file-sourced fields permanently — until the operator releases control. `dial-cli settings reset --env <env>` (or its synonym `settings delete`) maps to `DELETE /v1/settings/platform/global`, which clears the API blob and reverts the projection to file-sourced (or default) values:
+
+```shell
+dial-cli settings reset --env prod                          # idempotent; exits 0 even if no blob present
+dial-cli settings reset --env prod --if-match "<etag>"      # optional concurrency guard; exit 6 on 412
+
+# After reset:
+dial-cli settings get --env prod                            # source: "file" (or "default")
+```
+
+This is the **only** way to release API control of `globalSettings` — there is no per-field "reset"; the blob is whole-object. Operators using config files as the source of truth (e.g. via Vault / Secret Manager export pipelines) typically never `PUT` settings in the first place; `settings reset` exists for the case where someone took API control and the team wants to hand authority back to the config file.
 
 **Note on `update --set`:** Since the API currently supports PUT (full entity replacement) only, `--set` works by fetching the current entity, merging your changes locally, and PUTting the full result back. ETag-based optimistic concurrency protects against conflicts — if someone else modified the entity between your GET and PUT, you'll get a `412 Precondition Failed` and the CLI exits `6`. **The CLI does not auto-retry on `412`** — a single GET → merge → PUT is one attempt; that's it. If you need retry-on-conflict semantics, wrap `update --if-match` in a shell loop, or use `dial-cli apply -f` with a full-spec manifest (which goes through the canonical `POST /v1/admin/apply` upsert path).
 
@@ -380,7 +392,7 @@ dial-cli interceptor add --env uat --name interceptors/platform/guardrail-1 \
 dial-cli settings update --env prod --set 'globalInterceptors=["guardrail-1","audit-logger"]'
 ```
 
-> `settings update` is upsert — it maps to `PUT /v1/settings/platform/global`, which is the one allowed exception to the strict create/update split (the singleton always exists post-bootstrap). It is therefore safe to run on a fresh environment without first calling `add` — there is no `404` path for the singleton and no exit `4` from `settings update`. See [`03-api-reference.md`](03-api-reference.md) §1.
+> `settings update` is upsert — it maps to `PUT /v1/settings/platform/global`, the one allowed exception to the strict create/update split (the singleton's GET projection always has a value, so there's no "missing" state to 404 on). Safe to run on a fresh environment without first calling `add` — no `404` path, no exit `4`. To release API control afterwards, use `dial-cli settings reset` (`DELETE`) — see the singleton section above. Full API contract: [`03-api-reference.md`](03-api-reference.md) §1.
 
 > **FEEDBACK Q6 (write commands):**
 >

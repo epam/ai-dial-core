@@ -62,7 +62,7 @@ These principles drive every slice and every agent prompt. The codebase's prior 
 - **Volatile-reference swap idiom.** `ApiKeyStore.keys`, `Config` ref. Build fresh + atomic-swap; never `clear()+putAll()` (silent-undo-on-race — see Q1 amendment).
 - **Strict typing for closed sets, `String` for open id-bearing sets.** `ResourceTypes` enum; `String scope` with named constants. Don't over-type.
 - **One vocabulary across bucket / scope / URL / canonical ID.** `platform/` everywhere; never re-introduce `admin/` or `global/` in new code.
-- **Strict POST/PUT split.** `POST` = 409 on conflict; `PUT` = 404 on missing; no upsert at the single-entity surface (singleton `PUT /v1/settings/platform/global` is the lone exception).
+- **Strict POST/PUT split.** `POST` = 409 on conflict; `PUT` = 404 on missing; no upsert at the single-entity surface (singleton `PUT /v1/settings/platform/global` is the lone exception — upsert by nature; `DELETE` on the same URL clears the API blob and reverts the projection to file/default).
 - **Checkstyle: 180-char lines, Google style.** `./gradlew checkstyleMain checkstyleTest` before every PR.
 
 ---
@@ -226,7 +226,7 @@ The orchestrator halts the loop and asks the user when reality diverges from the
 | **1S.0** | Bootstrap: `RouteTemplate.CONFIG_RESOURCE` regex (sibling to `RESOURCE` / `FILES`); `ConfigAuthorizationService` interface + `AdminRoleAuthorizationService` impl reading `access.admin.rules`; `EntityBucketBinding` static allowlist + startup assertion + per-request gate; integration-test harness mirroring `ResourceApiTest`. | — | 02 §5.1, 03 §1, 04 §1.1–1.2 | 📋 | — |
 | **1S.1** | `GET /v1/models/public/{name}` reading from in-memory `volatile Config` ref. Public/Owner field projection (`status` always `"valid"` in Phase 1; `source` Owner-only). Synthesize `name` from descriptor. | 1S.0 | 03 §1, §2, §4; 04 §1.5 | 📋 | — |
 | **1S.2** | `GET /v1/models/public/` listing with `?limit&cursor` pagination (default 100, max 500). `hasMore` always present. Trailing-slash optional. | 1S.1 | 03 §1, §4 | 📋 | — |
-| **1S.3** | Extend reads to remaining MergedConfigStore-managed types (`interceptors`, `roles`, `keys`, `routes`, `schemas`, `settings`). Bucket-aware authz (`platform/` admin-only). 405 for `POST`/`DELETE` on `/v1/settings/platform/global` with `Allow: GET, PUT`. | 1S.1, 1S.2 | 03 §1; 04 §1.2 | 📋 | — |
+| **1S.3** | Extend reads to remaining MergedConfigStore-managed types (`interceptors`, `roles`, `keys`, `routes`, `schemas`, `settings`). Bucket-aware authz (`platform/` admin-only). 405 for `POST` on `/v1/settings/platform/global` with `Allow: GET, PUT, DELETE` (singleton has no create surface; `PUT` is upsert and `DELETE` clears the API blob — Phase 2 implements `DELETE` alongside `PUT`). Settings GET projection: `"api"` (blob present) | `"file"` (no blob, file defines fields) | `"default"` (no blob, file silent). | 1S.1, 1S.2 | 03 §1; 04 §1.2 | 📋 | — |
 | **1S.4** | Read paths for `applications`, `toolsets` via existing `ApplicationService` / `ToolSetService` with `ConfigAuthorizationService` preflight. | 1S.1 | 03 §1; 02 §6 | 📋 | — |
 | **1S.5** | Admin authz preflight on existing `FILES` / `RESOURCE` controllers for `public/` admin reads/writes; deny admin reach into user buckets. | 1S.4 | 03 §1; OQ-21, OQ-33 | 📋 | — |
 | **1S.6** | `GET /v1/admin/export` — full snapshot of in-memory `Config`. JSON + YAML output. | 1S.3 | 03 §1; 07 Phase 1 | 📋 | — |
@@ -266,7 +266,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 | ID | Slice | Depends on | Design anchors | Status | PR |
 |---|---|---|---|---|---|
 | **2S.8** | `MergedConfigStore` — union of `FileConfigStore` + `ResourceService`. `requestRebuild()` non-blocking entry point. `volatile boolean initialized` guard for pre-init no-op. | 2S.5-pre, 2S.6-pre, 2S.7-pre | 02 §4 | 📋 | — |
-| **2S.9** | Invalid-entity sibling store. Listing/get response shape with `status` + `validationWarnings`. `config.reload.onInvalidEntity: skip\|abort` setting (default `skip`). Prometheus `dial_config_skipped_entities`, `dial_config_skip_events_total`. | 2S.8 | 02 §4.1, §4.3; 03 §4 | 📋 | — |
+| **2S.9** | Invalid-entity sibling store. Listing/get response shape with `status` + `validationWarnings`. `config.reload.onInvalidEntity: skip\|abort` setting (default `abort` — opt-in `skip` enables the sibling store / status surface). Prometheus `dial_config_skipped_entities`, `dial_config_skip_events_total`. | 2S.8 | 02 §4.1, §4.3; 03 §4 | 📋 | — |
 | **2S.10** | `SecretFieldProcessor` + `@EncryptedField` annotation in `:config`. Dual `ObjectMapper` (blob I/O vs API response). Mask `***` on Public-view; preserve-on-omit (and `***` sentinel) on `PUT`. Reuses `CredentialEncryptionService` primitives. | 2S.4-pre | 04 §2.4–2.6 | 📋 | — |
 | **2S.11** | `MODEL` `ResourceTypes` entry. `POST /v1/models/public/{name}` (409 on conflict). `PUT /v1/models/public/{name}` (404 on missing, optional `If-Match` → 412). `DELETE`. Strict POST/PUT split. Bucket-aware authz. ETag in response header. | 2S.1-pre, 2S.2-pre, 2S.4-pre, 2S.8, 2S.9, 2S.10 | 03 §1, §3; 07 Phase 2 | 📋 | — |
 | **2S.12** | `POST /v1/admin/validate` — model-scoped (Phase 4 extends to other types and bulk). | 2S.11 | 03 §6 | 📋 | — |
@@ -301,7 +301,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 |---|---|---|---|---|---|
 | **3S.0-pre** | `ResourceAuthSettingsEncryptionService.processFields()` extension for `codeVerifier` with lazy plaintext fallback (catch base64 decode error → return as-is → re-encrypt on next write). | — | 07 Phase 3 prereqs; 04 §2.7 | 📋 | — |
 | **3S.1** | `BlobEntityValidator` helper for apps/toolsets — validates against current `Config` (interceptor refs, schema refs, deployment dependencies). Folded into Configuration API listing/get response only; chat-completion hot path unchanged. | 2S.9 | 07 Phase 3; 02 §4.3 | 📋 | — |
-| **3S.2** | Write APIs (POST/PUT/DELETE) for `schemas`, `interceptors`, `roles`, `keys` (with dual-format compatibility from 2S.0-pre), `routes`, `settings` (PUT-only upsert; 405 on POST/DELETE). Start with one type to validate the pattern; subsequent types **Mechanical**. | 2S.11, 2S.13, 3S.0-pre | 03 §1; 07 Phase 3 | 📋 | — |
+| **3S.2** | Write APIs (POST/PUT/DELETE) for `schemas`, `interceptors`, `roles`, `keys` (with dual-format compatibility from 2S.0-pre), `routes`, `settings` (PUT upsert + DELETE clears API override and reverts to file/default; 405 on POST). Start with one type to validate the pattern; subsequent types **Mechanical**. | 2S.11, 2S.13, 3S.0-pre | 03 §1; 07 Phase 3 | 📋 | — |
 | **3S.3** | Admin write paths for `applications`, `toolsets` in `public/` via existing `ApplicationService` / `ToolSetService` unified with user-published. Removes `DeploymentService` config-file special-case. | 3S.1 | 07 Phase 3; 02 §6 | 📋 | — |
 | **3S.4** | Admin write paths for `files`, `prompts`, `conversations` in `public/` via existing controllers + `ConfigAuthorizationService` preflight. Reuses existing resource types. | 1S.5 | 03 §1; OQ-21 | 📋 | — |
 

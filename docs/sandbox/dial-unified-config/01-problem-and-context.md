@@ -94,7 +94,7 @@ From source analysis (`FileConfigStore.java`):
 
 | Setting key | Purpose |
 |---|---|
-| `config.reload.onInvalidEntity` | `skip \| abort` — per-entity skip-on-invalid-entity vs. whole-reload abort. See [`02-architecture.md`](02-architecture.md) §4.1. Default `skip` (pending lead Core dev sign-off — see [`02-architecture.md`](02-architecture.md) §4.1). |
+| `config.reload.onInvalidEntity` | `skip \| abort` — per-entity skip-on-invalid-entity vs. whole-reload abort. See [`02-architecture.md`](02-architecture.md) §4.1. Default `abort` (matches today's `FileConfigStore` strict-reload behavior; opt-in `skip` for per-entity skip-with-visibility). |
 | `config.write.softValidation` | `true \| false` — accept writes with dangling cross-references (soft) vs. reject with `422` (strict). See [`02-architecture.md`](02-architecture.md) §9. Default `false`. |
 
 ### 2.4 Deployment Resolution — Config File Takes Precedence
