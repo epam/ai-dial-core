@@ -132,7 +132,7 @@ Naming convention: `dial_admin_<verb>_<noun>`, snake_case. Grouped into five dom
 | `roles` | `platform/` | Single admin bucket. |
 | `keys` | `platform/` | Single admin bucket. |
 | `routes` | `platform/` | Single admin bucket. |
-| `settings` | `platform/` | Singleton — `name` is fixed at `global`. Listing not meaningful — use `dial_admin_get_entity(type='settings', id='settings/platform/global', env=...)` instead. |
+| `settings` | `platform/` | Singleton — `name` is fixed at `global`. Listing not meaningful — use `dial_admin_get_entity(type='settings', id='settings/platform/global', env=...)` instead. `dial_admin_update_entity` maps to `PUT` (upsert — no `404` on first use). `dial_admin_delete_entity` maps to `DELETE` and **clears the API blob**, reverting the projection to file-sourced (or schema-default) values per [OQ-10](08-open-questions-and-references.md); idempotent. `dial_admin_create_entity` is rejected (the underlying `POST` returns `405`). |
 | `files` | `public/` | Dual-bucket type — admin manages shared assets here; user-bucket files are out of scope for admin MCP per [OQ-33](08-open-questions-and-references.md). |
 | `prompts` | `public/` | Dual-bucket type — admin manages shared/default prompt templates; user prompts in user buckets are out of scope. |
 | `conversations` | `public/` | Dual-bucket type — admin manages curated/example conversations; user conversations in user buckets are out of scope. |
