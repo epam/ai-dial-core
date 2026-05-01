@@ -36,7 +36,7 @@ Interpret `$ARGUMENTS`:
 
 For the chosen slice:
 
-1. **Branch**: ensure you're on a sub-branch named `feature/unified-config/<slice-id>-<short-title>` cut from the latest `feature/unified-config`. Create it if missing. The current `git status` should be clean.
+1. **Branch**: ensure you're on a sub-branch named `feature/unified-config-<slice-id>-<short-title>` (hyphen separator — slash is rejected by Git because `feature/unified-config` is itself a branch ref) cut from the latest `feature/unified-config`. Create it if missing. The current `git status` should be clean.
 
 2. **EXPLORE** *(skip if the code area is already known this session)* — dispatch `feature-dev:code-explorer` to trace existing patterns in the touched area. Use LSP `documentSymbol` / `workspaceSymbol` to map class shapes; reach for grep only when LSP can't resolve (jclouds-dependent files in `:credentials` — see IMPLEMENTATION.md §7.5). Output: file paths + 5-line summary per layer.
 

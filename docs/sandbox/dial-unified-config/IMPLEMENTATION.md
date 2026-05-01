@@ -81,8 +81,8 @@ Two parallel tracks. Server work depends only on prior server slices; CLI work d
 ### 3.2 Branching model
 
 ```
-  slice sub-branches  (feature/unified-config/<id>-<short-title>,
-                       e.g. feature/unified-config/1S.0-bootstrap)
+  slice sub-branches  (feature/unified-config-<id>-<short-title>,
+                       e.g. feature/unified-config-1S.0-bootstrap)
            │
            │ PR  — squash-merged on review approval
            ▼
@@ -93,7 +93,7 @@ Two parallel tracks. Server work depends only on prior server slices; CLI work d
        development
 ```
 
-- **Sub-branches** named `feature/unified-config/<id>-<short-title>` (e.g. `feature/unified-config/1S.0-bootstrap`, `feature/unified-config/2S.11-models-write`). Prefix groups slice branches under the integration branch namespace; `git branch --list 'feature/unified-config/*'` enumerates the entire MVP workstream.
+- **Sub-branches** named `feature/unified-config-<id>-<short-title>` (e.g. `feature/unified-config-1S.0-bootstrap`, `feature/unified-config-2S.11-models-write`). **Hyphen separator (not slash) is required** because the integration branch `feature/unified-config` already exists as a ref — Git refuses to create `feature/unified-config/<x>` when `feature/unified-config` is itself a branch (ref-vs-directory conflict). Prefix still groups slice branches under the integration namespace; `git branch --list 'feature/unified-config-*'` enumerates the entire MVP workstream.
 - **Slice PRs target `feature/unified-config`**, never `development` directly. Squash-merged on review approval — one squash-commit per slice keeps the integration branch's log readable as a slice timeline.
 - **`feature/unified-config` is integrated with `development` lazily** — not on a fixed cadence. Triggers: (a) `development` lands a change that affects in-flight slice work, or (b) a slice author needs a new `development` API. **Default mode is rebase** (force-push allowed; in-flight slice authors rebase their sub-branches onto the new tip; preserves linear history for the final big PR's review). **Per-sync merge override is allowed when situational** — early in MVP with few slices in flight, or when conflicts resolve more cleanly with a merge commit than with rebase-conflict-per-commit. Late in MVP with many slices in flight, prefer rebase to keep history readable for code-owners.
 - **No intermediate merges to `development`** during the MVP. The branch accumulates the full Phase 1–3 (+stretch) implementation.
@@ -431,7 +431,7 @@ Locked answers to the kickoff questions (see `project_unified_config_implementat
 
 - **CLI module location**: same repo as a sibling `:cli` Gradle module *(locked 2026-05-01)*.
 - **Branch hygiene**: lazy integration of `feature/unified-config` with `development`. **Default = rebase** (force-push allowed; in-flight slice authors rebase their sub-branches onto the new tip; linear history). **Per-sync merge override allowed** when situational — early in MVP, complex conflicts. Late in MVP, prefer rebase. *(locked 2026-05-01)*.
-- **Sub-branch naming**: `feature/unified-config/<id>-<short-title>` (prefixed under the integration branch namespace) *(locked 2026-05-01)*.
+- **Sub-branch naming**: `feature/unified-config-<id>-<short-title>` (hyphen separator forced by Git ref-vs-directory constraint — see §3.2) *(locked 2026-05-01; separator amended 2026-05-02)*.
 - **Integration branch model**: per-slice squash-merge into `feature/unified-config` on review approval; single big PR to `development` only at MVP-complete after user-side testing; no intermediate `development` merges *(locked 2026-05-01)*.
 - **CI scope**: full mirror of `development`'s GH Actions matrix on every slice PR (centralized at `epam/ai-dial-ci@4.0.0`) *(locked 2026-05-01)*.
 - **GraalVM**: deferred to post-MVP — CLI ships JVM-mode for MVP; design doc 05 §6 unchanged; native-image becomes a post-MVP slice once `epam/ai-dial-ci` gains GraalVM support *(locked 2026-05-01)*. See §3.4.
