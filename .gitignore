@@ -16,3 +16,5 @@ src/main/resources/version
 .factorypath
 .project
 .settings/
+### Personal Claude commands (not shared) ###
+.claude/commands/review-unified-config.md
