@@ -374,6 +374,24 @@ public class AccessService {
                 && RuleMatcher.match(context, adminRules);
     }
 
+    /** Returns {@code true} when the caller resolved an authenticated identity (JWT or API key). */
+    public boolean isAuthenticated(ProxyContext context) {
+        return context.getUserRoles() != null;
+    }
+
+    /**
+     * Returns {@code true} when {@code bucket} equals the caller's encrypted initiator bucket.
+     * Returns {@code false} (does not throw) when no initiator can be resolved — that case is
+     * treated as "not the owner" so the surrounding authz dispatch produces 403 rather than 500.
+     */
+    public boolean isOwnerOf(ProxyContext context, String bucket) {
+        try {
+            return encryptionService.encrypt(BucketBuilder.buildInitiatorBucket(context)).equals(bucket);
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
+    }
+
     public void filterForbidden(ProxyContext context, ResourceDescriptor descriptor, MetadataBase metadata) {
         if (descriptor.isPublic() && descriptor.isFolder() && !hasAdminAccess(context)) {
             ResourceFolderMetadata folder = (ResourceFolderMetadata) metadata;
