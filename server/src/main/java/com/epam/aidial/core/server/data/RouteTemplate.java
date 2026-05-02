@@ -72,6 +72,11 @@ public enum RouteTemplate {
             "/v1/admin/export"
     ),
 
+    CONFIG_HEALTH(
+            "^/v1/admin/health/config$",
+            "/v1/admin/health/config"
+    ),
+
     BUCKET(
             "^/v1/bucket$",
             "/v1/bucket"
