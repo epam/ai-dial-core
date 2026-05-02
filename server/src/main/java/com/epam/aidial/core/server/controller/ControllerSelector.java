@@ -87,6 +87,11 @@ public class ControllerSelector {
             AdminExportController controller = new AdminExportController(context, authService);
             return controller::handle;
         });
+        get(RouteTemplate.CONFIG_HEALTH, (proxy, context, pathMatcher) -> {
+            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            AdminHealthConfigController controller = new AdminHealthConfigController(context, authService);
+            return controller::handle;
+        });
         get(RouteTemplate.BUCKET, (proxy, context, pathMatcher) -> {
             BucketController controller = new BucketController(proxy, context);
             return controller::getBucket;
