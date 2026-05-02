@@ -21,18 +21,18 @@ public class AdminRoleAuthorizationService implements ConfigAuthorizationService
     public boolean isAuthorized(ProxyContext context, String entityType, String entityName,
                                 String bucket, Operation operation) {
         if (EntityBucketBinding.PLATFORM_BUCKET.equals(bucket)) {
-            return accessService.hasExplicitAdminAccess(context);
+            return accessService.hasAdminAccess(context);
         }
         if (ResourceDescriptor.PUBLIC_BUCKET.equals(bucket)) {
-            // Reads on public/ are open to any authenticated caller — and reaching here means the
-            // request is already authenticated (Proxy#authorizeRequest rejects otherwise).
-            return operation.isRead() || accessService.hasExplicitAdminAccess(context);
+            return operation.isRead()
+                    ? accessService.isAuthenticated(context)
+                    : accessService.hasAdminAccess(context);
         }
         return accessService.isOwnerOf(context, bucket);
     }
 
     @Override
     public boolean isAdmin(ProxyContext context) {
-        return accessService.hasExplicitAdminAccess(context);
+        return accessService.hasAdminAccess(context);
     }
 }

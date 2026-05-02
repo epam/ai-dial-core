@@ -381,14 +381,9 @@ public class AccessService {
                 && RuleMatcher.match(context, adminRules);
     }
 
-    /**
-     * Fail-closed admin check for the Configuration/Admin API surface. Unlike {@link #hasAdminAccess}
-     * — whose empty rule set is treated by {@link RuleMatcher} as allow-all — this returns
-     * {@code false} when {@code access.admin.rules} is unconfigured or empty, so an operator who
-     * never configured admin rules denies all config/admin access rather than granting it to everyone.
-     */
-    public boolean hasExplicitAdminAccess(ProxyContext context) {
-        return adminRulesConfigured && hasAdminAccess(context);
+    /** Returns {@code true} when the caller resolved an authenticated identity (JWT or API key). */
+    public boolean isAuthenticated(ProxyContext context) {
+        return context.getUserRoles() != null;
     }
 
     /**

@@ -71,33 +71,8 @@ public enum RouteTemplate {
     ),
 
     CONFIG_RESOURCE(
-            "^/v1/(models|interceptors|roles|keys|routes|schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
+            "^/v1/(models|interceptors|roles|keys|routes|schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)(?:/(?<path>.*))?$",
             "/v1/{resourceType}/{bucket}/{path}"
-    ),
-
-    CONFIG_RESOURCE_METADATA(
-            "^/v1/metadata/(models|interceptors|roles|keys|routes|schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
-            "/v1/metadata/{resourceType}/{bucket}/{path}"
-    ),
-
-    CONFIG_HEALTH(
-            "^/v1/admin/health/config$",
-            "/v1/admin/health/config"
-    ),
-
-    ADMIN_FILE_CONFIG(
-            "^/v1/admin/config/file/(?<type>models|interceptors|roles|keys|routes|schemas|settings)(?:/(?<name>.+))?$",
-            "/v1/admin/config/file/{type}/{name}"
-    ),
-
-    CONFIG_VALIDATE(
-            "^/v1/admin/validate$",
-            "/v1/admin/validate"
-    ),
-
-    CONFIG_APPLY(
-            "^/v1/admin/apply$",
-            "/v1/admin/apply"
     ),
 
     BUCKET(
