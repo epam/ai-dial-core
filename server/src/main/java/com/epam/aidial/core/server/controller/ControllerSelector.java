@@ -82,6 +82,11 @@ public class ControllerSelector {
             return () -> controller.handle(resourcePath(path));
         });
         get(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
+        get(RouteTemplate.CONFIG_EXPORT, (proxy, context, pathMatcher) -> {
+            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            AdminExportController controller = new AdminExportController(context, authService);
+            return controller::handle;
+        });
         get(RouteTemplate.BUCKET, (proxy, context, pathMatcher) -> {
             BucketController controller = new BucketController(proxy, context);
             return controller::getBucket;
