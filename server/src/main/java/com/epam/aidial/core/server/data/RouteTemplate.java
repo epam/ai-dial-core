@@ -62,6 +62,11 @@ public enum RouteTemplate {
             "/v1/metadata/{resourceType}/{bucket}/{path}"
     ),
 
+    CONFIG_RESOURCE(
+            "^/v1/(models|interceptors|roles|keys|routes|schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)(?:/(?<path>.*))?$",
+            "/v1/{resourceType}/{bucket}/{path}"
+    ),
+
     BUCKET(
             "^/v1/bucket$",
             "/v1/bucket"

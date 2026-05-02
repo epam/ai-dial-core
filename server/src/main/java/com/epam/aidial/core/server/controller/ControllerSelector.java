@@ -7,6 +7,8 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.route.ApplicationRouteController;
 import com.epam.aidial.core.server.controller.route.GlobalRouteController;
 import com.epam.aidial.core.server.data.RouteTemplate;
+import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
+import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -78,6 +80,7 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
+        get(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
         get(RouteTemplate.BUCKET, (proxy, context, pathMatcher) -> {
             BucketController controller = new BucketController(proxy, context);
             return controller::getBucket;
@@ -328,6 +331,8 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
+        delete(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
+        post(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
         delete(RouteTemplate.INVITATION, (proxy, context, pathMatcher) -> {
             String invitationId = UrlUtil.decodePath(pathMatcher.group(1));
             InvitationController controller = new InvitationController(proxy, context);
@@ -352,6 +357,7 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
+        put(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
 
         // add deployment routes
         ControllerRoute.Initializer applicationRouteTemplate = ((proxy, context, pathMatcher) -> {
@@ -402,6 +408,14 @@ public class ControllerSelector {
         ROUTES.add(new ControllerRoute(HttpMethod.DELETE, template.getPattern(), controllerTemplate));
     }
 
+
+    private static Controller configResourceController(Proxy proxy, ProxyContext context, Matcher pathMatcher) {
+        String entityType = pathMatcher.group(1);
+        String bucket = pathMatcher.group("bucket");
+        String path = pathMatcher.group("path");
+        ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+        return new ConfigResourceController(context, authService, entityType, bucket, path);
+    }
 
     private String resourcePath(String url) {
         String prefix = "/v1/";
