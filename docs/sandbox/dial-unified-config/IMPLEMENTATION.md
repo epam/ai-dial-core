@@ -251,6 +251,61 @@ The orchestrator halts the loop and asks the user when reality diverges from the
 
 **Anti-patterns to avoid.** Do not: silently retry a failing build with different flags, fork a sub-issue and "come back to it", paper over a divergence with a comment, downgrade a test to make it pass, or push the decision to the code-owner ("they'll catch it in review"). All of these defeat the point of the halt.
 
+### 4.2 Auto-mode policy (for `/dial-mvp-auto`)
+
+The `/dial-mvp-auto` slash command runs multiple slices sequentially with the two routine halts — architect-plan approval and merge-diff approval — gated by self-tests rather than always halting. **Halt conditions §4.1 still always trigger a halt — auto-mode never bypasses them.**
+
+**Design invariant**: auto-approval is **earned, not assumed**. Default to halting on uncertainty. Self-test items are halt triggers, not pass-fail booleans the orchestrator gets to game.
+
+#### §A — ARCHITECT auto-approve self-test
+
+The architect plan auto-proceeds IFF every item below holds. ANY item uncertain or false → halt per §4.1 format.
+
+- [ ] Every design-doc anchor cited in the plan is verified live via LSP (`documentSymbol` / `workspaceSymbol`); no stale anchor.
+- [ ] Every file the plan lists touching is either an existing file in the cited code area or a new file with a clear scope-of-creation rationale.
+- [ ] No new abstractions, helpers, or interfaces are introduced beyond what the slice register row mentions.
+- [ ] The plan's test list includes at least one integration test using the `ResourceApiTest` pattern.
+- [ ] No plan step would require violating §2.1 / §2.2 / §2.3 (e.g., blocking the event loop, replacing existing patterns, adding new infrastructure).
+- [ ] No plan step requires changing a locked decision in §9 or in memory.
+- [ ] LSP `findReferences` blast-radius on every method the plan modifies stays within the slice register row's scope description.
+- [ ] No multiple-valid-interpretation calls were picked silently — if two readings of the design are equally valid, halt.
+
+#### §B — MERGE LOCALLY auto-approve self-test
+
+The slice auto-merges IFF every item below holds. ANY item uncertain or false → halt per §4.1 format.
+
+- [ ] `./gradlew checkstyleMain checkstyleTest :server:test` and any module-specific tests pass.
+- [ ] The diff is bounded to files listed in the architect plan; no surprise files added or modified.
+- [ ] LSP `findReferences` on every method modified shows no unintended orphans (§2.2).
+- [ ] No commented-out code, debug prints, or TODOs added by this slice.
+- [ ] The §3.5 commit message draft has all required fields filled (type, slice-ID, summary, design anchors, tests, co-author trailer).
+- [ ] The only metadata change to IMPLEMENTATION.md is the slice's own §5 row (Status `🚧` → `✅`, Commit column populated).
+
+#### When to invoke `/dial-mvp-auto`
+
+**Use** for mechanical / semi-mechanical slices where the pattern is locked:
+
+- Phase-3 entity-type sweep (3S.2, after the first type validates the pattern).
+- Phase-3 CLI extension (3C.0 — generic parameterized command class).
+- Phase-2 prereqs that are isolated refactors (2S.0-pre, 2S.1-pre, 2S.2-pre).
+
+**Don't use** for high-uncertainty slices needing user judgment on the architect plan:
+
+- 1S.0 bootstrap (foundational; high review surface).
+- 2S.8 `MergedConfigStore`, 2S.10 `SecretFieldProcessor`, 4S.0 apply endpoint (introduce new abstractions).
+
+For those, use plain `/dial-mvp <slice-id>` so every halt is a real halt.
+
+#### Auditability
+
+The orchestrator prints a one-line digest at every conditional halt:
+
+- ARCHITECT auto-proceed: `[<slice-id>] ARCHITECT auto-proceed (N/N self-test items passed)`.
+- MERGE auto-proceed: `[<slice-id>] MERGED auto (N/N self-test items passed) → <short-sha>`.
+- Halt: standard §4.1 format (what / why / options / recommendation / wait).
+
+Between slices: `[N/M slices done, next: <slice-id>]`.
+
 ---
 
 ## 5. Slice Register
