@@ -9,9 +9,6 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
 import com.epam.aidial.core.server.data.Prompt;
 import com.epam.aidial.core.server.security.AccessService;
-import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
-import com.epam.aidial.core.server.security.ConfigAuthorizationService;
-import com.epam.aidial.core.server.security.Operation;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -76,36 +73,6 @@ public class ResourceController extends AccessControlBaseController {
         this.applicationSchemaService = proxy.getApplicationSchemaService();
         this.deploymentService = proxy.getDeploymentService();
         this.metadata = metadata;
-    }
-
-    /**
-     * 1S.4: {@link ConfigAuthorizationService} preflight (additive admit) for admin-managed types.
-     * Admin readers of applications/toolsets pass through the unified-config gate ahead of the
-     * rules-based {@link AccessService} check; everyone else falls through to the existing flow.
-     * Phase 1 is read-only — write preflight ships in slice 1S.5.
-     */
-    @Override
-    public Future<?> handle(String resourceUrl) {
-        if (isWriteAccess) {
-            return super.handle(resourceUrl);
-        }
-        ResourceDescriptor descriptor;
-        try {
-            descriptor = ResourceDescriptorFactory.fromAnyUrl(resourceUrl, proxy.getEncryptionService());
-        } catch (Exception e) {
-            // URL-parse failures get a uniform BAD_REQUEST response from super.handle.
-            return super.handle(resourceUrl);
-        }
-        if (descriptor.getType() != ResourceTypes.APPLICATION && descriptor.getType() != ResourceTypes.TOOL_SET) {
-            return super.handle(resourceUrl);
-        }
-        ConfigAuthorizationService configAuth = new AdminRoleAuthorizationService(accessService);
-        if (configAuth.isAdmin(context)
-                && configAuth.isAuthorized(context, descriptor.getType().group(),
-                        descriptor.getName(), descriptor.getBucketName(), Operation.READ)) {
-            return handle(descriptor, true);
-        }
-        return super.handle(resourceUrl);
     }
 
     @Override
