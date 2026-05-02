@@ -7,9 +7,13 @@ import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.server.security.Operation;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpMethod;
+
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Stub controller for the {@code /v1/{type}/{bucket}/{path}} CONFIG_RESOURCE route — gates on
@@ -67,23 +71,59 @@ public class ConfigResourceController implements Controller {
     }
 
     private Future<?> handleModelGet(String name) {
-        // Empty name = bare /v1/models/public[/] which is the listing route — deferred to slice 1S.2.
-        // Until then, return 404 explicitly; also guards Map.of().get(null) on the unloaded Config default.
         if (name == null || name.isEmpty()) {
-            context.respond(HttpStatus.NOT_FOUND);
-            return Future.succeededFuture();
+            return handleModelList();
         }
         Model model = context.getConfig().getModels().get(name);
         if (model == null) {
             context.respond(HttpStatus.NOT_FOUND);
             return Future.succeededFuture();
         }
-        ObjectNode body = ProxyUtil.MAPPER.valueToTree(model);
-        body.put("status", "valid");
-        if (authorizationService.isAdmin(context)) {
-            body.put("source", "file");
+        context.respond(HttpStatus.OK, projectModelItem(name, model, authorizationService.isAdmin(context)));
+        return Future.succeededFuture();
+    }
+
+    private Future<?> handleModelList() {
+        // Phase 1 returns the full in-memory snapshot — limit is shape-validated only, cursor is
+        // accepted-and-ignored (design 03 §4 forward-compat: hasMore: false always, nextCursor absent).
+        if (!isLimitValid()) {
+            context.respond(HttpStatus.BAD_REQUEST, "Invalid 'limit' query parameter");
+            return Future.succeededFuture();
         }
+        boolean admin = authorizationService.isAdmin(context);
+        ArrayNode items = ProxyUtil.MAPPER.createArrayNode();
+        for (Map.Entry<String, Model> entry : new TreeMap<>(context.getConfig().getModels()).entrySet()) {
+            items.add(projectModelItem(entry.getKey(), entry.getValue(), admin));
+        }
+        ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
+        body.put("entityType", entityType);
+        body.put("bucket", bucket);
+        body.set("items", items);
+        body.put("hasMore", false);
         context.respond(HttpStatus.OK, body);
         return Future.succeededFuture();
+    }
+
+    private ObjectNode projectModelItem(String name, Model model, boolean admin) {
+        ObjectNode node = ProxyUtil.MAPPER.valueToTree(model);
+        node.put("name", name);
+        node.put("status", "valid");
+        if (admin) {
+            node.put("source", "file");
+        }
+        return node;
+    }
+
+    /** Phase 1 validates limit shape only — accepts absent or any positive integer (clamping ships in Phase 2). */
+    private boolean isLimitValid() {
+        String raw = context.getRequest().getParam("limit");
+        if (raw == null) {
+            return true;
+        }
+        try {
+            return Integer.parseInt(raw) >= 1;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 }

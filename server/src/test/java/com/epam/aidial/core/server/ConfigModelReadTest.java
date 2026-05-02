@@ -53,14 +53,6 @@ public class ConfigModelReadTest extends ResourceBaseTest {
     }
 
     @Test
-    void testListingPathReturns404UntilSlice1S2() {
-        // /v1/models/public/ is the listing URL — deferred to slice 1S.2; current behavior is 404.
-        Response response = send(HttpMethod.GET, "/v1/models/public/", null, "",
-                "authorization", "user");
-        verify(response, 404);
-    }
-
-    @Test
     void testEndpointVisibleToPublicView() {
         Response response = send(HttpMethod.GET, "/v1/models/public/chat-gpt-35-turbo", null, "",
                 "authorization", "user");
