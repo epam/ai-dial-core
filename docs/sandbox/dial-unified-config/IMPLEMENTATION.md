@@ -325,7 +325,7 @@ Between slices: `[N/M slices done, next: <slice-id>]`.
 | **1S.4** | Read paths for `applications`, `toolsets` via existing `ApplicationService` / `ToolSetService` with `ConfigAuthorizationService` preflight. | 1S.1 | 03 §1; 02 §6 | ✅ | `acfe1ace` |
 | **1S.5** | Admin authz preflight on existing `FILES` / `RESOURCE` controllers for `public/` admin reads/writes; deny admin reach into user buckets. | 1S.4 | 03 §1; OQ-21, OQ-33 | ✅ | `7be8db9e` |
 | **1S.6** | `GET /v1/admin/export` — full snapshot of in-memory `Config`. JSON + YAML output. | 1S.3 | 03 §1; 07 Phase 1 | ✅ | `ec1ac537` |
-| **1S.7** | `GET /v1/admin/health/config` returning `{status, skipped[]}` (skipped is `[]` in Phase 1 — invalid-entity store ships in 2S.9). Prometheus metric scaffolds (cardinality-zero in Phase 1). | 1S.0 | 07 Phase 2; 02 §4.1 | 📋 | — |
+| **1S.7** | `GET /v1/admin/health/config` returning `{status, skipped[]}` (skipped is `[]` in Phase 1 — invalid-entity store ships in 2S.9). Prometheus metric scaffolds (cardinality-zero in Phase 1). | 1S.0 | 07 Phase 2; 02 §4.1 | ✅ | `2a5a10ac` |
 
 **Track B — CLI**
 
