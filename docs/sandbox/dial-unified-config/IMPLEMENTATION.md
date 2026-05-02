@@ -84,17 +84,17 @@ Two parallel tracks. Server work depends only on prior server slices; CLI work d
   slice sub-branches  (feature/unified-config-<id>-<short-title>,
                        e.g. feature/unified-config-1S.0-bootstrap)
            │
-           │ PR  — squash-merged on review approval
+           │ local `git merge --squash` (no per-slice PR; commit per §3.5)
            ▼
-  feature/unified-config   ◄── lazily rebased on development; force-push allowed
+  feature/unified-config   ◄── lazily integrated with development
            │
-           │ ONE big PR after end-to-end user testing
+           │ ONE big PR after end-to-end user testing — the only formal review
            ▼
        development
 ```
 
 - **Sub-branches** named `feature/unified-config-<id>-<short-title>` (e.g. `feature/unified-config-1S.0-bootstrap`, `feature/unified-config-2S.11-models-write`). **Hyphen separator (not slash) is required** because the integration branch `feature/unified-config` already exists as a ref — Git refuses to create `feature/unified-config/<x>` when `feature/unified-config` is itself a branch (ref-vs-directory conflict). Prefix still groups slice branches under the integration namespace; `git branch --list 'feature/unified-config-*'` enumerates the entire MVP workstream.
-- **Slice PRs target `feature/unified-config`**, never `development` directly. Squash-merged on review approval — one squash-commit per slice keeps the integration branch's log readable as a slice timeline.
+- **Slices integrate via local `git merge --squash`** into `feature/unified-config` — no per-slice PR, no per-slice formal code-owner review. The orchestrator presents the slice diff and a draft commit message in §3.5 format for the user's approval (a halt point), then squash-merges, deletes the sub-branch, and updates the slice register Status to `✅`. One squash-commit per slice keeps the integration branch's log readable as a slice timeline (`git log development..feature/unified-config --oneline` enumerates the MVP).
 - **`feature/unified-config` is integrated with `development` lazily** — not on a fixed cadence. Triggers: (a) `development` lands a change that affects in-flight slice work, or (b) a slice author needs a new `development` API. **Default mode is rebase** (force-push allowed; in-flight slice authors rebase their sub-branches onto the new tip; preserves linear history for the final big PR's review). **Per-sync merge override is allowed when situational** — early in MVP with few slices in flight, or when conflicts resolve more cleanly with a merge commit than with rebase-conflict-per-commit. Late in MVP with many slices in flight, prefer rebase to keep history readable for code-owners.
 - **No intermediate merges to `development`** during the MVP. The branch accumulates the full Phase 1–3 (+stretch) implementation.
 - **Phase boundaries are verification milestones** — run integration suites, smoke-test the demo path, freeze for review. They are *not* merge events; slices already squash-merged as they landed.
@@ -122,6 +122,46 @@ Concrete deferrals for MVP:
 - **MVP distribution channels**: Docker image (`ghcr.io/epam/dial-cli`) and runnable JAR (`java -jar dial-cli.jar …`). Both are listed in design 05 §6.
 - **Deferred distribution channels**: GitHub Releases native binaries (linux/darwin/windows × amd64/arm64) and Homebrew tap (need GraalVM); JBang channel (deferred from MVP — adds packaging/publishing surface that doesn't pay off until external operators install the CLI).
 - **Re-enabling native-image** is a single post-MVP slice that lands once `epam/ai-dial-ci` adds GraalVM support — at that point the design's full distribution matrix becomes deliverable.
+
+### 3.5 Commit message format for slice merges
+
+Each slice produces ONE squash-merge commit on `feature/unified-config`. Use this template — conventional-commit style + slice ID + design-anchor citation, ending with the standard co-author trailer.
+
+```
+<type>: <slice-id>: <imperative summary, ≤72 chars total>
+
+<paragraph: what changes and why, ≤300 chars; reference impact on later slices when relevant>
+
+Design anchors: <design-doc §refs>
+Tests: <test path or "no new tests">
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+```
+
+**Type guide:**
+
+- `feat:` — slices that add user-visible features (endpoints, CLI commands, write paths).
+- `refactor:` — prereq slices that restructure existing code without behaviour change (e.g. **2S.3-pre** HashMap → ConcurrentHashMap, **2S.6-pre** `apiKeyStore` relocation).
+- `chore:` — pure infrastructure / build / docs (rare in the slice register).
+
+**Example:**
+
+```
+feat: 1S.0: bootstrap CONFIG_RESOURCE route, ConfigAuthorizationService
+
+Adds the foundational read-API plumbing: sibling RouteTemplate.CONFIG_RESOURCE
+regex for the new admin-config types, ConfigAuthorizationService interface with
+AdminRoleAuthorizationService impl reading access.admin.rules, and
+EntityBucketBinding static allowlist with startup assertion. Mirrors the
+ResourceApiTest harness.
+
+Design anchors: 02 §5.1, 03 §1, 04 §1.1–1.2
+Tests: server/src/test/.../ConfigApiTest.java
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+```
+
+The slice-ID prefix in the title makes the integration branch's log readable as a slice timeline.
 
 ---
 
@@ -175,7 +215,7 @@ One canonical loop applied to every slice. The cost varies — bootstrap slices 
 - Skip ARCHITECT for purely mechanical slices once the pattern is validated (Phase-3 type-sweep, after the first type lands).
 - **Never skip SIMPLIFY or REVIEW.** They are the cheapest pre-PR fix layer.
 
-**`/ultrareview` escalation:** trigger user-side on slice **1S.0** (bootstrap PR) and on any slice that introduces a new abstraction (e.g. **2S.8** `MergedConfigStore`, **2S.10** `SecretFieldProcessor`, **4S.0** apply endpoint). Skip for mechanical slices.
+**`/ultrareview` escalation:** not required per-slice — the per-slice review surface is the user's diff approval at the merge halt (§3.2). Reserve `/ultrareview` for the MVP-complete `feature/unified-config` → `development` PR (the only formal external review checkpoint), or trigger ad-hoc if a slice introduces an abstraction the user wants extra eyes on (e.g. **2S.8** `MergedConfigStore`, **2S.10** `SecretFieldProcessor`, **4S.0** apply endpoint). User-triggered only.
 
 **LSP usage.** The harness exposes Java LSP (JDTLS). Prefer it over textual grep at these moments:
 
@@ -215,13 +255,13 @@ The orchestrator halts the loop and asks the user when reality diverges from the
 
 ## 5. Slice Register
 
-**Status legend:** `📋 planned` · `🚧 in-progress` · `🔍 in-review` · `✅ merged` · `⏸ blocked` · `❌ dropped`
+**Status legend:** `📋 planned` · `🚧 in-progress` · `🔍 awaiting-merge` · `✅ merged` · `⏸ blocked` · `❌ dropped`
 
 ### 5.1 Phase 1 — Read-only Configuration API + CLI read
 
 **Track A — Server**
 
-| ID | Slice | Depends on | Design anchors | Status | PR |
+| ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
 | **1S.0** | Bootstrap: `RouteTemplate.CONFIG_RESOURCE` regex (sibling to `RESOURCE` / `FILES`); `ConfigAuthorizationService` interface + `AdminRoleAuthorizationService` impl reading `access.admin.rules`; `EntityBucketBinding` static allowlist + startup assertion + per-request gate; integration-test harness mirroring `ResourceApiTest`. | — | 02 §5.1, 03 §1, 04 §1.1–1.2 | ✅ | [#1513](https://github.com/epam/ai-dial-core/pull/1513) |
 | **1S.1** | `GET /v1/models/public/{name}` reading from in-memory `volatile Config` ref. Public/Owner field projection (`status` always `"valid"` in Phase 1; `source` Owner-only). Synthesize `name` from descriptor. | 1S.0 | 03 §1, §2, §4; 04 §1.5 | 📋 | — |
@@ -234,7 +274,7 @@ The orchestrator halts the loop and asks the user when reality diverges from the
 
 **Track B — CLI**
 
-| ID | Slice | Depends on | Design anchors | Status | PR |
+| ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
 | **1C.0** | New `:cli` Gradle module. Picocli + Quarkus Command Mode skeleton. `~/.dial-cli/config.yaml` profile loader. API-key resolution chain (env var → keystore → `--api-key-file` → no-echo prompt). Direct dependency on `:config` module data classes. | 1S.1 (contract only) | 05 §1, §2, §6 | 📋 | — |
 | **1C.1** | `dial-cli env list / current / use / check`. Persist `defaults.env` on `use`. | 1C.0 | 05 §1 | 📋 | — |
@@ -250,7 +290,7 @@ The orchestrator halts the loop and asks the user when reality diverges from the
 
 These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §Phase 2 — file paths and required tests are spelled out there.
 
-| ID | Slice | Depends on | Design anchors | Status | PR |
+| ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
 | **2S.0-pre** | `ApiKeyStore.addProjectKeys()` dual-format guard (`if (value.getKey() == null \|\| isBlank()) { value.setKey(apiKey); }`). Unit coverage for both formats. | — | 07 Phase 2 prereqs; OQ-12 | 📋 | — |
 | **2S.1-pre** | `PLATFORM_BUCKET` / `PLATFORM_LOCATION` constants on `ResourceDescriptor`. `ResourceDescriptorFactory.fromUrl()` `else if PLATFORM_BUCKET` branch. `ResourceTypes.of()` switch extension for new groups + URL-segment aliases (`schemas`, `keys`). | — | 07 Phase 2 prereqs | 📋 | — |
@@ -263,7 +303,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 
 **Track A — Server core**
 
-| ID | Slice | Depends on | Design anchors | Status | PR |
+| ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
 | **2S.8** | `MergedConfigStore` — union of `FileConfigStore` + `ResourceService`. `requestRebuild()` non-blocking entry point. `volatile boolean initialized` guard for pre-init no-op. | 2S.5-pre, 2S.6-pre, 2S.7-pre | 02 §4 | 📋 | — |
 | **2S.9** | Invalid-entity sibling store. Listing/get response shape with `status` + `validationWarnings`. `config.reload.onInvalidEntity: skip\|abort` setting (default `abort` — opt-in `skip` enables the sibling store / status surface). Prometheus `dial_config_skipped_entities`, `dial_config_skip_events_total`. | 2S.8 | 02 §4.1, §4.3; 03 §4 | 📋 | — |
@@ -275,7 +315,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 
 **Track B — CLI (models-only writes)**
 
-| ID | Slice | Depends on | Design anchors | Status | PR |
+| ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
 | **2C.0** | `dial-cli model add` (POST). `--dry-run`. Exit codes per 06 §2.8 (`0` / `5` / `2` / `3`). No `--template` yet (Phase 4). | 1C.2, 2S.11 | 05 §1; 06 §2.8 | 📋 | — |
 | **2C.1** | `dial-cli model update` (PUT) with `--set k=v` (GET → local-merge → PUT). `--if-match`. Exit codes (`0` / `4` / `6` / `2`). | 2C.0 | 05 §1 (Update ergonomics) | 📋 | — |
@@ -286,7 +326,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 
 ### 5.3 Phase 1.5 — Redis pub/sub (concurrent with Phase 2 write path)
 
-| ID | Slice | Depends on | Design anchors | Status | PR |
+| ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
 | **1.5S.0-pre** | `ResourceTopic` codec: shared `ObjectMapper` with `FAIL_ON_UNKNOWN_PROPERTIES = false` + `JsonInclude.NON_NULL`. New `ResourceTopic(redis, key, mapper)` constructor; legacy delegates with safe defaults. `ResourceService` wires shared mapper. **Standalone PR before any 1.5 traffic.** | — | 07 Phase 1.5 prereqs; 02 §11.1 | 📋 | — |
 | **1.5S.1** | `ResourceTopic.subscribeAll(Consumer<ResourceEvent>)`. New `globalSubscribers` `CopyOnWriteArrayList`; second loop in `handle()`. | 1.5S.0-pre | 02 §11.1 | 📋 | — |
@@ -297,7 +337,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 
 **Track A — Server**
 
-| ID | Slice | Depends on | Design anchors | Status | PR |
+| ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
 | **3S.0-pre** | `ResourceAuthSettingsEncryptionService.processFields()` extension for `codeVerifier` with lazy plaintext fallback (catch base64 decode error → return as-is → re-encrypt on next write). | — | 07 Phase 3 prereqs; 04 §2.7 | 📋 | — |
 | **3S.1** | `BlobEntityValidator` helper for apps/toolsets — validates against current `Config` (interceptor refs, schema refs, deployment dependencies). Folded into Configuration API listing/get response only; chat-completion hot path unchanged. | 2S.9 | 07 Phase 3; 02 §4.3 | 📋 | — |
@@ -307,7 +347,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 
 **Track B — CLI**
 
-| ID | Slice | Depends on | Design anchors | Status | PR |
+| ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
 | **3C.0** | Generic Picocli command class parameterized by entity type so `add` / `update` / `delete` / `validate` / `promote` / `diff` ship for all remaining types. (If reviewer prefers per-type symmetry, split — but the principle §2.1 favors one parameterized class.) | 2C.5, 3S.2, 3S.3, 3S.4 | 05 §1 | 📋 | — |
 
@@ -317,14 +357,14 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 
 **Track A — Server**
 
-| ID | Slice | Depends on | Design anchors | Status | PR |
+| ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
 | **4S.0** | `POST /v1/admin/apply` — bulk upsert; dependency-ordered sequential (`globalSettings → schemas → interceptors → roles → keys → routes → models → toolsets → applications`); continues on failure; per-entity status array. `precheck: true\|false` (default `true`); `softValidation` orthogonal; proposed-config validation always-on. | 3S.2, 3S.3 | 03 §7; 07 Phase 4 | 📋 | — |
 | **4S.1** | `POST /v1/admin/validate` — multi-entity, batch-aware with `precheck` semantics. | 4S.0 | 03 §6 | 📋 | — |
 
 **Track B — CLI**
 
-| ID | Slice | Depends on | Design anchors | Status | PR |
+| ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
 | **4C.0** | `dial-cli apply -f <path>` — single-doc and multi-doc YAML manifest parsing, validate-first gate (`POST /v1/admin/validate`) then `POST /v1/admin/apply`. `--dry-run`. Exit codes per 06 §2.8. **No template DSL, no overlays, no bundles in MVP — manifests must be fully resolved.** | 4S.0, 4S.1 | 03 §7; 05 §5.1 | 📋 | — |
 
@@ -432,7 +472,7 @@ Locked answers to the kickoff questions (see `project_unified_config_implementat
 - **CLI module location**: same repo as a sibling `:cli` Gradle module *(locked 2026-05-01)*.
 - **Branch hygiene**: lazy integration of `feature/unified-config` with `development`. **Default = rebase** (force-push allowed; in-flight slice authors rebase their sub-branches onto the new tip; linear history). **Per-sync merge override allowed** when situational — early in MVP, complex conflicts. Late in MVP, prefer rebase. *(locked 2026-05-01)*.
 - **Sub-branch naming**: `feature/unified-config-<id>-<short-title>` (hyphen separator forced by Git ref-vs-directory constraint — see §3.2) *(locked 2026-05-01; separator amended 2026-05-02)*.
-- **Integration branch model**: per-slice squash-merge into `feature/unified-config` on review approval; single big PR to `development` only at MVP-complete after user-side testing; no intermediate `development` merges *(locked 2026-05-01)*.
+- **Integration branch model**: per-slice **local** `git merge --squash` into `feature/unified-config` after the user approves the slice diff and commit message — no per-slice PR, no per-slice formal code-owner review; commit format per §3.5; single big PR to `development` only at MVP-complete after user-side testing; no intermediate `development` merges *(locked 2026-05-01; PR-free local-merge confirmed 2026-05-02)*.
 - **CI scope**: full mirror of `development`'s GH Actions matrix on every slice PR (centralized at `epam/ai-dial-ci@4.0.0`) *(locked 2026-05-01)*.
 - **GraalVM**: deferred to post-MVP — CLI ships JVM-mode for MVP; design doc 05 §6 unchanged; native-image becomes a post-MVP slice once `epam/ai-dial-ci` gains GraalVM support *(locked 2026-05-01)*. See §3.4.
 
