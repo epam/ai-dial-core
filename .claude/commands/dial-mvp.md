@@ -48,7 +48,16 @@ For the chosen slice:
 
 6. **REVIEW** — dispatch `feature-dev:code-reviewer` for a final pre-PR pass. Focus areas: bugs, Vert.x event-loop violations (§7.3), security, naming alignment with the locked vocabulary (§2.3), test coverage. Use LSP `findReferences` on every method the slice modified to confirm surgical-cleanup orphaned nothing (§2.2). Ignore LSP diagnostics on files the slice didn't touch — they aren't introduced by your work.
 
-7. **OPEN PR** — push the branch and open a PR targeting `feature/unified-config` (not `development`). PR title: `<slice-id>: <short title>`. PR body cites the design-doc anchors and lists the principles checklist.
+7. **MERGE LOCALLY** — once SIMPLIFY + REVIEW pass cleanly:
+
+   a. Verify `git status` is clean on the slice sub-branch.
+   b. Present the slice diff (`git diff feature/unified-config..HEAD`) and a draft commit message in IMPLEMENTATION.md §3.5 format. **Halt for the user's approval** before merging.
+   c. Switch to integration: `git checkout feature/unified-config`.
+   d. Squash-merge: `git merge --squash <sub-branch>` (stages all sub-branch changes without committing).
+   e. Commit with the approved message via HEREDOC; include the `Co-Authored-By` trailer.
+   f. Delete the sub-branch: `git branch -D <sub-branch>`.
+   g. Update IMPLEMENTATION.md §5: slice `Status` `🚧` → `✅`, fill the `Commit` column with the squash commit's short SHA.
+   h. Stop and hand off to the user. The next slice begins on the user's signal in a fresh session.
 
 ## Step 4 — Update the slice register
 
@@ -71,7 +80,7 @@ Stop the loop and ask the user when:
 
 ## Important
 
-- The user is the only approver of architect plans and halt-decisions. Code-owner review is a separate, later gate.
+- The user is the only approver of architect plans, slice diffs, and halt-decisions. There is no per-slice formal code-owner review — that happens once at MVP-complete via the big PR `feature/unified-config` → `development`.
 - Update slice statuses as you go; don't batch the edits to the end.
 - If a review round amends a design doc, also add a one-line entry to the project memory `project_unified_config_review.md` per IMPLEMENTATION.md §8.
-- After the slice's PR is opened, stop and hand off to the user. The next slice begins on the user's signal.
+- After the slice is squash-merged into `feature/unified-config`, stop and hand off to the user. The next slice begins on the user's signal in a fresh session.
