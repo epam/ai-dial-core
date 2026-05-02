@@ -7,6 +7,7 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -18,47 +19,40 @@ public class ConfigInterceptorTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testFileInterceptorNotAddressableOnPerEntityGet() {
-        // U.1 (2026-05-21): per-entity GET is blob-only.
+    void testAdminReadsSingleInterceptor() {
         Response response = send(HttpMethod.GET, "/v1/interceptors/platform/interceptor1", null, "",
-                "authorization", "admin");
-        verify(response, 404);
-    }
-
-    @Test
-    @SneakyThrows
-    void testFileInterceptorReadableViaFileConfigEndpoint() {
-        Response response = send(HttpMethod.GET, "/v1/admin/config/file/interceptors/interceptor1", null, "",
                 "authorization", "admin");
         verify(response, 200);
         JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals("interceptor1", body.get("name").asText());
         assertEquals("valid", body.get("status").asText());
+        assertEquals("file", body.get("source").asText());
         assertTrue(body.has("endpoint"));
     }
 
     @Test
     @SneakyThrows
-    void testAdminListsInterceptorsMetadata() {
-        // U.0 (2026-05-20): per-bucket listings live on /v1/metadata/... and are blob-only.
-        // File-sourced interceptors no longer surface here.
-        Response response = send(HttpMethod.GET, "/v1/metadata/interceptors/platform/", null, "",
+    void testAdminListsInterceptors() {
+        Response response = send(HttpMethod.GET, "/v1/interceptors/platform/", null, "",
                 "authorization", "admin");
-        if (response.status() == 200) {
-            JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
-            assertEquals("FOLDER", body.get("nodeType").asText());
-        } else {
-            verify(response, 404);
+        verify(response, 200);
+        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals("interceptors", body.get("entityType").asText());
+        assertEquals("platform", body.get("bucket").asText());
+        assertFalse(body.get("hasMore").asBoolean());
+        assertFalse(body.has("nextCursor"));
+        JsonNode items = body.get("items");
+        assertTrue(items.isArray() && !items.isEmpty(), () -> "Expected items: " + response.body());
+        for (JsonNode item : items) {
+            assertEquals("file", item.get("source").asText());
         }
     }
 
     @Test
     void testNonAdminGetsForbidden() {
-        // The platform/ admin gate fires BEFORE the entity lookup, so non-admin gets 403 even
-        // though the file entry is no longer addressable on the per-entity surface (U.1).
         verify(send(HttpMethod.GET, "/v1/interceptors/platform/interceptor1", null, "",
                 "authorization", "user"), 403);
-        verify(send(HttpMethod.GET, "/v1/metadata/interceptors/platform/", null, "",
+        verify(send(HttpMethod.GET, "/v1/interceptors/platform/", null, "",
                 "authorization", "user"), 403);
     }
 
