@@ -4,6 +4,9 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.AccessService;
+import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
+import com.epam.aidial.core.server.security.ConfigAuthorizationService;
+import com.epam.aidial.core.server.security.Operation;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -27,6 +30,22 @@ public abstract class AccessControlBaseController {
         } catch (Exception e) {
             String errorMessage = e.getMessage() != null ? e.getMessage() : ("Invalid resource url provided: " + resourceUrl);
             return context.respond(HttpStatus.BAD_REQUEST, errorMessage);
+        }
+
+        // 1S.5: admin authz preflight (additive admit). When the admin role is asserted AND the
+        // unified-config gate authorizes the request (public/ + admin → always; user-bucket only
+        // when admin is the bucket owner), the rules-based check below is skipped and the handler
+        // runs with hasWriteAccess=true. Otherwise the request falls through to the existing
+        // AccessService path — preserving share-based grants (e.g. publication review). OQ-33's
+        // "admin can't reach user buckets" is enforced by the gate not admitting admin onto user
+        // buckets; it does not actively block existing share-based access.
+        ConfigAuthorizationService configAuth = new AdminRoleAuthorizationService(proxy.getAccessService());
+        if (configAuth.isAdmin(context)) {
+            Operation operation = isWriteAccess ? Operation.WRITE : Operation.READ;
+            if (configAuth.isAuthorized(context, resource.getType().group(),
+                    resource.getName(), resource.getBucketName(), operation)) {
+                return handle(resource, true);
+            }
         }
 
         return proxy.getTaskExecutor()
