@@ -1,10 +1,13 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.server.security.Operation;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpMethod;
 
@@ -55,7 +58,32 @@ public class ConfigResourceController implements Controller {
             return Future.succeededFuture();
         }
 
+        if (method == HttpMethod.GET && "models".equals(entityType)) {
+            return handleModelGet(path);
+        }
+
         context.respond(HttpStatus.METHOD_NOT_ALLOWED, "Not implemented");
+        return Future.succeededFuture();
+    }
+
+    private Future<?> handleModelGet(String name) {
+        // Empty name = bare /v1/models/public[/] which is the listing route — deferred to slice 1S.2.
+        // Until then, return 404 explicitly; also guards Map.of().get(null) on the unloaded Config default.
+        if (name == null || name.isEmpty()) {
+            context.respond(HttpStatus.NOT_FOUND);
+            return Future.succeededFuture();
+        }
+        Model model = context.getConfig().getModels().get(name);
+        if (model == null) {
+            context.respond(HttpStatus.NOT_FOUND);
+            return Future.succeededFuture();
+        }
+        ObjectNode body = ProxyUtil.MAPPER.valueToTree(model);
+        body.put("status", "valid");
+        if (authorizationService.isAdmin(context)) {
+            body.put("source", "file");
+        }
+        context.respond(HttpStatus.OK, body);
         return Future.succeededFuture();
     }
 }

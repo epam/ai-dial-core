@@ -35,10 +35,10 @@ public class ConfigBootstrapTest extends ResourceBaseTest {
 
     @Test
     void testAuthenticatedNonAdminCanReadPublicEntity() {
-        // public/ reads are open to any authenticated caller; authz passes, stub returns 405.
+        // public/ reads are open to any authenticated caller; the 1S.1 read path returns the model body.
         Response response = send(HttpMethod.GET, "/v1/models/public/gpt-4", null, "",
                 "authorization", "user");
-        verify(response, 405);
+        verify(response, 200);
     }
 
     @Test
@@ -58,9 +58,9 @@ public class ConfigBootstrapTest extends ResourceBaseTest {
     @Test
     void testApiKeyWithDefaultRoleCanReadPublic() {
         // Default api-key proxyKey1 (role: "default") authenticates but is not admin — public reads
-        // are open to any authenticated caller, so the gate passes and the stub returns 405.
+        // are open to any authenticated caller, so the 1S.1 read path returns the model body.
         Response response = send(HttpMethod.GET, "/v1/models/public/gpt-4");
-        verify(response, 405);
+        verify(response, 200);
     }
 
     @Test
