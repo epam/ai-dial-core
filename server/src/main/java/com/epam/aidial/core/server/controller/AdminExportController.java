@@ -19,10 +19,11 @@ import java.util.Map;
  * Admin-only snapshot of the in-memory {@link Config}. Default JSON; YAML when the request asks
  * for it via {@code ?format=yaml} or an {@code Accept: application/yaml} header.
  *
- * <p>Phase 1 emits whatever Jackson serializes from {@link Config} plus a manually re-attached
- * {@code keys} map with the {@code key} field masked — Config's map field carries
- * {@code @JsonProperty(WRITE_ONLY)} which suppresses the field at serialization time. Phase 2's
- * dual-mapper plumbing replaces this manual step.
+ * <p>Slice 2S.10 wires {@link ProxyUtil#MAPPER} with the {@code @EncryptedField} masking modifier
+ * — every {@code Key.key}, {@code Upstream.key}, and {@code Upstream.extraData} value is emitted
+ * as the {@code "***"} sentinel automatically. The round-trip via {@code writeValueAsString} is
+ * retained because {@code applicationTypeSchemas} uses a custom serializer that calls
+ * {@code writeRaw}, which {@code TokenBuffer} (used by {@code valueToTree}) does not support.
  */
 public class AdminExportController implements Controller {
 
@@ -59,13 +60,11 @@ public class AdminExportController implements Controller {
         // writeRaw, which TokenBuffer (used by valueToTree) does not support.
         String json = ProxyUtil.MAPPER.writeValueAsString(config);
         ObjectNode body = (ObjectNode) ProxyUtil.MAPPER.readTree(json);
+        // Config.keys is @JsonProperty(WRITE_ONLY); re-attach explicitly. Per-key masking is
+        // handled by the @EncryptedField modifier on ProxyUtil.MAPPER.
         ObjectNode keys = body.putObject("keys");
         for (Map.Entry<String, Key> entry : config.getKeys().entrySet()) {
-            ObjectNode keyNode = ProxyUtil.MAPPER.valueToTree(entry.getValue());
-            if (keyNode.has("key")) {
-                keyNode.put("key", "***");
-            }
-            keys.set(entry.getKey(), keyNode);
+            keys.set(entry.getKey(), ProxyUtil.MAPPER.valueToTree(entry.getValue()));
         }
         return body;
     }

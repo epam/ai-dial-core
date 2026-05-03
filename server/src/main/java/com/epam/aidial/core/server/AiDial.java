@@ -33,6 +33,7 @@ import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
 import com.epam.aidial.core.server.config.PlatformEntityLocationStrategy;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
+import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.controller.HealthCheckController;
 import com.epam.aidial.core.server.controller.WellKnownResourceMetadataController;
 import com.epam.aidial.core.server.data.ApiKeyValidation;
@@ -73,6 +74,7 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.cache.CacheClientFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -194,9 +196,14 @@ public class AiDial {
             resourceService = new ResourceService(timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
+            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
+            SecretFieldProcessor secretFieldProcessor = new SecretFieldProcessor(
+                    credentialEncryptionService,
+                    new BucketInfo(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION));
             String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
             MergedConfigStore mergedConfigStore = new MergedConfigStore(
-                    vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(), onInvalidEntity);
+                    vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                    secretFieldProcessor, onInvalidEntity);
             FileConfigStore fileConfigStore = new FileConfigStore(
                     vertx, settings("config"), null,
                     List.of(cfg -> mergedConfigStore.requestRebuild()));
@@ -208,7 +215,6 @@ public class AiDial {
             TimeProvider timeProvider = new TimeProvider();
             TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);
             ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient(httpProxySelector);
-            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
             List<String> allowedRedirectUris = getAllowedRedirectUris();
             ResourceCredentialsService resourceCredentialsService = getResourceCredentialsService(
                     tokenRefreshStrategyFactory, resourceAuthorizationClient, credentialEncryptionService, timeProvider, allowedRedirectUris);

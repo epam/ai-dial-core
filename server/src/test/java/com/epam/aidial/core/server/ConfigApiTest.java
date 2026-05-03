@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigApiTest extends ResourceBaseTest {
@@ -28,7 +27,11 @@ public class ConfigApiTest extends ResourceBaseTest {
         assertNotNull(config);
         for (var model : config.getModels().values()) {
             for (var upstream : model.getUpstreams()) {
-                assertNull(upstream.getKey());
+                // Slice 2S.10: upstream.key now appears as "***" (when set) instead of being
+                // suppressed by @JsonProperty(WRITE_ONLY). Null/unset secrets stay invisible.
+                if (upstream.getKey() != null) {
+                    assertEquals("***", upstream.getKey());
+                }
             }
         }
         assertTrue(config.getKeys().isEmpty());

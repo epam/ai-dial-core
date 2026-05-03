@@ -1,10 +1,15 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Role;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
@@ -99,7 +104,7 @@ public class ConfigResourceController implements Controller {
                     (key, role) -> projectItem(role, simpleName(key), fromApi(key), true));
             case "keys" -> handleSingleOrList(
                     config.getKeys(), ResourceTypes.PROJECT_KEY,
-                    (key, value) -> projectKeyItem(simpleName(key), value, fromApi(key)));
+                    (key, value) -> projectItem(value, simpleName(key), fromApi(key), true));
             case "routes" -> handleSingleOrList(
                     config.getRoutes(), ResourceTypes.ROUTE,
                     (key, route) -> projectItem(route, simpleName(key), fromApi(key), true));
@@ -265,16 +270,6 @@ public class ConfigResourceController implements Controller {
         return node;
     }
 
-    private ObjectNode projectKeyItem(String name, Key key, boolean fromApi) {
-        ObjectNode node = projectItem(key, name, fromApi, true);
-        // Phase 1 has no ?reveal_secrets=true surface — mask the secret with the locked sentinel
-        // (design 04 §2.5–§2.6). Phase 2 introduces @EncryptedField + reveal flow.
-        if (node.has("key")) {
-            node.put("key", "***");
-        }
-        return node;
-    }
-
     private ObjectNode projectSchemaItem(String name, String json, boolean fromApi, boolean admin)
             throws JsonProcessingException {
         // applicationTypeSchemas stores raw JSON strings; parse for projection.
@@ -295,7 +290,11 @@ public class ConfigResourceController implements Controller {
 
     private ObjectNode projectInvalidItem(InvalidEntityRecord record, boolean admin) {
         ObjectNode node = ProxyUtil.MAPPER.createObjectNode();
-        if (record.getPayload() instanceof ObjectNode payload) {
+        Class<?> entityClass = entityClassFor(entityType);
+        ObjectNode payload = entityClass == null
+                ? (record.getPayload() instanceof ObjectNode raw ? raw.deepCopy() : null)
+                : SecretFieldProcessor.maskInPayload(record.getPayload(), entityClass);
+        if (payload != null) {
             node.setAll(payload);
         }
         node.put("name", record.getSimpleName());
@@ -309,11 +308,18 @@ public class ConfigResourceController implements Controller {
                 w.put("message", warning.getMessage());
             }
         }
-        // Defensively mask "key" for invalid PROJECT_KEY entries — same rule as projectKeyItem.
-        if (node.has("key")) {
-            node.put("key", "***");
-        }
         return node;
+    }
+
+    private static Class<?> entityClassFor(String entityType) {
+        return switch (entityType) {
+            case "models" -> Model.class;
+            case "interceptors" -> Interceptor.class;
+            case "roles" -> Role.class;
+            case "keys" -> Key.class;
+            case "routes" -> Route.class;
+            default -> null;
+        };
     }
 
     private Future<?> respondMethodNotAllowed() {

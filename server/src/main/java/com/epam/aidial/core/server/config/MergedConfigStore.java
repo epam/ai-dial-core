@@ -57,6 +57,7 @@ public final class MergedConfigStore implements ConfigStore {
     private static final long NO_PENDING_TIMER = -1L;
     private static final String REASON_PARSE = "parse_error";
     private static final String REASON_VALIDATION = "validation_error";
+    public static final String REASON_DECRYPTION = "decryption_error";
 
     public static final String MODE_ABORT = "abort";
     public static final String MODE_SKIP = "skip";
@@ -73,6 +74,7 @@ public final class MergedConfigStore implements ConfigStore {
     private final ResourceService resourceService;
     private final ApiKeyStore apiKeyStore;
     private final EntityLocationStrategy locationStrategy;
+    private final SecretFieldProcessor secretFieldProcessor;
     private final String onInvalidEntity;
 
     private FileConfigStore fileConfigStore;
@@ -83,11 +85,13 @@ public final class MergedConfigStore implements ConfigStore {
 
     public MergedConfigStore(Vertx vertx, ResourceService resourceService,
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
+                             SecretFieldProcessor secretFieldProcessor,
                              String onInvalidEntity) {
         this.vertx = vertx;
         this.resourceService = resourceService;
         this.apiKeyStore = apiKeyStore;
         this.locationStrategy = locationStrategy;
+        this.secretFieldProcessor = secretFieldProcessor;
         this.onInvalidEntity = MODE_SKIP.equalsIgnoreCase(onInvalidEntity) ? MODE_SKIP : MODE_ABORT;
 
         Gauge.builder("dial_config_skipped_entities", this, MergedConfigStore::countInvalidEntities)
@@ -207,19 +211,49 @@ public final class MergedConfigStore implements ConfigStore {
                         continue;
                     }
                     String canonicalId = canonicalId(type, bucket, name);
+                    JsonNode node;
                     try {
                         // Parse once into JsonNode; reused below for typed deserialization and as the
                         // payload echoed back through the invalid-entity sibling store on semantic failures.
-                        JsonNode node = ProxyUtil.MAPPER.readTree(body);
-                        addBlobEntity(type, canonicalId, name, node,
-                                models, interceptors, roles, keys, routes, schemas, resetSimpleName);
-                        blobBodies.put(canonicalId, node);
+                        node = ProxyUtil.BLOB_MAPPER.readTree(body);
                     } catch (Exception parseError) {
                         recordInvalid(pendingInvalid, type, canonicalId, name,
                                 "JSON parse failure: " + parseError.getMessage(),
                                 List.of(new ValidationWarning("body", parseError.getMessage())),
                                 null, REASON_PARSE, "api");
+                        continue;
                     }
+
+                    ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                            type, bucket, bucketLocation, name);
+                    AddedEntity added;
+                    try {
+                        added = addBlobEntity(type, canonicalId, name, node,
+                                models, interceptors, roles, keys, routes, schemas, resetSimpleName);
+                    } catch (Exception parseError) {
+                        recordInvalid(pendingInvalid, type, canonicalId, name,
+                                "JSON parse failure: " + parseError.getMessage(),
+                                List.of(new ValidationWarning("body", parseError.getMessage())),
+                                node, REASON_PARSE, "api");
+                        continue;
+                    }
+
+                    if (added != null && added.entity() != null) {
+                        try {
+                            secretFieldProcessor.decryptFields(added.entity(), descriptor);
+                        } catch (Exception decryptError) {
+                            // Roll back the partial insertion so decryption-failure entities never
+                            // reach addProjectKeys (locked 2S.9 invariant). Queued resetSimpleName
+                            // runnables for this entity run harmlessly against the orphaned object.
+                            removeAddedEntity(type, canonicalId, models, interceptors, roles, keys, routes, schemas);
+                            recordInvalid(pendingInvalid, type, canonicalId, name,
+                                    "Decryption failure: " + decryptError.getMessage(),
+                                    List.of(new ValidationWarning("body", decryptError.getMessage())),
+                                    node, REASON_DECRYPTION, "api");
+                            continue;
+                        }
+                    }
+                    blobBodies.put(canonicalId, node);
                 }
             }
         }
@@ -300,35 +334,66 @@ public final class MergedConfigStore implements ConfigStore {
         return type.urlSegment() + ResourceDescriptor.PATH_SEPARATOR + bucket + ResourceDescriptor.PATH_SEPARATOR + name;
     }
 
-    private static void addBlobEntity(ResourceTypes type, String canonicalId, String simpleName, JsonNode node,
-                                      Map<String, Model> models, Map<String, Interceptor> interceptors,
-                                      Map<String, Role> roles, Map<String, Key> keys,
-                                      LinkedHashMap<String, Route> routes, Map<String, String> schemas,
-                                      List<Runnable> resetSimpleName) throws JsonProcessingException {
+    private static AddedEntity addBlobEntity(ResourceTypes type, String canonicalId, String simpleName, JsonNode node,
+                                             Map<String, Model> models, Map<String, Interceptor> interceptors,
+                                             Map<String, Role> roles, Map<String, Key> keys,
+                                             LinkedHashMap<String, Route> routes, Map<String, String> schemas,
+                                             List<Runnable> resetSimpleName) throws JsonProcessingException {
         switch (type) {
             case MODEL -> {
-                Model entity = ProxyUtil.MAPPER.treeToValue(node, Model.class);
+                Model entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Model.class);
                 models.put(canonicalId, entity);
                 resetSimpleName.add(() -> entity.setName(simpleName));
+                return new AddedEntity(entity);
             }
             case INTERCEPTOR -> {
-                Interceptor entity = ProxyUtil.MAPPER.treeToValue(node, Interceptor.class);
+                Interceptor entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Interceptor.class);
                 interceptors.put(canonicalId, entity);
                 resetSimpleName.add(() -> entity.setName(simpleName));
+                return new AddedEntity(entity);
             }
             case ROLE -> {
-                Role entity = ProxyUtil.MAPPER.treeToValue(node, Role.class);
+                Role entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Role.class);
                 roles.put(canonicalId, entity);
                 resetSimpleName.add(() -> entity.setName(simpleName));
+                return new AddedEntity(entity);
             }
-            case PROJECT_KEY -> keys.put(canonicalId, ProxyUtil.MAPPER.treeToValue(node, Key.class));
+            case PROJECT_KEY -> {
+                Key entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Key.class);
+                keys.put(canonicalId, entity);
+                return new AddedEntity(entity);
+            }
             case ROUTE -> {
-                Route entity = ProxyUtil.MAPPER.treeToValue(node, Route.class);
+                Route entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Route.class);
                 routes.put(canonicalId, entity);
                 resetSimpleName.add(() -> entity.setName(simpleName));
+                return new AddedEntity(entity);
             }
-            case APP_TYPE_SCHEMA -> schemas.put(canonicalId, node.toString());
-            default -> { /* GLOBAL_SETTINGS is a singleton — design 02 §4 leaves union-by-key out of scope. */ }
+            case APP_TYPE_SCHEMA -> {
+                schemas.put(canonicalId, node.toString());
+                return null;
+            }
+            default -> {
+                /* GLOBAL_SETTINGS is a singleton — design 02 §4 leaves union-by-key out of scope. */
+                return null;
+            }
         }
     }
+
+    private static void removeAddedEntity(ResourceTypes type, String canonicalId,
+                                          Map<String, Model> models, Map<String, Interceptor> interceptors,
+                                          Map<String, Role> roles, Map<String, Key> keys,
+                                          LinkedHashMap<String, Route> routes, Map<String, String> schemas) {
+        switch (type) {
+            case MODEL -> models.remove(canonicalId);
+            case INTERCEPTOR -> interceptors.remove(canonicalId);
+            case ROLE -> roles.remove(canonicalId);
+            case PROJECT_KEY -> keys.remove(canonicalId);
+            case ROUTE -> routes.remove(canonicalId);
+            case APP_TYPE_SCHEMA -> schemas.remove(canonicalId);
+            default -> { /* no-op */ }
+        }
+    }
+
+    private record AddedEntity(Object entity) { }
 }
