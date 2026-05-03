@@ -264,7 +264,7 @@ The architect plan auto-proceeds IFF every item below holds. ANY item uncertain 
 - [ ] Every design-doc anchor cited in the plan is verified live via LSP (`documentSymbol` / `workspaceSymbol`); no stale anchor.
 - [ ] Every file the plan lists touching is either an existing file in the cited code area or a new file with a clear scope-of-creation rationale.
 - [ ] No new abstractions, helpers, or interfaces are introduced beyond what the slice register row mentions.
-- [ ] The plan's test list includes at least one integration test using the `ResourceApiTest` pattern.
+- [ ] The plan's test list includes appropriate test coverage for the slice's surface — at least one integration test using the `ResourceApiTest` pattern when the slice exposes HTTP behaviour; well-targeted unit tests when the slice is a pure-internal refactor with no HTTP surface (Phase-2 prereqs being the typical case).
 - [ ] No plan step would require violating §2.1 / §2.2 / §2.3 (e.g., blocking the event loop, replacing existing patterns, adding new infrastructure).
 - [ ] No plan step requires changing a locked decision in §9 or in memory.
 - [ ] LSP `findReferences` blast-radius on every method the plan modifies stays within the slice register row's scope description.
