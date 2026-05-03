@@ -12,9 +12,11 @@ import org.redisson.api.RedissonClient;
 import org.redisson.codec.TypedJsonJacksonCodec;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -23,6 +25,7 @@ import java.util.function.Consumer;
 public class ResourceTopic {
 
     private final Map<String, Set<Subscription>> urlToSubscriptions = new ConcurrentHashMap<>();
+    private final CopyOnWriteArrayList<Consumer<ResourceEvent>> globalSubscribers = new CopyOnWriteArrayList<>();
     private final RTopic topic;
 
     public ResourceTopic(RedissonClient redis, String topicKey) {
@@ -58,6 +61,12 @@ public class ResourceTopic {
         return subscription;
     }
 
+    public Subscription subscribeAll(Consumer<ResourceEvent> subscriber) {
+        Subscription subscription = new Subscription(List.of(), subscriber);
+        globalSubscribers.add(subscriber);
+        return subscription;
+    }
+
     private void unsubscribe(Subscription subscription) {
         for (ResourceDescriptor resource : subscription.resources) {
             String url = resource.getUrl();
@@ -66,6 +75,7 @@ public class ResourceTopic {
                 return subs.isEmpty() ? null : subs;
             });
         }
+        globalSubscribers.remove(subscription.subscriber);
     }
 
     private void handle(ResourceEvent event) {
@@ -74,6 +84,13 @@ public class ResourceTopic {
                 subscription.subscriber.accept(event);
             } catch (Throwable e) {
                 log.warn("Can't notify subscriber", e);
+            }
+        }
+        for (Consumer<ResourceEvent> subscriber : globalSubscribers) {
+            try {
+                subscriber.accept(event);
+            } catch (Throwable e) {
+                log.warn("Can't notify global subscriber", e);
             }
         }
     }
