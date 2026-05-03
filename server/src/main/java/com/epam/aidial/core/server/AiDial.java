@@ -202,21 +202,7 @@ public class AiDial {
                     timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix(), () -> podId);
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
-            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
-            SecretFieldProcessor secretFieldProcessor = new SecretFieldProcessor(
-                    credentialEncryptionService,
-                    new BucketInfo(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION));
-            String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
-            boolean softValidation = settings("config").getJsonObject("write", new JsonObject())
-                    .getBoolean("softValidation", false);
-            MergedConfigStore mergedConfigStore = new MergedConfigStore(
-                    vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                    secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId);
-            FileConfigStore fileConfigStore = new FileConfigStore(
-                    vertx, settings("config"), null,
-                    List.of(cfg -> mergedConfigStore.requestRebuild()));
-            mergedConfigStore.init(fileConfigStore);
-            ConfigStore configStore = mergedConfigStore;
+            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore, List.of());
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(resourceService, configStore, encryptionService, httpProxySelector);
 

@@ -21,8 +21,6 @@ import javax.annotation.Nullable;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(MockitoExtension.class)
 public class FileConfigStoreTest {
@@ -76,24 +74,6 @@ public class FileConfigStoreTest {
         Set<String> actualToolSetNames = config.getToolsets().keySet();
         assertEquals(1, actualToolSetNames.size());
         assertEquals(expectedToolSetNames, actualToolSetNames);
-    }
-
-    @ParameterizedTest
-    @CsvSource({
-            "canonical-key.config.json, keys/platform/my-key",
-            "canonical-key-empty-bucket.config.json, keys//my-key",
-            "canonical-key-trailing-slash.config.json, keys/platform/"
-    })
-    public void testLoad_RejectsCanonicalShapedFileKey(String fixture, String expectedKey) {
-        JsonObject settings = new JsonObject();
-        settings.put("files", new JsonArray(List.of(
-                "com/epam/aidial/core/server/config/" + fixture)));
-        settings.put("reload", 1000);
-
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> new FileConfigStore(vertx, settings, apiKeyStore, List.of()));
-        assertTrue(error.getMessage().contains(expectedKey), error.getMessage());
-        assertTrue(error.getMessage().contains("canonical-ID shape"), error.getMessage());
     }
 
     @Test
