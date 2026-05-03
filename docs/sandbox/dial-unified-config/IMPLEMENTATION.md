@@ -366,7 +366,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 | **2S.11** | `MODEL` `ResourceTypes` entry. `POST /v1/models/public/{name}` (409 on conflict). `PUT /v1/models/public/{name}` (404 on missing, optional `If-Match` → 412). `DELETE`. Strict POST/PUT split. Bucket-aware authz. ETag in response header. | 2S.1-pre, 2S.2-pre, 2S.8, 2S.9, 2S.10 | 03 §1, §3; 07 Phase 2 | ✅ | `33543a70` |
 | **2S.12** | `POST /v1/admin/validate` — model-scoped (Phase 4 extends to other types and bulk). | 2S.11 | 03 §6 | ✅ | `c92d14c0` |
 | **2S.13** | Cross-reference validation on per-entity write — strict-by-default `422`; `config.write.softValidation` opt-in. | 2S.11 | 03 §6; 02 §9 | ✅ | `7204beae` |
-| **2S.14** | Writer-pod immediate `volatile Config` swap via `rebuildNow()` after write. Keys-controller `DELETE` ordering invariant (delete blob → `removeKey` → `rebuildNow`). | 2S.11 | 02 §4 | 📋 | — |
+| **2S.14** | Writer-pod immediate `volatile Config` swap via `rebuildNow()` after write. Keys-controller `DELETE` ordering invariant (delete blob → `removeKey` → `rebuildNow`). | 2S.11 | 02 §4 | ✅ | `dac53193` |
 
 **Track B — CLI (models-only writes)**
 
