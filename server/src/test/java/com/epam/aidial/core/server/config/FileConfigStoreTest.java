@@ -12,9 +12,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import javax.annotation.Nullable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 @ExtendWith(MockitoExtension.class)
 public class FileConfigStoreTest {
@@ -27,7 +31,7 @@ public class FileConfigStoreTest {
 
     @Test
     public void testLoad_ArrayMergeStrategy_Overwrite() {
-        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(true), apiKeyStore);
+        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(true), apiKeyStore, List.of());
         Set<String> expectedUserRoles = Set.of("second_role1");
 
         Config config = fileConfigStore.get();
@@ -38,7 +42,7 @@ public class FileConfigStoreTest {
 
     @Test
     public void testLoad_ArrayMergeStrategy_Concat() {
-        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(false), apiKeyStore);
+        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(false), apiKeyStore, List.of());
         Set<String> expectedUserRoles = Set.of("first_role1", "second_role1");
 
         Config config = fileConfigStore.get();
@@ -49,7 +53,7 @@ public class FileConfigStoreTest {
 
     @Test
     public void testLoad_DefaultArrayMergeStrategy_Concat() {
-        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(null), apiKeyStore);
+        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(null), apiKeyStore, List.of());
         Set<String> expectedUserRoles = Set.of("first_role1", "second_role1");
 
         Config config = fileConfigStore.get();
@@ -60,7 +64,7 @@ public class FileConfigStoreTest {
 
     @Test
     public void testLoad_OnlyValidToolSets() {
-        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(null), apiKeyStore);
+        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(null), apiKeyStore, List.of());
         Set<String> expectedToolSetNames = Set.of("toolset-1_2");
 
         Config config = fileConfigStore.get();
@@ -68,6 +72,19 @@ public class FileConfigStoreTest {
         Set<String> actualToolSetNames = config.getToolsets().keySet();
         assertEquals(1, actualToolSetNames.size());
         assertEquals(expectedToolSetNames, actualToolSetNames);
+    }
+
+    @Test
+    public void testInitialOnReloadCallbacksFiredOnInitialLoad() {
+        AtomicReference<Config> seen = new AtomicReference<>();
+        Consumer<Config> callback = seen::set;
+
+        FileConfigStore fileConfigStore = new FileConfigStore(
+                vertx, prepareSettings(null), apiKeyStore, List.of(callback));
+
+        Config loaded = fileConfigStore.get();
+        assertNotNull(seen.get());
+        assertSame(loaded, seen.get());
     }
 
     private static JsonObject prepareSettings(@Nullable Boolean overwriteArrays) {

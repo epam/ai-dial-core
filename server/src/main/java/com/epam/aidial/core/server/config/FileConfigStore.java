@@ -33,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
 @Slf4j
 public final class FileConfigStore implements ConfigStore {
@@ -41,10 +42,13 @@ public final class FileConfigStore implements ConfigStore {
     private final String[] paths;
     private volatile Config config;
     private final ApiKeyStore apiKeyStore;
+    private final List<Consumer<Config>> onReloadCallbacks;
 
-    public FileConfigStore(Vertx vertx, JsonObject settings, ApiKeyStore apiKeyStore) {
+    public FileConfigStore(Vertx vertx, JsonObject settings, ApiKeyStore apiKeyStore,
+                           List<Consumer<Config>> initialOnReloadCallbacks) {
         this.jsonMapper = buildJsonMapper(settings);
         this.apiKeyStore = apiKeyStore;
+        this.onReloadCallbacks = List.copyOf(initialOnReloadCallbacks);
         this.paths = settings.getJsonArray("files")
                 .stream().map(path -> (String) path).toArray(String[]::new);
 
@@ -139,6 +143,9 @@ public final class FileConfigStore implements ConfigStore {
             }
 
             this.config = config;
+            for (Consumer<Config> callback : onReloadCallbacks) {
+                callback.accept(config);
+            }
             log.debug("Config loading is completed");
             return config;
         } catch (Throwable e) {

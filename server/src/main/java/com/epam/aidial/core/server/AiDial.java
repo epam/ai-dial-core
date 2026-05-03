@@ -191,7 +191,7 @@ public class AiDial {
             resourceService = new ResourceService(timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
-            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
+            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore, List.of());
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(resourceService, configStore, encryptionService, httpProxySelector);
 
