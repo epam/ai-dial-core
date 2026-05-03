@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.server.security.ApiKeyStore;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.annotation.Nullable;
 
 /**
  * Post-processes a freshly-loaded {@link Config}: route ordering, deployment-id uniqueness,
@@ -32,7 +34,7 @@ public final class ConfigPostProcessor {
     private ConfigPostProcessor() {
     }
 
-    public static void process(Config config) {
+    public static void process(Config config, @Nullable ApiKeyStore apiKeyStore) {
         Set<String> deploymentIds = new HashSet<>();
 
         sortRoutes(config);
@@ -41,6 +43,10 @@ public final class ConfigPostProcessor {
         processRoles(config);
         processInterceptors(config, deploymentIds);
         processToolSets(config, deploymentIds);
+
+        if (apiKeyStore != null) {
+            apiKeyStore.addProjectKeys(config.getKeys());
+        }
     }
 
     private static void sortRoutes(Config config) {
