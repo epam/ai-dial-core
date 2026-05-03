@@ -348,7 +348,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 | ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
 | **2S.0-pre** | `ApiKeyStore.addProjectKeys()` dual-format guard (`if (value.getKey() == null \|\| isBlank()) { value.setKey(apiKey); }`). Unit coverage for both formats. | — | 07 Phase 2 prereqs; OQ-12 | ✅ | `c551a7b5` |
-| **2S.1-pre** | `PLATFORM_BUCKET` / `PLATFORM_LOCATION` constants on `ResourceDescriptor`. `ResourceDescriptorFactory.fromUrl()` `else if PLATFORM_BUCKET` branch. `ResourceTypes.of()` switch extension for new groups + URL-segment aliases (`schemas`, `keys`). | — | 07 Phase 2 prereqs | 📋 | — |
+| **2S.1-pre** | `PLATFORM_BUCKET` / `PLATFORM_LOCATION` constants on `ResourceDescriptor`. `ResourceDescriptorFactory.fromUrl()` `else if PLATFORM_BUCKET` branch. `ResourceTypes.of()` switch extension for new groups + URL-segment aliases (`schemas`, `keys`). | — | 07 Phase 2 prereqs | ✅ | `a56bed3d` |
 | **2S.2-pre** | `ResourceType.urlSegment()` (default `group()`; aliases for `APP_TYPE_SCHEMA`/`PROJECT_KEY`). Route `getUrl()` / `getDecodedUrl()` through it; keep `getAbsoluteFilePath()` on `group()`. Round-trip tests required. | 2S.1-pre | 07 Phase 2 prereqs; 02 §5.3 | 📋 | — |
 | **2S.3-pre** | `ApiKeyStore.keys`: migrate `volatile HashMap` → `volatile ConcurrentHashMap` with reference-swap rebuild. Add `addOrUpdateKey` / `removeKey` fast-path mutators. Rewrite `addProjectKeys` to build fresh map + atomic swap. | — | 07 Phase 2 prereqs | 📋 | — |
 | **2S.4-pre** | `ResourceService.put(descriptor, body, skipLock=true)` package-visible overload. | — | 07 Phase 2 prereqs; 04 §2.5 | 📋 | — |
