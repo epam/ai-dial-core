@@ -20,6 +20,7 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.function.Consumer;
+import javax.annotation.Nullable;
 
 @Slf4j
 public final class FileConfigStore implements ConfigStore {
@@ -31,7 +32,7 @@ public final class FileConfigStore implements ConfigStore {
     private final ApiKeyStore apiKeyStore;
     private final List<Consumer<Config>> onReloadCallbacks;
 
-    public FileConfigStore(Vertx vertx, JsonObject settings, ApiKeyStore apiKeyStore,
+    public FileConfigStore(Vertx vertx, JsonObject settings, @Nullable ApiKeyStore apiKeyStore,
                            List<Consumer<Config>> initialOnReloadCallbacks) {
         this.jsonMapper = buildJsonMapper(settings);
         this.apiKeyStore = apiKeyStore;
@@ -60,8 +61,7 @@ public final class FileConfigStore implements ConfigStore {
             log.debug("Config loading is started");
             Config config = loadConfig();
 
-            ConfigPostProcessor.process(config);
-            apiKeyStore.addProjectKeys(config.getKeys());
+            ConfigPostProcessor.process(config, apiKeyStore);
 
             this.config = config;
             for (Consumer<Config> callback : onReloadCallbacks) {
