@@ -24,19 +24,25 @@ public enum ResourceTypes implements ResourceType {
     ENCRYPTION_KEYS("encryption_keys", true, TimeUnit.MINUTES.toMillis(5)),
     CLIENT_CHANNEL("client_channels", true, TimeUnit.HOURS.toMillis(24)),
     MODEL("models", true, Long.MAX_VALUE),
-    APP_TYPE_SCHEMA("app_type_schemas", true, Long.MAX_VALUE),
+    APP_TYPE_SCHEMA("app_type_schemas", "schemas", true, Long.MAX_VALUE),
     INTERCEPTOR("interceptors", true, Long.MAX_VALUE),
     ROLE("roles", true, Long.MAX_VALUE),
-    PROJECT_KEY("project_keys", true, Long.MAX_VALUE),
+    PROJECT_KEY("project_keys", "keys", true, Long.MAX_VALUE),
     ROUTE("routes", true, Long.MAX_VALUE),
     GLOBAL_SETTINGS("settings", true, Long.MAX_VALUE);
 
     private final String group;
+    private final String urlSegment;
     private final boolean requireCompression;
     private final long ttl;
 
     ResourceTypes(String group, boolean requireCompression, long ttl) {
+        this(group, group, requireCompression, ttl);
+    }
+
+    ResourceTypes(String group, String urlSegment, boolean requireCompression, long ttl) {
         this.group = group;
+        this.urlSegment = urlSegment;
         this.requireCompression = requireCompression;
         this.ttl = ttl;
     }
@@ -67,6 +73,11 @@ public enum ResourceTypes implements ResourceType {
     @Override
     public String group() {
         return group;
+    }
+
+    @Override
+    public String urlSegment() {
+        return urlSegment;
     }
 
     @Override

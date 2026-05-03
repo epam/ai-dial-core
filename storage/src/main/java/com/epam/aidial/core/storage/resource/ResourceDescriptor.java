@@ -50,7 +50,7 @@ public class ResourceDescriptor {
      */
     public String getUrl() {
         StringBuilder builder = new StringBuilder();
-        builder.append(UrlUtil.encodePathSegment(type.group()))
+        builder.append(UrlUtil.encodePathSegment(type.urlSegment()))
                 .append(PATH_SEPARATOR)
                 .append(UrlUtil.encodePathSegment(bucketName))
                 .append(PATH_SEPARATOR);
@@ -79,7 +79,7 @@ public class ResourceDescriptor {
      */
     public String getDecodedUrl() {
         StringBuilder builder = new StringBuilder();
-        builder.append(type.group())
+        builder.append(type.urlSegment())
                 .append(PATH_SEPARATOR)
                 .append(bucketName)
                 .append(PATH_SEPARATOR);
