@@ -133,6 +133,31 @@ public class ApiKeyStoreTest {
     }
 
     @Test
+    public void testAddProjectKeysFileSourced() {
+        Key key = new Key();
+        key.setProject("prj1");
+        key.setRole("role1");
+        Map<String, Key> projectKeys = Map.of("secret-value", key);
+
+        store.addProjectKeys(projectKeys);
+
+        assertEquals("secret-value", key.getKey());
+    }
+
+    @Test
+    public void testAddProjectKeysApiManaged() {
+        Key key = new Key();
+        key.setProject("prj1");
+        key.setRole("role1");
+        key.setKey("api-secret");
+        Map<String, Key> projectKeys = Map.of("human-name", key);
+
+        store.addProjectKeys(projectKeys);
+
+        assertEquals("api-secret", key.getKey());
+    }
+
+    @Test
     public void testGetApiKeyData() {
         ApiKeyData apiKeyData = new ApiKeyData();
         store.assignPerRequestApiKey(apiKeyData);

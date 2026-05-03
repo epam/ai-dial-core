@@ -167,7 +167,9 @@ public class ApiKeyStore {
             String apiKey = entry.getKey();
             Key value = entry.getValue();
             validateProjectKey(value);
-            value.setKey(apiKey);
+            if (StringUtils.isBlank(value.getKey())) {
+                value.setKey(apiKey);
+            }
             ApiKeyData apiKeyData = new ApiKeyData();
             apiKeyData.setOriginalKey(value);
             apiKeyDataMap.put(apiKey, apiKeyData);
