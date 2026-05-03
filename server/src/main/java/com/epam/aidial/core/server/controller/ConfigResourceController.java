@@ -3,11 +3,15 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.InvalidEntityRecord;
+import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.server.security.Operation;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -33,17 +37,20 @@ public class ConfigResourceController implements Controller {
 
     private final ProxyContext context;
     private final ConfigAuthorizationService authorizationService;
+    private final MergedConfigStore mergedConfigStore;
     private final String entityType;
     private final String bucket;
     private final String path;
 
     public ConfigResourceController(ProxyContext context,
                                     ConfigAuthorizationService authorizationService,
+                                    MergedConfigStore mergedConfigStore,
                                     String entityType,
                                     String bucket,
                                     String path) {
         this.context = context;
         this.authorizationService = authorizationService;
+        this.mergedConfigStore = mergedConfigStore;
         this.entityType = entityType;
         this.bucket = bucket;
         this.path = path;
@@ -82,20 +89,20 @@ public class ConfigResourceController implements Controller {
         // for platform/ types. For public/ types, source is Owner-only.
         return switch (entityType) {
             case "models" -> handleSingleOrList(
-                    config.getModels(),
-                    (name, model) -> projectItem(model, name, admin));
+                    config.getModels(), ResourceTypes.MODEL,
+                    (key, model) -> projectItem(model, simpleName(key), fromApi(key), admin));
             case "interceptors" -> handleSingleOrList(
-                    config.getInterceptors(),
-                    (name, interceptor) -> projectItem(interceptor, name, true));
+                    config.getInterceptors(), ResourceTypes.INTERCEPTOR,
+                    (key, interceptor) -> projectItem(interceptor, simpleName(key), fromApi(key), true));
             case "roles" -> handleSingleOrList(
-                    config.getRoles(),
-                    (name, role) -> projectItem(role, name, true));
+                    config.getRoles(), ResourceTypes.ROLE,
+                    (key, role) -> projectItem(role, simpleName(key), fromApi(key), true));
             case "keys" -> handleSingleOrList(
-                    config.getKeys(),
-                    this::projectKeyItem);
+                    config.getKeys(), ResourceTypes.PROJECT_KEY,
+                    (key, value) -> projectKeyItem(simpleName(key), value, fromApi(key)));
             case "routes" -> handleSingleOrList(
-                    config.getRoutes(),
-                    (name, route) -> projectItem(route, name, true));
+                    config.getRoutes(), ResourceTypes.ROUTE,
+                    (key, route) -> projectItem(route, simpleName(key), fromApi(key), true));
             case "schemas" -> handleSchemaGet(config, admin);
             case SETTINGS_TYPE -> handleSettingsGet(config);
             default -> respondMethodNotAllowed();
@@ -103,22 +110,34 @@ public class ConfigResourceController implements Controller {
     }
 
     private <T> Future<?> handleSingleOrList(Map<String, T> source,
+                                             ResourceTypes resourceType,
                                              BiFunction<String, T, ObjectNode> projector) {
+        Map<String, InvalidEntityRecord> invalid = mergedConfigStore.getInvalidEntities()
+                .getOrDefault(resourceType, Map.of());
+        boolean admin = authorizationService.isAdmin(context);
+
         if (path == null || path.isEmpty()) {
-            return respondList(source, projector);
+            return respondList(source, invalid, projector, admin);
         }
         // MergedConfigStore keys API entries by canonical ID ("models/public/gpt-4") and file
         // entries by simple name ("gpt-4"). Try canonical ID first, fall back to simple name —
         // see design 02 §4 union semantics.
         T item = source.get(canonicalId());
-        if (item == null) {
-            item = source.get(path);
-        }
-        if (item == null) {
-            context.respond(HttpStatus.NOT_FOUND);
+        if (item != null) {
+            context.respond(HttpStatus.OK, projector.apply(canonicalId(), item));
             return Future.succeededFuture();
         }
-        context.respond(HttpStatus.OK, projector.apply(path, item));
+        item = source.get(path);
+        if (item != null) {
+            context.respond(HttpStatus.OK, projector.apply(path, item));
+            return Future.succeededFuture();
+        }
+        InvalidEntityRecord invalidRecord = invalid.get(canonicalId());
+        if (invalidRecord != null) {
+            context.respond(HttpStatus.OK, projectInvalidItem(invalidRecord, admin));
+            return Future.succeededFuture();
+        }
+        context.respond(HttpStatus.NOT_FOUND);
         return Future.succeededFuture();
     }
 
@@ -127,15 +146,24 @@ public class ConfigResourceController implements Controller {
     }
 
     private <T> Future<?> respondList(Map<String, T> source,
-                                      BiFunction<String, T, ObjectNode> projector) {
+                                      Map<String, InvalidEntityRecord> invalid,
+                                      BiFunction<String, T, ObjectNode> projector,
+                                      boolean admin) {
         if (!isLimitValid()) {
             context.respond(HttpStatus.BAD_REQUEST, "Invalid 'limit' query parameter");
             return Future.succeededFuture();
         }
-        ArrayNode items = ProxyUtil.MAPPER.createArrayNode();
-        for (Map.Entry<String, T> entry : new TreeMap<>(source).entrySet()) {
-            items.add(projector.apply(simpleName(entry.getKey()), entry.getValue()));
+        // Sort valid entries by simple name; merge invalid records by simple name; collisions favor
+        // the valid (in-Config) entry — invalid records are only kept for entries dropped from Config.
+        Map<String, ObjectNode> bySimpleName = new TreeMap<>();
+        for (Map.Entry<String, T> entry : source.entrySet()) {
+            bySimpleName.put(simpleName(entry.getKey()), projector.apply(entry.getKey(), entry.getValue()));
         }
+        for (InvalidEntityRecord record : invalid.values()) {
+            bySimpleName.putIfAbsent(record.getSimpleName(), projectInvalidItem(record, admin));
+        }
+        ArrayNode items = ProxyUtil.MAPPER.createArrayNode();
+        bySimpleName.values().forEach(items::add);
         context.respond(HttpStatus.OK, listEnvelope(items));
         return Future.succeededFuture();
     }
@@ -146,30 +174,55 @@ public class ConfigResourceController implements Controller {
         return slash < 0 ? key : key.substring(slash + 1);
     }
 
+    /**
+     * A canonical-ID-shaped key — {@code <entityType>/<bucket>/<name>} — marks an API-managed entry.
+     * File-defined entries either keep simple-name keys (most types) or use external URL keys
+     * ({@code applicationTypeSchemas} keys are {@code $id} URLs); only the canonical prefix is
+     * conclusive evidence of API origin.
+     */
+    private boolean fromApi(String key) {
+        return key.startsWith(entityType + "/" + bucket + "/");
+    }
+
     private Future<?> handleSchemaGet(Config config, boolean admin) throws JsonProcessingException {
         Map<String, String> schemas = config.getApplicationTypeSchemas();
+        Map<String, InvalidEntityRecord> invalid = mergedConfigStore.getInvalidEntities()
+                .getOrDefault(ResourceTypes.APP_TYPE_SCHEMA, Map.of());
         if (path == null || path.isEmpty()) {
             if (!isLimitValid()) {
                 context.respond(HttpStatus.BAD_REQUEST, "Invalid 'limit' query parameter");
                 return Future.succeededFuture();
             }
-            ArrayNode items = ProxyUtil.MAPPER.createArrayNode();
-            for (Map.Entry<String, String> entry : new TreeMap<>(schemas).entrySet()) {
-                items.add(projectSchemaItem(simpleName(entry.getKey()), entry.getValue(), admin));
+            Map<String, ObjectNode> bySimpleName = new TreeMap<>();
+            for (Map.Entry<String, String> entry : schemas.entrySet()) {
+                bySimpleName.put(simpleName(entry.getKey()),
+                        projectSchemaItem(simpleName(entry.getKey()), entry.getValue(), fromApi(entry.getKey()), admin));
             }
+            for (InvalidEntityRecord record : invalid.values()) {
+                bySimpleName.putIfAbsent(record.getSimpleName(), projectInvalidItem(record, admin));
+            }
+            ArrayNode items = ProxyUtil.MAPPER.createArrayNode();
+            bySimpleName.values().forEach(items::add);
             context.respond(HttpStatus.OK, listEnvelope(items));
             return Future.succeededFuture();
         }
         // Canonical-ID first, simple-name fallback (see handleSingleOrList).
         String schemaJson = schemas.get(canonicalId());
-        if (schemaJson == null) {
-            schemaJson = schemas.get(path);
-        }
-        if (schemaJson == null) {
-            context.respond(HttpStatus.NOT_FOUND);
+        if (schemaJson != null) {
+            context.respond(HttpStatus.OK, projectSchemaItem(path, schemaJson, true, admin));
             return Future.succeededFuture();
         }
-        context.respond(HttpStatus.OK, projectSchemaItem(path, schemaJson, admin));
+        schemaJson = schemas.get(path);
+        if (schemaJson != null) {
+            context.respond(HttpStatus.OK, projectSchemaItem(path, schemaJson, false, admin));
+            return Future.succeededFuture();
+        }
+        InvalidEntityRecord invalidRecord = invalid.get(canonicalId());
+        if (invalidRecord != null) {
+            context.respond(HttpStatus.OK, projectInvalidItem(invalidRecord, admin));
+            return Future.succeededFuture();
+        }
+        context.respond(HttpStatus.NOT_FOUND);
         return Future.succeededFuture();
     }
 
@@ -202,18 +255,18 @@ public class ConfigResourceController implements Controller {
         return body;
     }
 
-    private ObjectNode projectItem(Object item, String name, boolean includeSource) {
+    private ObjectNode projectItem(Object item, String name, boolean fromApi, boolean includeSource) {
         ObjectNode node = ProxyUtil.MAPPER.valueToTree(item);
         node.put("name", name);
         node.put("status", "valid");
         if (includeSource) {
-            node.put("source", "file");
+            node.put("source", fromApi ? "api" : "file");
         }
         return node;
     }
 
-    private ObjectNode projectKeyItem(String name, Key key) {
-        ObjectNode node = projectItem(key, name, true);
+    private ObjectNode projectKeyItem(String name, Key key, boolean fromApi) {
+        ObjectNode node = projectItem(key, name, fromApi, true);
         // Phase 1 has no ?reveal_secrets=true surface — mask the secret with the locked sentinel
         // (design 04 §2.5–§2.6). Phase 2 introduces @EncryptedField + reveal flow.
         if (node.has("key")) {
@@ -222,7 +275,8 @@ public class ConfigResourceController implements Controller {
         return node;
     }
 
-    private ObjectNode projectSchemaItem(String name, String json, boolean admin) throws JsonProcessingException {
+    private ObjectNode projectSchemaItem(String name, String json, boolean fromApi, boolean admin)
+            throws JsonProcessingException {
         // applicationTypeSchemas stores raw JSON strings; parse for projection.
         JsonNode schema = ProxyUtil.MAPPER.readTree(json);
         ObjectNode node = ProxyUtil.MAPPER.createObjectNode();
@@ -234,7 +288,30 @@ public class ConfigResourceController implements Controller {
         node.put("name", name);
         node.put("status", "valid");
         if (admin) {
-            node.put("source", "file");
+            node.put("source", fromApi ? "api" : "file");
+        }
+        return node;
+    }
+
+    private ObjectNode projectInvalidItem(InvalidEntityRecord record, boolean admin) {
+        ObjectNode node = ProxyUtil.MAPPER.createObjectNode();
+        if (record.getPayload() instanceof ObjectNode payload) {
+            node.setAll(payload);
+        }
+        node.put("name", record.getSimpleName());
+        node.put("status", "invalid");
+        if (admin) {
+            node.put("source", record.getSource());
+            ArrayNode warnings = node.putArray("validationWarnings");
+            for (ValidationWarning warning : record.getValidationWarnings()) {
+                ObjectNode w = warnings.addObject();
+                w.put("field", warning.getField());
+                w.put("message", warning.getMessage());
+            }
+        }
+        // Defensively mask "key" for invalid PROJECT_KEY entries — same rule as projectKeyItem.
+        if (node.has("key")) {
+            node.put("key", "***");
         }
         return node;
     }
@@ -259,4 +336,5 @@ public class ConfigResourceController implements Controller {
             return false;
         }
     }
+
 }

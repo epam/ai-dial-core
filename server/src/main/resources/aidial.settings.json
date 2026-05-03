@@ -39,7 +39,8 @@
   },
   "config": {
     "files": [],
-    "reload": 60000
+    "reload": 60000,
+    "onInvalidEntity": "abort"
   },
   "identityProviders": {
   },

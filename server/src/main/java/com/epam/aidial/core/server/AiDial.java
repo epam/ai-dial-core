@@ -80,6 +80,7 @@ import com.epam.aidial.core.storage.service.TimerService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;
+import io.micrometer.core.instrument.Metrics;
 import io.micrometer.prometheus.PrometheusConfig;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
@@ -193,8 +194,9 @@ public class AiDial {
             resourceService = new ResourceService(timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
+            String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
             MergedConfigStore mergedConfigStore = new MergedConfigStore(
-                    vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy());
+                    vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(), onInvalidEntity);
             FileConfigStore fileConfigStore = new FileConfigStore(
                     vertx, settings("config"), null,
                     List.of(cfg -> mergedConfigStore.requestRebuild()));
@@ -522,6 +524,7 @@ public class AiDial {
             var prometheusReg = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
             prometheusReg.config().meterFilter(new RouteNormalizingMeterFilter());
             micrometer.setMicrometerRegistry(prometheusReg);
+            Metrics.addRegistry(prometheusReg);
         }
 
         JsonObject oltp = metrics.toJson().getJsonObject("oltpOptions", new JsonObject());
@@ -529,6 +532,7 @@ public class AiDial {
             var otlpReg = new OtlpMeterRegistry(oltp::getString, Clock.SYSTEM);
             otlpReg.config().meterFilter(new RouteNormalizingMeterFilter());
             micrometer.setMicrometerRegistry(otlpReg);
+            Metrics.addRegistry(otlpReg);
         }
 
         options.setMetricsOptions(micrometer);

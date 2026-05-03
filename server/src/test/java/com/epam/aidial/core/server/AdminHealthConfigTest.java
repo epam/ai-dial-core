@@ -10,9 +10,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * HTTP integration tests for slice 1S.7: admin-only configuration health endpoint at
- * {@code GET /v1/admin/health/config}. Phase 1 always reports healthy with an empty
- * {@code skipped} array — invalid-entity tracking ships in 2S.9.
+ * HTTP integration tests for the admin-only configuration health endpoint at
+ * {@code GET /v1/admin/health/config}. Slice 1S.7 introduced the route; slice 2S.9
+ * wired it to {@code MergedConfigStore.invalidEntities} and renamed the healthy
+ * status from {@code "healthy"} to {@code "ok"} per design 02 §4.1.
  */
 public class AdminHealthConfigTest extends ResourceBaseTest {
 
@@ -23,10 +24,10 @@ public class AdminHealthConfigTest extends ResourceBaseTest {
                 "authorization", "admin");
         verify(response, 200);
         JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals("healthy", body.get("status").asText());
+        assertEquals("ok", body.get("status").asText());
         JsonNode skipped = body.get("skipped");
         assertTrue(skipped.isArray() && skipped.isEmpty(),
-                () -> "Phase 1 must return empty skipped array: " + response.body());
+                () -> "skipped array must be empty when no entities are invalid: " + response.body());
     }
 
     @Test

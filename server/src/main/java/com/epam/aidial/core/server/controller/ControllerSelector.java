@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.controller.route.ApplicationRouteController;
 import com.epam.aidial.core.server.controller.route.GlobalRouteController;
 import com.epam.aidial.core.server.data.RouteTemplate;
@@ -88,7 +89,8 @@ public class ControllerSelector {
         });
         get(RouteTemplate.CONFIG_HEALTH, (proxy, context, pathMatcher) -> {
             ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
-            AdminHealthConfigController controller = new AdminHealthConfigController(context, authService);
+            AdminHealthConfigController controller = new AdminHealthConfigController(
+                    context, authService, (MergedConfigStore) proxy.getConfigStore());
             return controller::handle;
         });
         get(RouteTemplate.BUCKET, (proxy, context, pathMatcher) -> {
@@ -424,7 +426,8 @@ public class ControllerSelector {
         String bucket = pathMatcher.group("bucket");
         String path = pathMatcher.group("path");
         ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
-        return new ConfigResourceController(context, authService, entityType, bucket, path);
+        MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+        return new ConfigResourceController(context, authService, mergedConfigStore, entityType, bucket, path);
     }
 
     private String resourcePath(String url) {
