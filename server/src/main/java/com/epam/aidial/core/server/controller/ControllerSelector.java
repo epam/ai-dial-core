@@ -464,7 +464,10 @@ public class ControllerSelector {
         String path = pathMatcher.group("path");
         ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
         MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
-        return new ConfigResourceController(context, authService, mergedConfigStore, entityType, bucket, path);
+        return new ConfigResourceController(context, authService, mergedConfigStore,
+                proxy.getResourceService(), proxy.getTaskExecutor(),
+                mergedConfigStore.getSecretFieldProcessor(),
+                entityType, bucket, path);
     }
 
     private String resourcePath(String url) {

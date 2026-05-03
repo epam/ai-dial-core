@@ -141,6 +141,14 @@ public final class MergedConfigStore implements ConfigStore {
     }
 
     /**
+     * Exposes the {@link SecretFieldProcessor} used during rebuilds so write controllers can
+     * apply the same encryption/merge semantics as the rebuild pipeline (design 04 §2).
+     */
+    public SecretFieldProcessor getSecretFieldProcessor() {
+        return secretFieldProcessor;
+    }
+
+    /**
      * Non-blocking, 500 ms trailing-edge debounced rebuild trigger. No-op until
      * {@link #init} has completed — pre-init triggers are subsumed by the
      * explicit initial rebuild that {@code init} performs.

@@ -15,15 +15,27 @@ import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.server.security.Operation;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.service.LockService;
+import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
+import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.BiFunction;
@@ -31,18 +43,23 @@ import java.util.function.BiFunction;
 /**
  * Controller for the {@code /v1/{type}/{bucket}/{path}} CONFIG_RESOURCE route — gates on
  * the {@link EntityBucketBinding} allowlist and {@link ConfigAuthorizationService}, then
- * dispatches GET to per-type read handlers. Mutating verbs return 405 (Phase 2 implements
- * write paths).
+ * dispatches GET to per-type read handlers and POST/PUT/DELETE to the write handlers
+ * (Slice 2S.11 — currently {@code models} only; other writable types follow in 3S.2).
  */
 public class ConfigResourceController implements Controller {
 
     private static final String SETTINGS_TYPE = "settings";
     private static final String SETTINGS_SINGLETON_NAME = "global";
     private static final String SETTINGS_ALLOW = "GET, PUT, DELETE";
+    private static final String MODELS_TYPE = "models";
+    private static final String WRITE_ALLOW = "GET, POST, PUT, DELETE";
 
     private final ProxyContext context;
     private final ConfigAuthorizationService authorizationService;
     private final MergedConfigStore mergedConfigStore;
+    private final ResourceService resourceService;
+    private final AsyncTaskExecutor taskExecutor;
+    private final SecretFieldProcessor secretFieldProcessor;
     private final String entityType;
     private final String bucket;
     private final String path;
@@ -50,12 +67,18 @@ public class ConfigResourceController implements Controller {
     public ConfigResourceController(ProxyContext context,
                                     ConfigAuthorizationService authorizationService,
                                     MergedConfigStore mergedConfigStore,
+                                    ResourceService resourceService,
+                                    AsyncTaskExecutor taskExecutor,
+                                    SecretFieldProcessor secretFieldProcessor,
                                     String entityType,
                                     String bucket,
                                     String path) {
         this.context = context;
         this.authorizationService = authorizationService;
         this.mergedConfigStore = mergedConfigStore;
+        this.resourceService = resourceService;
+        this.taskExecutor = taskExecutor;
+        this.secretFieldProcessor = secretFieldProcessor;
         this.entityType = entityType;
         this.bucket = bucket;
         this.path = path;
@@ -80,8 +103,17 @@ public class ConfigResourceController implements Controller {
             return Future.succeededFuture();
         }
 
-        if (method == HttpMethod.GET) {
+        if (method == HttpMethod.GET || method == HttpMethod.HEAD) {
             return handleGet();
+        }
+        if (method == HttpMethod.POST) {
+            return handlePost();
+        }
+        if (method == HttpMethod.PUT) {
+            return handlePut();
+        }
+        if (method == HttpMethod.DELETE) {
+            return handleDelete();
         }
 
         return respondMethodNotAllowed();
@@ -90,24 +122,29 @@ public class ConfigResourceController implements Controller {
     private Future<?> handleGet() throws JsonProcessingException {
         Config config = context.getConfig();
         boolean admin = authorizationService.isAdmin(context);
+        boolean revealSecrets = "true".equals(context.getRequest().getParam("reveal_secrets"));
+        if (revealSecrets && !authorizationService.isSecurityAdmin(context)) {
+            context.respond(HttpStatus.FORBIDDEN, "reveal_secrets requires security-admin role");
+            return Future.succeededFuture();
+        }
         // Bucket-aware authz already gated non-admin readers off platform/, so source is always emitted
         // for platform/ types. For public/ types, source is Owner-only.
         return switch (entityType) {
             case "models" -> handleSingleOrList(
                     config.getModels(), ResourceTypes.MODEL,
-                    (key, model) -> projectItem(model, simpleName(key), fromApi(key), admin));
+                    (key, model) -> projectItem(model, simpleName(key), fromApi(key), admin, revealSecrets));
             case "interceptors" -> handleSingleOrList(
                     config.getInterceptors(), ResourceTypes.INTERCEPTOR,
-                    (key, interceptor) -> projectItem(interceptor, simpleName(key), fromApi(key), true));
+                    (key, interceptor) -> projectItem(interceptor, simpleName(key), fromApi(key), true, revealSecrets));
             case "roles" -> handleSingleOrList(
                     config.getRoles(), ResourceTypes.ROLE,
-                    (key, role) -> projectItem(role, simpleName(key), fromApi(key), true));
+                    (key, role) -> projectItem(role, simpleName(key), fromApi(key), true, revealSecrets));
             case "keys" -> handleSingleOrList(
                     config.getKeys(), ResourceTypes.PROJECT_KEY,
-                    (key, value) -> projectItem(value, simpleName(key), fromApi(key), true));
+                    (key, value) -> projectItem(value, simpleName(key), fromApi(key), true, revealSecrets));
             case "routes" -> handleSingleOrList(
                     config.getRoutes(), ResourceTypes.ROUTE,
-                    (key, route) -> projectItem(route, simpleName(key), fromApi(key), true));
+                    (key, route) -> projectItem(route, simpleName(key), fromApi(key), true, revealSecrets));
             case "schemas" -> handleSchemaGet(config, admin);
             case SETTINGS_TYPE -> handleSettingsGet(config);
             default -> respondMethodNotAllowed();
@@ -251,6 +288,172 @@ public class ConfigResourceController implements Controller {
         return Future.succeededFuture();
     }
 
+    private Future<?> handlePost() {
+        ResourceDescriptor descriptor = prepareModelWrite();
+        if (descriptor == null) {
+            return Future.succeededFuture();
+        }
+        String name = path;
+
+        context.getRequest().body().compose(body -> {
+            JsonNode requestNode = parseJsonBody(body);
+            try {
+                secretFieldProcessor.validateNoMaskSentinel(requestNode, Model.class);
+            } catch (IllegalArgumentException e) {
+                throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
+            }
+            return taskExecutor.submit(() -> {
+                try (LockService.Lock ignored = resourceService.lockResource(descriptor)) {
+                    if (resourceService.getResourceMetadata(descriptor) != null) {
+                        throw new HttpException(HttpStatus.CONFLICT,
+                                "Resource already exists: " + descriptor.getUrl());
+                    }
+                    Model entity = treeToEntity(requestNode);
+                    secretFieldProcessor.encryptFields(entity, descriptor);
+                    String encryptedBody = serializeForBlob(entity);
+                    ResourceItemMetadata meta = resourceService.putResource(
+                            descriptor, encryptedBody, EtagHeader.ANY, null, false);
+                    mergedConfigStore.requestRebuild();
+                    return meta;
+                }
+            });
+        }).onSuccess(meta -> context.putHeader(HttpHeaders.ETAG, meta.getEtag())
+                .respond(HttpStatus.CREATED, createNameEnvelope(name)))
+                .onFailure(this::handleWriteError);
+
+        return Future.succeededFuture();
+    }
+
+    private Future<?> handlePut() {
+        ResourceDescriptor descriptor = prepareModelWrite();
+        if (descriptor == null) {
+            return Future.succeededFuture();
+        }
+        String name = path;
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
+
+        context.getRequest().body().compose(body -> {
+            JsonNode requestNode = parseJsonBody(body);
+            if (!requestNode.isObject()) {
+                throw new HttpException(HttpStatus.BAD_REQUEST, "Request body must be a JSON object");
+            }
+            return taskExecutor.submit(() -> {
+                try (LockService.Lock ignored = resourceService.lockResource(descriptor)) {
+                    String existingBody = resourceService.getResource(descriptor, EtagHeader.ANY, false);
+                    if (existingBody == null) {
+                        throw new HttpException(HttpStatus.NOT_FOUND,
+                                "Resource not found: " + descriptor.getUrl());
+                    }
+                    JsonNode existingBlobNode;
+                    try {
+                        existingBlobNode = ProxyUtil.BLOB_MAPPER.readTree(existingBody);
+                    } catch (JsonProcessingException e) {
+                        throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                "Stored entity is malformed: " + e.getOriginalMessage());
+                    }
+                    ObjectNode merged = secretFieldProcessor.mergePreservingOmittedSecrets(
+                            existingBlobNode, requestNode, Model.class);
+                    Model entity = treeToEntity(merged);
+                    secretFieldProcessor.encryptFields(entity, descriptor);
+                    String encryptedBody = serializeForBlob(entity);
+                    ResourceItemMetadata meta = resourceService.putResource(
+                            descriptor, encryptedBody, etag, null, false);
+                    mergedConfigStore.requestRebuild();
+                    return meta;
+                }
+            });
+        }).onSuccess(meta -> context.putHeader(HttpHeaders.ETAG, meta.getEtag())
+                .respond(HttpStatus.OK, createNameEnvelope(name)))
+                .onFailure(this::handleWriteError);
+
+        return Future.succeededFuture();
+    }
+
+    private Future<?> handleDelete() {
+        ResourceDescriptor descriptor = prepareModelWrite();
+        if (descriptor == null) {
+            return Future.succeededFuture();
+        }
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
+
+        taskExecutor.submit(() -> {
+            boolean deleted = resourceService.deleteResource(descriptor, etag);
+            if (!deleted) {
+                throw new HttpException(HttpStatus.NOT_FOUND,
+                        "Resource not found: " + descriptor.getUrl());
+            }
+            mergedConfigStore.requestRebuild();
+            return true;
+        }).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
+
+        return Future.succeededFuture();
+    }
+
+    /**
+     * Validate the write target and return its descriptor. Returns {@code null} after writing the
+     * appropriate 4xx response when the request can't proceed — callers short-circuit on null.
+     * Slice 2S.11 supports writes only on {@code models}; other types ship in 3S.2.
+     */
+    private ResourceDescriptor prepareModelWrite() {
+        if (SETTINGS_TYPE.equals(entityType)) {
+            // Settings has its own Allow set; respondMethodNotAllowed honors that.
+            respondMethodNotAllowed();
+            return null;
+        }
+        if (path == null || path.isEmpty() || path.endsWith("/")) {
+            context.respond(HttpStatus.BAD_REQUEST, "Resource name must not be empty or a folder");
+            return null;
+        }
+        if (!MODELS_TYPE.equals(entityType)) {
+            respondWriteMethodNotAllowed();
+            return null;
+        }
+        return ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET,
+                ResourceDescriptor.PUBLIC_LOCATION, path);
+    }
+
+    private static JsonNode parseJsonBody(Buffer body) {
+        String text = body == null ? "" : body.toString(StandardCharsets.UTF_8);
+        try {
+            return ProxyUtil.BLOB_MAPPER.readTree(text.isEmpty() ? "{}" : text);
+        } catch (JsonProcessingException e) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Invalid JSON: " + e.getOriginalMessage());
+        }
+    }
+
+    private static Model treeToEntity(JsonNode node) {
+        try {
+            return ProxyUtil.BLOB_MAPPER.treeToValue(node, Model.class);
+        } catch (JsonProcessingException e) {
+            throw new HttpException(HttpStatus.BAD_REQUEST,
+                    "Failed to parse entity: " + e.getOriginalMessage());
+        }
+    }
+
+    private void handleWriteError(Throwable error) {
+        if (error instanceof HttpException exception) {
+            context.respond(exception);
+        } else {
+            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+        }
+    }
+
+    private static String serializeForBlob(Object entity) {
+        try {
+            return ProxyUtil.BLOB_MAPPER.writeValueAsString(entity);
+        } catch (JsonProcessingException e) {
+            throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to serialize entity: " + e.getOriginalMessage());
+        }
+    }
+
+    private ObjectNode createNameEnvelope(String name) {
+        ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
+        body.put("name", name);
+        return body;
+    }
+
     private ObjectNode listEnvelope(ArrayNode items) {
         ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
         body.put("entityType", entityType);
@@ -260,8 +463,12 @@ public class ConfigResourceController implements Controller {
         return body;
     }
 
-    private ObjectNode projectItem(Object item, String name, boolean fromApi, boolean includeSource) {
-        ObjectNode node = ProxyUtil.MAPPER.valueToTree(item);
+    private ObjectNode projectItem(Object item, String name, boolean fromApi, boolean includeSource, boolean revealSecrets) {
+        // BLOB_MAPPER pass-through emits stored values verbatim — when in-memory Config holds the
+        // post-rebuild plaintext, this surfaces the secret (security-admin reveal flow). The default
+        // MAPPER applies the masking serializer modifier and emits "***" instead.
+        ObjectMapper mapper = revealSecrets ? ProxyUtil.BLOB_MAPPER : ProxyUtil.MAPPER;
+        ObjectNode node = mapper.valueToTree(item);
         node.put("name", name);
         node.put("status", "valid");
         if (includeSource) {
@@ -291,6 +498,8 @@ public class ConfigResourceController implements Controller {
     private ObjectNode projectInvalidItem(InvalidEntityRecord record, boolean admin) {
         ObjectNode node = ProxyUtil.MAPPER.createObjectNode();
         Class<?> entityClass = entityClassFor(entityType);
+        // Invalid blobs may not have been decrypted (decryption_error reason) so the raw payload may
+        // contain ENC[...] envelopes — masking is unconditional here regardless of revealSecrets.
         ObjectNode payload = entityClass == null
                 ? (record.getPayload() instanceof ObjectNode raw ? raw.deepCopy() : null)
                 : SecretFieldProcessor.maskInPayload(record.getPayload(), entityClass);
@@ -326,6 +535,14 @@ public class ConfigResourceController implements Controller {
         if (SETTINGS_TYPE.equals(entityType)) {
             context.putHeader("Allow", SETTINGS_ALLOW);
         }
+        context.respond(HttpStatus.METHOD_NOT_ALLOWED, "Not implemented");
+        return Future.succeededFuture();
+    }
+
+    private Future<?> respondWriteMethodNotAllowed() {
+        // 2S.11 supports POST/PUT/DELETE only on "models"; other writable types ship in 3S.2 and
+        // currently respond 405 with the eventual Allow set so callers can probe for capability.
+        context.putHeader("Allow", WRITE_ALLOW);
         context.respond(HttpStatus.METHOD_NOT_ALLOWED, "Not implemented");
         return Future.succeededFuture();
     }

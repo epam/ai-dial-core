@@ -35,4 +35,9 @@ public class AdminRoleAuthorizationService implements ConfigAuthorizationService
     public boolean isAdmin(ProxyContext context) {
         return accessService.hasAdminAccess(context);
     }
+
+    @Override
+    public boolean isSecurityAdmin(ProxyContext context) {
+        return accessService.hasSecurityAdminAccess(context);
+    }
 }

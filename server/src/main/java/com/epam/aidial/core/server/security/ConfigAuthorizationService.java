@@ -34,4 +34,12 @@ public interface ConfigAuthorizationService {
      * and everyone else gets Public.
      */
     boolean isAdmin(ProxyContext context);
+
+    /**
+     * Check whether the caller holds the security-admin role used to gate
+     * {@code ?reveal_secrets=true} reveal flows on Configuration API reads. Distinct from
+     * {@link #isAdmin} so plaintext secret reveals can be locked behind a role separate from
+     * the operational admin role (design 04 §2.6).
+     */
+    boolean isSecurityAdmin(ProxyContext context);
 }

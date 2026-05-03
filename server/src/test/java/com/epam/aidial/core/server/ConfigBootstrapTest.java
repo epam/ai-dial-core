@@ -52,9 +52,12 @@ public class ConfigBootstrapTest extends ResourceBaseTest {
 
     @Test
     void testAdminCanWritePublicEntity() {
-        Response response = send(HttpMethod.PUT, "/v1/models/public/gpt-4", null, "{}",
+        // PUT against a name not present in the API store returns 404 — slice 2S.11 enforces strict-split
+        // semantics (PUT requires existing API entity; gpt-4 here is a file-defined entry, not an API
+        // entry, so PUT is not an in-place upsert).
+        Response response = send(HttpMethod.PUT, "/v1/models/public/non-existent-name", null, "{}",
                 "authorization", "admin");
-        verify(response, 405);
+        verify(response, 404);
     }
 
     @Test
