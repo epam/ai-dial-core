@@ -29,7 +29,9 @@ import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataVa
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
+import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
+import com.epam.aidial.core.server.config.PlatformEntityLocationStrategy;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
 import com.epam.aidial.core.server.controller.HealthCheckController;
 import com.epam.aidial.core.server.controller.WellKnownResourceMetadataController;
@@ -191,7 +193,13 @@ public class AiDial {
             resourceService = new ResourceService(timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix());
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
-            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore, List.of());
+            MergedConfigStore mergedConfigStore = new MergedConfigStore(
+                    vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy());
+            FileConfigStore fileConfigStore = new FileConfigStore(
+                    vertx, settings("config"), null,
+                    List.of(cfg -> mergedConfigStore.requestRebuild()));
+            mergedConfigStore.init(fileConfigStore);
+            ConfigStore configStore = mergedConfigStore;
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(resourceService, configStore, encryptionService, httpProxySelector);
 
