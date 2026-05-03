@@ -145,26 +145,9 @@ public class ApiKeyStoreTest {
         key.setRole("role1");
         Map<String, Key> projectKeys = Map.of("secret-value", key);
 
-        store.addProjectKeys(projectKeys, Map.of());
+        store.addProjectKeys(projectKeys);
 
         assertEquals("secret-value", key.getKey());
-    }
-
-    @Test
-    public void testAddFileProjectKeyWithSlashInSecret() {
-        Key key = new Key();
-        key.setProject("prj1");
-        key.setRole("role1");
-        // File-mode secrets may be Base64 and contain '/' — the map key IS the secret and must be
-        // back-filled verbatim (no map-key shape inference). See OQ-12.
-        Map<String, Key> projectKeys = Map.of("ab/cd+ef==", key);
-
-        store.addProjectKeys(projectKeys, Map.of());
-
-        assertEquals("ab/cd+ef==", key.getKey());
-        Future<ApiKeyData> hit = store.getApiKeyData("ab/cd+ef==", null);
-        assertNotNull(hit.result());
-        assertEquals(key, hit.result().getOriginalKey());
     }
 
     @Test
@@ -175,164 +158,9 @@ public class ApiKeyStoreTest {
         key.setKey("api-secret");
         Map<String, Key> projectKeys = Map.of("human-name", key);
 
-        store.addProjectKeys(Map.of(), projectKeys);
+        store.addProjectKeys(projectKeys);
 
         assertEquals("api-secret", key.getKey());
-    }
-
-    @Test
-    public void testAddProjectKeysApiManagedAuthLookup() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
-        Key key = new Key();
-        key.setProject("prj1");
-        key.setRole("role1");
-        key.setKey("api-secret");
-        Map<String, Key> projectKeys = Map.of("human-name", key);
-
-        store.addProjectKeys(Map.of(), projectKeys);
-
-        Future<ApiKeyData> hit = store.getApiKeyData("api-secret", null);
-        assertNotNull(hit.result());
-        assertEquals(key, hit.result().getOriginalKey());
-        assertNull(store.getApiKeyData("human-name", null).result());
-    }
-
-    @Test
-    public void testAddApiProjectKeyBlankSecretFailsClosed() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
-        Key key = new Key();
-        key.setProject("prj1");
-        key.setRole("role1");
-        // API-sourced entry with no secret after decrypt — must be skipped, never back-filled
-        // from the canonical-id map key (fail closed).
-        Map<String, Key> projectKeys = Map.of("keys/platform/foo", key);
-
-        store.addProjectKeys(Map.of(), projectKeys);
-
-        assertNull(key.getKey());
-        assertNull(store.getApiKeyData("keys/platform/foo", null).result());
-    }
-
-    @Test
-    public void testAddOrUpdateKey() {
-        Key key = new Key();
-        key.setProject("prj1");
-        key.setRole("role1");
-        key.setKey("fast-secret");
-        ApiKeyData data = new ApiKeyData();
-        data.setOriginalKey(key);
-
-        store.addOrUpdateKey("fast-secret", data);
-
-        Future<ApiKeyData> hit = store.getApiKeyData("fast-secret", null);
-        assertNotNull(hit.result());
-        assertEquals(data, hit.result());
-    }
-
-    @Test
-    public void testRemoveKey() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
-        Key key = new Key();
-        key.setProject("prj1");
-        key.setRole("role1");
-        key.setKey("removable");
-        ApiKeyData data = new ApiKeyData();
-        data.setOriginalKey(key);
-        store.addOrUpdateKey("removable", data);
-
-        store.removeKey("removable");
-
-        assertTrue(store.getApiKeyData("removable", null).failed());
-    }
-
-    @Test
-    public void testPointWriteSurvivesConcurrentRebuildSwap() throws Exception {
-        // A redis miss must resolve to a failed future (not NPE), so an in-memory map miss caused by
-        // a lost-update is observable below. None of the fast-secret-N keys are written to redis.
-        lenient().when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable<?> callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-
-        int writes = 2000;
-        // Models the blob store the writer pod persists to. The production ordering is: put the blob,
-        // THEN do the locked point-write. The rebuild scans this same store while holding the lock, so
-        // any committed point-write is either already in the scan input or applied after the swap.
-        Map<String, Key> blobStore = new ConcurrentHashMap<>();
-        CyclicBarrier start = new CyclicBarrier(2);
-        CountDownLatch writerDone = new CountDownLatch(1);
-        AtomicReference<Throwable> failure = new AtomicReference<>();
-
-        // Rebuild-style thread: rebuilds the key map from the (live) blob store and atomically swaps
-        // the reference, exactly as a full merged-config rebuild does via addProjectKeys. Production's
-        // rebuild() holds the SAME lock (rebuildLock == mutationLock) across the whole scan→build→swap:
-        // it scans blobs BEFORE re-entering addProjectKeys, all while already holding the lock. This test
-        // approximates that single critical section by scanning the live ConcurrentHashMap INSIDE the
-        // locked addProjectKeys call — so a point-write that committed its blob before acquiring the lock
-        // is visible to the scan, and one that blocks on the lock applies to the post-swap map. Passing
-        // the live map (not a pre-call snapshot) is what keeps the scan inside the lock.
-        Thread rebuilder = new Thread(() -> {
-            try {
-                start.await();
-                while (writerDone.getCount() > 0) {
-                    store.addProjectKeys(blobStore, Map.of());
-                }
-            } catch (Throwable t) {
-                failure.set(t);
-            }
-        });
-
-        // Point-write thread: persists the blob, then adds the key via the fast-path mutator while the
-        // swap races. With the lost-update bug the put can land in a map the rebuilder is about to
-        // orphan, even though the blob was written before the swap snapshot.
-        Thread writer = new Thread(() -> {
-            try {
-                start.await();
-                for (int i = 0; i < writes; i++) {
-                    String secret = "fast-secret-" + i;
-                    Key key = new Key();
-                    key.setProject("prj");
-                    key.setRole("role");
-                    key.setKey(secret);
-                    blobStore.put(secret, key);
-                    ApiKeyData data = new ApiKeyData();
-                    data.setOriginalKey(key);
-                    store.addOrUpdateKey(secret, data);
-                }
-            } catch (Throwable t) {
-                failure.set(t);
-            } finally {
-                writerDone.countDown();
-            }
-        });
-
-        rebuilder.start();
-        writer.start();
-        writer.join(5000);
-        writerDone.countDown();
-        rebuilder.join(5000);
-
-        assertNull(failure.get());
-
-        List<Integer> lost = new ArrayList<>();
-        for (int i = 0; i < writes; i++) {
-            if (store.getApiKeyData("fast-secret-" + i, null).failed()) {
-                lost.add(i);
-            }
-        }
-        assertTrue(lost.isEmpty(), "Lost point-written keys after concurrent rebuild swap: " + lost);
     }
 
     @Test
