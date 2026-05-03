@@ -354,7 +354,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 | **2S.4-pre** | ~~`ResourceService.put(descriptor, body, skipLock=true)` package-visible overload.~~ **Dropped 2026-05-03** — `ResourceService.putResource(descriptor, body, etag, author, boolean lock)` already exists publicly (`storage/.../ResourceService.java:552`); `lock=false` provides the documented skipLock semantics. Already used externally (`PublicationService.java:337`). | — | 07 Phase 2 prereqs; 04 §2.5 | ❌ dropped | — |
 | **2S.5-pre** | `FileConfigStore` constructor accepts `List<Consumer<Config>> initialOnReloadCallbacks`; registered before `vertx.setPeriodic` to close registration race. | — | 07 Phase 2 prereqs; 02 §4 | ✅ | `fad28222` |
 | **2S.6-pre** | Make `FileConfigStore.load() → apiKeyStore.addProjectKeys` call conditional on `apiKeyStore != null`. Move authoritative call into `ConfigPostProcessor` invoked by `MergedConfigStore`. Wire `MergedConfigStore` to construct `FileConfigStore` with `apiKeyStore = null`. | 2S.5-pre | 07 Phase 2 prereqs; 02 §4 | 📋 | — |
-| **2S.7-pre** | Extract `ConfigPostProcessor` from `FileConfigStore.load()` (pure refactor; structural pass only — two-pass split + slash-keyed-name rejection deferred to **2S.9** per its broader cross-entity validation scope). | — | 07 Phase 2 prereqs; 02 §4.1, §9 | ✅ | — |
+| **2S.7-pre** | Extract `ConfigPostProcessor` from `FileConfigStore.load()` (pure refactor; structural pass only — two-pass split + slash-keyed-name rejection deferred to **2S.9** per its broader cross-entity validation scope). | — | 07 Phase 2 prereqs; 02 §4.1, §9 | ✅ | `65d8cd88` |
 
 **Track A — Server core**
 
