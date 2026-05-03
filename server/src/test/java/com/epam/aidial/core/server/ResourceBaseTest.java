@@ -200,7 +200,8 @@ public class ResourceBaseTest {
                             return Future.succeededFuture();
                         }
 
-                        if (authorization.equals("user") || authorization.equals("admin")) {
+                        if (authorization.equals("user") || authorization.equals("admin")
+                                || authorization.equals("security-admin")) {
                             return Future.succeededFuture(createClaims(authorization));
                         }
 
