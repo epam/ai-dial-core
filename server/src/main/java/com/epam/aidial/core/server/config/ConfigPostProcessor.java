@@ -129,7 +129,41 @@ public final class ConfigPostProcessor {
             Model model = entry.getValue();
             model.setName(name);
             log.debug("Loading {}", model);
+            // Cross-ref check is skip-mode-only — file-loaded abort-mode path (onSkip == null)
+            // preserves design 02 §4.2's allowance for pre-existing file-side inconsistency.
+            // Strict-mode 422 is enforced at the write controller, not here.
+            if (onSkip != null) {
+                List<ValidationWarning> crossRefWarnings = new ArrayList<>();
+                validateCrossReferences(model, config, crossRefWarnings);
+                if (!crossRefWarnings.isEmpty()) {
+                    iterator.remove();
+                    onSkip.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, name, crossRefWarnings));
+                }
+            }
         }
+    }
+
+    /**
+     * Validates that every interceptor reference on the supplied model resolves
+     * within the merged {@code config.interceptors} map. {@link MergedConfigStore}
+     * keys file entries by simple name and API entries by canonical ID; either
+     * shape is accepted via {@code containsKey}. Returns {@code true} when every
+     * reference resolves (no warnings appended).
+     */
+    public static boolean validateCrossReferences(Model model, Config config, List<ValidationWarning> warnings) {
+        List<String> refs = model.getInterceptors();
+        if (refs == null || refs.isEmpty()) {
+            return true;
+        }
+        Map<String, Interceptor> interceptors = config.getInterceptors();
+        for (int i = 0; i < refs.size(); i++) {
+            String ref = refs.get(i);
+            if (ref == null || !interceptors.containsKey(ref)) {
+                warnings.add(new ValidationWarning("interceptors[" + i + "]",
+                        "Interceptor '" + ref + "' not found in config"));
+            }
+        }
+        return warnings.isEmpty();
     }
 
     private static void processApplications(Config config, Set<String> deploymentIds,

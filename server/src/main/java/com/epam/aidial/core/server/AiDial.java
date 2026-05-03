@@ -207,9 +207,11 @@ public class AiDial {
                     credentialEncryptionService,
                     new BucketInfo(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION));
             String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
+            boolean softValidation = settings("config").getJsonObject("write", new JsonObject())
+                    .getBoolean("softValidation", false);
             MergedConfigStore mergedConfigStore = new MergedConfigStore(
                     vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                    secretFieldProcessor, onInvalidEntity);
+                    secretFieldProcessor, onInvalidEntity, softValidation);
             FileConfigStore fileConfigStore = new FileConfigStore(
                     vertx, settings("config"), null,
                     List.of(cfg -> mergedConfigStore.requestRebuild()));

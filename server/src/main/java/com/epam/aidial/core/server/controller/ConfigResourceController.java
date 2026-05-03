@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.SecretFieldProcessor;
@@ -34,8 +35,11 @@ import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
+import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.BiFunction;
@@ -46,6 +50,7 @@ import java.util.function.BiFunction;
  * dispatches GET to per-type read handlers and POST/PUT/DELETE to the write handlers
  * (Slice 2S.11 — currently {@code models} only; other writable types follow in 3S.2).
  */
+@Slf4j
 public class ConfigResourceController implements Controller {
 
     private static final String SETTINGS_TYPE = "settings";
@@ -60,6 +65,7 @@ public class ConfigResourceController implements Controller {
     private final ResourceService resourceService;
     private final AsyncTaskExecutor taskExecutor;
     private final SecretFieldProcessor secretFieldProcessor;
+    private final boolean softValidation;
     private final String entityType;
     private final String bucket;
     private final String path;
@@ -70,6 +76,7 @@ public class ConfigResourceController implements Controller {
                                     ResourceService resourceService,
                                     AsyncTaskExecutor taskExecutor,
                                     SecretFieldProcessor secretFieldProcessor,
+                                    boolean softValidation,
                                     String entityType,
                                     String bucket,
                                     String path) {
@@ -79,6 +86,7 @@ public class ConfigResourceController implements Controller {
         this.resourceService = resourceService;
         this.taskExecutor = taskExecutor;
         this.secretFieldProcessor = secretFieldProcessor;
+        this.softValidation = softValidation;
         this.entityType = entityType;
         this.bucket = bucket;
         this.path = path;
@@ -303,12 +311,13 @@ public class ConfigResourceController implements Controller {
                 throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
             }
             return taskExecutor.submit(() -> {
+                Model entity = treeToEntity(requestNode);
+                checkCrossReferences(entity);
                 try (LockService.Lock ignored = resourceService.lockResource(descriptor)) {
                     if (resourceService.getResourceMetadata(descriptor) != null) {
                         throw new HttpException(HttpStatus.CONFLICT,
                                 "Resource already exists: " + descriptor.getUrl());
                     }
-                    Model entity = treeToEntity(requestNode);
                     secretFieldProcessor.encryptFields(entity, descriptor);
                     String encryptedBody = serializeForBlob(entity);
                     ResourceItemMetadata meta = resourceService.putResource(
@@ -354,6 +363,7 @@ public class ConfigResourceController implements Controller {
                     ObjectNode merged = secretFieldProcessor.mergePreservingOmittedSecrets(
                             existingBlobNode, requestNode, Model.class);
                     Model entity = treeToEntity(merged);
+                    checkCrossReferences(entity);
                     secretFieldProcessor.encryptFields(entity, descriptor);
                     String encryptedBody = serializeForBlob(entity);
                     ResourceItemMetadata meta = resourceService.putResource(
@@ -437,6 +447,36 @@ public class ConfigResourceController implements Controller {
         } else {
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
         }
+    }
+
+    /**
+     * Cross-reference check for Model writes. Strict mode aborts with HTTP 422 carrying a
+     * {@code {"validationWarnings":[...]}} JSON body. Soft mode logs and proceeds — the next
+     * merged-config rebuild's skip path records the entity in
+     * {@link MergedConfigStore#getInvalidEntities()}.
+     */
+    private void checkCrossReferences(Model entity) {
+        Config snapshot = mergedConfigStore.get();
+        if (snapshot == null) {
+            return;
+        }
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateCrossReferences(entity, snapshot, warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        if (softValidation) {
+            log.warn("Soft-mode cross-ref warnings for model '{}': {}", path, warnings);
+            return;
+        }
+        ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
+        ArrayNode arr = body.putArray("validationWarnings");
+        for (ValidationWarning warning : warnings) {
+            ObjectNode w = arr.addObject();
+            w.put("field", warning.getField());
+            w.put("message", warning.getMessage());
+        }
+        throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, body.toString());
     }
 
     private static String serializeForBlob(Object entity) {

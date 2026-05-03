@@ -10,11 +10,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Strict-mode tests for slice 2S.13 cross-reference validation, U.0-amended (2026-05-20) to the
- * PUT-upsert wire shape. The Model write controller's interceptor cross-ref check rejects unknown
- * references at write time with HTTP 422 and a {@code {"validationWarnings": [...]}} body. The
- * underlying merged-config rebuild keeps soft-mode skip behavior; these tests exercise only the
- * strict pre-commit path (default {@code softValidation=false}).
+ * Strict-mode tests for slice 2S.13 cross-reference validation. The Model write
+ * controller's interceptor cross-ref check rejects unknown references at write
+ * time with HTTP 422 and a {@code {"validationWarnings": [...]}} body. The
+ * underlying merged-config rebuild keeps soft-mode skip behavior; these tests
+ * exercise only the strict pre-commit path (default {@code softValidation=false}).
  */
 public class ModelCrossRefValidationApiTest extends ResourceBaseTest {
 
@@ -58,67 +58,67 @@ public class ModelCrossRefValidationApiTest extends ResourceBaseTest {
             """;
 
     @Test
-    void testPutCreateKnownInterceptor() {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cr-known", null,
-                MODEL_BODY_KNOWN_INTERCEPTOR, "authorization", "admin", "If-None-Match", "*");
-        verify(put, 200);
-        assertNotNull(put.headers().get("etag"));
+    void testPostKnownInterceptor() {
+        Response post = send(HttpMethod.POST, "/v1/models/public/cr-known", null,
+                MODEL_BODY_KNOWN_INTERCEPTOR, "authorization", "admin");
+        verify(post, 201);
+        assertNotNull(post.headers().get("etag"));
     }
 
     @Test
-    void testPutCreateUnknownInterceptorReturns422() throws Exception {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cr-unknown", null,
-                MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin", "If-None-Match", "*");
-        verify(put, 422);
-        JsonNode body = ProxyUtil.MAPPER.readTree(put.body());
+    void testPostUnknownInterceptorReturns422() throws Exception {
+        Response post = send(HttpMethod.POST, "/v1/models/public/cr-unknown", null,
+                MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin");
+        verify(post, 422);
+        JsonNode body = ProxyUtil.MAPPER.readTree(post.body());
         JsonNode warnings = body.get("validationWarnings");
-        assertNotNull(warnings, () -> "Expected validationWarnings array: " + put.body());
-        assertTrue(warnings.isArray(), () -> "Expected array: " + put.body());
-        assertEquals(1, warnings.size(), () -> "Expected one warning: " + put.body());
+        assertNotNull(warnings, () -> "Expected validationWarnings array: " + post.body());
+        assertTrue(warnings.isArray(), () -> "Expected array: " + post.body());
+        assertEquals(1, warnings.size(), () -> "Expected one warning: " + post.body());
         assertEquals("interceptors[0]", warnings.get(0).get("field").asText());
         assertTrue(warnings.get(0).get("message").asText().contains("unknown-interceptor"),
-                () -> "Expected ref name in message: " + put.body());
+                () -> "Expected ref name in message: " + post.body());
     }
 
     @Test
-    void testPutCreateUnknownInterceptorNoCommit() {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cr-no-commit", null,
-                MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin", "If-None-Match", "*");
-        verify(put, 422);
+    void testPostUnknownInterceptorNoCommit() {
+        Response post = send(HttpMethod.POST, "/v1/models/public/cr-no-commit", null,
+                MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin");
+        verify(post, 422);
         Response get = send(HttpMethod.GET, "/v1/models/public/cr-no-commit", null, "",
                 "authorization", "admin");
         verify(get, 404);
     }
 
     @Test
-    void testPutCreateMultipleUnknownInterceptors() throws Exception {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cr-multi", null,
-                MODEL_BODY_TWO_UNKNOWN, "authorization", "admin", "If-None-Match", "*");
-        verify(put, 422);
-        JsonNode warnings = ProxyUtil.MAPPER.readTree(put.body()).get("validationWarnings");
-        assertEquals(2, warnings.size(), () -> "Expected two warnings: " + put.body());
+    void testPostMultipleUnknownInterceptors() throws Exception {
+        Response post = send(HttpMethod.POST, "/v1/models/public/cr-multi", null,
+                MODEL_BODY_TWO_UNKNOWN, "authorization", "admin");
+        verify(post, 422);
+        JsonNode warnings = ProxyUtil.MAPPER.readTree(post.body()).get("validationWarnings");
+        assertEquals(2, warnings.size(), () -> "Expected two warnings: " + post.body());
         assertEquals("interceptors[0]", warnings.get(0).get("field").asText());
         assertEquals("interceptors[1]", warnings.get(1).get("field").asText());
     }
 
     @Test
-    void testPutCreateEmptyInterceptorsArray() {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cr-empty", null,
-                MODEL_BODY_EMPTY_INTERCEPTORS, "authorization", "admin", "If-None-Match", "*");
-        verify(put, 200);
+    void testPostEmptyInterceptorsArray() {
+        Response post = send(HttpMethod.POST, "/v1/models/public/cr-empty", null,
+                MODEL_BODY_EMPTY_INTERCEPTORS, "authorization", "admin");
+        verify(post, 201);
     }
 
     @Test
-    void testPutCreateInterceptorsAbsent() {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cr-absent", null,
-                MODEL_BODY_NO_INTERCEPTORS, "authorization", "admin", "If-None-Match", "*");
-        verify(put, 200);
+    void testPostInterceptorsAbsent() {
+        Response post = send(HttpMethod.POST, "/v1/models/public/cr-absent", null,
+                MODEL_BODY_NO_INTERCEPTORS, "authorization", "admin");
+        verify(post, 201);
     }
 
     @Test
-    void testPutUpdateUnknownInterceptorReturns422() {
-        verify(send(HttpMethod.PUT, "/v1/models/public/cr-put-bad", null,
-                MODEL_BODY_NO_INTERCEPTORS, "authorization", "admin", "If-None-Match", "*"), 200);
+    void testPutUnknownInterceptorReturns422() {
+        verify(send(HttpMethod.POST, "/v1/models/public/cr-put-bad", null,
+                MODEL_BODY_NO_INTERCEPTORS, "authorization", "admin"), 201);
 
         Response put = send(HttpMethod.PUT, "/v1/models/public/cr-put-bad", null,
                 MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin");
@@ -126,9 +126,9 @@ public class ModelCrossRefValidationApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testPutUpdateKnownInterceptor() {
-        verify(send(HttpMethod.PUT, "/v1/models/public/cr-put-good", null,
-                MODEL_BODY_NO_INTERCEPTORS, "authorization", "admin", "If-None-Match", "*"), 200);
+    void testPutKnownInterceptor() {
+        verify(send(HttpMethod.POST, "/v1/models/public/cr-put-good", null,
+                MODEL_BODY_NO_INTERCEPTORS, "authorization", "admin"), 201);
 
         Response put = send(HttpMethod.PUT, "/v1/models/public/cr-put-good", null,
                 MODEL_BODY_KNOWN_INTERCEPTOR, "authorization", "admin");

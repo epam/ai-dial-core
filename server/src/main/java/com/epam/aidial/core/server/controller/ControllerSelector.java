@@ -452,6 +452,7 @@ public class ControllerSelector {
         return new ConfigResourceController(context, authService, mergedConfigStore,
                 proxy.getResourceService(), proxy.getTaskExecutor(),
                 mergedConfigStore.getSecretFieldProcessor(),
+                mergedConfigStore.isSoftValidation(),
                 entityType, bucket, path);
     }
 

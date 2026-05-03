@@ -76,6 +76,7 @@ public final class MergedConfigStore implements ConfigStore {
     private final EntityLocationStrategy locationStrategy;
     private final SecretFieldProcessor secretFieldProcessor;
     private final String onInvalidEntity;
+    private final boolean softValidation;
 
     private FileConfigStore fileConfigStore;
     private volatile Config config;
@@ -87,12 +88,21 @@ public final class MergedConfigStore implements ConfigStore {
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
                              SecretFieldProcessor secretFieldProcessor,
                              String onInvalidEntity) {
+        this(vertx, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor, onInvalidEntity, false);
+    }
+
+    public MergedConfigStore(Vertx vertx, ResourceService resourceService,
+                             ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
+                             SecretFieldProcessor secretFieldProcessor,
+                             String onInvalidEntity,
+                             boolean softValidation) {
         this.vertx = vertx;
         this.resourceService = resourceService;
         this.apiKeyStore = apiKeyStore;
         this.locationStrategy = locationStrategy;
         this.secretFieldProcessor = secretFieldProcessor;
         this.onInvalidEntity = MODE_SKIP.equalsIgnoreCase(onInvalidEntity) ? MODE_SKIP : MODE_ABORT;
+        this.softValidation = softValidation;
 
         Gauge.builder("dial_config_skipped_entities", this, MergedConfigStore::countInvalidEntities)
                 .description("Number of entities skipped from in-memory Config (design 02 §4.1)")
@@ -138,6 +148,17 @@ public final class MergedConfigStore implements ConfigStore {
     /** Currently-effective failure mode: {@link #MODE_ABORT} or {@link #MODE_SKIP}. */
     public String getOnInvalidEntity() {
         return onInvalidEntity;
+    }
+
+    /**
+     * Soft-validation mode for write controllers (slice 2S.13). When {@code true},
+     * cross-reference violations on POST/PUT log a warning and proceed with the write;
+     * the next merged-config rebuild's skip path records the entity in
+     * {@link #getInvalidEntities()}. When {@code false} (strict mode), violations
+     * abort the write with HTTP 422.
+     */
+    public boolean isSoftValidation() {
+        return softValidation;
     }
 
     /**

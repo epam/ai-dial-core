@@ -56,17 +56,17 @@ public class ModelCrossRefValidationSoftModeApiTest extends ResourceBaseTest {
 
     @Test
     void testSoftModeCommitsUnknownRef() {
-        Response post = send(HttpMethod.PUT, "/v1/models/public/soft-cr-unknown", null,
-                MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin", "If-None-Match", "*");
-        verify(post, 200);
+        Response post = send(HttpMethod.POST, "/v1/models/public/soft-cr-unknown", null,
+                MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin");
+        verify(post, 201);
         assertNotNull(post.headers().get("etag"));
     }
 
     @Test
     void testSoftModeShowsStatusInvalidPostRebuild() {
-        Response post = send(HttpMethod.PUT, "/v1/models/public/soft-cr-invalid", null,
-                MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin", "If-None-Match", "*");
-        verify(post, 200);
+        Response post = send(HttpMethod.POST, "/v1/models/public/soft-cr-invalid", null,
+                MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin");
+        verify(post, 201);
 
         JsonNode body = waitForGetMatching(
                 "/v1/models/public/soft-cr-invalid",
@@ -80,8 +80,8 @@ public class ModelCrossRefValidationSoftModeApiTest extends ResourceBaseTest {
 
     @Test
     void testSoftModePutCommitsUnknownRef() {
-        verify(send(HttpMethod.PUT, "/v1/models/public/soft-cr-put", null,
-                MODEL_BODY_NO_INTERCEPTORS, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/models/public/soft-cr-put", null,
+                MODEL_BODY_NO_INTERCEPTORS, "authorization", "admin"), 201);
 
         Response put = send(HttpMethod.PUT, "/v1/models/public/soft-cr-put", null,
                 MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin");
@@ -97,9 +97,9 @@ public class ModelCrossRefValidationSoftModeApiTest extends ResourceBaseTest {
 
     @Test
     void testSoftModeKnownRefStillValid() {
-        Response post = send(HttpMethod.PUT, "/v1/models/public/soft-cr-good", null,
-                MODEL_BODY_KNOWN_INTERCEPTOR, "authorization", "admin", "If-None-Match", "*");
-        verify(post, 200);
+        Response post = send(HttpMethod.POST, "/v1/models/public/soft-cr-good", null,
+                MODEL_BODY_KNOWN_INTERCEPTOR, "authorization", "admin");
+        verify(post, 201);
 
         JsonNode body = waitForGetMatching(
                 "/v1/models/public/soft-cr-good",
