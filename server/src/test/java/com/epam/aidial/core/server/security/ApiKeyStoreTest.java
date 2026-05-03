@@ -164,6 +164,63 @@ public class ApiKeyStoreTest {
     }
 
     @Test
+    public void testAddProjectKeysApiManagedAuthLookup() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        Key key = new Key();
+        key.setProject("prj1");
+        key.setRole("role1");
+        key.setKey("api-secret");
+        Map<String, Key> projectKeys = Map.of("human-name", key);
+
+        store.addProjectKeys(projectKeys);
+
+        Future<ApiKeyData> hit = store.getApiKeyData("api-secret", null);
+        assertNotNull(hit.result());
+        assertEquals(key, hit.result().getOriginalKey());
+        assertNull(store.getApiKeyData("human-name", null).result());
+    }
+
+    @Test
+    public void testAddOrUpdateKey() {
+        Key key = new Key();
+        key.setProject("prj1");
+        key.setRole("role1");
+        key.setKey("fast-secret");
+        ApiKeyData data = new ApiKeyData();
+        data.setOriginalKey(key);
+
+        store.addOrUpdateKey("fast-secret", data);
+
+        Future<ApiKeyData> hit = store.getApiKeyData("fast-secret", null);
+        assertNotNull(hit.result());
+        assertEquals(data, hit.result());
+    }
+
+    @Test
+    public void testRemoveKey() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        Key key = new Key();
+        key.setProject("prj1");
+        key.setRole("role1");
+        key.setKey("removable");
+        ApiKeyData data = new ApiKeyData();
+        data.setOriginalKey(key);
+        store.addOrUpdateKey("removable", data);
+
+        store.removeKey("removable");
+
+        assertTrue(store.getApiKeyData("removable", null).failed());
+    }
+
+    @Test
     public void testGetApiKeyData() {
         ApiKeyData apiKeyData = new ApiKeyData();
         store.assignPerRequestApiKey(apiKeyData);

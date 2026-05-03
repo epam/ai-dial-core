@@ -24,7 +24,6 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 import static com.epam.aidial.core.server.security.ApiKeyGenerator.generateKey;
@@ -65,8 +64,9 @@ public class ApiKeyStore {
     }
 
     /**
-     * Project API keys, keyed by secret value for O(1) auth lookup (OQ-12). The reference is rebuilt and
-     * atomically swapped on full reload; per-entry mutations serialize via {@link #mutationLock}.
+     * Project API keys are hosted in the secure storage. Keyed by the secret value for O(1) auth lookup
+     * (per OQ-12). The reference is rebuilt + atomically swapped on full reload; per-entry mutations go
+     * through {@link #addOrUpdateKey} / {@link #removeKey}.
      */
     private volatile ConcurrentHashMap<String, ApiKeyData> keys = new ConcurrentHashMap<>();
 
@@ -179,19 +179,10 @@ public class ApiKeyStore {
      *                            blank entries are skipped (fail closed) — the canonical id is never
      *                            used as an auth bearer.
      */
-    public void addProjectKeys(Map<String, Key> fileKeysBySecret, Map<String, Key> apiKeysByCanonicalId) {
-        mutationLock.lock();
-        try {
-            addProjectKeysLocked(fileKeysBySecret, apiKeysByCanonicalId);
-        } finally {
-            mutationLock.unlock();
-        }
-    }
-
-    private void addProjectKeysLocked(Map<String, Key> fileKeysBySecret, Map<String, Key> apiKeysByCanonicalId) {
+    public void addProjectKeys(Map<String, Key> projectKeys) {
         ConcurrentHashMap<String, ApiKeyData> apiKeyDataMap = new ConcurrentHashMap<>();
-        for (Map.Entry<String, Key> entry : fileKeysBySecret.entrySet()) {
-            String mapKey = entry.getKey();
+        for (Map.Entry<String, Key> entry : projectKeys.entrySet()) {
+            String apiKey = entry.getKey();
             Key value = entry.getValue();
             validateProjectKey(value);
             if (StringUtils.isBlank(value.getKey())) {
@@ -202,58 +193,25 @@ public class ApiKeyStore {
             apiKeyDataMap.put(value.getKey(), apiKeyData);
             log.debug("Loading {}", value);
         }
-        for (Map.Entry<String, Key> entry : apiKeysByCanonicalId.entrySet()) {
-            Key value = entry.getValue();
-            validateProjectKey(value);
-            if (StringUtils.isBlank(value.getKey())) {
-                log.warn("Skipping API-sourced project key '{}': Key.key is blank after decrypt; "
-                        + "refusing to use canonical id as auth bearer", entry.getKey());
-                continue;
-            }
-            ApiKeyData apiKeyData = new ApiKeyData();
-            apiKeyData.setOriginalKey(value);
-            apiKeyDataMap.put(value.getKey(), apiKeyData);
-            log.debug("Loading {}", value);
-        }
         keys = apiKeyDataMap;
     }
 
     /**
-     * Shared mutation lock adopted by {@code MergedConfigStore} as its {@code rebuildLock} so
-     * per-entry point-writes serialize against the entire rebuild (scan → build → swap). See
-     * {@link #mutationLock}.
-     */
-    public ReentrantLock getMutationLock() {
-        return mutationLock;
-    }
-
-    /**
      * Fast-path partial mutator used by API-managed key writes (Phase 2 keys controller).
-     * Serialized against the full rebuild via {@link #mutationLock} so the put is never discarded
-     * by a concurrent {@code addProjectKeys} map swap.
+     * Operates on the current {@code keys} reference; a concurrent rebuild may swap the reference
+     * before the put becomes visible — covered by writer-pod {@code rebuildNow()} on the same path.
      */
     public void addOrUpdateKey(String secret, ApiKeyData data) {
-        mutationLock.lock();
-        try {
-            keys.put(secret, data);
-        } finally {
-            mutationLock.unlock();
-        }
+        keys.put(secret, data);
     }
 
     /**
      * Fast-path partial mutator used by API-managed key deletes (Phase 2 keys controller).
      * Must be called after the corresponding blob {@code ResourceService.delete} returns
-     * (per the keys-controller {@code DELETE} ordering invariant). Serialized against the full
-     * rebuild via {@link #mutationLock}.
+     * (per the keys-controller {@code DELETE} ordering invariant).
      */
     public void removeKey(String secret) {
-        mutationLock.lock();
-        try {
-            keys.remove(secret);
-        } finally {
-            mutationLock.unlock();
-        }
+        keys.remove(secret);
     }
 
     private void validateProjectKey(Key key) {
