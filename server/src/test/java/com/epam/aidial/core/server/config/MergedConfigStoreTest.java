@@ -20,12 +20,14 @@ public class MergedConfigStoreTest {
     private ResourceService resourceService;
     @Mock
     private ApiKeyStore apiKeyStore;
+    @Mock
+    private SecretFieldProcessor secretFieldProcessor;
 
     @Test
     public void testRequestRebuildIsNoOpBeforeInit() {
         MergedConfigStore store = new MergedConfigStore(
                 vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                MergedConfigStore.MODE_ABORT);
+                secretFieldProcessor, MergedConfigStore.MODE_ABORT);
 
         store.requestRebuild();
         store.requestRebuild();

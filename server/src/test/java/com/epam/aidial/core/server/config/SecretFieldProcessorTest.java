@@ -21,12 +21,10 @@ import java.util.Base64;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,21 +43,9 @@ class SecretFieldProcessorTest {
 
     @BeforeEach
     void setUp() {
-        // AES-GCM IV 12 + tag 16; mirrors DataEncryptionService defaults (pinned in DataEncryptionServiceTest).
-        lenient().when(encryptionService.minEncryptedLength()).thenReturn(28);
         processor = new SecretFieldProcessor(encryptionService, BUCKET);
         descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.PROJECT_KEY, "platform", "platform/", "test-key");
-    }
-
-    // Structurally valid envelope: Base64 of >= 28 bytes (AES-GCM IV 12 + tag 16 minimum).
-    private static String validEnvelope(String seed) {
-        byte[] bytes = new byte[28];
-        byte[] src = seed.getBytes(StandardCharsets.UTF_8);
-        for (int i = 0; i < bytes.length; i++) {
-            bytes[i] = src[i % src.length];
-        }
-        return "ENC[" + Base64.getEncoder().encodeToString(bytes) + "]";
     }
 
     @Test
@@ -78,12 +64,11 @@ class SecretFieldProcessorTest {
     @Test
     void encryptFields_skipsAlreadyEncryptedEnvelope() {
         Key key = new Key();
-        String envelope = validEnvelope("already-encrypted-payload-bytes");
-        key.setKey(envelope);
+        key.setKey("ENC[abc]");
 
         processor.encryptFields(key, descriptor);
 
-        assertEquals(envelope, key.getKey());
+        assertEquals("ENC[abc]", key.getKey());
         verify(encryptionService, never()).encrypt(any(), any(), any());
     }
 
@@ -140,7 +125,7 @@ class SecretFieldProcessorTest {
     void decryptFields_walksIntoNestedUpstreams() {
         Upstream up = new Upstream();
         up.setKey("ENC[" + Base64.getEncoder().encodeToString("up-cipher".getBytes(StandardCharsets.UTF_8)) + "]");
-        up.setSecretExtraData("ENC[" + Base64.getEncoder().encodeToString("xd-cipher".getBytes(StandardCharsets.UTF_8)) + "]");
+        up.setExtraData("ENC[" + Base64.getEncoder().encodeToString("xd-cipher".getBytes(StandardCharsets.UTF_8)) + "]");
         Model model = new Model();
         model.setUpstreams(List.of(up));
         when(encryptionService.decrypt(eq(BUCKET), any(byte[].class), any(byte[].class)))
@@ -153,7 +138,7 @@ class SecretFieldProcessorTest {
         processor.decryptFields(model, descriptor);
 
         assertEquals("plain-up-cipher", model.getUpstreams().get(0).getKey());
-        assertEquals("plain-xd-cipher", model.getUpstreams().get(0).getSecretExtraData());
+        assertEquals("plain-xd-cipher", model.getUpstreams().get(0).getExtraData());
     }
 
     @Test
@@ -175,6 +160,34 @@ class SecretFieldProcessorTest {
     }
 
     @Test
+    void validateNoMaskSentinel_throwsOnTopLevelMask() throws Exception {
+        ObjectNode node = (ObjectNode) M.readTree("{\"key\": \"***\"}");
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> processor.validateNoMaskSentinel(node, Key.class));
+        assertEquals("Secret field 'key' contains the mask sentinel '***'. "
+                + "Provide a real secret value or omit the field.", ex.getMessage());
+    }
+
+    @Test
+    void validateNoMaskSentinel_throwsOnNestedUpstreamMask() throws Exception {
+        ObjectNode node = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"x\",\"key\":\"***\"}]}");
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> processor.validateNoMaskSentinel(node, Model.class));
+        assertEquals("Secret field 'key' contains the mask sentinel '***'. "
+                + "Provide a real secret value or omit the field.", ex.getMessage());
+    }
+
+    @Test
+    void validateNoMaskSentinel_acceptsRealValue() throws Exception {
+        ObjectNode node = (ObjectNode) M.readTree("{\"key\": \"real-secret\"}");
+        // No exception expected.
+        processor.validateNoMaskSentinel(node, Key.class);
+    }
+
+    @Test
     void mergePreservingOmittedSecrets_copiesCiphertextWhenAbsent() throws Exception {
         ObjectNode existing = (ObjectNode) M.readTree("{\"key\": \"ENC[abc]\", \"role\": \"r\"}");
         ObjectNode request = (ObjectNode) M.readTree("{\"role\": \"r2\"}");
@@ -186,15 +199,13 @@ class SecretFieldProcessorTest {
     }
 
     @Test
-    void mergePreservingOmittedSecrets_treatsMaskAsLiteralValue() throws Exception {
-        // Slice U.4: the "***" sentinel was retired. A textual "***" in the request body is a real
-        // value (re-encrypted on write), not a signal to preserve. Only null / missing preserves.
+    void mergePreservingOmittedSecrets_replacesMaskSentinel() throws Exception {
         ObjectNode existing = (ObjectNode) M.readTree("{\"key\": \"ENC[abc]\"}");
         ObjectNode request = (ObjectNode) M.readTree("{\"key\": \"***\"}");
 
         ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Key.class);
 
-        assertEquals("***", merged.get("key").asText());
+        assertEquals("ENC[abc]", merged.get("key").asText());
     }
 
     @Test
@@ -216,234 +227,31 @@ class SecretFieldProcessorTest {
     }
 
     @Test
-    void stripEncryptedFields_dropsSecretAtTopLevel() throws Exception {
+    void maskInPayload_replacesPlaintextSecretAtTopLevel() throws Exception {
         ObjectNode payload = (ObjectNode) M.readTree("{\"key\": \"super-secret\", \"role\": \"r\"}");
 
-        ObjectNode stripped = SecretFieldProcessor.stripEncryptedFields(payload, Key.class);
+        ObjectNode masked = SecretFieldProcessor.maskInPayload(payload, Key.class);
 
-        assertFalse(stripped.has("key"), () -> "key must be removed: " + stripped);
-        assertEquals("r", stripped.get("role").asText());
+        assertEquals("***", masked.get("key").asText());
+        assertEquals("r", masked.get("role").asText());
         assertEquals("super-secret", payload.get("key").asText(), "input must not be mutated");
     }
 
     @Test
-    void stripEncryptedFields_recursesIntoUpstreams() throws Exception {
+    void maskInPayload_recursesIntoUpstreams() throws Exception {
         ObjectNode payload = (ObjectNode) M.readTree(
-                "{\"name\":\"m\",\"upstreams\":[{\"endpoint\":\"e\",\"key\":\"sk-leak\","
-                        + "\"extraData\":\"{\\\"region\\\":\\\"us\\\"}\",\"secretExtraData\":\"sk-secret\"}]}");
+                "{\"name\":\"m\",\"upstreams\":[{\"endpoint\":\"e\",\"key\":\"sk-leak\",\"extraData\":\"{\\\"region\\\":\\\"us\\\"}\"}]}");
 
-        ObjectNode stripped = SecretFieldProcessor.stripEncryptedFields(payload, Model.class);
+        ObjectNode masked = SecretFieldProcessor.maskInPayload(payload, Model.class);
 
-        ObjectNode up = (ObjectNode) stripped.get("upstreams").get(0);
-        assertFalse(up.has("key"), () -> "upstream key must be removed: " + up);
-        assertFalse(up.has("secretExtraData"), () -> "upstream secretExtraData must be removed: " + up);
-        assertEquals("{\"region\":\"us\"}", up.get("extraData").asText(), () -> "upstream extraData must be kept: " + up);
+        ObjectNode up = (ObjectNode) masked.get("upstreams").get(0);
+        assertEquals("***", up.get("key").asText());
+        assertEquals("***", up.get("extraData").asText());
         assertEquals("e", up.get("endpoint").asText());
     }
 
     @Test
-    void stripEncryptedFields_returnsNullForNonObject() {
-        assertNull(SecretFieldProcessor.stripEncryptedFields(null, Key.class));
-    }
-
-    @Test
-    void reorderPreservesCorrectSecretPerEndpoint() throws Exception {
-        ObjectNode existing = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"},{\"endpoint\":\"B\",\"key\":\"ENC[b]\"}]}");
-        ObjectNode request = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"B\"},{\"endpoint\":\"A\"}]}");
-
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
-
-        assertEquals("B", merged.get("upstreams").get(0).get("endpoint").asText());
-        assertEquals("ENC[b]", merged.get("upstreams").get(0).get("key").asText());
-        assertEquals("A", merged.get("upstreams").get(1).get("endpoint").asText());
-        assertEquals("ENC[a]", merged.get("upstreams").get(1).get("key").asText());
-    }
-
-    @Test
-    void insertAtIndexZeroGetsNoSecret() throws Exception {
-        ObjectNode existing = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"}]}");
-        ObjectNode request = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"C\"},{\"endpoint\":\"A\"}]}");
-
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
-
-        ObjectNode c = (ObjectNode) merged.get("upstreams").get(0);
-        assertEquals("C", c.get("endpoint").asText());
-        assertFalse(c.has("key") && !c.get("key").isNull(), () -> "C must get no preserved secret: " + c);
-        assertEquals("ENC[a]", merged.get("upstreams").get(1).get("key").asText());
-    }
-
-    @Test
-    void removalLeavesRemainingCorrect() throws Exception {
-        ObjectNode existing = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"},"
-                        + "{\"endpoint\":\"B\",\"key\":\"ENC[b]\"},{\"endpoint\":\"C\",\"key\":\"ENC[c]\"}]}");
-        ObjectNode request = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"A\"},{\"endpoint\":\"C\"}]}");
-
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
-
-        assertEquals("ENC[a]", merged.get("upstreams").get(0).get("key").asText());
-        assertEquals("ENC[c]", merged.get("upstreams").get(1).get("key").asText());
-    }
-
-    @Test
-    void duplicateEndpointsMatchInRelativeOrder() throws Exception {
-        ObjectNode existing = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"A\",\"tier\":0,\"key\":\"ENC[a0]\"},"
-                        + "{\"endpoint\":\"A\",\"tier\":1,\"key\":\"ENC[a1]\"}]}");
-        ObjectNode request = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"A\"},{\"endpoint\":\"A\"}]}");
-
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
-
-        assertEquals("ENC[a0]", merged.get("upstreams").get(0).get("key").asText());
-        assertEquals("ENC[a1]", merged.get("upstreams").get(1).get("key").asText());
-    }
-
-    @Test
-    void newUpstreamWithExplicitKeyKept() throws Exception {
-        ObjectNode existing = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"}]}");
-        ObjectNode request = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"D\",\"key\":\"new-plain\"},{\"endpoint\":\"A\"}]}");
-
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
-
-        assertEquals("new-plain", merged.get("upstreams").get(0).get("key").asText());
-        assertEquals("ENC[a]", merged.get("upstreams").get(1).get("key").asText());
-    }
-
-    @Test
-    void secretExtraDataAlsoPreservedByEndpoint() throws Exception {
-        ObjectNode existing = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"A\",\"secretExtraData\":\"ENC[xa]\"},"
-                        + "{\"endpoint\":\"B\",\"secretExtraData\":\"ENC[xb]\"}]}");
-        ObjectNode request = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"B\"},{\"endpoint\":\"A\"}]}");
-
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
-
-        assertEquals("ENC[xb]", merged.get("upstreams").get(0).get("secretExtraData").asText());
-        assertEquals("ENC[xa]", merged.get("upstreams").get(1).get("secretExtraData").asText());
-    }
-
-    @Test
-    void mixedKeyedUnkeyedLosesSecretOnConsumedIndexSlot() throws Exception {
-        // Contract pin (not a fix): an endpoint-keyed element and an endpoint-less element in the
-        // same request array can silently lose a stored secret. element0 endpoint-matches B (consumes
-        // slot 1); element1 has no endpoint so it strict-index-pairs with slot 1, finds it consumed,
-        // and preserves nothing. Deterministic by structure — clients must not mix the two forms.
-        ObjectNode existing = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"},{\"endpoint\":\"B\",\"key\":\"ENC[b]\"}]}");
-        ObjectNode request = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"B\"},{}]}");
-
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
-
-        assertEquals("ENC[b]", merged.get("upstreams").get(0).get("key").asText());
-        ObjectNode element1 = (ObjectNode) merged.get("upstreams").get(1);
-        assertFalse(element1.has("key"),
-                () -> "element1 must get no preserved secret (slot 1 consumed by endpoint match): " + element1);
-    }
-
-    @Test
-    void allUnkeyedElementsPairByIndex() throws Exception {
-        ObjectNode existing = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"},"
-                        + "{\"endpoint\":\"B\",\"key\":\"ENC[b]\"},{\"endpoint\":\"C\",\"key\":\"ENC[c]\"}]}");
-        ObjectNode request = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{},{},{}]}");
-
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
-
-        assertEquals("ENC[a]", merged.get("upstreams").get(0).get("key").asText());
-        assertEquals("ENC[b]", merged.get("upstreams").get(1).get("key").asText());
-        assertEquals("ENC[c]", merged.get("upstreams").get(2).get("key").asText());
-    }
-
-    @Test
-    void unkeyedElementBeyondSourceBoundsGetsNothing() throws Exception {
-        ObjectNode existing = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"}]}");
-        ObjectNode request = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{},{\"key\":\"new-plain\"}]}");
-
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
-
-        // element0 index-pairs with slot 0; element1 index 1 is out of source bounds (size 1) → no
-        // preservation, its explicit value survives (re-encrypted on write).
-        assertEquals("ENC[a]", merged.get("upstreams").get(0).get("key").asText());
-        assertEquals("new-plain", merged.get("upstreams").get(1).get("key").asText());
-    }
-
-    @Test
-    void unkeyedFirstThenEndpointMatchOnSameSlot() throws Exception {
-        ObjectNode existing = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"},{\"endpoint\":\"B\",\"key\":\"ENC[b]\"}]}");
-        ObjectNode request = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{},{\"endpoint\":\"A\"}]}");
-
-        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
-
-        // element0 (no endpoint) strict-index-pairs slot 0 → preserves ENC[a], consumes slot 0.
-        // element1 endpoint=A then finds slot 0 consumed and no other A source → preserves nothing.
-        assertEquals("ENC[a]", merged.get("upstreams").get(0).get("key").asText());
-        ObjectNode element1 = (ObjectNode) merged.get("upstreams").get(1);
-        assertFalse(element1.has("key"),
-                () -> "element1 endpoint=A must get nothing (slot 0 already consumed): " + element1);
-    }
-
-    @Test
-    void plaintextShapedLikeEnvelopeGetsEncrypted() {
-        Key key = new Key();
-        key.setKey("ENC[not-base64!]");
-        when(encryptionService.encrypt(eq(BUCKET), any(byte[].class), any(byte[].class)))
-                .thenReturn("CIPHER".getBytes(StandardCharsets.UTF_8));
-
-        processor.encryptFields(key, descriptor);
-
-        String expected = "ENC[" + Base64.getEncoder().encodeToString("CIPHER".getBytes(StandardCharsets.UTF_8)) + "]";
-        assertEquals(expected, key.getKey());
-        verify(encryptionService).encrypt(eq(BUCKET), any(byte[].class), any(byte[].class));
-    }
-
-    @Test
-    void tooShortEnvelopeShapedPlaintextGetsEncrypted() {
-        Key key = new Key();
-        // "YQ==" decodes to a single byte, well below the 28-byte AES-GCM minimum.
-        key.setKey("ENC[YQ==]");
-        when(encryptionService.encrypt(eq(BUCKET), any(byte[].class), any(byte[].class)))
-                .thenReturn("CIPHER".getBytes(StandardCharsets.UTF_8));
-
-        processor.encryptFields(key, descriptor);
-
-        String expected = "ENC[" + Base64.getEncoder().encodeToString("CIPHER".getBytes(StandardCharsets.UTF_8)) + "]";
-        assertEquals(expected, key.getKey());
-        verify(encryptionService).encrypt(eq(BUCKET), any(byte[].class), any(byte[].class));
-    }
-
-    @Test
-    void legacyValidEnvelopePassesThroughUnchanged() {
-        Key key = new Key();
-        String envelope = validEnvelope("legacy-ciphertext-bytes");
-        key.setKey(envelope);
-
-        processor.encryptFields(key, descriptor);
-
-        assertEquals(envelope, key.getKey());
-        verify(encryptionService, never()).encrypt(any(), any(), any());
-    }
-
-    @Test
-    void invalidBase64EnvelopeThrowsOnDecrypt() {
-        Key key = new Key();
-        key.setKey("ENC[!!!]");
-
-        assertThrows(SecurityException.class, () -> processor.decryptFields(key, descriptor));
-        verify(encryptionService, never()).decrypt(any(), any(), any());
+    void maskInPayload_returnsNullForNonObject() {
+        assertNull(SecretFieldProcessor.maskInPayload(null, Key.class));
     }
 }

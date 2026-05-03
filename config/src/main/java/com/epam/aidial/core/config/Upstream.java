@@ -26,7 +26,7 @@ public class Upstream {
     @EncryptedField
     @JsonAlias({"key", "dial:key"})
     private String key;
-    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @EncryptedField
     @JsonDeserialize(using = JsonToStringDeserializer.class)
     @JsonAlias({"extraData", "dial:extraData"})
     private String extraData;

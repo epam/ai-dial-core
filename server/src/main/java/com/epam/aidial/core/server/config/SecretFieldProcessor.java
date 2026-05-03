@@ -5,7 +5,6 @@ import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.lang.reflect.Field;
@@ -15,16 +14,13 @@ import java.util.Base64;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class SecretFieldProcessor {
 
     public static final String ENC_PREFIX = "ENC[";
     public static final String ENC_SUFFIX = "]";
     public static final String SECRET_REF_PREFIX = "${SECRET:";
-
-    private static final ConcurrentHashMap<Class<?>, List<Field>> FIELDS_CACHE = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<Class<?>, Boolean> HAS_ENCRYPTED_FIELD_CACHE = new ConcurrentHashMap<>();
+    public static final String MASK_SENTINEL = "***";
 
     private final CredentialEncryptionService encryptionService;
     private final BucketInfo platformBucketInfo;
@@ -62,26 +58,48 @@ public class SecretFieldProcessor {
         return value;
     }
 
-    /**
-     * Strip every {@link EncryptedField}-annotated value (and any nested array elements that carry
-     * the annotation) from {@code payload}. Used to project invalid-entity payloads on the admin
-     * GET surface — the raw blob may still hold {@code ENC[...]} ciphertext (decryption_error
-     * reason) and dropping the fields entirely keeps ciphertext out of the response.
-     */
-    public static ObjectNode stripEncryptedFields(JsonNode payload, Class<?> entityClass) {
-        if (!(payload instanceof ObjectNode object)) {
-            return null;
+    public void validateNoMaskSentinel(JsonNode requestNode, Class<?> entityClass) {
+        if (requestNode == null || !requestNode.isObject()) {
+            return;
         }
-        ObjectNode stripped = object.deepCopy();
-        applyStrip(stripped, entityClass);
-        return stripped;
-    }
-
-    private static void applyStrip(ObjectNode target, Class<?> entityClass) {
         for (Field field : declaredFieldsIncludingInherited(entityClass)) {
             String name = field.getName();
             if (field.isAnnotationPresent(EncryptedField.class)) {
-                target.remove(name);
+                JsonNode child = requestNode.get(name);
+                if (child != null && !child.isNull() && MASK_SENTINEL.equals(child.asText())) {
+                    throw new IllegalArgumentException("Secret field '" + name
+                            + "' contains the mask sentinel '***'. Provide a real secret value or omit the field.");
+                }
+            }
+            Class<?> nested = elementClassWithEncryptedField(field);
+            if (nested != null) {
+                JsonNode arr = requestNode.get(name);
+                if (arr != null && arr.isArray()) {
+                    for (JsonNode item : arr) {
+                        validateNoMaskSentinel(item, nested);
+                    }
+                }
+            }
+        }
+    }
+
+    public static ObjectNode maskInPayload(JsonNode payload, Class<?> entityClass) {
+        if (!(payload instanceof ObjectNode object)) {
+            return null;
+        }
+        ObjectNode masked = object.deepCopy();
+        applyMask(masked, entityClass);
+        return masked;
+    }
+
+    private static void applyMask(ObjectNode target, Class<?> entityClass) {
+        for (Field field : declaredFieldsIncludingInherited(entityClass)) {
+            String name = field.getName();
+            if (field.isAnnotationPresent(EncryptedField.class)) {
+                JsonNode current = target.get(name);
+                if (current != null && !current.isNull()) {
+                    target.put(name, MASK_SENTINEL);
+                }
             }
             Class<?> nestedType = elementClassWithEncryptedField(field);
             if (nestedType != null) {
@@ -89,7 +107,7 @@ public class SecretFieldProcessor {
                 if (arr != null && arr.isArray()) {
                     for (JsonNode item : arr) {
                         if (item instanceof ObjectNode itemObj) {
-                            applyStrip(itemObj, nestedType);
+                            applyMask(itemObj, nestedType);
                         }
                     }
                 }
@@ -116,11 +134,9 @@ public class SecretFieldProcessor {
             String name = field.getName();
             if (field.isAnnotationPresent(EncryptedField.class)) {
                 JsonNode current = target.get(name);
-                // Preserve-on-omit: a null or absent secret in the request body keeps the prior
-                // ciphertext from the stored blob. Without the retired "***" mask sentinel, only
-                // null / missing signals "omitted" — a literal string in the request is treated as
-                // a real value and re-encrypted.
-                if (current == null || current.isNull()) {
+                boolean omitted = current == null || current.isNull()
+                        || (current.isTextual() && MASK_SENTINEL.equals(current.asText()));
+                if (omitted) {
                     JsonNode existing = source.get(name);
                     if (existing != null && !existing.isNull()) {
                         target.set(name, existing.deepCopy());
@@ -131,58 +147,18 @@ public class SecretFieldProcessor {
             if (nestedType != null) {
                 JsonNode targetArr = target.get(name);
                 JsonNode sourceArr = source.get(name);
-                if (targetArr instanceof ArrayNode targets && sourceArr instanceof ArrayNode sources) {
-                    mergeArray(targets, sources, nestedType);
+                if (targetArr != null && targetArr.isArray() && sourceArr != null && sourceArr.isArray()) {
+                    int n = Math.min(targetArr.size(), sourceArr.size());
+                    for (int i = 0; i < n; i++) {
+                        JsonNode targetItem = targetArr.get(i);
+                        JsonNode sourceItem = sourceArr.get(i);
+                        if (targetItem instanceof ObjectNode targetObj && sourceItem.isObject()) {
+                            mergeInto(targetObj, sourceItem, nestedType);
+                        }
+                    }
                 }
             }
         }
-    }
-
-    // Pair each target (request) element with its preserved source (blob) element. The matcher keys
-    // on the canonical JSON name "endpoint" (blobs are always written via the canonical mapper, so
-    // the field is present under that name) and falls back to index pairing when "endpoint" is
-    // absent — preserving prior behavior for non-keyed arrays. Iteration follows the request, so the
-    // desired set/order wins; duplicate endpoints match in relative order (stable two-pointer).
-    // Contract: endpoint-less elements use strict same-index pairing only. A consumed or
-    // out-of-bounds index slot yields no preservation (request value, possibly null, wins) — this is
-    // deterministic and never throws. Because an endpoint match can consume the slot an endpoint-less
-    // element would otherwise take, clients mixing endpoint-keyed and endpoint-less elements in one
-    // array must supply secrets explicitly for the unkeyed elements (or avoid the mix).
-    private void mergeArray(ArrayNode targets, ArrayNode sources, Class<?> nestedType) {
-        boolean[] consumed = new boolean[sources.size()];
-        for (int i = 0; i < targets.size(); i++) {
-            if (!(targets.get(i) instanceof ObjectNode targetObj)) {
-                continue;
-            }
-            int sourceIdx = matchSourceIndex(targetObj, sources, consumed, i);
-            if (sourceIdx < 0) {
-                continue;
-            }
-            consumed[sourceIdx] = true;
-            mergeInto(targetObj, sources.get(sourceIdx), nestedType);
-        }
-    }
-
-    private int matchSourceIndex(ObjectNode targetObj, ArrayNode sources, boolean[] consumed, int targetIndex) {
-        JsonNode endpointNode = targetObj.get("endpoint");
-        if (endpointNode != null && endpointNode.isTextual()) {
-            String endpoint = endpointNode.textValue();
-            for (int j = 0; j < sources.size(); j++) {
-                if (consumed[j] || !(sources.get(j) instanceof ObjectNode sourceObj)) {
-                    continue;
-                }
-                JsonNode sourceEndpoint = sourceObj.get("endpoint");
-                if (sourceEndpoint != null && sourceEndpoint.isTextual()
-                        && endpoint.equals(sourceEndpoint.textValue())) {
-                    return j;
-                }
-            }
-            return -1;
-        }
-        if (targetIndex < sources.size() && !consumed[targetIndex] && sources.get(targetIndex).isObject()) {
-            return targetIndex;
-        }
-        return -1;
     }
 
     private void walk(Object entity, byte[] aad, boolean encrypt) {
@@ -191,15 +167,12 @@ public class SecretFieldProcessor {
         }
         Class<?> cls = entity.getClass();
         for (Field field : declaredFieldsIncludingInherited(cls)) {
+            field.setAccessible(true);
             try {
                 if (field.isAnnotationPresent(EncryptedField.class) && field.getType() == String.class) {
                     String value = (String) field.get(entity);
                     String transformed = encrypt ? encryptValue(value, aad, field.getName())
                             : decryptValue(value, aad, field.getName());
-                    // Reference identity, not Objects.equals: encrypt/decrypt return the *input*
-                    // reference unchanged on no-op paths (null/empty, already enveloped,
-                    // ${secret:...} placeholders). Skipping field.set in those cases avoids a
-                    // redundant reflective write.
                     if (transformed != value) {
                         field.set(entity, transformed);
                     }
@@ -238,10 +211,7 @@ public class SecretFieldProcessor {
         if (value == null || value.isEmpty()) {
             return value;
         }
-        // Only a structurally valid envelope (valid Base64, decoded length >= AES-GCM minimum) is
-        // trusted as already-encrypted. An ENC[-shaped but malformed value falls through and is
-        // encrypted as plaintext rather than blindly preserved.
-        if (isValidEnvelope(value)) {
+        if (value.startsWith(ENC_PREFIX) && value.endsWith(ENC_SUFFIX)) {
             return value;
         }
         if (value.startsWith(SECRET_REF_PREFIX)) {
@@ -266,21 +236,6 @@ public class SecretFieldProcessor {
         return value;
     }
 
-    private boolean isValidEnvelope(String value) {
-        if (!value.startsWith(ENC_PREFIX) || !value.endsWith(ENC_SUFFIX)) {
-            return false;
-        }
-        String payload = value.substring(ENC_PREFIX.length(), value.length() - ENC_SUFFIX.length());
-        byte[] decoded;
-        try {
-            decoded = Base64.getDecoder().decode(payload);
-        } catch (IllegalArgumentException e) {
-            return false;
-        }
-        // A decoded payload shorter than IV + GCM tag cannot be a real envelope.
-        return decoded.length >= encryptionService.minEncryptedLength();
-    }
-
     private String decryptEnvelope(String envelope, byte[] aad, String fieldName) {
         String payload = envelope.substring(ENC_PREFIX.length(), envelope.length() - ENC_SUFFIX.length());
         byte[] raw;
@@ -299,27 +254,17 @@ public class SecretFieldProcessor {
     }
 
     private static List<Field> declaredFieldsIncludingInherited(Class<?> cls) {
-        return FIELDS_CACHE.computeIfAbsent(cls, SecretFieldProcessor::collectFields);
-    }
-
-    private static List<Field> collectFields(Class<?> cls) {
         List<Field> result = new ArrayList<>();
         Class<?> c = cls;
         while (c != null && c != Object.class) {
             for (Field f : c.getDeclaredFields()) {
                 if (!f.isSynthetic()) {
-                    try {
-                        f.setAccessible(true);
-                    } catch (RuntimeException ignored) {
-                        // JPMS refuses setAccessible on java.lang.Enum.name etc; classHasEncryptedField
-                        // filters such types before walk would .get/.set their fields.
-                    }
                     result.add(f);
                 }
             }
             c = c.getSuperclass();
         }
-        return List.copyOf(result);
+        return result;
     }
 
     private static Class<?> elementClassWithEncryptedField(Field field) {
@@ -344,10 +289,6 @@ public class SecretFieldProcessor {
         if (cls == null || cls.isPrimitive() || cls.getName().startsWith("java.")) {
             return false;
         }
-        return HAS_ENCRYPTED_FIELD_CACHE.computeIfAbsent(cls, SecretFieldProcessor::computeHasEncryptedField);
-    }
-
-    private static boolean computeHasEncryptedField(Class<?> cls) {
         for (Field f : declaredFieldsIncludingInherited(cls)) {
             if (f.isAnnotationPresent(EncryptedField.class)) {
                 return true;

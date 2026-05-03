@@ -45,6 +45,14 @@ public class ProxyUtil {
     // overrides to READ_WRITE so the blob-write path can persist the ciphertext.
     public static final JsonMapper MAPPER = JsonMapper.builder()
             .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
+            .annotationIntrospector(new EncryptedFieldAnnotationIntrospector())
+            .addModule(new SimpleModule().setSerializerModifier(new EncryptedFieldMaskModifier()))
+            .build();
+
+    public static final JsonMapper BLOB_MAPPER = JsonMapper.builder()
+            .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
+            .annotationIntrospector(new EncryptedFieldAnnotationIntrospector())
+            .addModule(new SimpleModule().setSerializerModifier(new EncryptedFieldBlobModifier()))
             .build();
 
     public static final JsonMapper BLOB_MAPPER = JsonMapper.builder()
