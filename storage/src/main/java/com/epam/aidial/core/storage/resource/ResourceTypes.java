@@ -23,14 +23,13 @@ public enum ResourceTypes implements ResourceType {
     CREDENTIALS("credentials", true, TimeUnit.MINUTES.toMillis(5)),
     ENCRYPTION_KEYS("encryption_keys", true, TimeUnit.MINUTES.toMillis(5)),
     CLIENT_CHANNEL("client_channels", true, TimeUnit.HOURS.toMillis(24)),
-    MODEL("models", true, TimeUnit.DAYS.toMillis(30)),
-    APP_TYPE_SCHEMA("app_type_schemas", "schemas", true, TimeUnit.DAYS.toMillis(30)),
-    INTERCEPTOR("interceptors", true, TimeUnit.DAYS.toMillis(30)),
-    ROLE("roles", true, TimeUnit.DAYS.toMillis(30)),
-    PROJECT_KEY("project_keys", "keys", true, TimeUnit.DAYS.toMillis(30)),
-    ROUTE("routes", true, TimeUnit.DAYS.toMillis(30)),
-    GLOBAL_SETTINGS("settings", true, TimeUnit.DAYS.toMillis(30)),
-    RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5));
+    MODEL("models", true, Long.MAX_VALUE),
+    APP_TYPE_SCHEMA("app_type_schemas", true, Long.MAX_VALUE),
+    INTERCEPTOR("interceptors", true, Long.MAX_VALUE),
+    ROLE("roles", true, Long.MAX_VALUE),
+    PROJECT_KEY("project_keys", true, Long.MAX_VALUE),
+    ROUTE("routes", true, Long.MAX_VALUE),
+    GLOBAL_SETTINGS("settings", true, Long.MAX_VALUE);
 
     private final String group;
     private final String urlSegment;
@@ -67,7 +66,6 @@ public enum ResourceTypes implements ResourceType {
             case "project_keys", "keys" -> PROJECT_KEY;
             case "routes" -> ROUTE;
             case "settings" -> GLOBAL_SETTINGS;
-            case "response_mappings" -> RESPONSE_MAPPING;
             default -> throw new IllegalArgumentException("Unsupported resource type: " + group);
         };
     }
