@@ -1,56 +1,56 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
-import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
  * Admin-only configuration-validation endpoint at {@code POST /v1/admin/validate}.
- * Phase 4 scope (design 03 §6) is multi-entity, batch-aware with {@code precheck} semantics —
- * predicts the outcome of the matching {@code POST /v1/admin/apply} payload without mutation.
- * Shares the validation engine with {@link AdminApplyController} (promoted statics) so
- * {@code precheck=true} guarantees apply-parity: if validate returns 200, apply would not
- * unit-reject; if validate returns 422, apply with {@code precheck=true} would also 422.
+ * Phase 2 scope (design 03 §6) is model-only: Jackson parse, mask-sentinel rejection,
+ * deployment-name uniqueness, upstream URL syntax. Validation is non-mutating —
+ * never triggers a config rebuild or touches storage.
  */
 public class AdminValidateController implements Controller {
 
+    private static final String MODEL_KIND = "Model";
+
     private final ProxyContext context;
     private final ConfigAuthorizationService authorizationService;
-    private final MergedConfigStore mergedConfigStore;
-    private final AsyncTaskExecutor taskExecutor;
+    private final SecretFieldProcessor secretFieldProcessor;
 
     public AdminValidateController(ProxyContext context,
                                    ConfigAuthorizationService authorizationService,
-                                   MergedConfigStore mergedConfigStore,
-                                   AsyncTaskExecutor taskExecutor) {
+                                   SecretFieldProcessor secretFieldProcessor) {
         this.context = context;
         this.authorizationService = authorizationService;
-        this.mergedConfigStore = mergedConfigStore;
-        this.taskExecutor = taskExecutor;
+        this.secretFieldProcessor = secretFieldProcessor;
     }
 
     @Override
-    public Future<?> handle() {
+    public Future<?> handle() throws Exception {
         if (!authorizationService.isAdmin(context)) {
             context.respond(HttpStatus.FORBIDDEN, "Forbidden");
             return Future.succeededFuture();
         }
+
         context.getRequest().body()
                 .onSuccess(this::process)
                 .onFailure(error -> context.respond(HttpStatus.BAD_REQUEST,
@@ -64,8 +64,6 @@ public class AdminValidateController implements Controller {
             String text = body == null ? "" : body.toString(StandardCharsets.UTF_8);
             envelope = ProxyUtil.MAPPER.readTree(text.isEmpty() ? "{}" : text);
         } catch (JsonProcessingException e) {
-            // getOriginalMessage() echoes the offending token verbatim, which can leak submitted
-            // secrets back into responses and logs — surface only the parse location.
             context.respond(HttpStatus.BAD_REQUEST, "Invalid JSON at " + locationOf(e));
             return;
         }
@@ -73,119 +71,78 @@ public class AdminValidateController implements Controller {
             context.respond(HttpStatus.BAD_REQUEST, "Request body must be a JSON object");
             return;
         }
-        JsonNode manifestsNode = envelope.get("manifests");
-        if (manifestsNode == null || !manifestsNode.isArray()) {
-            context.respond(HttpStatus.BAD_REQUEST, "Missing or invalid 'manifests' array");
+
+        JsonNode kindNode = envelope.get("kind");
+        if (kindNode == null || !kindNode.isTextual()) {
+            context.respond(HttpStatus.BAD_REQUEST, "Missing or invalid 'kind'");
             return;
         }
-        boolean precheck = !envelope.has("precheck") || envelope.get("precheck").asBoolean(true);
-
-        List<AdminApplyController.ManifestEntry> entries = new ArrayList<>();
-        for (int i = 0; i < manifestsNode.size(); i++) {
-            JsonNode entryNode = manifestsNode.get(i);
-            if (!entryNode.isObject()) {
-                context.respond(HttpStatus.BAD_REQUEST, "manifests[" + i + "] must be a JSON object");
-                return;
-            }
-            JsonNode kindNode = entryNode.get("kind");
-            if (kindNode == null || !kindNode.isTextual()) {
-                context.respond(HttpStatus.BAD_REQUEST, "manifests[" + i + "].kind must be a string");
-                return;
-            }
-            String kind = kindNode.asText();
-            if ("Bundle".equals(kind)) {
-                context.respond(HttpStatus.BAD_REQUEST, "Bundle kind is not allowed in /v1/admin/validate");
-                return;
-            }
-            String name = entryNode.hasNonNull("name") ? entryNode.get("name").asText() : null;
-            JsonNode spec = entryNode.get("spec");
-            entries.add(new AdminApplyController.ManifestEntry(kind, name, spec));
+        String kind = kindNode.asText();
+        if (!MODEL_KIND.equals(kind)) {
+            context.respond(HttpStatus.BAD_REQUEST, "Unsupported kind: " + kind);
+            return;
         }
 
-        taskExecutor.submit(() -> validateBatch(precheck, entries))
-                .onSuccess(result -> context.respond(result.status(), result.body()))
-                .onFailure(error -> {
-                    if (error instanceof HttpException ex) {
-                        context.respond(ex);
-                    } else {
-                        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
-                    }
-                });
+        JsonNode nameNode = envelope.get("name");
+        if (nameNode == null || !nameNode.isTextual() || nameNode.asText().isBlank()) {
+            context.respond(HttpStatus.BAD_REQUEST, "Missing or invalid 'name'");
+            return;
+        }
+        String name = nameNode.asText();
+
+        JsonNode specNode = envelope.get("spec");
+        if (specNode == null || !specNode.isObject()) {
+            context.respond(HttpStatus.BAD_REQUEST, "Missing or invalid 'spec'");
+            return;
+        }
+
+        ArrayNode errors = ProxyUtil.MAPPER.createArrayNode();
+        Model model = parseModel(specNode, errors);
+
+        try {
+            secretFieldProcessor.validateNoMaskSentinel(specNode, Model.class);
+        } catch (IllegalArgumentException e) {
+            addError(errors, null, e.getMessage());
+        }
+
+        Config config = context.getConfig();
+        if (config != null && deploymentExists(config, name)) {
+            addError(errors, "name", "Deployment name '" + name + "' is already in use");
+        }
+
+        if (model != null) {
+            validateUpstreams(model.getUpstreams(), errors);
+        }
+
+        ObjectNode response = ProxyUtil.MAPPER.createObjectNode();
+        response.put("valid", errors.isEmpty());
+        response.set("errors", errors);
+        context.respond(HttpStatus.OK, response);
     }
 
-    private ValidateResponse validateBatch(boolean precheck,
-                                           List<AdminApplyController.ManifestEntry> rawEntries) {
-        List<AdminApplyController.ManifestEntry> entries = new ArrayList<>(rawEntries);
-        entries.sort(Comparator.comparingInt(
-                e -> AdminApplyController.DEPENDENCY_ORDER.getOrDefault(e.kind(), 99)));
-
-        boolean softValidation = mergedConfigStore.isSoftValidation();
-        Config scratch = AdminApplyController.newScratch(mergedConfigStore);
-        List<AdminApplyController.EntityResult> results = new ArrayList<>();
-        boolean anyFailure = false;
-
-        for (AdminApplyController.ManifestEntry entry : entries) {
-            String entityId = AdminApplyController.entityId(entry);
-            String error = null;
-            // Unknown kinds FAIL on both surfaces: validateOnly returns FAILED (apply precheck
-            // rejects the batch with 422), so this explicit branch is redundant but kept as a
-            // defensive guard. Bundle is already rejected at the envelope-parse level (per 4S.0).
-            if (!AdminApplyController.KIND_URL_SEGMENT.containsKey(entry.kind())) {
-                error = "Unknown kind: " + entry.kind();
-            } else {
-                AdminApplyController.EntityResult validation =
-                        AdminApplyController.validateOnly(entry, scratch, softValidation);
-                if (!"valid".equals(validation.status())) {
-                    error = validation.error();
-                }
-            }
-            if (error == null) {
-                AdminApplyController.mutateScratch(scratch, entry);
-                results.add(new AdminApplyController.EntityResult(entityId, "valid", null));
-            } else {
-                anyFailure = true;
-                results.add(new AdminApplyController.EntityResult(entityId, "FAILED", error));
-            }
+    /**
+     * selectDeployment matches simple-name keys (file-defined entities). API-created models are
+     * keyed by canonical ID ({@code models/public/<name>}) by MergedConfigStore, so probe both.
+     * Applications and toolsets are not MergedConfigStore-managed (design 02 §6), so simple-name
+     * lookup already covers them.
+     */
+    private static boolean deploymentExists(Config config, String name) {
+        if (config.selectDeployment(name) != null) {
+            return true;
         }
-
-        if (precheck && anyFailure) {
-            List<AdminApplyController.EntityResult> finalResults = new ArrayList<>(results.size());
-            for (AdminApplyController.EntityResult r : results) {
-                if ("valid".equals(r.status())) {
-                    finalResults.add(new AdminApplyController.EntityResult(r.entityId(), "skipped", null));
-                } else {
-                    finalResults.add(r);
-                }
-            }
-            return buildValidateResponse(HttpStatus.UNPROCESSABLE_ENTITY, finalResults);
-        }
-        return buildValidateResponse(HttpStatus.OK, results);
+        return config.getModels() != null && config.getModels().containsKey("models/public/" + name);
     }
 
-    private ValidateResponse buildValidateResponse(HttpStatus status,
-                                                   List<AdminApplyController.EntityResult> results) {
-        int valid = 0;
-        int failed = 0;
-        for (AdminApplyController.EntityResult r : results) {
-            if ("valid".equals(r.status())) {
-                valid++;
-            } else if ("FAILED".equals(r.status())) {
-                failed++;
-            }
+    private Model parseModel(JsonNode specNode, ArrayNode errors) {
+        try {
+            return ProxyUtil.BLOB_MAPPER.treeToValue(specNode, Model.class);
+        } catch (JsonProcessingException e) {
+            // Suppress getOriginalMessage() — Jackson echoes the offending token value verbatim,
+            // which can leak submitted secrets back to the caller and into server logs.
+            String field = e instanceof JsonMappingException jme ? jme.getPathReference() : null;
+            addError(errors, field, "Failed to parse Model at " + locationOf(e));
+            return null;
         }
-        ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
-        body.put("valid", valid);
-        body.put("failed", failed);
-        ArrayNode arr = body.putArray("results");
-        for (AdminApplyController.EntityResult r : results) {
-            ObjectNode n = arr.addObject();
-            n.put("entityId", r.entityId());
-            n.put("status", r.status());
-            if (r.error() != null) {
-                n.put("error", r.error());
-            }
-        }
-        return new ValidateResponse(status, body);
     }
 
     private static String locationOf(JsonProcessingException e) {
@@ -194,5 +151,36 @@ public class AdminValidateController implements Controller {
                 : "line " + e.getLocation().getLineNr() + ", column " + e.getLocation().getColumnNr();
     }
 
-    private record ValidateResponse(HttpStatus status, ObjectNode body) {}
+    private static void validateUpstreams(List<Upstream> upstreams, ArrayNode errors) {
+        if (upstreams == null) {
+            return;
+        }
+        for (int i = 0; i < upstreams.size(); i++) {
+            Upstream upstream = upstreams.get(i);
+            if (upstream == null) {
+                continue;
+            }
+            checkUrl(upstream.getEndpoint(), "upstreams[" + i + "].endpoint", errors);
+            checkUrl(upstream.getResponsesEndpoint(), "upstreams[" + i + "].responsesEndpoint", errors);
+        }
+    }
+
+    private static void checkUrl(String url, String field, ArrayNode errors) {
+        if (url == null || url.isBlank()) {
+            return;
+        }
+        try {
+            new URI(url).toURL();
+        } catch (MalformedURLException | URISyntaxException | IllegalArgumentException e) {
+            addError(errors, field, "Malformed URL: " + e.getMessage());
+        }
+    }
+
+    private static void addError(ArrayNode errors, String field, String message) {
+        ObjectNode entry = errors.addObject();
+        if (field != null) {
+            entry.put("field", field);
+        }
+        entry.put("message", message);
+    }
 }

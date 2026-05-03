@@ -316,22 +316,7 @@ public class ControllerSelector {
             ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
             MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
             AdminValidateController controller = new AdminValidateController(
-                    context, authService, mergedConfigStore,
-                    proxy.getTaskExecutor());
-            return controller::handle;
-        });
-        post(RouteTemplate.CONFIG_APPLY, (proxy, context, pathMatcher) -> {
-            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
-            MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
-            AdminApplyController controller = new AdminApplyController(
-                    context, authService, mergedConfigStore,
-                    proxy.getResourceService(), proxy.getTaskExecutor(),
-                    mergedConfigStore.getSecretFieldProcessor(),
-                    mergedConfigStore.isSoftValidation(),
-                    proxy.getApiKeyStore(),
-                    proxy.getApplicationService(),
-                    proxy.getToolSetService(),
-                    proxy.getLockService());
+                    context, authService, mergedConfigStore.getSecretFieldProcessor());
             return controller::handle;
         });
         post(RouteTemplate.CONFIG, (proxy, context, pathMatcher) -> new ConfigController(context));

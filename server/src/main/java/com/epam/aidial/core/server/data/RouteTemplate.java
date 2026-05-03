@@ -85,6 +85,11 @@ public enum RouteTemplate {
             "/v1/admin/health/config"
     ),
 
+    CONFIG_VALIDATE(
+            "^/v1/admin/validate$",
+            "/v1/admin/validate"
+    ),
+
     BUCKET(
             "^/v1/bucket$",
             "/v1/bucket"
