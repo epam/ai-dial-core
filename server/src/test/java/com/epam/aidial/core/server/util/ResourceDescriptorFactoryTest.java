@@ -266,6 +266,29 @@ public class ResourceDescriptorFactoryTest {
     }
 
     @Test
+    public void testUrlSegmentRoundTrip_Schemas() {
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl("schemas/public/foo", null);
+        assertEquals("schemas/public/foo", descriptor.getUrl());
+        assertEquals("schemas/public/foo", descriptor.getDecodedUrl());
+        assertEquals("public/app_type_schemas/foo", descriptor.getAbsoluteFilePath());
+    }
+
+    @Test
+    public void testUrlSegmentRoundTrip_Keys() {
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl("keys/platform/proxyKey1", null);
+        assertEquals("keys/platform/proxyKey1", descriptor.getUrl());
+        assertEquals("keys/platform/proxyKey1", descriptor.getDecodedUrl());
+        assertEquals("platform/project_keys/proxyKey1", descriptor.getAbsoluteFilePath());
+    }
+
+    @Test
+    public void testUrlSegmentDefault_NonAliasedType() {
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl("models/public/gpt-4", null);
+        assertEquals("models/public/gpt-4", descriptor.getUrl());
+        assertEquals("public/models/gpt-4", descriptor.getAbsoluteFilePath());
+    }
+
+    @Test
     public void testFromAnyUrl_RootFolder() {
         JsonObject settings = new JsonObject();
         settings.put("secret", "secret");

@@ -24,10 +24,10 @@ public enum ResourceTypes implements ResourceType {
     ENCRYPTION_KEYS("encryption_keys", true, TimeUnit.MINUTES.toMillis(5)),
     CLIENT_CHANNEL("client_channels", true, TimeUnit.HOURS.toMillis(24)),
     MODEL("models", true, Long.MAX_VALUE),
-    APP_TYPE_SCHEMA("app_type_schemas", true, Long.MAX_VALUE),
+    APP_TYPE_SCHEMA("app_type_schemas", "schemas", true, Long.MAX_VALUE),
     INTERCEPTOR("interceptors", true, Long.MAX_VALUE),
     ROLE("roles", true, Long.MAX_VALUE),
-    PROJECT_KEY("project_keys", true, Long.MAX_VALUE),
+    PROJECT_KEY("project_keys", "keys", true, Long.MAX_VALUE),
     ROUTE("routes", true, Long.MAX_VALUE),
     GLOBAL_SETTINGS("settings", true, Long.MAX_VALUE);
 
