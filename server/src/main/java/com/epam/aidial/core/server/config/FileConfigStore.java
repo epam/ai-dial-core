@@ -1,15 +1,8 @@
 package com.epam.aidial.core.server.config;
 
-import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
-import com.epam.aidial.core.config.Interceptor;
-import com.epam.aidial.core.config.Limit;
-import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.Role;
-import com.epam.aidial.core.config.Route;
-import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.validation.ValidationModule;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -25,14 +18,7 @@ import java.io.BufferedInputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.function.Consumer;
 
 @Slf4j
@@ -73,74 +59,8 @@ public final class FileConfigStore implements ConfigStore {
             log.debug("Config loading is started");
             Config config = loadConfig();
 
-            Set<String> deploymentIds = new HashSet<>();
-
-            List<Route> sortedRoutes = new ArrayList<>();
-            for (Map.Entry<String, Route> entry : config.getRoutes().entrySet()) {
-                String name = entry.getKey();
-                Route route = entry.getValue();
-                route.setName(name);
-                log.debug("Loading {}", route);
-                sortedRoutes.add(route);
-            }
-            sortedRoutes.sort(Comparator.comparingInt(Route::getOrder));
-            LinkedHashMap<String, Route> routes = config.getRoutes();
-            routes.clear();
-            for (Route route : sortedRoutes) {
-                routes.put(route.getName(), route);
-            }
-
-            for (Map.Entry<String, Model> entry : config.getModels().entrySet()) {
-                String name = entry.getKey();
-                enforceDeploymentUniqueness(name, deploymentIds);
-                Model model = entry.getValue();
-                model.setName(name);
-                log.debug("Loading {}", model);
-            }
-
-            for (Map.Entry<String, Application> entry : config.getApplications().entrySet()) {
-                String name = entry.getKey();
-                enforceDeploymentUniqueness(name, deploymentIds);
-                Application application = entry.getValue();
-                application.setName(name);
-                log.debug("Loading {}", application);
-            }
-
+            ConfigPostProcessor.process(config);
             apiKeyStore.addProjectKeys(config.getKeys());
-
-            for (Map.Entry<String, Role> entry : config.getRoles().entrySet()) {
-                String name = entry.getKey();
-                Role role = entry.getValue();
-                role.setName(name);
-                log.debug("Start loading role `{}`", role.getName());
-                for (Map.Entry<String, Limit> limitEntry : role.getLimits().entrySet()) {
-                    log.debug("Loading {} for deployment `{}`", limitEntry.getValue(), limitEntry.getKey());
-                }
-                log.debug("End loading role `{}`", role.getName());
-            }
-
-            for (Map.Entry<String, Interceptor> entry : config.getInterceptors().entrySet()) {
-                String name = entry.getKey();
-                enforceDeploymentUniqueness(name, deploymentIds);
-                Interceptor interceptor = entry.getValue();
-                interceptor.setName(name);
-                log.debug("Loading {}", interceptor);
-            }
-
-            Iterator<Map.Entry<String, ToolSet>> iterator = config.getToolsets().entrySet().iterator();
-            while (iterator.hasNext()) {
-                Map.Entry<String, ToolSet> entry = iterator.next();
-                String name = entry.getKey();
-                enforceDeploymentUniqueness(name, deploymentIds);
-                if (isValidResourceKey(name)) {
-                    ToolSet toolSet = entry.getValue();
-                    toolSet.setName(name);
-                    log.debug("Loading {}", entry.getValue());
-                } else {
-                    log.warn("Invalid ToolSet name: {}", name);
-                    iterator.remove();
-                }
-            }
 
             this.config = config;
             for (Consumer<Config> callback : onReloadCallbacks) {
@@ -156,16 +76,6 @@ public final class FileConfigStore implements ConfigStore {
             log.warn("Failed to reload config: {}", e.getMessage());
         }
         return null;
-    }
-
-    private static void enforceDeploymentUniqueness(String deploymentId, Set<String> deployments) {
-        if (!deployments.add(deploymentId)) {
-            throw new IllegalStateException("Deployment uniqueness is violated: duplicate is found " + deploymentId);
-        }
-    }
-
-    private boolean isValidResourceKey(String resourceKey) {
-        return resourceKey.matches("^[A-Za-z0-9-_]+$");
     }
 
     private Config loadConfig() throws Exception {
