@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -19,14 +20,28 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import javax.annotation.Nullable;
 
 /**
- * Post-processes a freshly-loaded {@link Config}: route ordering, deployment-id uniqueness,
- * entity-name back-fill, ToolSet name validation. Extracted from {@code FileConfigStore.load()}
- * so collaborators ({@code MergedConfigStore} in slice 2S.8) can reuse the same processing
- * pipeline. This is the structural pass — always fatal-to-entity. The semantic pass and the
- * skip/abort knob land in slice 2S.9.
+ * Post-processes a freshly-loaded {@link Config} in two passes (slice 2S.9):
+ *
+ * <ul>
+ *   <li><b>Structural</b> — drops file-defined entries whose map key contains
+ *       {@code /} (cross-entity reserved path separator). Always run; cannot
+ *       fail per-entity. Only applied to file-sourced maps —
+ *       {@link MergedConfigStore} skips this pass for the merged config because
+ *       blob entries legitimately key by canonical ID.</li>
+ *   <li><b>Semantic</b> — name back-fill, deployment-id uniqueness, ToolSet
+ *       resource-key validation, route ordering, {@link ApiKeyStore} hookup.
+ *       Each per-entity violation either throws (default {@code abort} mode,
+ *       {@code onSkip == null}) or is routed via {@code onSkip} after removing
+ *       the entry from the map ({@code skip} mode).</li>
+ * </ul>
+ *
+ * <p>Entry point {@link #process(Config, ApiKeyStore)} is retained for
+ * {@link FileConfigStore}'s today-behavior — whole-config-atomic with abort on
+ * any violation.
  */
 @Slf4j
 public final class ConfigPostProcessor {
@@ -35,17 +50,53 @@ public final class ConfigPostProcessor {
     }
 
     public static void process(Config config, @Nullable ApiKeyStore apiKeyStore) {
-        Set<String> deploymentIds = new HashSet<>();
+        processStructural(config);
+        processSemantic(config, apiKeyStore, null);
+    }
 
+    /**
+     * Drops file-defined entries with slash-keyed names across models, applications,
+     * interceptors, roles, routes, and toolsets. Warn + drop, not warn + skip-record:
+     * the entries never reach {@link Config} and are not surfaced through the
+     * invalid-entity sibling store.
+     */
+    public static void processStructural(Config config) {
+        rejectSlashKeyedNames(config.getModels(), "models");
+        rejectSlashKeyedNames(config.getApplications(), "applications");
+        rejectSlashKeyedNames(config.getInterceptors(), "interceptors");
+        rejectSlashKeyedNames(config.getRoles(), "roles");
+        rejectSlashKeyedNames(config.getRoutes(), "routes");
+        rejectSlashKeyedNames(config.getToolsets(), "toolsets");
+    }
+
+    /**
+     * Runs name back-fill, deployment-id uniqueness, toolset key validation,
+     * route ordering, and {@link ApiKeyStore} hookup. Per-entity violations
+     * route through {@code onSkip} when non-null; otherwise they throw.
+     */
+    public static void processSemantic(Config config, @Nullable ApiKeyStore apiKeyStore,
+                                       @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Set<String> deploymentIds = new HashSet<>();
         sortRoutes(config);
-        processModels(config, deploymentIds);
-        processApplications(config, deploymentIds);
+        processModels(config, deploymentIds, onSkip);
+        processApplications(config, deploymentIds, onSkip);
         processRoles(config);
-        processInterceptors(config, deploymentIds);
-        processToolSets(config, deploymentIds);
+        processInterceptors(config, deploymentIds, onSkip);
+        processToolSets(config, deploymentIds, onSkip);
 
         if (apiKeyStore != null) {
             apiKeyStore.addProjectKeys(config.getKeys());
+        }
+    }
+
+    private static <T> void rejectSlashKeyedNames(Map<String, T> map, String typeLabel) {
+        Iterator<Map.Entry<String, T>> iter = map.entrySet().iterator();
+        while (iter.hasNext()) {
+            String key = iter.next().getKey();
+            if (key.contains("/")) {
+                log.warn("Dropping {} entry with slash-keyed name: {}", typeLabel, key);
+                iter.remove();
+            }
         }
     }
 
@@ -66,20 +117,30 @@ public final class ConfigPostProcessor {
         }
     }
 
-    private static void processModels(Config config, Set<String> deploymentIds) {
-        for (Map.Entry<String, Model> entry : config.getModels().entrySet()) {
+    private static void processModels(Config config, Set<String> deploymentIds,
+                                      @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Iterator<Map.Entry<String, Model>> iterator = config.getModels().entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Model> entry = iterator.next();
             String name = entry.getKey();
-            enforceDeploymentUniqueness(name, deploymentIds);
+            if (skipOnDuplicate(name, ResourceTypes.MODEL, deploymentIds, onSkip, iterator)) {
+                continue;
+            }
             Model model = entry.getValue();
             model.setName(name);
             log.debug("Loading {}", model);
         }
     }
 
-    private static void processApplications(Config config, Set<String> deploymentIds) {
-        for (Map.Entry<String, Application> entry : config.getApplications().entrySet()) {
+    private static void processApplications(Config config, Set<String> deploymentIds,
+                                            @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Iterator<Map.Entry<String, Application>> iterator = config.getApplications().entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Application> entry = iterator.next();
             String name = entry.getKey();
-            enforceDeploymentUniqueness(name, deploymentIds);
+            if (skipOnDuplicate(name, ResourceTypes.APPLICATION, deploymentIds, onSkip, iterator)) {
+                continue;
+            }
             Application application = entry.getValue();
             application.setName(name);
             log.debug("Loading {}", application);
@@ -99,22 +160,30 @@ public final class ConfigPostProcessor {
         }
     }
 
-    private static void processInterceptors(Config config, Set<String> deploymentIds) {
-        for (Map.Entry<String, Interceptor> entry : config.getInterceptors().entrySet()) {
+    private static void processInterceptors(Config config, Set<String> deploymentIds,
+                                            @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Iterator<Map.Entry<String, Interceptor>> iterator = config.getInterceptors().entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Interceptor> entry = iterator.next();
             String name = entry.getKey();
-            enforceDeploymentUniqueness(name, deploymentIds);
+            if (skipOnDuplicate(name, ResourceTypes.INTERCEPTOR, deploymentIds, onSkip, iterator)) {
+                continue;
+            }
             Interceptor interceptor = entry.getValue();
             interceptor.setName(name);
             log.debug("Loading {}", interceptor);
         }
     }
 
-    private static void processToolSets(Config config, Set<String> deploymentIds) {
+    private static void processToolSets(Config config, Set<String> deploymentIds,
+                                        @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
         Iterator<Map.Entry<String, ToolSet>> iterator = config.getToolsets().entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<String, ToolSet> entry = iterator.next();
             String name = entry.getKey();
-            enforceDeploymentUniqueness(name, deploymentIds);
+            if (skipOnDuplicate(name, ResourceTypes.TOOL_SET, deploymentIds, onSkip, iterator)) {
+                continue;
+            }
             if (isValidResourceKey(name)) {
                 ToolSet toolSet = entry.getValue();
                 toolSet.setName(name);
@@ -126,10 +195,25 @@ public final class ConfigPostProcessor {
         }
     }
 
-    private static void enforceDeploymentUniqueness(String deploymentId, Set<String> deployments) {
-        if (!deployments.add(deploymentId)) {
-            throw new IllegalStateException("Deployment uniqueness is violated: duplicate is found " + deploymentId);
+    /**
+     * Returns true and removes the offending entry when the name was already seen.
+     * Abort mode ({@code onSkip == null}) preserves {@link FileConfigStore}'s today-behavior:
+     * throw {@link IllegalStateException} and roll back the load.
+     */
+    private static boolean skipOnDuplicate(String name, ResourceTypes type, Set<String> deploymentIds,
+                                           @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip,
+                                           Iterator<?> iterator) {
+        if (deploymentIds.add(name)) {
+            return false;
         }
+        if (onSkip == null) {
+            throw new IllegalStateException("Deployment uniqueness is violated: duplicate is found " + name);
+        }
+        log.warn("Skipping {} '{}' due to duplicate deployment ID", type, name);
+        onSkip.accept(type, new InvalidEntityException(type, name,
+                List.of(new ValidationWarning("name", "Duplicate deployment ID: " + name))));
+        iterator.remove();
+        return true;
     }
 
     private static boolean isValidResourceKey(String resourceKey) {

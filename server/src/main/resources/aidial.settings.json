@@ -40,10 +40,7 @@
   "config": {
     "files": [],
     "reload": 60000,
-    "onInvalidEntity": "abort",
-    "write": {
-      "softValidation": false
-    }
+    "onInvalidEntity": "abort"
   },
   "identityProviders": {
   },

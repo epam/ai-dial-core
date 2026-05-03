@@ -24,7 +24,8 @@ public class MergedConfigStoreTest {
     @Test
     public void testRequestRebuildIsNoOpBeforeInit() {
         MergedConfigStore store = new MergedConfigStore(
-                vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy());
+                vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                MergedConfigStore.MODE_ABORT);
 
         store.requestRebuild();
         store.requestRebuild();

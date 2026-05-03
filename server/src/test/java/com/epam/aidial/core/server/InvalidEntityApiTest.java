@@ -26,8 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class InvalidEntityApiTest extends ResourceBaseTest {
 
     @Test
-    void testValidBlobModelHasValidStatus() {
-        // U.1 (2026-05-21): the source field is retired entirely. The URL itself discloses the source.
+    void testValidBlobModelHasValidStatusAndApiSource() {
         String name = "valid-blob-model";
         putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
                 name, """
@@ -41,32 +40,26 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
         Response resp = adminGet("/v1/models/public/" + name);
         verify(resp, 200);
         assertTrue(resp.body().contains("\"status\":\"valid\""));
-        assertFalse(resp.body().contains("\"source\""),
-                () -> "U.1: source field must not appear in any response: " + resp.body());
+        assertTrue(resp.body().contains("\"source\":\"api\""));
     }
 
     @Test
     @SneakyThrows
-    void testMalformedBlobSurfacesAsInvalidUnderGet() {
-        // U.0 (2026-05-20): metadata listings are blob-only and don't project status/source/warnings.
-        // The invalid-entity sibling store is still surfaced via the single-entity GET path —
-        // see testMalformedBlobSurfacesUnderGetByName below for the canonical assertion. This test
-        // keeps coverage of the legacy "listing→invalid" guard by collapsing it to a per-entity GET.
+    void testMalformedBlobSurfacesAsInvalidUnderListing() {
         String name = "broken-blob-model";
         putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
                 name, "{ this is not json ");
         reload();
 
-        Response resp = adminGet("/v1/models/public/" + name);
-        verify(resp, 200);
-        JsonNode body = ProxyUtil.MAPPER.readTree(resp.body());
-        assertEquals("invalid", body.get("status").asText());
-        // U.1: source field retired.
-        assertFalse(body.has("source"),
-                () -> "U.1: source field must not appear in any response: " + resp.body());
-        JsonNode warnings = body.get("validationWarnings");
+        Response list = adminGet("/v1/models/public/");
+        verify(list, 200);
+        JsonNode body = ProxyUtil.MAPPER.readTree(list.body());
+        JsonNode invalidItem = findItem(body.get("items"), name);
+        assertEquals("invalid", invalidItem.get("status").asText());
+        assertEquals("api", invalidItem.get("source").asText());
+        JsonNode warnings = invalidItem.get("validationWarnings");
         assertTrue(warnings.isArray() && !warnings.isEmpty(),
-                () -> "Expected validationWarnings array: " + resp.body());
+                () -> "Expected validationWarnings array: " + list.body());
     }
 
     @Test
@@ -191,4 +184,12 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
         resourceService.putResource(descriptor, body, EtagHeader.ANY, null, false);
     }
 
+    private static JsonNode findItem(JsonNode items, String name) {
+        for (JsonNode item : items) {
+            if (name.equals(item.get("name").asText())) {
+                return item;
+            }
+        }
+        throw new AssertionError("No item with name '" + name + "' in: " + items);
+    }
 }

@@ -202,8 +202,9 @@ public class AiDial {
                     timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix(), () -> podId);
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
+            String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
             MergedConfigStore mergedConfigStore = new MergedConfigStore(
-                    vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy());
+                    vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(), onInvalidEntity);
             FileConfigStore fileConfigStore = new FileConfigStore(
                     vertx, settings("config"), null,
                     List.of(cfg -> mergedConfigStore.requestRebuild()));
@@ -549,7 +550,6 @@ public class AiDial {
             prometheusReg.config().meterFilter(new RouteNormalizingMeterFilter());
             micrometer.setMicrometerRegistry(prometheusReg);
             Metrics.addRegistry(prometheusReg);
-            this.prometheusRegistry = prometheusReg;
         }
 
         JsonObject oltp = metrics.toJson().getJsonObject("oltpOptions", new JsonObject());
@@ -558,7 +558,6 @@ public class AiDial {
             otlpReg.config().meterFilter(new RouteNormalizingMeterFilter());
             micrometer.setMicrometerRegistry(otlpReg);
             Metrics.addRegistry(otlpReg);
-            this.otlpRegistry = otlpReg;
         }
 
         options.setMetricsOptions(micrometer);

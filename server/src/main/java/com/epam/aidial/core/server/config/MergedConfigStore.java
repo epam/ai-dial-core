@@ -13,16 +13,24 @@ import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.Metrics;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
 
 /**
  * {@link ConfigStore} implementation that builds the runtime {@link Config} as the
@@ -30,6 +38,12 @@ import java.util.concurrent.atomic.AtomicLong;
  * {@link ResourceService}. Per design 02 §4: file entries keep simple-name keys
  * ("gpt-4"); API entries use canonical-ID keys ("models/public/gpt-4"). Both
  * coexist in the same {@code Config} maps.
+ *
+ * <p>Slice 2S.9 adds the invalid-entity sibling store. Per-entity failures route
+ * through {@code onInvalidEntity} (default {@code abort}; opt-in {@code skip}).
+ * Under {@code skip} the offender is removed from the merged {@code Config} and
+ * recorded in {@link #getInvalidEntities()} for the listing/health/metrics
+ * visibility channels (design 02 §4.1, §4.3).
  *
  * <p>Lifecycle: construct → {@link #init} (binds the file store, runs the explicit
  * initial rebuild, flips {@code initialized}) → {@link #requestRebuild} fires on
@@ -41,6 +55,11 @@ public final class MergedConfigStore implements ConfigStore {
 
     private static final long REBUILD_DEBOUNCE_MS = 500;
     private static final long NO_PENDING_TIMER = -1L;
+    private static final String REASON_PARSE = "parse_error";
+    private static final String REASON_VALIDATION = "validation_error";
+
+    public static final String MODE_ABORT = "abort";
+    public static final String MODE_SKIP = "skip";
 
     private static final List<ResourceTypes> MANAGED_TYPES = List.of(
             ResourceTypes.MODEL,
@@ -54,18 +73,26 @@ public final class MergedConfigStore implements ConfigStore {
     private final ResourceService resourceService;
     private final ApiKeyStore apiKeyStore;
     private final EntityLocationStrategy locationStrategy;
+    private final String onInvalidEntity;
 
     private FileConfigStore fileConfigStore;
     private volatile Config config;
+    private volatile Map<ResourceTypes, Map<String, InvalidEntityRecord>> invalidEntities = Map.of();
     private volatile boolean initialized;
     private final AtomicLong pendingRebuildTimerId = new AtomicLong(NO_PENDING_TIMER);
 
     public MergedConfigStore(Vertx vertx, ResourceService resourceService,
-                             ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy) {
+                             ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
+                             String onInvalidEntity) {
         this.vertx = vertx;
         this.resourceService = resourceService;
         this.apiKeyStore = apiKeyStore;
         this.locationStrategy = locationStrategy;
+        this.onInvalidEntity = MODE_SKIP.equalsIgnoreCase(onInvalidEntity) ? MODE_SKIP : MODE_ABORT;
+
+        Gauge.builder("dial_config_skipped_entities", this, MergedConfigStore::countInvalidEntities)
+                .description("Number of entities skipped from in-memory Config (design 02 §4.1)")
+                .register(Metrics.globalRegistry);
     }
 
     /**
@@ -94,6 +121,19 @@ public final class MergedConfigStore implements ConfigStore {
         // config and a debounced rerun would be a redundant addProjectKeys + listResources sweep.
         cancelPendingRebuildLocked();
         return rebuild();
+    }
+
+    /**
+     * In-memory derived state; never persisted. Empty map per type when no
+     * entities are skipped. Returned as an unmodifiable view.
+     */
+    public Map<ResourceTypes, Map<String, InvalidEntityRecord>> getInvalidEntities() {
+        return invalidEntities;
+    }
+
+    /** Currently-effective failure mode: {@link #MODE_ABORT} or {@link #MODE_SKIP}. */
+    public String getOnInvalidEntity() {
+        return onInvalidEntity;
     }
 
     /**
@@ -146,6 +186,8 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setGlobalInterceptors(base.getGlobalInterceptors());
 
         List<Runnable> resetSimpleName = new ArrayList<>();
+        Map<String, JsonNode> blobBodies = new HashMap<>();
+        Map<ResourceTypes, Map<String, InvalidEntityRecord>> pendingInvalid = new EnumMap<>(ResourceTypes.class);
 
         for (ResourceTypes type : MANAGED_TYPES) {
             for (String scope : locationStrategy.listScopes(type)) {
@@ -164,8 +206,20 @@ public final class MergedConfigStore implements ConfigStore {
                     if (body == null) {
                         continue;
                     }
-                    addBlobEntity(type, canonicalId(type, bucket, name), name, body,
-                            models, interceptors, roles, keys, routes, schemas, resetSimpleName);
+                    String canonicalId = canonicalId(type, bucket, name);
+                    try {
+                        // Parse once into JsonNode; reused below for typed deserialization and as the
+                        // payload echoed back through the invalid-entity sibling store on semantic failures.
+                        JsonNode node = ProxyUtil.MAPPER.readTree(body);
+                        addBlobEntity(type, canonicalId, name, node,
+                                models, interceptors, roles, keys, routes, schemas, resetSimpleName);
+                        blobBodies.put(canonicalId, node);
+                    } catch (Exception parseError) {
+                        recordInvalid(pendingInvalid, type, canonicalId, name,
+                                "JSON parse failure: " + parseError.getMessage(),
+                                List.of(new ValidationWarning("body", parseError.getMessage())),
+                                null, REASON_PARSE, "api");
+                    }
                 }
             }
         }
@@ -177,47 +231,103 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setRoutes(routes);
         merged.setApplicationTypeSchemas(schemas);
 
-        ConfigPostProcessor.process(merged, apiKeyStore);
+        // Semantic pass — under MODE_SKIP, route per-entity violations to invalidEntities and
+        // continue; under MODE_ABORT, the post-processor throws and the rebuild aborts (this.config
+        // stays at the previous value because we only swap below).
+        BiConsumer<ResourceTypes, InvalidEntityException> onSkip = MODE_SKIP.equals(onInvalidEntity)
+                ? (type, error) -> {
+                    // Only MANAGED_TYPES surface through the invalidEntities sibling store (design 02 §4.3
+                    // layered model). APPLICATION and TOOL_SET use lazy validation in 3S.1, not this path.
+                    if (!MANAGED_TYPES.contains(type)) {
+                        log.warn("Skipped {} '{}' from merged Config: {}", type.urlSegment(),
+                                error.getMapKey(), error.getMessage());
+                        return;
+                    }
+                    String mapKey = error.getMapKey();
+                    boolean fromApi = mapKey.contains("/");
+                    String canonicalId = fromApi
+                            ? mapKey
+                            : canonicalId(type, locationStrategy.resolveBucket(type, EntityLocationStrategy.PLATFORM_SCOPE), mapKey);
+                    String simpleName = fromApi ? lastSegment(mapKey) : mapKey;
+                    recordInvalid(pendingInvalid, type, canonicalId, simpleName,
+                            error.getMessage(), error.getWarnings(), blobBodies.get(canonicalId),
+                            REASON_VALIDATION, fromApi ? "api" : "file");
+                }
+                : null;
+        ConfigPostProcessor.processSemantic(merged, apiKeyStore, onSkip);
+
         // ConfigPostProcessor sets entity.name = mapKey (canonical ID for API entries).
         // Reset name to the simple name so projections match the design 02 §4 / 04 §4.3 shape.
         resetSimpleName.forEach(Runnable::run);
 
+        Map<ResourceTypes, Map<String, InvalidEntityRecord>> finalInvalid =
+                pendingInvalid.isEmpty() ? Map.of() : Collections.unmodifiableMap(pendingInvalid);
         this.config = merged;
+        this.invalidEntities = finalInvalid;
         return merged;
+    }
+
+    private static int countInvalidEntities(MergedConfigStore self) {
+        int total = 0;
+        for (Map<String, InvalidEntityRecord> perType : self.invalidEntities.values()) {
+            total += perType.size();
+        }
+        return total;
+    }
+
+    private void recordInvalid(Map<ResourceTypes, Map<String, InvalidEntityRecord>> invalid,
+                               ResourceTypes type, String canonicalId, String simpleName,
+                               String reason, List<ValidationWarning> warnings,
+                               JsonNode payload, String reasonClass, String source) {
+        InvalidEntityRecord record = new InvalidEntityRecord(simpleName, canonicalId, reason,
+                List.copyOf(warnings), source, payload);
+        invalid.computeIfAbsent(type, k -> new HashMap<>()).put(canonicalId, record);
+        Counter.builder("dial_config_skip_events_total")
+                .description("Total number of entity skip events since pod start")
+                .tag("type", type.urlSegment())
+                .tag("reason", reasonClass)
+                .register(Metrics.globalRegistry)
+                .increment();
+        log.warn("Skipped {} '{}' from merged Config: {}", type.urlSegment(), canonicalId, reason);
+    }
+
+    private static String lastSegment(String key) {
+        int slash = key.lastIndexOf('/');
+        return slash < 0 ? key : key.substring(slash + 1);
     }
 
     static String canonicalId(ResourceTypes type, String bucket, String name) {
         return type.urlSegment() + ResourceDescriptor.PATH_SEPARATOR + bucket + ResourceDescriptor.PATH_SEPARATOR + name;
     }
 
-    private static void addBlobEntity(ResourceTypes type, String canonicalId, String simpleName, String body,
+    private static void addBlobEntity(ResourceTypes type, String canonicalId, String simpleName, JsonNode node,
                                       Map<String, Model> models, Map<String, Interceptor> interceptors,
                                       Map<String, Role> roles, Map<String, Key> keys,
                                       LinkedHashMap<String, Route> routes, Map<String, String> schemas,
-                                      List<Runnable> resetSimpleName) {
+                                      List<Runnable> resetSimpleName) throws JsonProcessingException {
         switch (type) {
             case MODEL -> {
-                Model entity = ProxyUtil.convertToObject(body, Model.class);
+                Model entity = ProxyUtil.MAPPER.treeToValue(node, Model.class);
                 models.put(canonicalId, entity);
                 resetSimpleName.add(() -> entity.setName(simpleName));
             }
             case INTERCEPTOR -> {
-                Interceptor entity = ProxyUtil.convertToObject(body, Interceptor.class);
+                Interceptor entity = ProxyUtil.MAPPER.treeToValue(node, Interceptor.class);
                 interceptors.put(canonicalId, entity);
                 resetSimpleName.add(() -> entity.setName(simpleName));
             }
             case ROLE -> {
-                Role entity = ProxyUtil.convertToObject(body, Role.class);
+                Role entity = ProxyUtil.MAPPER.treeToValue(node, Role.class);
                 roles.put(canonicalId, entity);
                 resetSimpleName.add(() -> entity.setName(simpleName));
             }
-            case PROJECT_KEY -> keys.put(canonicalId, ProxyUtil.convertToObject(body, Key.class));
+            case PROJECT_KEY -> keys.put(canonicalId, ProxyUtil.MAPPER.treeToValue(node, Key.class));
             case ROUTE -> {
-                Route entity = ProxyUtil.convertToObject(body, Route.class);
+                Route entity = ProxyUtil.MAPPER.treeToValue(node, Route.class);
                 routes.put(canonicalId, entity);
                 resetSimpleName.add(() -> entity.setName(simpleName));
             }
-            case APP_TYPE_SCHEMA -> schemas.put(canonicalId, body);
+            case APP_TYPE_SCHEMA -> schemas.put(canonicalId, node.toString());
             default -> { /* GLOBAL_SETTINGS is a singleton — design 02 §4 leaves union-by-key out of scope. */ }
         }
     }
