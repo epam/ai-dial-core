@@ -322,7 +322,7 @@ public class ConfigResourceController implements Controller {
                     String encryptedBody = serializeForBlob(entity);
                     ResourceItemMetadata meta = resourceService.putResource(
                             descriptor, encryptedBody, EtagHeader.ANY, null, false);
-                    mergedConfigStore.requestRebuild();
+                    mergedConfigStore.rebuildNow();
                     return meta;
                 }
             });
@@ -368,7 +368,7 @@ public class ConfigResourceController implements Controller {
                     String encryptedBody = serializeForBlob(entity);
                     ResourceItemMetadata meta = resourceService.putResource(
                             descriptor, encryptedBody, etag, null, false);
-                    mergedConfigStore.requestRebuild();
+                    mergedConfigStore.rebuildNow();
                     return meta;
                 }
             });
@@ -392,7 +392,7 @@ public class ConfigResourceController implements Controller {
                 throw new HttpException(HttpStatus.NOT_FOUND,
                         "Resource not found: " + descriptor.getUrl());
             }
-            mergedConfigStore.requestRebuild();
+            mergedConfigStore.rebuildNow();
             return true;
         }).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
 

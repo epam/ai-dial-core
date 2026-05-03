@@ -3,9 +3,6 @@ package com.epam.aidial.core.server;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
-import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -16,6 +13,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Covers strict-split semantics (POST=409, PUT=404, DELETE=404), {@code If-Match} preconditions,
  * preserve-on-omit secret merging, sentinel rejection on POST, and {@code ?reveal_secrets=true}
  * gated by the security-admin role.
+ *
+ * <p>Slice 2S.14: write controllers call {@code MergedConfigStore.rebuildNow()} on the writer pod,
+ * making post-write GETs immediately consistent — no polling helpers needed.
  */
 public class ModelWriteApiTest extends ResourceBaseTest {
 
@@ -75,7 +75,6 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         assertTrue(post.body().contains("\"name\":\"test-model-create\""),
                 () -> "Expected name in body: " + post.body());
 
-        waitForGet("/v1/models/public/test-model-create", 200);
         Response get = send(HttpMethod.GET, "/v1/models/public/test-model-create", null, "",
                 "authorization", "admin");
         verify(get, 200);
@@ -126,7 +125,6 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         verify(put, 200);
         assertNotNull(put.headers().get("etag"));
 
-        waitForBodyContains("/v1/models/public/test-model-update", "Updated");
         Response get = send(HttpMethod.GET, "/v1/models/public/test-model-update", null, "",
                 "authorization", "admin");
         verify(get, 200);
@@ -162,7 +160,6 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         verify(put, 200);
 
         // Default GET: secret masked as "***".
-        waitForBodyContains("/v1/models/public/test-model-omit", "***");
         Response masked = send(HttpMethod.GET, "/v1/models/public/test-model-omit", null, "",
                 "authorization", "admin");
         verify(masked, 200);
@@ -186,7 +183,6 @@ public class ModelWriteApiTest extends ResourceBaseTest {
                 "authorization", "admin");
         verify(put, 200);
 
-        waitForBodyContains("/v1/models/public/test-model-star", "***");
         Response revealed = send(HttpMethod.GET, "/v1/models/public/test-model-star",
                 "reveal_secrets=true", "", "authorization", "security-admin");
         verify(revealed, 200);
@@ -203,7 +199,9 @@ public class ModelWriteApiTest extends ResourceBaseTest {
                 "authorization", "admin");
         verify(del, 204);
 
-        waitForGet("/v1/models/public/test-model-delete", 404);
+        Response get = send(HttpMethod.GET, "/v1/models/public/test-model-delete", null, "",
+                "authorization", "admin");
+        verify(get, 404);
     }
 
     @Test
@@ -228,7 +226,6 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         verify(send(HttpMethod.POST, "/v1/models/public/test-model-mask", null, MODEL_BODY_WITH_SECRET,
                 "authorization", "admin"), 201);
 
-        waitForBodyContains("/v1/models/public/test-model-mask", "***");
         Response get = send(HttpMethod.GET, "/v1/models/public/test-model-mask", null, "",
                 "authorization", "admin");
         verify(get, 200);
@@ -243,7 +240,6 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         verify(send(HttpMethod.POST, "/v1/models/public/test-model-reveal", null, MODEL_BODY_WITH_SECRET,
                 "authorization", "admin"), 201);
 
-        waitForBodyContains("/v1/models/public/test-model-reveal", "***");
         Response revealed = send(HttpMethod.GET, "/v1/models/public/test-model-reveal",
                 "reveal_secrets=true", "", "authorization", "security-admin");
         verify(revealed, 200);
@@ -271,33 +267,34 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         assertEquals("GET, POST, PUT, DELETE", post.headers().get("Allow"));
     }
 
-    private void waitForGet(String url, int expectedStatus) {
-        waitFor(() -> {
-            Response r = send(HttpMethod.GET, url, null, "", "authorization", "admin");
-            return r.status() == expectedStatus;
-        });
+    @Test
+    void testPostImmediatelyVisibleOnGet() {
+        Response post = send(HttpMethod.POST, "/v1/models/public/test-model-immediate-post", null,
+                MODEL_BODY_NO_SECRET, "authorization", "admin");
+        verify(post, 201);
+
+        // No polling — rebuildNow() in the writer makes the new entity visible by the time the
+        // POST response returns. Asserts the immediacy guarantee from slice 2S.14.
+        Response get = send(HttpMethod.GET, "/v1/models/public/test-model-immediate-post", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertTrue(get.body().contains("\"name\":\"test-model-immediate-post\""),
+                () -> "Expected immediate visibility of POST: " + get.body());
     }
 
-    private void waitForBodyContains(String url, String fragment) {
-        waitFor(() -> {
-            Response r = send(HttpMethod.GET, url, null, "", "authorization", "admin");
-            return r.status() == 200 && r.body() != null && r.body().contains(fragment);
-        });
-    }
+    @Test
+    void testDeleteImmediatelyVisibleOnGet() {
+        verify(send(HttpMethod.POST, "/v1/models/public/test-model-immediate-delete", null,
+                MODEL_BODY_NO_SECRET, "authorization", "admin"), 201);
 
-    private static void waitFor(BooleanSupplier condition) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        while (System.nanoTime() < deadline) {
-            if (condition.getAsBoolean()) {
-                return;
-            }
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new AssertionError("Interrupted while waiting", e);
-            }
-        }
-        assertEquals(true, condition.getAsBoolean(), "Condition not met within timeout");
+        Response del = send(HttpMethod.DELETE, "/v1/models/public/test-model-immediate-delete", null, "",
+                "authorization", "admin");
+        verify(del, 204);
+
+        // No polling — rebuildNow() ensures the DELETE removes the entity from the merged Config
+        // before the response returns; the very next GET must 404.
+        Response get = send(HttpMethod.GET, "/v1/models/public/test-model-immediate-delete", null, "",
+                "authorization", "admin");
+        verify(get, 404);
     }
 }

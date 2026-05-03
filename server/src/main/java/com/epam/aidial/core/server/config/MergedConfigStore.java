@@ -192,6 +192,23 @@ public final class MergedConfigStore implements ConfigStore {
         pendingRebuildTimerId.set(timerId);
     }
 
+    /**
+     * Synchronous, debounce-bypassing rebuild for the API write path on the writer pod
+     * (design 02 §4). Cancels any pending debounced rebuild then runs the merge inline
+     * on the calling thread; does NOT re-read the file (the API write does not touch
+     * on-disk config). Only call after {@link #init} has completed and from off-the-event-loop
+     * threads (e.g., inside {@code taskExecutor.submit(...)}).
+     *
+     * <p>Keys-controller ordering invariant (3S.2): on DELETE, the correct sequence is
+     * delete blob → {@code apiKeyStore.removeKey(secret)} → {@code rebuildNow()}, ensuring
+     * the key is absent from {@link com.epam.aidial.core.server.security.ApiKeyStore} before
+     * the new {@link Config} becomes visible.
+     */
+    public synchronized Config rebuildNow() {
+        cancelPendingRebuildLocked();
+        return rebuild();
+    }
+
     private void cancelPendingRebuildLocked() {
         long previous = pendingRebuildTimerId.getAndSet(NO_PENDING_TIMER);
         if (previous != NO_PENDING_TIMER) {
