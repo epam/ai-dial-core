@@ -301,6 +301,13 @@ public class ControllerSelector {
                 default -> null;
             };
         });
+        post(RouteTemplate.CONFIG_VALIDATE, (proxy, context, pathMatcher) -> {
+            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+            AdminValidateController controller = new AdminValidateController(
+                    context, authService, mergedConfigStore.getSecretFieldProcessor());
+            return controller::handle;
+        });
         post(RouteTemplate.CONFIG, (proxy, context, pathMatcher) -> new ConfigController(context));
         post(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
