@@ -21,9 +21,9 @@ import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 import static com.epam.aidial.core.server.security.ApiKeyGenerator.generateKey;
@@ -56,9 +56,11 @@ public class ApiKeyStore {
     }
 
     /**
-     * Project API keys are hosted in the secure storage.
+     * Project API keys are hosted in the secure storage. Keyed by the secret value for O(1) auth lookup
+     * (per OQ-12). The reference is rebuilt + atomically swapped on full reload; per-entry mutations go
+     * through {@link #addOrUpdateKey} / {@link #removeKey}.
      */
-    private volatile Map<String, ApiKeyData> keys = new HashMap<>();
+    private volatile ConcurrentHashMap<String, ApiKeyData> keys = new ConcurrentHashMap<>();
 
     /**
      * Assigns a new generated per request key to the {@link ApiKeyData}.
@@ -162,7 +164,7 @@ public class ApiKeyStore {
      * @param projectKeys new projects to be added to the store.
      */
     public void addProjectKeys(Map<String, Key> projectKeys) {
-        Map<String, ApiKeyData> apiKeyDataMap = new HashMap<>();
+        ConcurrentHashMap<String, ApiKeyData> apiKeyDataMap = new ConcurrentHashMap<>();
         for (Map.Entry<String, Key> entry : projectKeys.entrySet()) {
             String apiKey = entry.getKey();
             Key value = entry.getValue();
@@ -172,10 +174,28 @@ public class ApiKeyStore {
             }
             ApiKeyData apiKeyData = new ApiKeyData();
             apiKeyData.setOriginalKey(value);
-            apiKeyDataMap.put(apiKey, apiKeyData);
+            apiKeyDataMap.put(value.getKey(), apiKeyData);
             log.debug("Loading {}", value);
         }
         keys = apiKeyDataMap;
+    }
+
+    /**
+     * Fast-path partial mutator used by API-managed key writes (Phase 2 keys controller).
+     * Operates on the current {@code keys} reference; a concurrent rebuild may swap the reference
+     * before the put becomes visible — covered by writer-pod {@code rebuildNow()} on the same path.
+     */
+    public void addOrUpdateKey(String secret, ApiKeyData data) {
+        keys.put(secret, data);
+    }
+
+    /**
+     * Fast-path partial mutator used by API-managed key deletes (Phase 2 keys controller).
+     * Must be called after the corresponding blob {@code ResourceService.delete} returns
+     * (per the keys-controller {@code DELETE} ordering invariant).
+     */
+    public void removeKey(String secret) {
+        keys.remove(secret);
     }
 
     private void validateProjectKey(Key key) {
