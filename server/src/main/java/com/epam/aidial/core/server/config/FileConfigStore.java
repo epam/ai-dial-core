@@ -19,8 +19,6 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.function.Consumer;
 
 @Slf4j
@@ -62,7 +60,8 @@ public final class FileConfigStore implements ConfigStore {
             log.debug("Config loading is started");
             Config config = loadConfig();
 
-            ConfigPostProcessor.process(config, apiKeyStore);
+            ConfigPostProcessor.process(config);
+            apiKeyStore.addProjectKeys(config.getKeys());
 
             this.config = config;
             for (Consumer<Config> callback : onReloadCallbacks) {
