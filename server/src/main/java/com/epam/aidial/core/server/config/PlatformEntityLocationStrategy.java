@@ -11,12 +11,12 @@ public class PlatformEntityLocationStrategy implements EntityLocationStrategy {
     @Override
     public String resolveBucket(ResourceTypes entityType, String scope) {
         if (!PLATFORM_SCOPE.equals(scope)) {
-            throw new IllegalArgumentException("Unsupported scope for platform strategy: " + scope);
+            return null;
         }
         return switch (entityType) {
             case MODEL, APP_TYPE_SCHEMA -> ResourceDescriptor.PUBLIC_BUCKET;
             case INTERCEPTOR, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS -> ResourceDescriptor.PLATFORM_BUCKET;
-            default -> throw new IllegalArgumentException("Unsupported entity type for platform strategy: " + entityType);
+            default -> null;
         };
     }
 

@@ -202,7 +202,13 @@ public class AiDial {
                     timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix(), () -> podId);
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
-            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore, List.of());
+            MergedConfigStore mergedConfigStore = new MergedConfigStore(
+                    vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy());
+            FileConfigStore fileConfigStore = new FileConfigStore(
+                    vertx, settings("config"), null,
+                    List.of(cfg -> mergedConfigStore.requestRebuild()));
+            mergedConfigStore.init(fileConfigStore);
+            ConfigStore configStore = mergedConfigStore;
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(resourceService, configStore, encryptionService, httpProxySelector);
 

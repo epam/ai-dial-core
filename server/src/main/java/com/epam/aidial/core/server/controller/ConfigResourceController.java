@@ -107,13 +107,23 @@ public class ConfigResourceController implements Controller {
         if (path == null || path.isEmpty()) {
             return respondList(source, projector);
         }
-        T item = source.get(path);
+        // MergedConfigStore keys API entries by canonical ID ("models/public/gpt-4") and file
+        // entries by simple name ("gpt-4"). Try canonical ID first, fall back to simple name —
+        // see design 02 §4 union semantics.
+        T item = source.get(canonicalId());
+        if (item == null) {
+            item = source.get(path);
+        }
         if (item == null) {
             context.respond(HttpStatus.NOT_FOUND);
             return Future.succeededFuture();
         }
         context.respond(HttpStatus.OK, projector.apply(path, item));
         return Future.succeededFuture();
+    }
+
+    private String canonicalId() {
+        return entityType + "/" + bucket + "/" + path;
     }
 
     private <T> Future<?> respondList(Map<String, T> source,
@@ -124,10 +134,16 @@ public class ConfigResourceController implements Controller {
         }
         ArrayNode items = ProxyUtil.MAPPER.createArrayNode();
         for (Map.Entry<String, T> entry : new TreeMap<>(source).entrySet()) {
-            items.add(projector.apply(entry.getKey(), entry.getValue()));
+            items.add(projector.apply(simpleName(entry.getKey()), entry.getValue()));
         }
         context.respond(HttpStatus.OK, listEnvelope(items));
         return Future.succeededFuture();
+    }
+
+    /** Extract the simple name from a canonical ID ("models/public/gpt-4" → "gpt-4"); pass through otherwise. */
+    private static String simpleName(String key) {
+        int slash = key.lastIndexOf('/');
+        return slash < 0 ? key : key.substring(slash + 1);
     }
 
     private Future<?> handleSchemaGet(Config config, boolean admin) throws JsonProcessingException {
@@ -139,12 +155,16 @@ public class ConfigResourceController implements Controller {
             }
             ArrayNode items = ProxyUtil.MAPPER.createArrayNode();
             for (Map.Entry<String, String> entry : new TreeMap<>(schemas).entrySet()) {
-                items.add(projectSchemaItem(entry.getKey(), entry.getValue(), admin));
+                items.add(projectSchemaItem(simpleName(entry.getKey()), entry.getValue(), admin));
             }
             context.respond(HttpStatus.OK, listEnvelope(items));
             return Future.succeededFuture();
         }
-        String schemaJson = schemas.get(path);
+        // Canonical-ID first, simple-name fallback (see handleSingleOrList).
+        String schemaJson = schemas.get(canonicalId());
+        if (schemaJson == null) {
+            schemaJson = schemas.get(path);
+        }
         if (schemaJson == null) {
             context.respond(HttpStatus.NOT_FOUND);
             return Future.succeededFuture();
