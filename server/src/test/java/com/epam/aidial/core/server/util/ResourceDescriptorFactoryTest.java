@@ -231,6 +231,41 @@ public class ResourceDescriptorFactoryTest {
     }
 
     @Test
+    public void testPlatformConstants() {
+        assertEquals("platform", ResourceDescriptor.PLATFORM_BUCKET);
+        assertEquals("platform/", ResourceDescriptor.PLATFORM_LOCATION);
+    }
+
+    @Test
+    public void testFromAnyUrl_PlatformBucket() {
+        EncryptionService service = new EncryptionService(new JsonObject().put("secret", "secret").put("key", "key"));
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl("models/platform/gpt-4", service);
+
+        assertEquals(ResourceTypes.MODEL, descriptor.getType());
+        assertEquals(ResourceDescriptor.PLATFORM_BUCKET, descriptor.getBucketName());
+        assertEquals(ResourceDescriptor.PLATFORM_LOCATION, descriptor.getBucketLocation());
+        assertEquals("gpt-4", descriptor.getName());
+        assertFalse(descriptor.isPublic());
+    }
+
+    @Test
+    public void testResourceTypesOfNewGroups() {
+        assertEquals(ResourceTypes.MODEL, ResourceTypes.of("models"));
+        assertEquals(ResourceTypes.APP_TYPE_SCHEMA, ResourceTypes.of("app_type_schemas"));
+        assertEquals(ResourceTypes.INTERCEPTOR, ResourceTypes.of("interceptors"));
+        assertEquals(ResourceTypes.ROLE, ResourceTypes.of("roles"));
+        assertEquals(ResourceTypes.PROJECT_KEY, ResourceTypes.of("project_keys"));
+        assertEquals(ResourceTypes.ROUTE, ResourceTypes.of("routes"));
+        assertEquals(ResourceTypes.GLOBAL_SETTINGS, ResourceTypes.of("settings"));
+    }
+
+    @Test
+    public void testResourceTypesOfUrlSegmentAliases() {
+        assertEquals(ResourceTypes.APP_TYPE_SCHEMA, ResourceTypes.of("schemas"));
+        assertEquals(ResourceTypes.PROJECT_KEY, ResourceTypes.of("keys"));
+    }
+
+    @Test
     public void testFromAnyUrl_RootFolder() {
         JsonObject settings = new JsonObject();
         settings.put("secret", "secret");
