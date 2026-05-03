@@ -164,6 +164,11 @@ public class ResourceService implements AutoCloseable {
         return topic.subscribe(resources, subscriber);
     }
 
+    @VisibleForTesting
+    ResourceTopic getTopic() {
+        return topic;
+    }
+
     public String getPrefix() {
         return lockService.getPrefix();
     }

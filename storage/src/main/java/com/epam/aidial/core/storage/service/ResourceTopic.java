@@ -2,6 +2,9 @@ package com.epam.aidial.core.storage.service;
 
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RTopic;
@@ -23,7 +26,13 @@ public class ResourceTopic {
     private final RTopic topic;
 
     public ResourceTopic(RedissonClient redis, String topicKey) {
-        this.topic = redis.getTopic(topicKey, new TypedJsonJacksonCodec(ResourceEvent.class));
+        this(redis, topicKey, new ObjectMapper()
+                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .setSerializationInclusion(JsonInclude.Include.NON_NULL));
+    }
+
+    public ResourceTopic(RedissonClient redis, String topicKey, ObjectMapper mapper) {
+        this.topic = redis.getTopic(topicKey, new TypedJsonJacksonCodec(ResourceEvent.class, mapper));
         topic.addListener(ResourceEvent.class, (channel, event) -> handle(event));
     }
 
