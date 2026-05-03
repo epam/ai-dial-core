@@ -27,10 +27,12 @@ public class ConfigBootstrapTest extends ResourceBaseTest {
 
     @Test
     void testAdminCanReachPlatformEntity() {
-        // Binding valid + admin role passes gate; stub returns 405 to signal "no handler yet".
+        // Binding valid + admin role passes gate; the 1S.3 interceptors read handler responds 404
+        // for an unknown name. Either 404 (handler reached) or 405 (stub still in place for a type)
+        // proves the gate admitted — both are distinct from the 403 / bucket-mismatch 404 paths.
         Response response = send(HttpMethod.GET, "/v1/interceptors/platform/anything", null, "",
                 "authorization", "admin");
-        verify(response, 405);
+        verify(response, 404);
     }
 
     @Test
