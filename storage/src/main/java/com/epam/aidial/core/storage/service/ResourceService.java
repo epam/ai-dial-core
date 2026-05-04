@@ -66,6 +66,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
 import static java.util.concurrent.Executors.newThreadPerTaskExecutor;
@@ -130,6 +131,7 @@ public class ResourceService implements AutoCloseable {
     private final String prefix;
     private final String resourceQueue;
     private final Map<String, Long> resourceTypeExpiration;
+    private final Supplier<String> senderPodIdSupplier;
 
     public ResourceService(TimerService timerService,
                            RedissonClient redis,
@@ -137,6 +139,16 @@ public class ResourceService implements AutoCloseable {
                            LockService lockService,
                            Settings settings,
                            String prefix) {
+        this(timerService, redis, blobStore, lockService, settings, prefix, () -> null);
+    }
+
+    public ResourceService(TimerService timerService,
+                           RedissonClient redis,
+                           BlobStorage blobStore,
+                           LockService lockService,
+                           Settings settings,
+                           String prefix,
+                           Supplier<String> senderPodIdSupplier) {
         this.redis = redis;
         this.blobStore = blobStore;
         this.lockService = lockService;
@@ -150,6 +162,7 @@ public class ResourceService implements AutoCloseable {
         this.prefix = prefix;
         this.resourceQueue = "resource:" + BlobStorageUtil.toStoragePath(prefix, "queue");
         this.resourceTypeExpiration = Objects.requireNonNullElseGet(settings.resourceTypesExpiration, Map::of);
+        this.senderPodIdSupplier = senderPodIdSupplier;
         this.syncTimer = timerService.scheduleWithFixedDelay(settings.syncPeriod, settings.syncPeriod, this::sync);
     }
 
@@ -802,7 +815,8 @@ public class ResourceService implements AutoCloseable {
                 .setUrl(descriptor.getUrl())
                 .setAction(action)
                 .setTimestamp(timestamp)
-                .setEtag(etag);
+                .setEtag(etag)
+                .setSenderPodId(senderPodIdSupplier.get());
 
         topic.publish(event);
     }

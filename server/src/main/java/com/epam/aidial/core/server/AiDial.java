@@ -193,7 +193,9 @@ public class AiDial {
             LockService lockService = new LockService(redis, storage.getPrefix());
             TimerService timerService = new VertxTimerService(vertx, taskExecutor);
             ResourceService.Settings resourceServiceSettings = getResourceSettings();
-            resourceService = new ResourceService(timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix());
+            String podId = UUID.randomUUID().toString();
+            resourceService = new ResourceService(
+                    timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix(), () -> podId);
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
             CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
