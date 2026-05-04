@@ -3,7 +3,6 @@ package com.epam.aidial.core.server;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -255,16 +254,6 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         Response forbidden = send(HttpMethod.GET, "/v1/models/public/test-model-reveal-deny",
                 "reveal_secrets=true", "", "authorization", "admin");
         verify(forbidden, 403);
-    }
-
-    @Test
-    void testPost405ForNonModelType() {
-        // Slice 2S.11 supports writes only on "models"; POST against any other writable type
-        // must respond 405 with the eventual Allow set per prepareModelWrite/respondWriteMethodNotAllowed.
-        Response post = send(HttpMethod.POST, "/v1/roles/platform/test-role", null,
-                "{\"limits\":{}}", "authorization", "admin");
-        verify(post, 405);
-        assertEquals("GET, POST, PUT, DELETE", post.headers().get("Allow"));
     }
 
     @Test

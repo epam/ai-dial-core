@@ -453,6 +453,7 @@ public class ControllerSelector {
                 proxy.getResourceService(), proxy.getTaskExecutor(),
                 mergedConfigStore.getSecretFieldProcessor(),
                 mergedConfigStore.isSoftValidation(),
+                proxy.getApiKeyStore(),
                 entityType, bucket, path);
     }
 

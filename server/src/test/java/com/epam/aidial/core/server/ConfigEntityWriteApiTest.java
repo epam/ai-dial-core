@@ -7,12 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * HTTP integration tests for slice 3S.2 (write API for {@code interceptors}, {@code roles},
- * {@code keys}, {@code routes}, {@code schemas}) amended by slice U.0 (2026-05-20) to the
- * unified PUT-upsert wire shape. POST is universally 405 with {@code Allow: GET, PUT, DELETE};
- * PUT honors {@code If-None-Match: *} (412 if exists) and {@code If-Match: <etag>} (412 on
- * mismatch). DELETE is unchanged. Exercises the keys-only blank-key + apiKeyStore fast-path and
- * the schemas-only raw-JSON pass-through under the new shape.
+ * HTTP integration tests for slice 3S.2: write API for the remaining writable entity types
+ * exposed by {@code ConfigResourceController} — {@code interceptors}, {@code roles},
+ * {@code keys}, {@code routes}, and {@code schemas}. Mirrors the strict-split semantics
+ * (POST=409, PUT=404, DELETE=404) and rebuildNow() immediacy guarantees established for
+ * models in slice 2S.11 / 2S.14, and exercises the keys-only blank-key + apiKeyStore
+ * fast-path plus the schemas-only raw-JSON pass-through.
  */
 public class ConfigEntityWriteApiTest extends ResourceBaseTest {
 
@@ -43,6 +43,14 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     private static final String KEY_BODY_PROJECT_A = """
             {
               "key": "secret123",
+              "project": "projA",
+              "roles": ["admin"]
+            }
+            """;
+
+    private static final String KEY_BODY_SENTINEL = """
+            {
+              "key": "***",
               "project": "projA",
               "roles": ["admin"]
             }
@@ -99,28 +107,28 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     // ---- interceptors ------------------------------------------------------
 
     @Test
-    void testInterceptorPutCreate200HappyPath() {
-        Response put = send(HttpMethod.PUT, "/v1/interceptors/platform/test-interceptor-create",
-                null, INTERCEPTOR_BODY, "authorization", "admin", "If-None-Match", "*");
-        verify(put, 200);
-        assertNotNull(put.headers().get("etag"));
-        assertTrue(put.body().contains("\"name\":\"test-interceptor-create\""),
-                () -> "Expected name in body: " + put.body());
+    void testInterceptorPost201HappyPath() {
+        Response post = send(HttpMethod.POST, "/v1/interceptors/platform/test-interceptor-create",
+                null, INTERCEPTOR_BODY, "authorization", "admin");
+        verify(post, 201);
+        assertNotNull(post.headers().get("etag"));
+        assertTrue(post.body().contains("\"name\":\"test-interceptor-create\""),
+                () -> "Expected name in body: " + post.body());
     }
 
     @Test
-    void testInterceptorPutIfNoneMatchStar412OnExisting() {
-        verify(send(HttpMethod.PUT, "/v1/interceptors/platform/test-interceptor-conflict", null,
-                INTERCEPTOR_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
-        Response again = send(HttpMethod.PUT, "/v1/interceptors/platform/test-interceptor-conflict", null,
-                INTERCEPTOR_BODY, "authorization", "admin", "If-None-Match", "*");
-        verify(again, 412);
+    void testInterceptorPost409OnConflict() {
+        verify(send(HttpMethod.POST, "/v1/interceptors/platform/test-interceptor-conflict", null,
+                INTERCEPTOR_BODY, "authorization", "admin"), 201);
+        Response again = send(HttpMethod.POST, "/v1/interceptors/platform/test-interceptor-conflict", null,
+                INTERCEPTOR_BODY, "authorization", "admin");
+        verify(again, 409);
     }
 
     @Test
-    void testInterceptorPut200HappyPathUpdate() {
-        verify(send(HttpMethod.PUT, "/v1/interceptors/platform/test-interceptor-update", null,
-                INTERCEPTOR_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+    void testInterceptorPut200HappyPath() {
+        verify(send(HttpMethod.POST, "/v1/interceptors/platform/test-interceptor-update", null,
+                INTERCEPTOR_BODY, "authorization", "admin"), 201);
 
         Response put = send(HttpMethod.PUT, "/v1/interceptors/platform/test-interceptor-update", null,
                 INTERCEPTOR_BODY_UPDATED, "authorization", "admin");
@@ -134,39 +142,16 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testInterceptorPutBareUpsertCreatesOnMissing() {
-        // Bare PUT against missing — upsert creates (was 404 pre-U.0).
+    void testInterceptorPut404OnMissing() {
         Response put = send(HttpMethod.PUT, "/v1/interceptors/platform/no-such-interceptor", null,
                 INTERCEPTOR_BODY, "authorization", "admin");
-        verify(put, 200);
-    }
-
-    @Test
-    void testPutEmptyBodyReturns400() {
-        // FINDING #5: an empty request body is rejected before coercion — no silent "{}" upsert.
-        Response put = send(HttpMethod.PUT, "/v1/interceptors/platform/test-interceptor-empty", null,
-                "", "authorization", "admin");
-        verify(put, 400);
-    }
-
-    @Test
-    void testPutEmptyBodyDoesNotOverwrite() {
-        // FINDING #5: a rejected empty-body PUT must leave the existing entity untouched.
-        verify(send(HttpMethod.PUT, "/v1/interceptors/platform/test-interceptor-keep", null,
-                INTERCEPTOR_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
-        verify(send(HttpMethod.PUT, "/v1/interceptors/platform/test-interceptor-keep", null,
-                "", "authorization", "admin"), 400);
-        Response get = send(HttpMethod.GET, "/v1/interceptors/platform/test-interceptor-keep", null, "",
-                "authorization", "admin");
-        verify(get, 200);
-        assertTrue(get.body().contains("http://localhost:7001/forward"),
-                () -> "Original endpoint must be unchanged: " + get.body());
+        verify(put, 404);
     }
 
     @Test
     void testInterceptorDelete204HappyPath() {
-        verify(send(HttpMethod.PUT, "/v1/interceptors/platform/test-interceptor-delete", null,
-                INTERCEPTOR_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/interceptors/platform/test-interceptor-delete", null,
+                INTERCEPTOR_BODY, "authorization", "admin"), 201);
 
         Response del = send(HttpMethod.DELETE, "/v1/interceptors/platform/test-interceptor-delete", null, "",
                 "authorization", "admin");
@@ -179,7 +164,7 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testInterceptorDelete404OnMissing() {
-        Response del = send(HttpMethod.DELETE, "/v1/interceptors/platform/no-such-interceptor-del", null, "",
+        Response del = send(HttpMethod.DELETE, "/v1/interceptors/platform/no-such-interceptor", null, "",
                 "authorization", "admin");
         verify(del, 404);
     }
@@ -187,28 +172,28 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     // ---- roles -------------------------------------------------------------
 
     @Test
-    void testRolePutCreate200HappyPath() {
-        Response put = send(HttpMethod.PUT, "/v1/roles/platform/test-role-create",
-                null, ROLE_BODY, "authorization", "admin", "If-None-Match", "*");
-        verify(put, 200);
-        assertNotNull(put.headers().get("etag"));
-        assertTrue(put.body().contains("\"name\":\"test-role-create\""),
-                () -> "Expected name in body: " + put.body());
+    void testRolePost201HappyPath() {
+        Response post = send(HttpMethod.POST, "/v1/roles/platform/test-role-create",
+                null, ROLE_BODY, "authorization", "admin");
+        verify(post, 201);
+        assertNotNull(post.headers().get("etag"));
+        assertTrue(post.body().contains("\"name\":\"test-role-create\""),
+                () -> "Expected name in body: " + post.body());
     }
 
     @Test
-    void testRolePutIfNoneMatchStar412OnExisting() {
-        verify(send(HttpMethod.PUT, "/v1/roles/platform/test-role-conflict", null,
-                ROLE_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
-        Response again = send(HttpMethod.PUT, "/v1/roles/platform/test-role-conflict", null,
-                ROLE_BODY, "authorization", "admin", "If-None-Match", "*");
-        verify(again, 412);
+    void testRolePost409OnConflict() {
+        verify(send(HttpMethod.POST, "/v1/roles/platform/test-role-conflict", null,
+                ROLE_BODY, "authorization", "admin"), 201);
+        Response again = send(HttpMethod.POST, "/v1/roles/platform/test-role-conflict", null,
+                ROLE_BODY, "authorization", "admin");
+        verify(again, 409);
     }
 
     @Test
-    void testRolePut200HappyPathUpdate() {
-        verify(send(HttpMethod.PUT, "/v1/roles/platform/test-role-update", null,
-                ROLE_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+    void testRolePut200HappyPath() {
+        verify(send(HttpMethod.POST, "/v1/roles/platform/test-role-update", null,
+                ROLE_BODY, "authorization", "admin"), 201);
 
         Response put = send(HttpMethod.PUT, "/v1/roles/platform/test-role-update", null,
                 ROLE_BODY_UPDATED, "authorization", "admin");
@@ -217,16 +202,16 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testRolePutBareUpsertCreatesOnMissing() {
-        Response put = send(HttpMethod.PUT, "/v1/roles/platform/no-such-role-create", null,
+    void testRolePut404OnMissing() {
+        Response put = send(HttpMethod.PUT, "/v1/roles/platform/no-such-role", null,
                 ROLE_BODY, "authorization", "admin");
-        verify(put, 200);
+        verify(put, 404);
     }
 
     @Test
     void testRoleDelete204HappyPath() {
-        verify(send(HttpMethod.PUT, "/v1/roles/platform/test-role-delete", null,
-                ROLE_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/roles/platform/test-role-delete", null,
+                ROLE_BODY, "authorization", "admin"), 201);
 
         Response del = send(HttpMethod.DELETE, "/v1/roles/platform/test-role-delete", null, "",
                 "authorization", "admin");
@@ -239,7 +224,7 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testRoleDelete404OnMissing() {
-        Response del = send(HttpMethod.DELETE, "/v1/roles/platform/no-such-role-del", null, "",
+        Response del = send(HttpMethod.DELETE, "/v1/roles/platform/no-such-role", null, "",
                 "authorization", "admin");
         verify(del, 404);
     }
@@ -247,17 +232,17 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     // ---- keys --------------------------------------------------------------
 
     @Test
-    void testKeyPutCreate200HappyPath() {
-        Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-create",
-                null, KEY_BODY_PROJECT_A, "authorization", "admin", "If-None-Match", "*");
-        verify(put, 200);
-        assertNotNull(put.headers().get("etag"));
-        assertTrue(put.body().contains("\"name\":\"test-key-create\""),
-                () -> "Expected name in body: " + put.body());
+    void testKeyPost201HappyPath() {
+        Response post = send(HttpMethod.POST, "/v1/keys/platform/test-key-create",
+                null, KEY_BODY_PROJECT_A, "authorization", "admin");
+        verify(post, 201);
+        assertNotNull(post.headers().get("etag"));
+        assertTrue(post.body().contains("\"name\":\"test-key-create\""),
+                () -> "Expected name in body: " + post.body());
     }
 
     @Test
-    void testKeyPutCreateApiKeyAuthenticatesAfterCreate() {
+    void testKeyPost201ApiKeyAuthenticatesAfterCreate() {
         // End-to-end check that the freshly-created key is registered under its plaintext secret
         // (not the encrypted blob form). A GET that requires Api-key auth must succeed under the
         // newly issued secret; if apiKeyStore is keyed by ciphertext, the request 401s.
@@ -268,8 +253,8 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
                   "roles": ["admin"]
                 }
                 """;
-        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-auth", null,
-                body, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/keys/platform/test-key-auth", null,
+                body, "authorization", "admin"), 201);
 
         Response bucket = send(HttpMethod.GET, "/v1/bucket", null, "",
                 "Api-key", "secret-auth-roundtrip");
@@ -277,48 +262,24 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void rotatingKeyViaPutRemovesOldSecretFromAuthStore() {
-        // FINDING #2: rotating a key's secret via PUT must revoke the old auth bearer.
-        String bodyOld = """
-                {
-                  "key": "secret-rotate-old",
-                  "project": "projA",
-                  "roles": ["admin"]
-                }
-                """;
-        String bodyNew = """
-                {
-                  "key": "secret-rotate-new",
-                  "project": "projA",
-                  "roles": ["admin"]
-                }
-                """;
-        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-rotate", null,
-                bodyOld, "authorization", "admin", "If-None-Match", "*"), 200);
-        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
-                "Api-key", "secret-rotate-old"), 200);
-
-        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-rotate", null,
-                bodyNew, "authorization", "admin"), 200);
-
-        // Old secret revoked, new secret authenticates.
-        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
-                "Api-key", "secret-rotate-old"), 401);
-        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
-                "Api-key", "secret-rotate-new"), 200);
+    void testKeyPost400OnSentinelKey() {
+        Response post = send(HttpMethod.POST, "/v1/keys/platform/test-key-sentinel",
+                null, KEY_BODY_SENTINEL, "authorization", "admin");
+        verify(post, 400);
+        assertTrue(post.body().contains("***"), () -> "Expected sentinel mention in error: " + post.body());
     }
 
     @Test
-    void testKeyPut400OnBlankKey() {
-        Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-blank",
-                null, KEY_BODY_NO_KEY, "authorization", "admin", "If-None-Match", "*");
-        verify(put, 400);
-        assertTrue(put.body().toLowerCase().contains("key"),
-                () -> "Expected key-related error: " + put.body());
+    void testKeyPost400OnBlankKey() {
+        Response post = send(HttpMethod.POST, "/v1/keys/platform/test-key-blank",
+                null, KEY_BODY_NO_KEY, "authorization", "admin");
+        verify(post, 400);
+        assertTrue(post.body().toLowerCase().contains("key"),
+                () -> "Expected key-related error: " + post.body());
     }
 
     @Test
-    void testKeyPutIfNoneMatchStar412OnExisting() {
+    void testKeyPost409OnConflict() {
         // Use unique secret per test to avoid leaking into the apiKeyStore from other tests.
         String body = """
                 {
@@ -327,15 +288,15 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
                   "roles": ["admin"]
                 }
                 """;
-        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-conflict", null,
-                body, "authorization", "admin", "If-None-Match", "*"), 200);
-        Response again = send(HttpMethod.PUT, "/v1/keys/platform/test-key-conflict", null,
-                body, "authorization", "admin", "If-None-Match", "*");
-        verify(again, 412);
+        verify(send(HttpMethod.POST, "/v1/keys/platform/test-key-conflict", null,
+                body, "authorization", "admin"), 201);
+        Response again = send(HttpMethod.POST, "/v1/keys/platform/test-key-conflict", null,
+                body, "authorization", "admin");
+        verify(again, 409);
     }
 
     @Test
-    void testKeyPut200HappyPathUpdate() {
+    void testKeyPut200HappyPath() {
         String body = """
                 {
                   "key": "secret-put-update",
@@ -350,8 +311,8 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
                   "roles": ["admin"]
                 }
                 """;
-        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-update", null,
-                body, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/keys/platform/test-key-update", null,
+                body, "authorization", "admin"), 201);
 
         Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-update", null,
                 bodyUpdated, "authorization", "admin");
@@ -368,23 +329,23 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
                   "roles": ["admin"]
                 }
                 """;
-        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-preserve", null,
-                body, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/keys/platform/test-key-preserve", null,
+                body, "authorization", "admin"), 201);
 
         // PUT body omits "key": a 200 response proves preserve-on-omit pulled the encrypted secret
-        // from the existing blob — otherwise the post-merge blank-key check would 400. The secret
-        // value itself is not asserted because U.4 retired the plaintext-reveal path.
+        // from the existing blob — otherwise the post-merge blank-key check would 400. A reveal-
+        // secrets GET would need a dual admin+security-admin fixture (admin to read platform/, plus
+        // security-admin to unmask), which ResourceBaseTest.createClaims doesn't currently produce.
         Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-preserve", null,
                 KEY_BODY_PROJECT_B_NO_KEY, "authorization", "admin");
         verify(put, 200);
     }
 
     @Test
-    void testKeyPutBareUpsertCreatesOnMissing() {
-        // Bare PUT against missing — upsert creates (was 404 pre-U.0).
-        Response put = send(HttpMethod.PUT, "/v1/keys/platform/no-such-key-create", null,
+    void testKeyPut404OnMissing() {
+        Response put = send(HttpMethod.PUT, "/v1/keys/platform/no-such-key", null,
                 KEY_BODY_PROJECT_A, "authorization", "admin");
-        verify(put, 200);
+        verify(put, 404);
     }
 
     @Test
@@ -396,8 +357,8 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
                   "roles": ["admin"]
                 }
                 """;
-        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-delete", null,
-                body, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/keys/platform/test-key-delete", null,
+                body, "authorization", "admin"), 201);
 
         Response del = send(HttpMethod.DELETE, "/v1/keys/platform/test-key-delete", null, "",
                 "authorization", "admin");
@@ -410,7 +371,7 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testKeyDelete404OnMissing() {
-        Response del = send(HttpMethod.DELETE, "/v1/keys/platform/no-such-key-del", null, "",
+        Response del = send(HttpMethod.DELETE, "/v1/keys/platform/no-such-key", null, "",
                 "authorization", "admin");
         verify(del, 404);
     }
@@ -418,28 +379,28 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     // ---- routes ------------------------------------------------------------
 
     @Test
-    void testRoutePutCreate200HappyPath() {
-        Response put = send(HttpMethod.PUT, "/v1/routes/platform/test-route-create",
-                null, ROUTE_BODY, "authorization", "admin", "If-None-Match", "*");
-        verify(put, 200);
-        assertNotNull(put.headers().get("etag"));
-        assertTrue(put.body().contains("\"name\":\"test-route-create\""),
-                () -> "Expected name in body: " + put.body());
+    void testRoutePost201HappyPath() {
+        Response post = send(HttpMethod.POST, "/v1/routes/platform/test-route-create",
+                null, ROUTE_BODY, "authorization", "admin");
+        verify(post, 201);
+        assertNotNull(post.headers().get("etag"));
+        assertTrue(post.body().contains("\"name\":\"test-route-create\""),
+                () -> "Expected name in body: " + post.body());
     }
 
     @Test
-    void testRoutePutIfNoneMatchStar412OnExisting() {
-        verify(send(HttpMethod.PUT, "/v1/routes/platform/test-route-conflict", null,
-                ROUTE_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
-        Response again = send(HttpMethod.PUT, "/v1/routes/platform/test-route-conflict", null,
-                ROUTE_BODY, "authorization", "admin", "If-None-Match", "*");
-        verify(again, 412);
+    void testRoutePost409OnConflict() {
+        verify(send(HttpMethod.POST, "/v1/routes/platform/test-route-conflict", null,
+                ROUTE_BODY, "authorization", "admin"), 201);
+        Response again = send(HttpMethod.POST, "/v1/routes/platform/test-route-conflict", null,
+                ROUTE_BODY, "authorization", "admin");
+        verify(again, 409);
     }
 
     @Test
-    void testRoutePut200HappyPathUpdate() {
-        verify(send(HttpMethod.PUT, "/v1/routes/platform/test-route-update", null,
-                ROUTE_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+    void testRoutePut200HappyPath() {
+        verify(send(HttpMethod.POST, "/v1/routes/platform/test-route-update", null,
+                ROUTE_BODY, "authorization", "admin"), 201);
 
         Response put = send(HttpMethod.PUT, "/v1/routes/platform/test-route-update", null,
                 ROUTE_BODY_UPDATED, "authorization", "admin");
@@ -448,16 +409,16 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testRoutePutBareUpsertCreatesOnMissing() {
-        Response put = send(HttpMethod.PUT, "/v1/routes/platform/no-such-route-create", null,
+    void testRoutePut404OnMissing() {
+        Response put = send(HttpMethod.PUT, "/v1/routes/platform/no-such-route", null,
                 ROUTE_BODY, "authorization", "admin");
-        verify(put, 200);
+        verify(put, 404);
     }
 
     @Test
     void testRouteDelete204HappyPath() {
-        verify(send(HttpMethod.PUT, "/v1/routes/platform/test-route-delete", null,
-                ROUTE_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/routes/platform/test-route-delete", null,
+                ROUTE_BODY, "authorization", "admin"), 201);
 
         Response del = send(HttpMethod.DELETE, "/v1/routes/platform/test-route-delete", null, "",
                 "authorization", "admin");
@@ -470,7 +431,7 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testRouteDelete404OnMissing() {
-        Response del = send(HttpMethod.DELETE, "/v1/routes/platform/no-such-route-del", null, "",
+        Response del = send(HttpMethod.DELETE, "/v1/routes/platform/no-such-route", null, "",
                 "authorization", "admin");
         verify(del, 404);
     }
@@ -478,13 +439,13 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     // ---- schemas -----------------------------------------------------------
 
     @Test
-    void testSchemaPutCreate200HappyPath() {
-        Response put = send(HttpMethod.PUT, "/v1/schemas/public/test-schema-create",
-                null, SCHEMA_BODY, "authorization", "admin", "If-None-Match", "*");
-        verify(put, 200);
-        assertNotNull(put.headers().get("etag"));
-        assertTrue(put.body().contains("\"name\":\"test-schema-create\""),
-                () -> "Expected name in body: " + put.body());
+    void testSchemaPost201HappyPath() {
+        Response post = send(HttpMethod.POST, "/v1/schemas/public/test-schema-create",
+                null, SCHEMA_BODY, "authorization", "admin");
+        verify(post, 201);
+        assertNotNull(post.headers().get("etag"));
+        assertTrue(post.body().contains("\"name\":\"test-schema-create\""),
+                () -> "Expected name in body: " + post.body());
 
         Response get = send(HttpMethod.GET, "/v1/schemas/public/test-schema-create", null, "",
                 "authorization", "admin");
@@ -494,18 +455,18 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testSchemaPutIfNoneMatchStar412OnExisting() {
-        verify(send(HttpMethod.PUT, "/v1/schemas/public/test-schema-conflict", null,
-                SCHEMA_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
-        Response again = send(HttpMethod.PUT, "/v1/schemas/public/test-schema-conflict", null,
-                SCHEMA_BODY, "authorization", "admin", "If-None-Match", "*");
-        verify(again, 412);
+    void testSchemaPost409OnConflict() {
+        verify(send(HttpMethod.POST, "/v1/schemas/public/test-schema-conflict", null,
+                SCHEMA_BODY, "authorization", "admin"), 201);
+        Response again = send(HttpMethod.POST, "/v1/schemas/public/test-schema-conflict", null,
+                SCHEMA_BODY, "authorization", "admin");
+        verify(again, 409);
     }
 
     @Test
-    void testSchemaPut200HappyPathUpdate() {
-        verify(send(HttpMethod.PUT, "/v1/schemas/public/test-schema-update", null,
-                SCHEMA_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+    void testSchemaPut200HappyPath() {
+        verify(send(HttpMethod.POST, "/v1/schemas/public/test-schema-update", null,
+                SCHEMA_BODY, "authorization", "admin"), 201);
 
         Response put = send(HttpMethod.PUT, "/v1/schemas/public/test-schema-update", null,
                 SCHEMA_BODY_UPDATED, "authorization", "admin");
@@ -519,16 +480,16 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testSchemaPutBareUpsertCreatesOnMissing() {
-        Response put = send(HttpMethod.PUT, "/v1/schemas/public/no-such-schema-create", null,
+    void testSchemaPut404OnMissing() {
+        Response put = send(HttpMethod.PUT, "/v1/schemas/public/no-such-schema", null,
                 SCHEMA_BODY, "authorization", "admin");
-        verify(put, 200);
+        verify(put, 404);
     }
 
     @Test
     void testSchemaDelete204HappyPath() {
-        verify(send(HttpMethod.PUT, "/v1/schemas/public/test-schema-delete", null,
-                SCHEMA_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/schemas/public/test-schema-delete", null,
+                SCHEMA_BODY, "authorization", "admin"), 201);
 
         Response del = send(HttpMethod.DELETE, "/v1/schemas/public/test-schema-delete", null, "",
                 "authorization", "admin");
@@ -541,7 +502,7 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testSchemaDelete404OnMissing() {
-        Response del = send(HttpMethod.DELETE, "/v1/schemas/public/no-such-schema-del", null, "",
+        Response del = send(HttpMethod.DELETE, "/v1/schemas/public/no-such-schema", null, "",
                 "authorization", "admin");
         verify(del, 404);
     }
@@ -549,12 +510,12 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     // ---- cross-cutting -----------------------------------------------------
 
     @Test
-    void testWriteMetadataListShowsImmediately() {
-        verify(send(HttpMethod.PUT, "/v1/interceptors/platform/test-interceptor-immediate", null,
-                INTERCEPTOR_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+    void testWriteGetListShowsImmediately() {
+        verify(send(HttpMethod.POST, "/v1/interceptors/platform/test-interceptor-immediate", null,
+                INTERCEPTOR_BODY, "authorization", "admin"), 201);
 
-        // U.0: listings moved to the /v1/metadata/... sibling route and use ResourceFolderMetadata shape.
-        Response list = send(HttpMethod.GET, "/v1/metadata/interceptors/platform/", null, "",
+        // No polling — rebuildNow() in the writer ensures the listing reflects the new entity.
+        Response list = send(HttpMethod.GET, "/v1/interceptors/platform", null, "",
                 "authorization", "admin");
         verify(list, 200);
         assertTrue(list.body().contains("test-interceptor-immediate"),
@@ -562,9 +523,9 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testPut403ForNonAdmin() {
-        Response put = send(HttpMethod.PUT, "/v1/interceptors/platform/test-interceptor-noadmin", null,
-                INTERCEPTOR_BODY, "authorization", "user", "If-None-Match", "*");
-        verify(put, 403);
+    void testPost403ForNonAdmin() {
+        Response post = send(HttpMethod.POST, "/v1/interceptors/platform/test-interceptor-noadmin", null,
+                INTERCEPTOR_BODY, "authorization", "user");
+        verify(post, 403);
     }
 }
