@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Settings;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -30,6 +31,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
@@ -83,6 +85,7 @@ public final class MergedConfigStore implements ConfigStore {
     private FileConfigStore fileConfigStore;
     private volatile Config config;
     private volatile Map<ResourceTypes, Map<String, InvalidEntityRecord>> invalidEntities = Map.of();
+    private volatile boolean settingsFromApi;
     private volatile boolean initialized;
     private final AtomicLong pendingRebuildTimerId = new AtomicLong(NO_PENDING_TIMER);
 
@@ -154,7 +157,8 @@ public final class MergedConfigStore implements ConfigStore {
         } catch (Exception ignored) {
             return;
         }
-        if (!MANAGED_TYPES.contains(descriptor.getType())) {
+        if (!MANAGED_TYPES.contains(descriptor.getType())
+                && descriptor.getType() != ResourceTypes.GLOBAL_SETTINGS) {
             return;
         }
         requestRebuild();
@@ -186,6 +190,16 @@ public final class MergedConfigStore implements ConfigStore {
     /** Currently-effective failure mode: {@link #MODE_ABORT} or {@link #MODE_SKIP}. */
     public String getOnInvalidEntity() {
         return onInvalidEntity;
+    }
+
+    /**
+     * Whether the {@code globalInterceptors} / {@code retriableErrorCodes} fields in the
+     * current {@link Config} were sourced from the API-managed settings singleton blob
+     * ({@code platform/settings/global}) rather than from the file-defined defaults.
+     * Drives the {@code source} label in the settings GET projection (design 03 §1).
+     */
+    public boolean isSettingsFromApi() {
+        return settingsFromApi;
     }
 
     /**
@@ -380,9 +394,39 @@ public final class MergedConfigStore implements ConfigStore {
 
         Map<ResourceTypes, Map<String, InvalidEntityRecord>> finalInvalid =
                 pendingInvalid.isEmpty() ? Map.of() : Collections.unmodifiableMap(pendingInvalid);
+        boolean overlayFromApi = applySettingsOverlay(merged);
         this.config = merged;
         this.invalidEntities = finalInvalid;
+        this.settingsFromApi = overlayFromApi;
         return merged;
+    }
+
+    /**
+     * Singleton overlay (design 02 §4): when the API-managed settings blob exists at
+     * {@code platform/settings/global}, its fields replace the file-derived
+     * {@code globalInterceptors} / {@code retriableErrorCodes} on the merged {@link Config}.
+     * Settings is intentionally NOT in {@link #MANAGED_TYPES} — it is a singleton overlay,
+     * not a union-by-key like other types. Returns {@code true} iff the blob is present.
+     */
+    private boolean applySettingsOverlay(Config merged) {
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.GLOBAL_SETTINGS, ResourceDescriptor.PLATFORM_BUCKET,
+                ResourceDescriptor.PLATFORM_LOCATION, "global");
+        String body = resourceService.getResource(descriptor);
+        if (body == null) {
+            return false;
+        }
+        try {
+            Settings settings = ProxyUtil.BLOB_MAPPER.readValue(body, Settings.class);
+            merged.setGlobalInterceptors(
+                    settings.getGlobalInterceptors() == null ? List.of() : settings.getGlobalInterceptors());
+            merged.setRetriableErrorCodes(
+                    settings.getRetriableErrorCodes() == null ? Set.of() : settings.getRetriableErrorCodes());
+            return true;
+        } catch (Exception parseError) {
+            log.warn("Failed to parse settings singleton blob: {}", parseError.getMessage());
+            return false;
+        }
     }
 
     private static int countInvalidEntities(MergedConfigStore self) {
