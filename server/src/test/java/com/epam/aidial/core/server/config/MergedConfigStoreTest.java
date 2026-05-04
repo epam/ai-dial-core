@@ -2,12 +2,16 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.Vertx;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.function.Consumer;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -60,5 +64,83 @@ public class MergedConfigStoreTest {
 
         verify(vertx, times(1)).cancelTimer(eq(sentinelTimerId));
         org.junit.jupiter.api.Assertions.assertNotNull(rebuilt);
+    }
+
+    @Test
+    public void testListenerSelfEventIsSkipped() {
+        when(fileConfigStore.get()).thenReturn(new Config());
+        Consumer<ResourceEvent> listener = registerAndCaptureListener("pod-self");
+
+        listener.accept(new ResourceEvent()
+                .setUrl("models/public/gpt-4")
+                .setAction(ResourceEvent.Action.CREATE)
+                .setSenderPodId("pod-self"));
+
+        verify(vertx, never()).setTimer(anyLong(), any());
+    }
+
+    @Test
+    public void testListenerOtherPodManagedTypeTriggersRebuild() {
+        when(fileConfigStore.get()).thenReturn(new Config());
+        when(vertx.setTimer(anyLong(), any())).thenReturn(99L);
+        Consumer<ResourceEvent> listener = registerAndCaptureListener("pod-self");
+
+        listener.accept(new ResourceEvent()
+                .setUrl("models/public/gpt-4")
+                .setAction(ResourceEvent.Action.UPDATE)
+                .setSenderPodId("pod-other"));
+
+        verify(vertx, times(1)).setTimer(anyLong(), any());
+    }
+
+    @Test
+    public void testListenerOtherPodNonManagedTypeIsSkipped() {
+        when(fileConfigStore.get()).thenReturn(new Config());
+        Consumer<ResourceEvent> listener = registerAndCaptureListener("pod-self");
+
+        listener.accept(new ResourceEvent()
+                .setUrl("conversations/some-bucket/some-id")
+                .setAction(ResourceEvent.Action.UPDATE)
+                .setSenderPodId("pod-other"));
+
+        verify(vertx, never()).setTimer(anyLong(), any());
+    }
+
+    @Test
+    public void testListenerMalformedUrlIsSkipped() {
+        when(fileConfigStore.get()).thenReturn(new Config());
+        Consumer<ResourceEvent> listener = registerAndCaptureListener("pod-self");
+
+        listener.accept(new ResourceEvent()
+                .setUrl("not-a-valid-url")
+                .setAction(ResourceEvent.Action.CREATE)
+                .setSenderPodId("pod-other"));
+
+        verify(vertx, never()).setTimer(anyLong(), any());
+    }
+
+    @Test
+    public void testListenerNullSenderPodIdTreatedAsForeign() {
+        when(fileConfigStore.get()).thenReturn(new Config());
+        when(vertx.setTimer(anyLong(), any())).thenReturn(7L);
+        Consumer<ResourceEvent> listener = registerAndCaptureListener("pod-self");
+
+        listener.accept(new ResourceEvent()
+                .setUrl("interceptors/platform/foo")
+                .setAction(ResourceEvent.Action.CREATE));
+
+        verify(vertx, times(1)).setTimer(anyLong(), any());
+    }
+
+    @SuppressWarnings("unchecked")
+    private Consumer<ResourceEvent> registerAndCaptureListener(String thisPodId) {
+        MergedConfigStore store = new MergedConfigStore(
+                vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                secretFieldProcessor, MergedConfigStore.MODE_ABORT, false, thisPodId);
+        store.init(fileConfigStore);
+
+        ArgumentCaptor<Consumer<ResourceEvent>> captor = ArgumentCaptor.forClass(Consumer.class);
+        verify(resourceService).subscribeAllResources(captor.capture());
+        return captor.getValue();
     }
 }

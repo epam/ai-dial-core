@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -77,6 +78,7 @@ public final class MergedConfigStore implements ConfigStore {
     private final SecretFieldProcessor secretFieldProcessor;
     private final String onInvalidEntity;
     private final boolean softValidation;
+    private final String thisPodId;
 
     private FileConfigStore fileConfigStore;
     private volatile Config config;
@@ -88,7 +90,7 @@ public final class MergedConfigStore implements ConfigStore {
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
                              SecretFieldProcessor secretFieldProcessor,
                              String onInvalidEntity) {
-        this(vertx, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor, onInvalidEntity, false);
+        this(vertx, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor, onInvalidEntity, false, "");
     }
 
     public MergedConfigStore(Vertx vertx, ResourceService resourceService,
@@ -96,6 +98,15 @@ public final class MergedConfigStore implements ConfigStore {
                              SecretFieldProcessor secretFieldProcessor,
                              String onInvalidEntity,
                              boolean softValidation) {
+        this(vertx, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor, onInvalidEntity, softValidation, "");
+    }
+
+    public MergedConfigStore(Vertx vertx, ResourceService resourceService,
+                             ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
+                             SecretFieldProcessor secretFieldProcessor,
+                             String onInvalidEntity,
+                             boolean softValidation,
+                             String thisPodId) {
         this.vertx = vertx;
         this.resourceService = resourceService;
         this.apiKeyStore = apiKeyStore;
@@ -103,6 +114,7 @@ public final class MergedConfigStore implements ConfigStore {
         this.secretFieldProcessor = secretFieldProcessor;
         this.onInvalidEntity = MODE_SKIP.equalsIgnoreCase(onInvalidEntity) ? MODE_SKIP : MODE_ABORT;
         this.softValidation = softValidation;
+        this.thisPodId = thisPodId == null ? "" : thisPodId;
 
         Gauge.builder("dial_config_skipped_entities", this, MergedConfigStore::countInvalidEntities)
                 .description("Number of entities skipped from in-memory Config (design 02 §4.1)")
@@ -120,6 +132,32 @@ public final class MergedConfigStore implements ConfigStore {
         this.fileConfigStore = fileConfigStore;
         rebuild();
         initialized = true;
+        resourceService.subscribeAllResources(this::onResourceEvent);
+    }
+
+    /**
+     * Cross-replica rebuild trigger (design 02 §11.1). Filters self-events via
+     * {@link #thisPodId} and other-pod events for non-{@link #MANAGED_TYPES} resources;
+     * any survivor enqueues a debounced {@link #requestRebuild()}. Malformed or
+     * encrypted-bucket URLs (which {@link ResourceDescriptorFactory#fromAnyUrl}
+     * rejects without an encryption service) are silently dropped — none of them
+     * carry MANAGED_TYPES content.
+     */
+    private void onResourceEvent(ResourceEvent event) {
+        String senderPodId = event.getSenderPodId();
+        if (senderPodId != null && senderPodId.equals(thisPodId)) {
+            return;
+        }
+        ResourceDescriptor descriptor;
+        try {
+            descriptor = ResourceDescriptorFactory.fromAnyUrl(event.getUrl(), null);
+        } catch (Exception ignored) {
+            return;
+        }
+        if (!MANAGED_TYPES.contains(descriptor.getType())) {
+            return;
+        }
+        requestRebuild();
     }
 
     @Override
