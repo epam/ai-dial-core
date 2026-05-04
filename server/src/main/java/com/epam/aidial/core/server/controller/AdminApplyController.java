@@ -47,7 +47,7 @@ public class AdminApplyController {
 
     private static final String SETTINGS_SINGLETON_NAME = "global";
 
-    private static final Map<String, Integer> DEPENDENCY_ORDER = Map.of(
+    static final Map<String, Integer> DEPENDENCY_ORDER = Map.of(
             "Settings", 0,
             "Schema", 1,
             "Interceptor", 2,
@@ -58,7 +58,7 @@ public class AdminApplyController {
             "ToolSet", 7,
             "Application", 8);
 
-    private static final Map<String, String> KIND_URL_SEGMENT = Map.of(
+    static final Map<String, String> KIND_URL_SEGMENT = Map.of(
             "Settings", "settings",
             "Schema", "schemas",
             "Interceptor", "interceptors",
@@ -171,13 +171,13 @@ public class AdminApplyController {
         List<ManifestEntry> entries = new ArrayList<>(rawEntries);
         entries.sort(Comparator.comparingInt(e -> DEPENDENCY_ORDER.getOrDefault(e.kind(), 99)));
 
-        Config scratch = newScratch();
+        Config scratch = newScratch(mergedConfigStore);
         List<EntityResult> results = new ArrayList<>();
 
         if (precheck) {
             boolean anyFailure = false;
             for (ManifestEntry entry : entries) {
-                EntityResult result = validateOnly(entry, scratch);
+                EntityResult result = validateOnly(entry, scratch, softValidation);
                 if (!"valid".equals(result.status())) {
                     anyFailure = true;
                     results.add(new EntityResult(result.entityId(), "skipped", result.error()));
@@ -192,7 +192,7 @@ public class AdminApplyController {
                 return buildResponse(HttpStatus.UNPROCESSABLE_ENTITY, results);
             }
             // Precheck passed — wipe and re-run as real writes.
-            scratch = newScratch();
+            scratch = newScratch(mergedConfigStore);
             results.clear();
         }
 
@@ -216,7 +216,7 @@ public class AdminApplyController {
         return buildResponse(HttpStatus.OK, results);
     }
 
-    private Config newScratch() {
+    static Config newScratch(MergedConfigStore mergedConfigStore) {
         Config live = mergedConfigStore.get();
         Config scratch = new Config();
         if (live != null) {
@@ -234,7 +234,7 @@ public class AdminApplyController {
         return scratch;
     }
 
-    private EntityResult validateOnly(ManifestEntry entry, Config scratch) {
+    static EntityResult validateOnly(ManifestEntry entry, Config scratch, boolean softValidation) {
         String id = entityId(entry);
         if (!KIND_URL_SEGMENT.containsKey(entry.kind())) {
             // Unknown kinds pass precheck and are recorded as FAILED during the apply phase —
@@ -437,7 +437,7 @@ public class AdminApplyController {
         return new EntityResult(id, "applied", null);
     }
 
-    private void mutateScratch(Config scratch, ManifestEntry entry) {
+    static void mutateScratch(Config scratch, ManifestEntry entry) {
         try {
             switch (entry.kind()) {
                 case "Settings" -> {
@@ -489,7 +489,7 @@ public class AdminApplyController {
         }
     }
 
-    private String entityId(ManifestEntry entry) {
+    static String entityId(ManifestEntry entry) {
         String segment = KIND_URL_SEGMENT.getOrDefault(entry.kind(), entry.kind().toLowerCase());
         String name = entry.name() != null ? entry.name()
                 : ("Settings".equals(entry.kind()) ? SETTINGS_SINGLETON_NAME : "");
@@ -543,9 +543,9 @@ public class AdminApplyController {
         return new ApplyResponse(status, body);
     }
 
-    private record ManifestEntry(String kind, String name, JsonNode spec) {}
+    record ManifestEntry(String kind, String name, JsonNode spec) {}
 
-    private record EntityResult(String entityId, String status, String error) {}
+    record EntityResult(String entityId, String status, String error) {}
 
     private record ApplyResponse(HttpStatus status, ObjectNode body) {}
 }
