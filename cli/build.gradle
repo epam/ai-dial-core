@@ -1,0 +1,29 @@
+plugins {
+    id 'io.quarkus' version "3.16.4"
+}
+
+dependencies {
+    // Quarkus BOM — pins Picocli, Jackson, Arc, JUnit 5 versions transitively.
+    implementation enforcedPlatform("io.quarkus.platform:quarkus-bom:3.16.4")
+
+    implementation "io.quarkus:quarkus-picocli"
+    implementation "io.quarkus:quarkus-arc"
+    implementation "com.fasterxml.jackson.core:jackson-databind"
+    implementation "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml"
+
+    // Reuse DIAL Core data classes (Config, Model, Application, …) — design 05 §6.
+    implementation project(':config')
+
+    testImplementation "org.junit.jupiter:junit-jupiter:${junit_version}"
+    testImplementation "org.mockito:mockito-core:${mockito_version}"
+    testImplementation "org.mockito:mockito-junit-jupiter:${mockito_version}"
+    testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:${junit_version}"
+}
+
+application {
+    mainClass = 'com.epam.aidial.cli.DialCli'
+}
+
+test {
+    useJUnitPlatform()
+}
