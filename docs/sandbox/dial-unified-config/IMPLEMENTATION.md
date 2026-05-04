@@ -385,7 +385,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 |---|---|---|---|---|---|
 | **1.5S.0-pre** | `ResourceTopic` codec: shared `ObjectMapper` with `FAIL_ON_UNKNOWN_PROPERTIES = false` + `JsonInclude.NON_NULL`. New `ResourceTopic(redis, key, mapper)` constructor; legacy delegates with safe defaults. `ResourceService` wires shared mapper. **Standalone PR before any 1.5 traffic.** | — | 07 Phase 1.5 prereqs; 02 §11.1 | ✅ | `4a0dc6d2` |
 | **1.5S.1** | `ResourceTopic.subscribeAll(Consumer<ResourceEvent>)`. New `globalSubscribers` `CopyOnWriteArrayList`; second loop in `handle()`. | 1.5S.0-pre | 02 §11.1 | ✅ | `d3227841` |
-| **1.5S.2** | `ResourceEvent.senderPodId` field (`@JsonInclude(NON_NULL)`, `@JsonIgnoreProperties(ignoreUnknown = true)`). Pod-UUID generated at `:server` boot, supplied to `ResourceService` via `Supplier<String>`. | 1.5S.0-pre | 02 §11.1 | 📋 | — |
+| **1.5S.2** | `ResourceEvent.senderPodId` field (`@JsonInclude(NON_NULL)`, `@JsonIgnoreProperties(ignoreUnknown = true)`). Pod-UUID generated at `:server` boot, supplied to `ResourceService` via `Supplier<String>`. **Scope expansion 2026-05-04 (auto-mode batch):** also adds `"senderPodId":"@ignore"` to event-shape assertions in `ResourceApiTest` and `FileApiTest` to satisfy `NotExactComparator`'s strict size check — mechanical follow-on from the wire-shape change. | 1.5S.0-pre | 02 §11.1 | ✅ | `5dabec81` |
 | **1.5S.3** | `MergedConfigStore` `subscribeAll` listener. Filter by `senderPodId` (skip-self) + resource type. 500ms trailing-edge debounce on `requestRebuild()`. Polling stays at 60s. | 1.5S.1, 1.5S.2, 2S.8 | 02 §11.1; 07 Phase 1.5 | 📋 | — |
 
 ### 5.4 Phase 3 — Write API for all entity types (mechanical extension)
