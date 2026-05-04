@@ -415,7 +415,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 
 | ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
-| **4S.0** | `POST /v1/admin/apply` — bulk upsert; dependency-ordered sequential (`globalSettings → schemas → interceptors → roles → keys → routes → models → toolsets → applications`); continues on failure; per-entity status array. `precheck: true\|false` (default `true`); `softValidation` orthogonal; proposed-config validation always-on. | 3S.2, 3S.3 | 03 §7; 07 Phase 4 | 📋 | — |
+| **4S.0** | `POST /v1/admin/apply` — bulk upsert; dependency-ordered sequential (`globalSettings → schemas → interceptors → roles → keys → routes → models → toolsets → applications`); continues on failure; per-entity status array. `precheck: true\|false` (default `true`); `softValidation` orthogonal; proposed-config validation always-on. **Unknown-kind narrowing 2026-05-04 (architect-plan halt):** `kind: Bundle` → batch-level **400** (CLI-only, structural rejection per 03 §7 line 349); other unknown kinds (e.g. `File`/`Prompt`/`Conversation` — out of 4S.0 scope) → per-entity `FAILED`, batch continues. Reconciles 03 §7's "400 for the offending entry" with the per-entity-status-array model: `Bundle` is structural-malformed payload; other unknowns are entry-level errors emitted via the per-entity `status` channel. | 3S.2, 3S.3 | 03 §7; 07 Phase 4 | ✅ | `c658d7f3` |
 | **4S.1** | `POST /v1/admin/validate` — multi-entity, batch-aware with `precheck` semantics. | 4S.0 | 03 §6 | 📋 | — |
 
 **Track B — CLI**
