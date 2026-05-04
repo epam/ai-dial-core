@@ -331,7 +331,7 @@ Between slices: `[N/M slices done, next: <slice-id>]`.
 
 | ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
-| **1C.0** | New `:cli` Gradle module. Picocli + Quarkus Command Mode skeleton. `~/.dial-cli/config.yaml` profile loader. API-key resolution chain (env var → keystore → `--api-key-file` → no-echo prompt). Direct dependency on `:config` module data classes. | 1S.1 (contract only) | 05 §1, §2, §6 | 📋 | — |
+| **1C.0** | New `:cli` Gradle module. Picocli + Quarkus Command Mode skeleton. `~/.dial-cli/config.yaml` profile loader. API-key resolution chain (env var → `--api-key-file` → no-echo prompt). Direct dependency on `:config` module data classes. **Scope narrowed 2026-05-05** (architect-plan halt — Ambiguity B1): keystore tier deferred to post-MVP — design 06 §2.1 says keystore is populated by `dial-cli auth login --store`, but `auth login` is itself deferred per design 05 §1 (waits for OIDC). MVP chain follows design 06 §2.1 ordering minus the unreachable keystore tier; keystore re-enables when `auth login` ships. **Ambiguity A**: chain order follows design 06 §2.1 (the contract) over the slice row's earlier paraphrase. | 1S.1 (contract only) | 05 §1, §2, §6 | ✅ | `ff2ae5d4` |
 | **1C.1** | `dial-cli env list / current / use / check`. Persist `defaults.env` on `use`. | 1C.0 | 05 §1 | 📋 | — |
 | **1C.2** | `dial-cli model get <name>` and `dial-cli get models` (alias). `-o table\|json\|yaml`. | 1C.0, 1S.1 | 05 §1; 06 §2.2 | 📋 | — |
 | **1C.3** | Extend `get` / `list` to all entity types. **Mechanical** once 1C.2 lands. | 1C.2, 1S.3, 1S.4 | 05 §1 | 📋 | — |
