@@ -1,7 +1,13 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
+import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * HTTP integration tests for the slice 1S.0 bootstrap: end-to-end exercise of the
@@ -73,5 +79,40 @@ public class ConfigBootstrapTest extends ResourceBaseTest {
         // Default api-key proxyKey1 is authenticated but lacks admin — platform reads require admin.
         Response response = send(HttpMethod.GET, "/v1/interceptors/platform/anything");
         verify(response, 403);
+    }
+
+    @Test
+    void testApiKeyWithDefaultRoleCannotReadPlatformRoles() {
+        // Same gate as testApiKeyWithDefaultRoleCannotReadPlatform; this asserts it specifically
+        // for /v1/roles/platform/ since that is the endpoint operators most often probe first.
+        Response response = send(HttpMethod.GET, "/v1/roles/platform/");
+        verify(response, 403);
+    }
+
+    @Test
+    void testUnknownApiKeyIsRejected() {
+        // Unknown key fails in ApiKeyStore before authz — 401 (not 403); proves the gate cannot
+        // be probed by guessing keys.
+        Response response = send(HttpMethod.GET, "/v1/roles/platform/", null, "",
+                "api-key", "no-such-key-exists");
+        verify(response, 401);
+    }
+
+    @Test
+    @SneakyThrows
+    @DialConfigLocation("dial-config/admin-api-key-config.json")
+    void testApiKeyWithAdminRoleCanReadPlatform() {
+        // Sibling tests gate admin via the JWT mock (authorization: "admin"); this is the only
+        // coverage of the api-key path — Key.roles=["admin"] flows through getMergedRoles to
+        // context.userRoles and matches access.admin.rules (CONTAIN, target="admin").
+        Response response = send(HttpMethod.GET, "/v1/roles/platform/", null, "",
+                "api-key", "adminKey1");
+        verify(response, 200);
+        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals("roles", body.get("entityType").asText());
+        assertEquals("platform", body.get("bucket").asText());
+        JsonNode items = body.get("items");
+        assertTrue(items.isArray() && !items.isEmpty(),
+                () -> "items must include the admin role from the fixture: " + response.body());
     }
 }
