@@ -82,6 +82,11 @@ public enum RouteTemplate {
             "/v1/admin/validate"
     ),
 
+    CONFIG_APPLY(
+            "^/v1/admin/apply$",
+            "/v1/admin/apply"
+    ),
+
     BUCKET(
             "^/v1/bucket$",
             "/v1/bucket"

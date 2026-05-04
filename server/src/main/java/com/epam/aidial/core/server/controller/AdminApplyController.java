@@ -1,0 +1,551 @@
+package com.epam.aidial.core.server.controller;
+
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Role;
+import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Settings;
+import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.ConfigPostProcessor;
+import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.config.SecretFieldProcessor;
+import com.epam.aidial.core.server.config.ValidationWarning;
+import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.security.ConfigAuthorizationService;
+import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.ToolSetService;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.EtagHeader;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Future;
+import io.vertx.core.buffer.Buffer;
+import org.apache.commons.lang3.StringUtils;
+
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class AdminApplyController {
+
+    private static final String SETTINGS_SINGLETON_NAME = "global";
+
+    private static final Map<String, Integer> DEPENDENCY_ORDER = Map.of(
+            "Settings", 0,
+            "Schema", 1,
+            "Interceptor", 2,
+            "Role", 3,
+            "Key", 4,
+            "Route", 5,
+            "Model", 6,
+            "ToolSet", 7,
+            "Application", 8);
+
+    private static final Map<String, String> KIND_URL_SEGMENT = Map.of(
+            "Settings", "settings",
+            "Schema", "schemas",
+            "Interceptor", "interceptors",
+            "Role", "roles",
+            "Key", "keys",
+            "Route", "routes",
+            "Model", "models",
+            "ToolSet", "toolsets",
+            "Application", "applications");
+
+    private final ProxyContext context;
+    private final ConfigAuthorizationService authorizationService;
+    private final MergedConfigStore mergedConfigStore;
+    private final ResourceService resourceService;
+    private final AsyncTaskExecutor taskExecutor;
+    private final SecretFieldProcessor secretFieldProcessor;
+    private final boolean softValidation;
+    private final ApiKeyStore apiKeyStore;
+    private final ApplicationService applicationService;
+    private final ToolSetService toolSetService;
+
+    public AdminApplyController(ProxyContext context,
+                                ConfigAuthorizationService authorizationService,
+                                MergedConfigStore mergedConfigStore,
+                                ResourceService resourceService,
+                                AsyncTaskExecutor taskExecutor,
+                                SecretFieldProcessor secretFieldProcessor,
+                                boolean softValidation,
+                                ApiKeyStore apiKeyStore,
+                                ApplicationService applicationService,
+                                ToolSetService toolSetService) {
+        this.context = context;
+        this.authorizationService = authorizationService;
+        this.mergedConfigStore = mergedConfigStore;
+        this.resourceService = resourceService;
+        this.taskExecutor = taskExecutor;
+        this.secretFieldProcessor = secretFieldProcessor;
+        this.softValidation = softValidation;
+        this.apiKeyStore = apiKeyStore;
+        this.applicationService = applicationService;
+        this.toolSetService = toolSetService;
+    }
+
+    public Future<?> handle() {
+        if (!authorizationService.isAdmin(context)) {
+            context.respond(HttpStatus.FORBIDDEN, "Forbidden");
+            return Future.succeededFuture();
+        }
+        context.getRequest().body()
+                .onSuccess(this::process)
+                .onFailure(error -> context.respond(HttpStatus.BAD_REQUEST,
+                        "Failed to read request body: " + error.getMessage()));
+        return Future.succeededFuture();
+    }
+
+    private void process(Buffer body) {
+        JsonNode envelope;
+        try {
+            String text = body.toString(StandardCharsets.UTF_8);
+            envelope = ProxyUtil.MAPPER.readTree(text.isEmpty() ? "{}" : text);
+        } catch (JsonProcessingException e) {
+            context.respond(HttpStatus.BAD_REQUEST, "Invalid JSON: " + e.getOriginalMessage());
+            return;
+        }
+        if (!envelope.isObject()) {
+            context.respond(HttpStatus.BAD_REQUEST, "Request body must be a JSON object");
+            return;
+        }
+        JsonNode manifestsNode = envelope.get("manifests");
+        if (manifestsNode == null || !manifestsNode.isArray()) {
+            context.respond(HttpStatus.BAD_REQUEST, "Missing or invalid 'manifests' array");
+            return;
+        }
+        boolean precheck = !envelope.has("precheck") || envelope.get("precheck").asBoolean(true);
+
+        List<ManifestEntry> entries = new ArrayList<>();
+        for (int i = 0; i < manifestsNode.size(); i++) {
+            JsonNode entryNode = manifestsNode.get(i);
+            if (!entryNode.isObject()) {
+                context.respond(HttpStatus.BAD_REQUEST, "manifests[" + i + "] must be a JSON object");
+                return;
+            }
+            JsonNode kindNode = entryNode.get("kind");
+            if (kindNode == null || !kindNode.isTextual()) {
+                context.respond(HttpStatus.BAD_REQUEST, "manifests[" + i + "].kind must be a string");
+                return;
+            }
+            String kind = kindNode.asText();
+            if ("Bundle".equals(kind)) {
+                context.respond(HttpStatus.BAD_REQUEST, "Bundle kind is not allowed in /v1/admin/apply");
+                return;
+            }
+            String name = entryNode.hasNonNull("name") ? entryNode.get("name").asText() : null;
+            JsonNode spec = entryNode.get("spec");
+            entries.add(new ManifestEntry(kind, name, spec));
+        }
+
+        taskExecutor.submit(() -> applyBatch(precheck, entries))
+                .onSuccess(result -> context.respond(result.status(), result.body()))
+                .onFailure(error -> {
+                    if (error instanceof HttpException ex) {
+                        context.respond(ex);
+                    } else {
+                        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+                    }
+                });
+    }
+
+    private ApplyResponse applyBatch(boolean precheck, List<ManifestEntry> rawEntries) {
+        List<ManifestEntry> entries = new ArrayList<>(rawEntries);
+        entries.sort(Comparator.comparingInt(e -> DEPENDENCY_ORDER.getOrDefault(e.kind(), 99)));
+
+        Config scratch = newScratch();
+        List<EntityResult> results = new ArrayList<>();
+
+        if (precheck) {
+            boolean anyFailure = false;
+            for (ManifestEntry entry : entries) {
+                EntityResult result = validateOnly(entry, scratch);
+                if (!"valid".equals(result.status())) {
+                    anyFailure = true;
+                    results.add(new EntityResult(result.entityId(), "skipped", result.error()));
+                } else {
+                    // Mutate scratch so subsequent precheck entries see prior ones — even though we
+                    // aren't writing yet, reference resolution depends on the cumulative scratch.
+                    mutateScratch(scratch, entry);
+                    results.add(new EntityResult(result.entityId(), "skipped", null));
+                }
+            }
+            if (anyFailure) {
+                return buildResponse(HttpStatus.UNPROCESSABLE_ENTITY, results);
+            }
+            // Precheck passed — wipe and re-run as real writes.
+            scratch = newScratch();
+            results.clear();
+        }
+
+        boolean anyApplied = false;
+        for (ManifestEntry entry : entries) {
+            EntityResult result;
+            try {
+                result = applySingle(entry, scratch);
+            } catch (Exception ex) {
+                result = new EntityResult(entityId(entry), "FAILED", ex.getMessage());
+            }
+            results.add(result);
+            if ("applied".equals(result.status()) || "applied_invalid".equals(result.status())) {
+                anyApplied = true;
+                mutateScratch(scratch, entry);
+            }
+        }
+        if (anyApplied) {
+            mergedConfigStore.rebuildNow();
+        }
+        return buildResponse(HttpStatus.OK, results);
+    }
+
+    private Config newScratch() {
+        Config live = mergedConfigStore.get();
+        Config scratch = new Config();
+        if (live != null) {
+            scratch.setModels(new HashMap<>(live.getModels()));
+            scratch.setInterceptors(new HashMap<>(live.getInterceptors()));
+            scratch.setApplicationTypeSchemas(new HashMap<>(live.getApplicationTypeSchemas()));
+            scratch.setApplications(new HashMap<>(live.getApplications()));
+            scratch.setToolsets(new HashMap<>(live.getToolsets()));
+            scratch.setRoles(new HashMap<>(live.getRoles()));
+            scratch.setKeys(new HashMap<>(live.getKeys()));
+            scratch.getRoutes().putAll(live.getRoutes());
+            scratch.setGlobalInterceptors(live.getGlobalInterceptors());
+            scratch.setRetriableErrorCodes(live.getRetriableErrorCodes());
+        }
+        return scratch;
+    }
+
+    private EntityResult validateOnly(ManifestEntry entry, Config scratch) {
+        String id = entityId(entry);
+        if (!KIND_URL_SEGMENT.containsKey(entry.kind())) {
+            // Unknown kinds pass precheck and are recorded as FAILED during the apply phase —
+            // unknown-kind is a structural per-entity failure, not a precheck rejection.
+            return new EntityResult(id, "valid", null);
+        }
+        if (!"Settings".equals(entry.kind())) {
+            if (StringUtils.isBlank(entry.name())) {
+                return new EntityResult(id, "FAILED", "Missing or empty 'name'");
+            }
+            if (entry.spec() == null) {
+                return new EntityResult(id, "FAILED", "Missing 'spec'");
+            }
+        }
+        try {
+            switch (entry.kind()) {
+                case "Settings" -> {
+                    if (entry.spec() == null) {
+                        return new EntityResult(id, "FAILED", "Missing 'spec'");
+                    }
+                    if (!SETTINGS_SINGLETON_NAME.equals(entry.name())) {
+                        return new EntityResult(id, "FAILED", "Settings name must be 'global'");
+                    }
+                    ConfigResourceController.treeToEntity(entry.spec(), Settings.class);
+                }
+                case "Model" -> {
+                    Model model = ConfigResourceController.treeToEntity(entry.spec(), Model.class);
+                    List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
+                    if (!warnings.isEmpty() && !softValidation) {
+                        return new EntityResult(id, "FAILED", joinWarnings(warnings));
+                    }
+                }
+                case "Interceptor" -> ConfigResourceController.treeToEntity(entry.spec(), Interceptor.class);
+                case "Role" -> ConfigResourceController.treeToEntity(entry.spec(), Role.class);
+                case "Route" -> ConfigResourceController.treeToEntity(entry.spec(), Route.class);
+                case "Key" -> {
+                    Key key = ConfigResourceController.treeToEntity(entry.spec(), Key.class);
+                    if (StringUtils.isBlank(key.getKey())) {
+                        return new EntityResult(id, "FAILED", "Key.key must be provided explicitly");
+                    }
+                    if (StringUtils.isBlank(key.getProject())) {
+                        return new EntityResult(id, "FAILED", "Project key is undefined");
+                    }
+                    if (StringUtils.isBlank(key.getRole()) && (key.getRoles() == null || key.getRoles().isEmpty())) {
+                        return new EntityResult(id, "FAILED",
+                                "Invalid key: at least one role must be assigned to the key " + key.getProject());
+                    }
+                }
+                case "Application" -> ConfigResourceController.treeToEntity(entry.spec(), Application.class);
+                case "ToolSet" -> ConfigResourceController.treeToEntity(entry.spec(), ToolSet.class);
+                case "Schema" -> {
+                    if (!entry.spec().isObject()) {
+                        return new EntityResult(id, "FAILED", "Schema spec must be a JSON object");
+                    }
+                }
+                default -> {
+                    return new EntityResult(id, "FAILED", "Unknown kind: " + entry.kind());
+                }
+            }
+        } catch (HttpException ex) {
+            return new EntityResult(id, "FAILED", ex.getMessage());
+        }
+        return new EntityResult(id, "valid", null);
+    }
+
+    private EntityResult applySingle(ManifestEntry entry, Config scratch) {
+        String id = entityId(entry);
+        if (!KIND_URL_SEGMENT.containsKey(entry.kind())) {
+            return new EntityResult(id, "FAILED", "Unknown kind: " + entry.kind());
+        }
+        if (!"Settings".equals(entry.kind())) {
+            if (StringUtils.isBlank(entry.name())) {
+                return new EntityResult(id, "FAILED", "Missing or empty 'name'");
+            }
+            if (entry.spec() == null) {
+                return new EntityResult(id, "FAILED", "Missing 'spec'");
+            }
+        } else if (entry.spec() == null) {
+            return new EntityResult(id, "FAILED", "Missing 'spec'");
+        }
+        return switch (entry.kind()) {
+            case "Settings" -> applySettings(entry, id);
+            case "Schema" -> applySchema(entry, id);
+            case "Interceptor" -> applyManagedEntity(entry, id, ResourceTypes.INTERCEPTOR,
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                    Interceptor.class);
+            case "Role" -> applyManagedEntity(entry, id, ResourceTypes.ROLE,
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                    Role.class);
+            case "Route" -> applyManagedEntity(entry, id, ResourceTypes.ROUTE,
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                    Route.class);
+            case "Key" -> applyKey(entry, id);
+            case "Model" -> applyModel(entry, id, scratch);
+            case "ToolSet" -> applyToolSet(entry, id);
+            case "Application" -> applyApplication(entry, id);
+            default -> new EntityResult(id, "FAILED", "Unknown kind: " + entry.kind());
+        };
+    }
+
+    private EntityResult applySettings(ManifestEntry entry, String id) {
+        if (!SETTINGS_SINGLETON_NAME.equals(entry.name())) {
+            return new EntityResult(id, "FAILED", "Settings name must be 'global'");
+        }
+        Settings settings = ConfigResourceController.treeToEntity(entry.spec(), Settings.class);
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.GLOBAL_SETTINGS, ResourceDescriptor.PLATFORM_BUCKET,
+                ResourceDescriptor.PLATFORM_LOCATION, SETTINGS_SINGLETON_NAME);
+        String blobBody = ConfigResourceController.serializeForBlob(settings);
+        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        return new EntityResult(id, "applied", null);
+    }
+
+    private EntityResult applySchema(ManifestEntry entry, String id) {
+        if (!entry.spec().isObject()) {
+            return new EntityResult(id, "FAILED", "Schema spec must be a JSON object");
+        }
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.APP_TYPE_SCHEMA, ResourceDescriptor.PUBLIC_BUCKET,
+                ResourceDescriptor.PUBLIC_LOCATION, entry.name());
+        String blobBody;
+        try {
+            blobBody = ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec());
+        } catch (JsonProcessingException e) {
+            return new EntityResult(id, "FAILED", "Failed to serialize schema: " + e.getOriginalMessage());
+        }
+        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        return new EntityResult(id, "applied", null);
+    }
+
+    private <T> EntityResult applyManagedEntity(ManifestEntry entry, String id,
+                                                ResourceTypes type, String bucket, String location,
+                                                Class<T> entityClass) {
+        T entity = ConfigResourceController.treeToEntity(entry.spec(), entityClass);
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                type, bucket, location, entry.name());
+        String blobBody = ConfigResourceController.serializeForBlob(entity);
+        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        return new EntityResult(id, "applied", null);
+    }
+
+    private EntityResult applyKey(ManifestEntry entry, String id) {
+        Key key = ConfigResourceController.treeToEntity(entry.spec(), Key.class);
+        if (StringUtils.isBlank(key.getKey())) {
+            return new EntityResult(id, "FAILED", "Key.key must be provided explicitly");
+        }
+        if (StringUtils.isBlank(key.getProject())) {
+            return new EntityResult(id, "FAILED", "Project key is undefined");
+        }
+        if (StringUtils.isBlank(key.getRole()) && (key.getRoles() == null || key.getRoles().isEmpty())) {
+            return new EntityResult(id, "FAILED",
+                    "Invalid key: at least one role must be assigned to the key " + key.getProject());
+        }
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.PROJECT_KEY, ResourceDescriptor.PLATFORM_BUCKET,
+                ResourceDescriptor.PLATFORM_LOCATION, entry.name());
+        String secret = key.getKey();
+        secretFieldProcessor.encryptFields(key, descriptor);
+        String blobBody = ConfigResourceController.serializeForBlob(key);
+        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        ApiKeyData data = new ApiKeyData();
+        data.setOriginalKey(key);
+        apiKeyStore.addOrUpdateKey(secret, data);
+        return new EntityResult(id, "applied", null);
+    }
+
+    private EntityResult applyModel(ManifestEntry entry, String id, Config scratch) {
+        Model model = ConfigResourceController.treeToEntity(entry.spec(), Model.class);
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
+        boolean invalid = !warnings.isEmpty();
+        if (invalid && !softValidation) {
+            return new EntityResult(id, "FAILED", joinWarnings(warnings));
+        }
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET,
+                ResourceDescriptor.PUBLIC_LOCATION, entry.name());
+        secretFieldProcessor.encryptFields(model, descriptor);
+        String blobBody = ConfigResourceController.serializeForBlob(model);
+        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        return new EntityResult(id, invalid ? "applied_invalid" : "applied", null);
+    }
+
+    private EntityResult applyApplication(ManifestEntry entry, String id) {
+        Application application = ConfigResourceController.treeToEntity(entry.spec(), Application.class);
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.APPLICATION, ResourceDescriptor.PUBLIC_BUCKET,
+                ResourceDescriptor.PUBLIC_LOCATION, entry.name());
+        applicationService.putApplication(descriptor, EtagHeader.ANY, null, application);
+        return new EntityResult(id, "applied", null);
+    }
+
+    private EntityResult applyToolSet(ManifestEntry entry, String id) {
+        ToolSet toolSet = ConfigResourceController.treeToEntity(entry.spec(), ToolSet.class);
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.TOOL_SET, ResourceDescriptor.PUBLIC_BUCKET,
+                ResourceDescriptor.PUBLIC_LOCATION, entry.name());
+        toolSetService.putToolSet(descriptor, EtagHeader.ANY, null, toolSet);
+        return new EntityResult(id, "applied", null);
+    }
+
+    private void mutateScratch(Config scratch, ManifestEntry entry) {
+        try {
+            switch (entry.kind()) {
+                case "Settings" -> {
+                    Settings settings = ConfigResourceController.treeToEntity(entry.spec(), Settings.class);
+                    scratch.setGlobalInterceptors(settings.getGlobalInterceptors());
+                    scratch.setRetriableErrorCodes(settings.getRetriableErrorCodes());
+                }
+                case "Interceptor" -> {
+                    Interceptor interceptor = ConfigResourceController.treeToEntity(entry.spec(), Interceptor.class);
+                    scratch.getInterceptors().put(canonical("interceptors", entry.name()), interceptor);
+                }
+                case "Role" -> {
+                    Role role = ConfigResourceController.treeToEntity(entry.spec(), Role.class);
+                    scratch.getRoles().put(canonical("roles", entry.name()), role);
+                }
+                case "Route" -> {
+                    Route route = ConfigResourceController.treeToEntity(entry.spec(), Route.class);
+                    scratch.getRoutes().put(canonical("routes", entry.name()), route);
+                }
+                case "Key" -> {
+                    Key key = ConfigResourceController.treeToEntity(entry.spec(), Key.class);
+                    scratch.getKeys().put(canonical("keys", entry.name()), key);
+                }
+                case "Model" -> {
+                    Model model = ConfigResourceController.treeToEntity(entry.spec(), Model.class);
+                    scratch.getModels().put(canonical("models", entry.name()), model);
+                }
+                case "Application" -> {
+                    Application application = ConfigResourceController.treeToEntity(entry.spec(), Application.class);
+                    scratch.getApplications().put(canonical("applications", entry.name()), application);
+                }
+                case "ToolSet" -> {
+                    ToolSet toolSet = ConfigResourceController.treeToEntity(entry.spec(), ToolSet.class);
+                    scratch.getToolsets().put(canonical("toolsets", entry.name()), toolSet);
+                }
+                case "Schema" -> {
+                    String json;
+                    try {
+                        json = ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec());
+                    } catch (JsonProcessingException e) {
+                        return;
+                    }
+                    scratch.getApplicationTypeSchemas().put(canonical("schemas", entry.name()), json);
+                }
+                default -> { /* unknown kinds never reach this code path */ }
+            }
+        } catch (HttpException ignored) {
+            // Already accounted for in apply path; scratch update is best-effort.
+        }
+    }
+
+    private String entityId(ManifestEntry entry) {
+        String segment = KIND_URL_SEGMENT.getOrDefault(entry.kind(), entry.kind().toLowerCase());
+        String name = entry.name() != null ? entry.name()
+                : ("Settings".equals(entry.kind()) ? SETTINGS_SINGLETON_NAME : "");
+        String bucket = "Model".equals(entry.kind()) || "Application".equals(entry.kind())
+                || "ToolSet".equals(entry.kind()) || "Schema".equals(entry.kind())
+                ? ResourceDescriptor.PUBLIC_BUCKET : ResourceDescriptor.PLATFORM_BUCKET;
+        return segment + "/" + bucket + "/" + name;
+    }
+
+    private static String canonical(String segment, String name) {
+        String bucket = "models".equals(segment) || "applications".equals(segment)
+                || "toolsets".equals(segment) || "schemas".equals(segment)
+                ? ResourceDescriptor.PUBLIC_BUCKET : ResourceDescriptor.PLATFORM_BUCKET;
+        return segment + "/" + bucket + "/" + name;
+    }
+
+    private static String joinWarnings(List<ValidationWarning> warnings) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < warnings.size(); i++) {
+            if (i > 0) {
+                sb.append("; ");
+            }
+            ValidationWarning w = warnings.get(i);
+            sb.append(w.getField()).append(": ").append(w.getMessage());
+        }
+        return sb.toString();
+    }
+
+    private ApplyResponse buildResponse(HttpStatus status, List<EntityResult> results) {
+        int applied = 0;
+        int failed = 0;
+        for (EntityResult r : results) {
+            if ("applied".equals(r.status()) || "applied_invalid".equals(r.status())) {
+                applied++;
+            } else if ("FAILED".equals(r.status())) {
+                failed++;
+            }
+        }
+        ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
+        body.put("applied", applied);
+        body.put("failed", failed);
+        ArrayNode arr = body.putArray("results");
+        for (EntityResult r : results) {
+            ObjectNode n = arr.addObject();
+            n.put("entityId", r.entityId());
+            n.put("status", r.status());
+            if (r.error() != null) {
+                n.put("error", r.error());
+            }
+        }
+        return new ApplyResponse(status, body);
+    }
+
+    private record ManifestEntry(String kind, String name, JsonNode spec) {}
+
+    private record EntityResult(String entityId, String status, String error) {}
+
+    private record ApplyResponse(HttpStatus status, ObjectNode body) {}
+}
