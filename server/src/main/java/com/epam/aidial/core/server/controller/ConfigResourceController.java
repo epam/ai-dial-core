@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Settings;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
@@ -51,7 +52,7 @@ import java.util.function.BiFunction;
  * Controller for the {@code /v1/{type}/{bucket}/{path}} CONFIG_RESOURCE route — gates on
  * the {@link EntityBucketBinding} allowlist and {@link ConfigAuthorizationService}, then
  * dispatches GET to per-type read handlers and POST/PUT/DELETE for models, interceptors,
- * roles, keys, routes, and schemas. Settings writes are handled by a sibling slice.
+ * roles, keys, routes, schemas, and the settings singleton (singleton has no POST surface).
  */
 @Slf4j
 public class ConfigResourceController implements Controller {
@@ -118,6 +119,16 @@ public class ConfigResourceController implements Controller {
 
         if (method == HttpMethod.GET || method == HttpMethod.HEAD) {
             return handleGet();
+        }
+        if (SETTINGS_TYPE.equals(entityType)) {
+            // Singleton has its own write surface: PUT-upsert + idempotent DELETE; POST is 405.
+            if (method == HttpMethod.PUT) {
+                return handleSettingsPut();
+            }
+            if (method == HttpMethod.DELETE) {
+                return handleSettingsDelete();
+            }
+            return respondMethodNotAllowed();
         }
         if (method == HttpMethod.POST) {
             return handlePost();
@@ -292,12 +303,69 @@ public class ConfigResourceController implements Controller {
         }
         ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
         body.set("globalInterceptors", ProxyUtil.MAPPER.valueToTree(config.getGlobalInterceptors()));
+        body.set("retriableErrorCodes", ProxyUtil.MAPPER.valueToTree(config.getRetriableErrorCodes()));
         body.put("name", SETTINGS_SINGLETON_NAME);
         body.put("status", "valid");
-        // Phase 1 has no MergedConfigStore, so "api" is unreachable. File-defines-fields is detected by
-        // any non-default Config-level setting being populated; otherwise the projection is "default".
-        body.put("source", config.getGlobalInterceptors().isEmpty() ? "default" : "file");
+        String source;
+        if (mergedConfigStore.isSettingsFromApi()) {
+            source = "api";
+        } else if (!config.getGlobalInterceptors().isEmpty() || !config.getRetriableErrorCodes().isEmpty()) {
+            source = "file";
+        } else {
+            source = "default";
+        }
+        body.put("source", source);
         context.respond(HttpStatus.OK, body);
+        return Future.succeededFuture();
+    }
+
+    private Future<?> handleSettingsPut() {
+        if (!SETTINGS_SINGLETON_NAME.equals(path)) {
+            context.respond(HttpStatus.NOT_FOUND);
+            return Future.succeededFuture();
+        }
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.GLOBAL_SETTINGS, ResourceDescriptor.PLATFORM_BUCKET,
+                ResourceDescriptor.PLATFORM_LOCATION, SETTINGS_SINGLETON_NAME);
+
+        context.getRequest().body().compose(body -> {
+            JsonNode requestNode = parseJsonBody(body);
+            if (!requestNode.isObject()) {
+                throw new HttpException(HttpStatus.BAD_REQUEST, "Request body must be a JSON object");
+            }
+            // Deserialize through the typed Settings POJO so unknown fields are dropped and types
+            // are validated; re-serialize so the blob is canonical (locked field set, no extras).
+            Settings settings = treeToEntity(requestNode, Settings.class);
+            String blobBody = serializeForBlob(settings);
+            return taskExecutor.submit(() -> {
+                ResourceItemMetadata meta = resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+                mergedConfigStore.rebuildNow();
+                return meta;
+            });
+        }).onSuccess(meta -> context.putHeader(HttpHeaders.ETAG, meta.getEtag())
+                .respond(HttpStatus.OK, createNameEnvelope(SETTINGS_SINGLETON_NAME)))
+                .onFailure(this::handleWriteError);
+
+        return Future.succeededFuture();
+    }
+
+    private Future<?> handleSettingsDelete() {
+        if (!SETTINGS_SINGLETON_NAME.equals(path)) {
+            context.respond(HttpStatus.NOT_FOUND);
+            return Future.succeededFuture();
+        }
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.GLOBAL_SETTINGS, ResourceDescriptor.PLATFORM_BUCKET,
+                ResourceDescriptor.PLATFORM_LOCATION, SETTINGS_SINGLETON_NAME);
+
+        taskExecutor.submit(() -> {
+            // Idempotent — deleteResource returns false when the blob is absent; both outcomes
+            // collapse to 204 since the post-state (no API blob) is identical.
+            resourceService.deleteResource(descriptor, EtagHeader.ANY);
+            mergedConfigStore.rebuildNow();
+            return true;
+        }).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
+
         return Future.succeededFuture();
     }
 
@@ -496,14 +564,8 @@ public class ConfigResourceController implements Controller {
     /**
      * Validate the write target and return its spec. Returns {@code null} after writing the
      * appropriate 4xx response when the request can't proceed — callers short-circuit on null.
-     * Settings retains its own Allow set and 405s here (handled by a sibling slice).
      */
     private WriteSpec prepareWrite() {
-        if (SETTINGS_TYPE.equals(entityType)) {
-            // Settings has its own Allow set; respondMethodNotAllowed honors that.
-            respondMethodNotAllowed();
-            return null;
-        }
         if (path == null || path.isEmpty() || path.endsWith("/")) {
             context.respond(HttpStatus.BAD_REQUEST, "Resource name must not be empty or a folder");
             return null;
