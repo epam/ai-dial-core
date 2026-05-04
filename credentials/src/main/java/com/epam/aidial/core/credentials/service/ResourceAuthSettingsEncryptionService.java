@@ -48,6 +48,14 @@ public class ResourceAuthSettingsEncryptionService {
             settings.setClientSecret(processedValue);
         }
 
+        String codeVerifier = settings.getCodeVerifier();
+        if (codeVerifier != null) {
+            String processedValue = encrypt
+                    ? encryptValue(bucketInfo, codeVerifier, aad)
+                    : decryptValueWithLegacyFallback(bucketInfo, codeVerifier, aad);
+            settings.setCodeVerifier(processedValue);
+        }
+
     }
 
     private String encryptValue(@Nonnull BucketInfo bucketInfo, @Nonnull String plainText, @Nullable byte[] aad) {
@@ -63,6 +71,26 @@ public class ResourceAuthSettingsEncryptionService {
     private String decryptValue(@Nonnull BucketInfo bucketInfo, @Nonnull String encryptedText, @Nullable byte[] aad) {
         try {
             byte[] encrypted = Base64.getDecoder().decode(encryptedText);
+            byte[] plain = encryptionService.decrypt(bucketInfo, encrypted, aad);
+            return new String(plain, UTF_8);
+        } catch (RuntimeException e) {
+            throw new EncryptionException("Failed to decrypt auth settings", e);
+        }
+    }
+
+    /**
+     * Lazy plaintext fallback — pre-Phase-3 toolset blobs may carry the value as plaintext (design 04 §2.7).
+     * On Base64 decode failure the value is returned as-is and re-encrypted on the next write.
+     * AES-decrypt failures still surface as {@link EncryptionException} (real corruption signal).
+     */
+    private String decryptValueWithLegacyFallback(@Nonnull BucketInfo bucketInfo, @Nonnull String value, @Nullable byte[] aad) {
+        byte[] encrypted;
+        try {
+            encrypted = Base64.getDecoder().decode(value);
+        } catch (IllegalArgumentException e) {
+            return value;
+        }
+        try {
             byte[] plain = encryptionService.decrypt(bucketInfo, encrypted, aad);
             return new String(plain, UTF_8);
         } catch (RuntimeException e) {

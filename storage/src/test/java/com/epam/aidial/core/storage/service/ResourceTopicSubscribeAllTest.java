@@ -129,8 +129,8 @@ class ResourceTopicSubscribeAllTest {
 
         CountDownLatch survivorLatch = new CountDownLatch(1);
         try (ResourceTopic.Subscription failing = topic.subscribeAll(event -> {
-                 throw new RuntimeException("boom");
-             });
+            throw new RuntimeException("boom");
+        });
              ResourceTopic.Subscription survivor = topic.subscribeAll(event -> survivorLatch.countDown())) {
             ResourceEvent event = new ResourceEvent()
                     .setUrl("any/url").setAction(ResourceEvent.Action.CREATE).setTimestamp(1L);
