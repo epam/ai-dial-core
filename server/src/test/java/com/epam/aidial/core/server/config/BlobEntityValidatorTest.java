@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.ToolSet;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
@@ -101,4 +102,13 @@ class BlobEntityValidatorTest {
         assertTrue(warnings.isEmpty());
     }
 
+    @Test
+    void validateToolSet_returnsEmptyList() {
+        Config config = new Config();
+        ToolSet toolSet = new ToolSet();
+
+        List<ValidationWarning> warnings = BlobEntityValidator.validate(toolSet, config);
+
+        assertTrue(warnings.isEmpty());
+    }
 }

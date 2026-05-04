@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.ToolSet;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -29,6 +30,13 @@ public final class BlobEntityValidator {
         appendSchemaWarning(application.getApplicationTypeSchemaId(), config, warnings);
         appendDependencyWarnings(application.getDependencies(), config, warnings);
         return warnings;
+    }
+
+    public static List<ValidationWarning> validate(ToolSet toolSet, Config config) {
+        // ToolSet has no Config cross-references in its POJO today — no interceptors,
+        // schema id, or dependencies. Returns empty per the "apps/toolsets" framing of
+        // the slice register; 3S.3 may extend this if a toolset-specific check emerges.
+        return List.of();
     }
 
     private static void appendInterceptorWarnings(List<String> refs, Config config, List<ValidationWarning> warnings) {
