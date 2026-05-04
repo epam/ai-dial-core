@@ -177,6 +177,10 @@ public class ResourceService implements AutoCloseable {
         return topic.subscribe(resources, subscriber);
     }
 
+    public ResourceTopic.Subscription subscribeAllResources(Consumer<ResourceEvent> subscriber) {
+        return topic.subscribeAll(subscriber);
+    }
+
     @VisibleForTesting
     ResourceTopic getTopic() {
         return topic;
