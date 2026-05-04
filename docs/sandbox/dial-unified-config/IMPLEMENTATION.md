@@ -398,7 +398,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 | **3S.1** | `BlobEntityValidator` helper for apps/toolsets — validates against current `Config` (interceptor refs, schema refs, deployment dependencies). Folded into Configuration API listing/get response only; chat-completion hot path unchanged. | 2S.9 | 07 Phase 3; 02 §4.3 | ✅ | `778d8f1c` |
 | **3S.2** | Write APIs (POST/PUT/DELETE) for `schemas`, `interceptors`, `roles`, `keys` (with dual-format compatibility from 2S.0-pre), `routes`, `settings` (PUT upsert + DELETE clears API override and reverts to file/default; 405 on POST). Start with one type to validate the pattern; subsequent types **Mechanical**. | 2S.11, 2S.13, 3S.0-pre | 03 §1; 07 Phase 3 | 📋 | — |
 | **3S.3** | Admin write paths for `applications`, `toolsets` in `public/` via existing `ApplicationService` / `ToolSetService` unified with user-published. Removes `DeploymentService` config-file special-case. | 3S.1 | 07 Phase 3; 02 §6 | 📋 | — |
-| **3S.4** | Admin write paths for `files`, `prompts`, `conversations` in `public/` via existing controllers + `ConfigAuthorizationService` preflight. Reuses existing resource types. | 1S.5 | 03 §1; OQ-21 | 📋 | — |
+| **3S.4** | Admin write paths for `files`, `prompts`, `conversations` in `public/` via existing controllers + `ConfigAuthorizationService` preflight. Reuses existing resource types. **Production code shipped under 1S.5; this slice ships only the gap-filling integration tests.** | 1S.5 | 03 §1; OQ-21 | ✅ | `d66af8a1` |
 
 **Track B — CLI**
 
