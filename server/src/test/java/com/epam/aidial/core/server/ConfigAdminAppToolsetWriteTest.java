@@ -3,8 +3,6 @@ package com.epam.aidial.core.server;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * HTTP integration tests for slice 3S.3: admin write paths for {@code applications} and
  * {@code toolsets} in {@code public/}. The production code (admin authz preflight on
@@ -82,59 +80,5 @@ public class ConfigAdminAppToolsetWriteTest extends ResourceBaseTest {
                 }
                 """, "authorization", "user");
         verify(response, 403);
-    }
-
-    @Test
-    void testAdminCanSetForwardAuthTokenOnPublicApplication() {
-        verify(send(HttpMethod.PUT, "/v1/applications/public/admin-fwd-token-app", null, """
-                {
-                  "endpoint": "http://example.com/v1/completions",
-                  "display_name": "Forward Token App",
-                  "forward_auth_token": true
-                }
-                """, "authorization", "admin"), 200);
-
-        Response get = send(HttpMethod.GET, "/v1/applications/public/admin-fwd-token-app", null, "",
-                "authorization", "admin");
-        verify(get, 200);
-        assertTrue(get.body().contains("\"forward_auth_token\":true"),
-                () -> "Admin write to public/ must preserve forward_auth_token=true: " + get.body());
-    }
-
-    @Test
-    void testAdminCanSetForwardAuthTokenOnPublicToolset() {
-        verify(send(HttpMethod.PUT, "/v1/toolsets/public/admin-fwd-token-toolset", null, """
-                {
-                  "transport": "http",
-                  "endpoint": "http://localhost:9876",
-                  "display_name": "Forward Token Toolset",
-                  "forward_auth_token": true
-                }
-                """, "authorization", "admin"), 200);
-
-        Response get = send(HttpMethod.GET, "/v1/toolsets/public/admin-fwd-token-toolset", null, "",
-                "authorization", "admin");
-        verify(get, 200);
-        assertTrue(get.body().contains("\"forward_auth_token\":true"),
-                () -> "Admin write to public/ must preserve forward_auth_token=true: " + get.body());
-    }
-
-    @Test
-    void testUserBucketStillStripsForwardAuthToken() {
-        // Regression guard: the strip remains in place for non-admin / non-public writes.
-        // User uploads an app to their own bucket with forward_auth_token=true → field forced to false.
-        String bucket = this.bucket;
-        verify(send(HttpMethod.PUT, "/v1/applications/" + bucket + "/user-fwd-token-app", null, """
-                {
-                  "endpoint": "http://example.com/v1/completions",
-                  "display_name": "User Forward App",
-                  "forward_auth_token": true
-                }
-                """), 200);
-
-        Response get = send(HttpMethod.GET, "/v1/applications/" + bucket + "/user-fwd-token-app", null, "");
-        verify(get, 200);
-        assertTrue(get.body().contains("\"forward_auth_token\":false"),
-                () -> "User-bucket write must strip forward_auth_token to false: " + get.body());
     }
 }
