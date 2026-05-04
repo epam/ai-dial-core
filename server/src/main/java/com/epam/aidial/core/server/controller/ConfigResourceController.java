@@ -623,7 +623,7 @@ public class ConfigResourceController implements Controller {
         }
     }
 
-    private static <T> T treeToEntity(JsonNode node, Class<T> cls) {
+    static <T> T treeToEntity(JsonNode node, Class<T> cls) {
         try {
             return ProxyUtil.BLOB_MAPPER.treeToValue(node, cls);
         } catch (JsonProcessingException e) {
@@ -670,7 +670,7 @@ public class ConfigResourceController implements Controller {
         throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, body.toString());
     }
 
-    private static String serializeForBlob(Object entity) {
+    static String serializeForBlob(Object entity) {
         try {
             return ProxyUtil.BLOB_MAPPER.writeValueAsString(entity);
         } catch (JsonProcessingException e) {

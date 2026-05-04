@@ -2,16 +2,15 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Settings;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
-import com.epam.aidial.core.server.config.EntityChange;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.config.ValidationWarning;
@@ -22,13 +21,11 @@ import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
-import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -37,7 +34,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
 import java.nio.charset.StandardCharsets;
@@ -47,12 +43,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-@Slf4j
 public class AdminApplyController {
 
     private static final String SETTINGS_SINGLETON_NAME = "global";
 
-    static final Map<String, Integer> DEPENDENCY_ORDER = Map.of(
+    private static final Map<String, Integer> DEPENDENCY_ORDER = Map.of(
             "Settings", 0,
             "Schema", 1,
             "Interceptor", 2,
@@ -63,7 +58,7 @@ public class AdminApplyController {
             "ToolSet", 7,
             "Application", 8);
 
-    static final Map<String, String> KIND_URL_SEGMENT = Map.of(
+    private static final Map<String, String> KIND_URL_SEGMENT = Map.of(
             "Settings", "settings",
             "Schema", "schemas",
             "Interceptor", "interceptors",
@@ -84,7 +79,6 @@ public class AdminApplyController {
     private final ApiKeyStore apiKeyStore;
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
-    private final LockService lockService;
 
     public AdminApplyController(ProxyContext context,
                                 ConfigAuthorizationService authorizationService,
@@ -95,8 +89,7 @@ public class AdminApplyController {
                                 boolean softValidation,
                                 ApiKeyStore apiKeyStore,
                                 ApplicationService applicationService,
-                                ToolSetService toolSetService,
-                                LockService lockService) {
+                                ToolSetService toolSetService) {
         this.context = context;
         this.authorizationService = authorizationService;
         this.mergedConfigStore = mergedConfigStore;
@@ -107,7 +100,6 @@ public class AdminApplyController {
         this.apiKeyStore = apiKeyStore;
         this.applicationService = applicationService;
         this.toolSetService = toolSetService;
-        this.lockService = lockService;
     }
 
     public Future<?> handle() {
@@ -128,9 +120,7 @@ public class AdminApplyController {
             String text = body.toString(StandardCharsets.UTF_8);
             envelope = ProxyUtil.MAPPER.readTree(text.isEmpty() ? "{}" : text);
         } catch (JsonProcessingException e) {
-            // getOriginalMessage() echoes the offending token verbatim, which can leak submitted
-            // secrets back into responses and logs — surface only the parse location.
-            context.respond(HttpStatus.BAD_REQUEST, "Invalid JSON at " + locationOf(e));
+            context.respond(HttpStatus.BAD_REQUEST, "Invalid JSON: " + e.getOriginalMessage());
             return;
         }
         if (!envelope.isObject()) {
@@ -166,8 +156,7 @@ public class AdminApplyController {
             entries.add(new ManifestEntry(kind, name, spec));
         }
 
-        taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS,
-                () -> applyBatch(precheck, entries)))
+        taskExecutor.submit(() -> applyBatch(precheck, entries))
                 .onSuccess(result -> context.respond(result.status(), result.body()))
                 .onFailure(error -> {
                     if (error instanceof HttpException ex) {
@@ -182,18 +171,16 @@ public class AdminApplyController {
         List<ManifestEntry> entries = new ArrayList<>(rawEntries);
         entries.sort(Comparator.comparingInt(e -> DEPENDENCY_ORDER.getOrDefault(e.kind(), 99)));
 
-        Config scratch = newScratch(mergedConfigStore);
+        Config scratch = newScratch();
         List<EntityResult> results = new ArrayList<>();
 
         if (precheck) {
             boolean anyFailure = false;
             for (ManifestEntry entry : entries) {
-                EntityResult result = validateOnly(entry, scratch, softValidation);
+                EntityResult result = validateOnly(entry, scratch);
                 if (!"valid".equals(result.status())) {
                     anyFailure = true;
-                    // Mirror /v1/admin/validate: the offending entry stays FAILED (carrying its
-                    // error); only the valid siblings collapse to "skipped" below.
-                    results.add(new EntityResult(result.entityId(), "FAILED", result.error()));
+                    results.add(new EntityResult(result.entityId(), "skipped", result.error()));
                 } else {
                     // Mutate scratch so subsequent precheck entries see prior ones — even though we
                     // aren't writing yet, reference resolution depends on the cumulative scratch.
@@ -205,19 +192,15 @@ public class AdminApplyController {
                 return buildResponse(HttpStatus.UNPROCESSABLE_ENTITY, results);
             }
             // Precheck passed — wipe and re-run as real writes.
-            scratch = newScratch(mergedConfigStore);
+            scratch = newScratch();
             results.clear();
         }
 
         boolean anyApplied = false;
-        // Slice 4S.4: collect partial-update changes per applied entity; flush as one applyBatch
-        // after the apply loop so the merged Config swap happens once, after all blobs are written.
-        List<EntityChange> pendingChanges = new ArrayList<>();
-        GlobalSettings pendingSettings = null;
         for (ManifestEntry entry : entries) {
             EntityResult result;
             try {
-                result = applySingle(entry, scratch, pendingChanges);
+                result = applySingle(entry, scratch);
             } catch (Exception ex) {
                 result = new EntityResult(entityId(entry), "FAILED", ex.getMessage());
             }
@@ -225,28 +208,15 @@ public class AdminApplyController {
             if ("applied".equals(result.status()) || "applied_invalid".equals(result.status())) {
                 anyApplied = true;
                 mutateScratch(scratch, entry);
-                if ("Settings".equals(entry.kind())) {
-                    pendingSettings = ConfigResourceController.treeToEntity(entry.spec(), GlobalSettings.class);
-                }
             }
         }
         if (anyApplied) {
-            if (!pendingChanges.isEmpty()) {
-                Map<String, String> failures = mergedConfigStore.applyBatch(pendingChanges);
-                // Blobs are already written; if the in-memory swap of any entity failed (e.g. an
-                // unforeseen type coercion error not caught by precheck) the merged Config diverges
-                // from blob until the next full rebuild. Surface via log so operators see it.
-                failures.forEach((id, reason) ->
-                        log.warn("Partial-update swap failed for {} after blob put: {}", id, reason));
-            }
-            if (pendingSettings != null) {
-                mergedConfigStore.applySettingsWrite(pendingSettings);
-            }
+            mergedConfigStore.rebuildNow();
         }
         return buildResponse(HttpStatus.OK, results);
     }
 
-    static Config newScratch(MergedConfigStore mergedConfigStore) {
+    private Config newScratch() {
         Config live = mergedConfigStore.get();
         Config scratch = new Config();
         if (live != null) {
@@ -264,10 +234,12 @@ public class AdminApplyController {
         return scratch;
     }
 
-    static EntityResult validateOnly(ManifestEntry entry, Config scratch, boolean softValidation) {
+    private EntityResult validateOnly(ManifestEntry entry, Config scratch) {
         String id = entityId(entry);
         if (!KIND_URL_SEGMENT.containsKey(entry.kind())) {
-            return new EntityResult(id, "FAILED", "Unknown kind: " + entry.kind());
+            // Unknown kinds pass precheck and are recorded as FAILED during the apply phase —
+            // unknown-kind is a structural per-entity failure, not a precheck rejection.
+            return new EntityResult(id, "valid", null);
         }
         if (!"Settings".equals(entry.kind())) {
             if (StringUtils.isBlank(entry.name())) {
@@ -286,13 +258,12 @@ public class AdminApplyController {
                     if (!SETTINGS_SINGLETON_NAME.equals(entry.name())) {
                         return new EntityResult(id, "FAILED", "Settings name must be 'global'");
                     }
-                    ConfigResourceController.treeToEntity(entry.spec(), GlobalSettings.class);
+                    ConfigResourceController.treeToEntity(entry.spec(), Settings.class);
                 }
                 case "Model" -> {
                     Model model = ConfigResourceController.treeToEntity(entry.spec(), Model.class);
                     List<ValidationWarning> warnings = new ArrayList<>();
                     ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
-                    UpstreamExtraDataMerger.validateNoOverlap(model);
                     if (!warnings.isEmpty() && !softValidation) {
                         return new EntityResult(id, "FAILED", joinWarnings(warnings));
                     }
@@ -330,7 +301,7 @@ public class AdminApplyController {
         return new EntityResult(id, "valid", null);
     }
 
-    private EntityResult applySingle(ManifestEntry entry, Config scratch, List<EntityChange> pending) {
+    private EntityResult applySingle(ManifestEntry entry, Config scratch) {
         String id = entityId(entry);
         if (!KIND_URL_SEGMENT.containsKey(entry.kind())) {
             return new EntityResult(id, "FAILED", "Unknown kind: " + entry.kind());
@@ -347,18 +318,18 @@ public class AdminApplyController {
         }
         return switch (entry.kind()) {
             case "Settings" -> applySettings(entry, id);
-            case "Schema" -> applySchema(entry, id, pending);
+            case "Schema" -> applySchema(entry, id);
             case "Interceptor" -> applyManagedEntity(entry, id, ResourceTypes.INTERCEPTOR,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
-                    Interceptor.class, pending);
+                    Interceptor.class);
             case "Role" -> applyManagedEntity(entry, id, ResourceTypes.ROLE,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
-                    Role.class, pending);
+                    Role.class);
             case "Route" -> applyManagedEntity(entry, id, ResourceTypes.ROUTE,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
-                    Route.class, pending);
-            case "Key" -> applyKey(entry, id, pending);
-            case "Model" -> applyModel(entry, id, scratch, pending);
+                    Route.class);
+            case "Key" -> applyKey(entry, id);
+            case "Model" -> applyModel(entry, id, scratch);
             case "ToolSet" -> applyToolSet(entry, id);
             case "Application" -> applyApplication(entry, id);
             default -> new EntityResult(id, "FAILED", "Unknown kind: " + entry.kind());
@@ -369,7 +340,7 @@ public class AdminApplyController {
         if (!SETTINGS_SINGLETON_NAME.equals(entry.name())) {
             return new EntityResult(id, "FAILED", "Settings name must be 'global'");
         }
-        GlobalSettings settings = ConfigResourceController.treeToEntity(entry.spec(), GlobalSettings.class);
+        Settings settings = ConfigResourceController.treeToEntity(entry.spec(), Settings.class);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.GLOBAL_SETTINGS, ResourceDescriptor.PLATFORM_BUCKET,
                 ResourceDescriptor.PLATFORM_LOCATION, SETTINGS_SINGLETON_NAME);
@@ -378,7 +349,7 @@ public class AdminApplyController {
         return new EntityResult(id, "applied", null);
     }
 
-    private EntityResult applySchema(ManifestEntry entry, String id, List<EntityChange> pending) {
+    private EntityResult applySchema(ManifestEntry entry, String id) {
         if (!entry.spec().isObject()) {
             return new EntityResult(id, "FAILED", "Schema spec must be a JSON object");
         }
@@ -389,28 +360,24 @@ public class AdminApplyController {
         try {
             blobBody = ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec());
         } catch (JsonProcessingException e) {
-            // Drop e.getOriginalMessage() — it can echo verbatim schema content (potentially
-            // submitted secrets). Surface a generic failure tied to the entity id.
-            return new EntityResult(id, "FAILED", "Failed to serialize schema for " + id);
+            return new EntityResult(id, "FAILED", "Failed to serialize schema: " + e.getOriginalMessage());
         }
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-        pending.add(new EntityChange(ResourceTypes.APP_TYPE_SCHEMA, MergedConfigStore.canonicalId(descriptor), entry.spec()));
         return new EntityResult(id, "applied", null);
     }
 
     private <T> EntityResult applyManagedEntity(ManifestEntry entry, String id,
                                                 ResourceTypes type, String bucket, String location,
-                                                Class<T> entityClass, List<EntityChange> pending) {
+                                                Class<T> entityClass) {
         T entity = ConfigResourceController.treeToEntity(entry.spec(), entityClass);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 type, bucket, location, entry.name());
         String blobBody = ConfigResourceController.serializeForBlob(entity);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-        pending.add(new EntityChange(type, MergedConfigStore.canonicalId(descriptor), entity));
         return new EntityResult(id, "applied", null);
     }
 
-    private EntityResult applyKey(ManifestEntry entry, String id, List<EntityChange> pending) {
+    private EntityResult applyKey(ManifestEntry entry, String id) {
         Key key = ConfigResourceController.treeToEntity(entry.spec(), Key.class);
         if (StringUtils.isBlank(key.getKey())) {
             return new EntityResult(id, "FAILED", "Key.key must be provided explicitly");
@@ -426,43 +393,19 @@ public class AdminApplyController {
                 ResourceTypes.PROJECT_KEY, ResourceDescriptor.PLATFORM_BUCKET,
                 ResourceDescriptor.PLATFORM_LOCATION, entry.name());
         String secret = key.getKey();
-        // Recover the prior plaintext secret so a rotation can revoke the old auth bearer
-        // (FINDING #2). Deliberately non-fatal: a corrupt prior blob must NOT abort the rotation —
-        // the new secret is authoritative and any stale entry is cleaned at the next full rebuild.
-        String oldSecret = null;
-        String existingBody = resourceService.getResource(descriptor);
-        if (existingBody != null) {
-            try {
-                Key prior = ConfigResourceController.treeToEntity(
-                        ProxyUtil.BLOB_MAPPER.readTree(existingBody), Key.class);
-                secretFieldProcessor.decryptFields(prior, descriptor);
-                oldSecret = prior.getKey();
-            } catch (Exception e) {
-                log.warn("Could not recover prior key secret for rotation at {}; "
-                        + "proceeding with new secret as authoritative", descriptor.getUrl());
-            }
-        }
         secretFieldProcessor.encryptFields(key, descriptor);
         String blobBody = ConfigResourceController.serializeForBlob(key);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
         ApiKeyData data = new ApiKeyData();
         data.setOriginalKey(key);
         apiKeyStore.addOrUpdateKey(secret, data);
-        if (oldSecret != null && !oldSecret.isBlank() && !oldSecret.equals(secret)) {
-            apiKeyStore.removeKey(oldSecret);
-        }
-        // Slice 4S.4: decrypt-in-place after blob put so the partial-update path receives a
-        // fully-plaintext Key. decryptValue is idempotent on plaintext fields.
-        secretFieldProcessor.decryptFields(key, descriptor);
-        pending.add(new EntityChange(ResourceTypes.PROJECT_KEY, MergedConfigStore.canonicalId(descriptor), key));
         return new EntityResult(id, "applied", null);
     }
 
-    private EntityResult applyModel(ManifestEntry entry, String id, Config scratch, List<EntityChange> pending) {
+    private EntityResult applyModel(ManifestEntry entry, String id, Config scratch) {
         Model model = ConfigResourceController.treeToEntity(entry.spec(), Model.class);
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
-        UpstreamExtraDataMerger.validateNoOverlap(model);
         boolean invalid = !warnings.isEmpty();
         if (invalid && !softValidation) {
             return new EntityResult(id, "FAILED", joinWarnings(warnings));
@@ -473,9 +416,6 @@ public class AdminApplyController {
         secretFieldProcessor.encryptFields(model, descriptor);
         String blobBody = ConfigResourceController.serializeForBlob(model);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-        // Slice 4S.4: decrypt-in-place so partial-update receives plaintext upstream secrets.
-        secretFieldProcessor.decryptFields(model, descriptor);
-        pending.add(new EntityChange(ResourceTypes.MODEL, MergedConfigStore.canonicalId(descriptor), model));
         return new EntityResult(id, invalid ? "applied_invalid" : "applied", null);
     }
 
@@ -484,8 +424,7 @@ public class AdminApplyController {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.APPLICATION, ResourceDescriptor.PUBLIC_BUCKET,
                 ResourceDescriptor.PUBLIC_LOCATION, entry.name());
-        // Bulk admin apply is always admin context — preserve forwardAuthToken if the manifest set it.
-        applicationService.putApplication(descriptor, EtagHeader.ANY, null, application, true);
+        applicationService.putApplication(descriptor, EtagHeader.ANY, null, application);
         return new EntityResult(id, "applied", null);
     }
 
@@ -494,15 +433,15 @@ public class AdminApplyController {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.TOOL_SET, ResourceDescriptor.PUBLIC_BUCKET,
                 ResourceDescriptor.PUBLIC_LOCATION, entry.name());
-        toolSetService.putToolSet(descriptor, EtagHeader.ANY, null, toolSet, true);
+        toolSetService.putToolSet(descriptor, EtagHeader.ANY, null, toolSet);
         return new EntityResult(id, "applied", null);
     }
 
-    static void mutateScratch(Config scratch, ManifestEntry entry) {
+    private void mutateScratch(Config scratch, ManifestEntry entry) {
         try {
             switch (entry.kind()) {
                 case "Settings" -> {
-                    GlobalSettings settings = ConfigResourceController.treeToEntity(entry.spec(), GlobalSettings.class);
+                    Settings settings = ConfigResourceController.treeToEntity(entry.spec(), Settings.class);
                     scratch.setGlobalInterceptors(settings.getGlobalInterceptors());
                     scratch.setRetriableErrorCodes(settings.getRetriableErrorCodes());
                 }
@@ -550,7 +489,7 @@ public class AdminApplyController {
         }
     }
 
-    static String entityId(ManifestEntry entry) {
+    private String entityId(ManifestEntry entry) {
         String segment = KIND_URL_SEGMENT.getOrDefault(entry.kind(), entry.kind().toLowerCase());
         String name = entry.name() != null ? entry.name()
                 : ("Settings".equals(entry.kind()) ? SETTINGS_SINGLETON_NAME : "");
@@ -565,12 +504,6 @@ public class AdminApplyController {
                 || "toolsets".equals(segment) || "schemas".equals(segment)
                 ? ResourceDescriptor.PUBLIC_BUCKET : ResourceDescriptor.PLATFORM_BUCKET;
         return segment + "/" + bucket + "/" + name;
-    }
-
-    private static String locationOf(JsonProcessingException e) {
-        return e.getLocation() == null
-                ? "unknown location"
-                : "line " + e.getLocation().getLineNr() + ", column " + e.getLocation().getColumnNr();
     }
 
     private static String joinWarnings(List<ValidationWarning> warnings) {
@@ -610,9 +543,9 @@ public class AdminApplyController {
         return new ApplyResponse(status, body);
     }
 
-    record ManifestEntry(String kind, String name, JsonNode spec) {}
+    private record ManifestEntry(String kind, String name, JsonNode spec) {}
 
-    record EntityResult(String entityId, String status, String error) {}
+    private record EntityResult(String entityId, String status, String error) {}
 
     private record ApplyResponse(HttpStatus status, ObjectNode body) {}
 }
