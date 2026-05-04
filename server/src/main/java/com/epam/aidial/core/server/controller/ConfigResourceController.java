@@ -12,6 +12,8 @@ import com.epam.aidial.core.server.config.InvalidEntityRecord;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.config.ValidationWarning;
+import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.server.security.Operation;
@@ -36,6 +38,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -47,8 +50,8 @@ import java.util.function.BiFunction;
 /**
  * Controller for the {@code /v1/{type}/{bucket}/{path}} CONFIG_RESOURCE route — gates on
  * the {@link EntityBucketBinding} allowlist and {@link ConfigAuthorizationService}, then
- * dispatches GET to per-type read handlers and POST/PUT/DELETE to the write handlers
- * (Slice 2S.11 — currently {@code models} only; other writable types follow in 3S.2).
+ * dispatches GET to per-type read handlers and POST/PUT/DELETE for models, interceptors,
+ * roles, keys, routes, and schemas. Settings writes are handled by a sibling slice.
  */
 @Slf4j
 public class ConfigResourceController implements Controller {
@@ -56,7 +59,6 @@ public class ConfigResourceController implements Controller {
     private static final String SETTINGS_TYPE = "settings";
     private static final String SETTINGS_SINGLETON_NAME = "global";
     private static final String SETTINGS_ALLOW = "GET, PUT, DELETE";
-    private static final String MODELS_TYPE = "models";
     private static final String WRITE_ALLOW = "GET, POST, PUT, DELETE";
 
     private final ProxyContext context;
@@ -66,6 +68,7 @@ public class ConfigResourceController implements Controller {
     private final AsyncTaskExecutor taskExecutor;
     private final SecretFieldProcessor secretFieldProcessor;
     private final boolean softValidation;
+    private final ApiKeyStore apiKeyStore;
     private final String entityType;
     private final String bucket;
     private final String path;
@@ -77,6 +80,7 @@ public class ConfigResourceController implements Controller {
                                     AsyncTaskExecutor taskExecutor,
                                     SecretFieldProcessor secretFieldProcessor,
                                     boolean softValidation,
+                                    ApiKeyStore apiKeyStore,
                                     String entityType,
                                     String bucket,
                                     String path) {
@@ -87,6 +91,7 @@ public class ConfigResourceController implements Controller {
         this.taskExecutor = taskExecutor;
         this.secretFieldProcessor = secretFieldProcessor;
         this.softValidation = softValidation;
+        this.apiKeyStore = apiKeyStore;
         this.entityType = entityType;
         this.bucket = bucket;
         this.path = path;
@@ -297,31 +302,56 @@ public class ConfigResourceController implements Controller {
     }
 
     private Future<?> handlePost() {
-        ResourceDescriptor descriptor = prepareModelWrite();
-        if (descriptor == null) {
+        WriteSpec spec = prepareWrite();
+        if (spec == null) {
             return Future.succeededFuture();
         }
+        ResourceDescriptor descriptor = spec.descriptor();
         String name = path;
 
         context.getRequest().body().compose(body -> {
             JsonNode requestNode = parseJsonBody(body);
-            try {
-                secretFieldProcessor.validateNoMaskSentinel(requestNode, Model.class);
-            } catch (IllegalArgumentException e) {
-                throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
+            if (spec.hasEncryptedFields()) {
+                try {
+                    secretFieldProcessor.validateNoMaskSentinel(requestNode, spec.entityClass());
+                } catch (IllegalArgumentException e) {
+                    throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
+                }
             }
             return taskExecutor.submit(() -> {
-                Model entity = treeToEntity(requestNode);
-                checkCrossReferences(entity);
+                String blobBody;
+                Key keyEntity = null;
+                String keySecret = null;
+                Object entity = null;
+                if (spec.entityClass() == null) {
+                    blobBody = requestNode.toString();
+                } else {
+                    entity = treeToEntity(requestNode, spec.entityClass());
+                    if (entity instanceof Model m) {
+                        checkCrossReferences(m);
+                    }
+                    if (spec.isKey()) {
+                        keyEntity = (Key) entity;
+                        validateKeyForApiWrite(keyEntity, "POST");
+                        // Capture before encryptFields mutates Key.key to ciphertext in place;
+                        // ApiKeyStore is indexed by plaintext secret (see ApiKeyStore.getApiKeyData).
+                        keySecret = keyEntity.getKey();
+                    }
+                    if (spec.hasEncryptedFields()) {
+                        secretFieldProcessor.encryptFields(entity, descriptor);
+                    }
+                    blobBody = serializeForBlob(entity);
+                }
                 try (LockService.Lock ignored = resourceService.lockResource(descriptor)) {
                     if (resourceService.getResourceMetadata(descriptor) != null) {
                         throw new HttpException(HttpStatus.CONFLICT,
                                 "Resource already exists: " + descriptor.getUrl());
                     }
-                    secretFieldProcessor.encryptFields(entity, descriptor);
-                    String encryptedBody = serializeForBlob(entity);
                     ResourceItemMetadata meta = resourceService.putResource(
-                            descriptor, encryptedBody, EtagHeader.ANY, null, false);
+                            descriptor, blobBody, EtagHeader.ANY, null, false);
+                    if (keySecret != null) {
+                        apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
+                    }
                     mergedConfigStore.rebuildNow();
                     return meta;
                 }
@@ -334,18 +364,16 @@ public class ConfigResourceController implements Controller {
     }
 
     private Future<?> handlePut() {
-        ResourceDescriptor descriptor = prepareModelWrite();
-        if (descriptor == null) {
+        WriteSpec spec = prepareWrite();
+        if (spec == null) {
             return Future.succeededFuture();
         }
+        ResourceDescriptor descriptor = spec.descriptor();
         String name = path;
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
 
         context.getRequest().body().compose(body -> {
             JsonNode requestNode = parseJsonBody(body);
-            if (!requestNode.isObject()) {
-                throw new HttpException(HttpStatus.BAD_REQUEST, "Request body must be a JSON object");
-            }
             return taskExecutor.submit(() -> {
                 try (LockService.Lock ignored = resourceService.lockResource(descriptor)) {
                     String existingBody = resourceService.getResource(descriptor, EtagHeader.ANY, false);
@@ -353,21 +381,50 @@ public class ConfigResourceController implements Controller {
                         throw new HttpException(HttpStatus.NOT_FOUND,
                                 "Resource not found: " + descriptor.getUrl());
                     }
-                    JsonNode existingBlobNode;
-                    try {
-                        existingBlobNode = ProxyUtil.BLOB_MAPPER.readTree(existingBody);
-                    } catch (JsonProcessingException e) {
-                        throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
-                                "Stored entity is malformed: " + e.getOriginalMessage());
+                    String blobBody;
+                    Key keyEntity = null;
+                    String keySecret = null;
+                    if (spec.entityClass() == null) {
+                        blobBody = requestNode.toString();
+                    } else {
+                        if (!requestNode.isObject()) {
+                            throw new HttpException(HttpStatus.BAD_REQUEST,
+                                    "Request body must be a JSON object");
+                        }
+                        JsonNode source;
+                        if (spec.hasEncryptedFields()) {
+                            JsonNode existingBlobNode;
+                            try {
+                                existingBlobNode = ProxyUtil.BLOB_MAPPER.readTree(existingBody);
+                            } catch (JsonProcessingException e) {
+                                throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                        "Stored entity is malformed: " + e.getOriginalMessage());
+                            }
+                            source = secretFieldProcessor.mergePreservingOmittedSecrets(
+                                    existingBlobNode, requestNode, spec.entityClass());
+                        } else {
+                            source = requestNode;
+                        }
+                        Object entity = treeToEntity(source, spec.entityClass());
+                        if (entity instanceof Model m) {
+                            checkCrossReferences(m);
+                        }
+                        if (spec.isKey()) {
+                            keyEntity = (Key) entity;
+                            validateKeyForApiWrite(keyEntity, "PUT");
+                            // Capture before encryptFields mutates Key.key to ciphertext in place.
+                            keySecret = keyEntity.getKey();
+                        }
+                        if (spec.hasEncryptedFields()) {
+                            secretFieldProcessor.encryptFields(entity, descriptor);
+                        }
+                        blobBody = serializeForBlob(entity);
                     }
-                    ObjectNode merged = secretFieldProcessor.mergePreservingOmittedSecrets(
-                            existingBlobNode, requestNode, Model.class);
-                    Model entity = treeToEntity(merged);
-                    checkCrossReferences(entity);
-                    secretFieldProcessor.encryptFields(entity, descriptor);
-                    String encryptedBody = serializeForBlob(entity);
                     ResourceItemMetadata meta = resourceService.putResource(
-                            descriptor, encryptedBody, etag, null, false);
+                            descriptor, blobBody, etag, null, false);
+                    if (keySecret != null) {
+                        apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
+                    }
                     mergedConfigStore.rebuildNow();
                     return meta;
                 }
@@ -380,31 +437,68 @@ public class ConfigResourceController implements Controller {
     }
 
     private Future<?> handleDelete() {
-        ResourceDescriptor descriptor = prepareModelWrite();
-        if (descriptor == null) {
+        WriteSpec spec = prepareWrite();
+        if (spec == null) {
             return Future.succeededFuture();
         }
+        ResourceDescriptor descriptor = spec.descriptor();
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
 
         taskExecutor.submit(() -> {
-            boolean deleted = resourceService.deleteResource(descriptor, etag);
-            if (!deleted) {
-                throw new HttpException(HttpStatus.NOT_FOUND,
-                        "Resource not found: " + descriptor.getUrl());
+            // Pre-read + delete must run under the same lock so the secret extracted for
+            // apiKeyStore.removeKey matches the secret in the blob being deleted (no race
+            // with a concurrent PUT swapping the key).
+            try (LockService.Lock ignored = resourceService.lockResource(descriptor)) {
+                String deletedSecret = null;
+                if (spec.isKey()) {
+                    String existing = resourceService.getResource(descriptor, EtagHeader.ANY, false);
+                    if (existing != null) {
+                        try {
+                            JsonNode node = ProxyUtil.BLOB_MAPPER.readTree(existing);
+                            Key key = ProxyUtil.BLOB_MAPPER.treeToValue(node, Key.class);
+                            secretFieldProcessor.decryptFields(key, descriptor);
+                            deletedSecret = key.getKey();
+                        } catch (Exception e) {
+                            log.warn("Could not extract key secret before delete: {}", e.getMessage());
+                        }
+                    }
+                }
+                boolean deleted = resourceService.deleteResource(descriptor, etag, false);
+                if (!deleted) {
+                    throw new HttpException(HttpStatus.NOT_FOUND,
+                            "Resource not found: " + descriptor.getUrl());
+                }
+                if (deletedSecret != null) {
+                    apiKeyStore.removeKey(deletedSecret);
+                }
+                mergedConfigStore.rebuildNow();
+                return true;
             }
-            mergedConfigStore.rebuildNow();
-            return true;
         }).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
 
         return Future.succeededFuture();
     }
 
+    private static ApiKeyData apiKeyData(Key key) {
+        ApiKeyData data = new ApiKeyData();
+        data.setOriginalKey(key);
+        return data;
+    }
+
+    private static void validateKeyForApiWrite(Key key, String method) {
+        if (StringUtils.isBlank(key.getKey())) {
+            throw new HttpException(HttpStatus.BAD_REQUEST,
+                    "Key.key must be provided explicitly on " + method);
+        }
+        validateProjectKey(key);
+    }
+
     /**
-     * Validate the write target and return its descriptor. Returns {@code null} after writing the
+     * Validate the write target and return its spec. Returns {@code null} after writing the
      * appropriate 4xx response when the request can't proceed — callers short-circuit on null.
-     * Slice 2S.11 supports writes only on {@code models}; other types ship in 3S.2.
+     * Settings retains its own Allow set and 405s here (handled by a sibling slice).
      */
-    private ResourceDescriptor prepareModelWrite() {
+    private WriteSpec prepareWrite() {
         if (SETTINGS_TYPE.equals(entityType)) {
             // Settings has its own Allow set; respondMethodNotAllowed honors that.
             respondMethodNotAllowed();
@@ -414,13 +508,48 @@ public class ConfigResourceController implements Controller {
             context.respond(HttpStatus.BAD_REQUEST, "Resource name must not be empty or a folder");
             return null;
         }
-        if (!MODELS_TYPE.equals(entityType)) {
-            respondWriteMethodNotAllowed();
-            return null;
+        return switch (entityType) {
+            case "models" -> new WriteSpec(
+                    ResourceDescriptorFactory.fromDecoded(ResourceTypes.MODEL,
+                            ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path),
+                    Model.class, true, false);
+            case "interceptors" -> new WriteSpec(
+                    ResourceDescriptorFactory.fromDecoded(ResourceTypes.INTERCEPTOR,
+                            ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path),
+                    Interceptor.class, false, false);
+            case "roles" -> new WriteSpec(
+                    ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROLE,
+                            ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path),
+                    Role.class, false, false);
+            case "keys" -> new WriteSpec(
+                    ResourceDescriptorFactory.fromDecoded(ResourceTypes.PROJECT_KEY,
+                            ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path),
+                    Key.class, true, true);
+            case "routes" -> new WriteSpec(
+                    ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROUTE,
+                            ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path),
+                    Route.class, true, false);
+            case "schemas" -> new WriteSpec(
+                    ResourceDescriptorFactory.fromDecoded(ResourceTypes.APP_TYPE_SCHEMA,
+                            ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path),
+                    null, false, false);
+            default -> {
+                respondWriteMethodNotAllowed();
+                yield null;
+            }
+        };
+    }
+
+    private static void validateProjectKey(Key key) {
+        // Mirrors ApiKeyStore#validateProjectKey (private there); duplicated to translate
+        // IllegalArgumentException into HttpException without widening visibility upstream.
+        if (StringUtils.isBlank(key.getProject())) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Project key is undefined");
         }
-        return ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET,
-                ResourceDescriptor.PUBLIC_LOCATION, path);
+        if (StringUtils.isBlank(key.getRole()) && (key.getRoles() == null || key.getRoles().isEmpty())) {
+            throw new HttpException(HttpStatus.BAD_REQUEST,
+                    "Invalid key: at least one role must be assigned to the key " + key.getProject());
+        }
     }
 
     private static JsonNode parseJsonBody(Buffer body) {
@@ -432,9 +561,9 @@ public class ConfigResourceController implements Controller {
         }
     }
 
-    private static Model treeToEntity(JsonNode node) {
+    private static <T> T treeToEntity(JsonNode node, Class<T> cls) {
         try {
-            return ProxyUtil.BLOB_MAPPER.treeToValue(node, Model.class);
+            return ProxyUtil.BLOB_MAPPER.treeToValue(node, cls);
         } catch (JsonProcessingException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST,
                     "Failed to parse entity: " + e.getOriginalMessage());
@@ -580,8 +709,7 @@ public class ConfigResourceController implements Controller {
     }
 
     private Future<?> respondWriteMethodNotAllowed() {
-        // 2S.11 supports POST/PUT/DELETE only on "models"; other writable types ship in 3S.2 and
-        // currently respond 405 with the eventual Allow set so callers can probe for capability.
+        // Default 405 with the eventual Allow set for entity types not yet in the write switch.
         context.putHeader("Allow", WRITE_ALLOW);
         context.respond(HttpStatus.METHOD_NOT_ALLOWED, "Not implemented");
         return Future.succeededFuture();
@@ -599,5 +727,12 @@ public class ConfigResourceController implements Controller {
             return false;
         }
     }
+
+    private record WriteSpec(
+            ResourceDescriptor descriptor,
+            Class<?> entityClass,        // null for schemas (raw JSON-string body)
+            boolean hasEncryptedFields,
+            boolean isKey
+    ) {}
 
 }
