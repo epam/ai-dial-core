@@ -1,6 +1,21 @@
 package com.epam.aidial.cli;
 
+import com.epam.aidial.cli.auth.ApiKeyResolver;
+import com.epam.aidial.cli.config.CliConfigException;
+import com.epam.aidial.cli.config.CliProfile;
+import com.epam.aidial.cli.config.Defaults;
+import com.epam.aidial.cli.config.Environment;
+import com.epam.aidial.cli.config.ProfileLoader;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.Parameters;
+import picocli.CommandLine.ParentCommand;
+import picocli.CommandLine.Spec;
+
+import java.io.PrintWriter;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.Callable;
 
 @Command(
         name = "env",
@@ -15,35 +30,141 @@ import picocli.CommandLine.Command;
 )
 public class EnvCommand {
 
+    @ParentCommand
+    DialCli parent;
+
     @Command(name = "list", description = "List configured environments.")
-    static class List implements Runnable {
+    static class List implements Callable<Integer> {
+        @ParentCommand
+        EnvCommand env;
+        @Spec
+        CommandSpec spec;
+
         @Override
-        public void run() {
-            throw new UnsupportedOperationException("env list — wires up in slice 1C.1");
+        public Integer call() {
+            DialCli root = env.parent;
+            CliProfile profile = ProfileLoader.load(root.configPath);
+            PrintWriter out = spec.commandLine().getOut();
+
+            Map<String, Environment> environments = profile.getEnvironments();
+            if (environments == null || environments.isEmpty()) {
+                out.println("No environments configured.");
+                return 0;
+            }
+            String current = resolveCurrent(root, profile);
+            for (String name : new TreeMap<>(environments).keySet()) {
+                String marker = name.equals(current) ? "* " : "  ";
+                out.println(marker + name);
+            }
+            return 0;
         }
     }
 
     @Command(name = "current", description = "Print the currently selected environment.")
-    static class Current implements Runnable {
+    static class Current implements Callable<Integer> {
+        @ParentCommand
+        EnvCommand env;
+        @Spec
+        CommandSpec spec;
+
         @Override
-        public void run() {
-            throw new UnsupportedOperationException("env current — wires up in slice 1C.1");
+        public Integer call() {
+            DialCli root = env.parent;
+            CliProfile profile = ProfileLoader.load(root.configPath);
+            String current = resolveCurrent(root, profile);
+            if (current == null) {
+                spec.commandLine().getErr().println("No environment selected.");
+                return 2;
+            }
+            spec.commandLine().getOut().println(current);
+            return 0;
         }
     }
 
     @Command(name = "use", description = "Persist defaults.env in the CLI profile.")
-    static class Use implements Runnable {
+    static class Use implements Callable<Integer> {
+        @ParentCommand
+        EnvCommand env;
+        @Spec
+        CommandSpec spec;
+        @Parameters(index = "0", description = "Environment name to make default.")
+        String name;
+
         @Override
-        public void run() {
-            throw new UnsupportedOperationException("env use — wires up in slice 1C.1");
+        public Integer call() {
+            DialCli root = env.parent;
+            CliProfile profile = ProfileLoader.load(root.configPath);
+            Map<String, Environment> environments = profile.getEnvironments();
+            if (environments == null || environments.isEmpty() || !environments.containsKey(name)) {
+                PrintWriter err = spec.commandLine().getErr();
+                err.println("Environment '" + name + "' not found in profile.");
+                if (environments != null && !environments.isEmpty()) {
+                    err.println("Available environments: " + String.join(", ", new TreeMap<>(environments).keySet()));
+                }
+                return 2;
+            }
+            Defaults defaults = profile.getDefaults();
+            if (defaults == null) {
+                defaults = new Defaults();
+                profile.setDefaults(defaults);
+            }
+            defaults.setEnv(name);
+            try {
+                ProfileLoader.save(root.configPath, profile);
+            } catch (CliConfigException e) {
+                spec.commandLine().getErr().println(e.getMessage());
+                return 2;
+            }
+            spec.commandLine().getOut().println("Switched to environment '" + name + "'.");
+            return 0;
         }
     }
 
     @Command(name = "check", description = "Probe API URL + credential resolution for a profile.")
-    static class Check implements Runnable {
+    static class Check implements Callable<Integer> {
+        @ParentCommand
+        EnvCommand env;
+        @Spec
+        CommandSpec spec;
+
+        ApiKeyResolver apiKeyResolver = new ApiKeyResolver();
+
         @Override
-        public void run() {
-            throw new UnsupportedOperationException("env check — wires up in slice 1C.1");
+        public Integer call() {
+            DialCli root = env.parent;
+            CliProfile profile = ProfileLoader.load(root.configPath);
+            String name = resolveCurrent(root, profile);
+            if (name == null) {
+                spec.commandLine().getErr().println("No environment selected.");
+                return 2;
+            }
+            Map<String, Environment> environments = profile.getEnvironments();
+            Environment target = (environments != null) ? environments.get(name) : null;
+            if (target == null) {
+                spec.commandLine().getErr().println("Environment '" + name + "' not found in profile.");
+                return 2;
+            }
+            String apiUrl = target.getApiUrl();
+            if (apiUrl == null || apiUrl.isBlank()) {
+                spec.commandLine().getErr().println("Environment '" + name + "' has no api_url configured.");
+                return 2;
+            }
+            PrintWriter out = spec.commandLine().getOut();
+            out.println("Environment: " + name);
+            out.println("API URL:     " + apiUrl);
+            out.println("Credentials: " + apiKeyResolver.describeSource(target, root.apiKeyFile));
+            return 0;
         }
+    }
+
+    static String resolveCurrent(DialCli root, CliProfile profile) {
+        if (root.env != null && !root.env.isBlank()) {
+            return root.env;
+        }
+        Defaults defaults = profile.getDefaults();
+        if (defaults != null && defaults.getEnv() != null && !defaults.getEnv().isBlank()) {
+            return defaults.getEnv();
+        }
+        return null;
     }
 }

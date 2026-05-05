@@ -18,7 +18,7 @@ public class ApiKeyResolver {
         this(System::getenv, PasswordPrompter.SYSTEM);
     }
 
-    ApiKeyResolver(Function<String, String> envLookup, PasswordPrompter prompter) {
+    public ApiKeyResolver(Function<String, String> envLookup, PasswordPrompter prompter) {
         this.envLookup = envLookup;
         this.prompter = prompter;
     }
@@ -46,5 +46,21 @@ public class ApiKeyResolver {
         String missing = (keyEnvVar != null) ? keyEnvVar : "<auth.key_env_var>";
         throw new CliAuthException(
             "No API key resolved for env '" + envName + "'. Set $" + missing + ", pass --api-key-file <path>, or run from a TTY.");
+    }
+
+    public String describeSource(Environment env, Path apiKeyFile) {
+        Auth auth = (env != null) ? env.getAuth() : null;
+        String keyEnvVar = (auth != null) ? auth.getKeyEnvVar() : null;
+        if (keyEnvVar != null) {
+            String fromEnv = envLookup.apply(keyEnvVar);
+            if (fromEnv != null && !fromEnv.isBlank()) {
+                return "env-var ($" + keyEnvVar + ")";
+            }
+        }
+        if (apiKeyFile != null) {
+            String suffix = Files.isReadable(apiKeyFile) ? "" : " — NOT readable";
+            return "file (" + apiKeyFile + ")" + suffix;
+        }
+        return "would prompt (no env var set, no --api-key-file)";
     }
 }

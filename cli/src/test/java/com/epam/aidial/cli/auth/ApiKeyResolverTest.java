@@ -86,4 +86,50 @@ class ApiKeyResolverTest {
 
         assertEquals("prompted", resolver.resolve("dev", env, null));
     }
+
+    @Test
+    void describeSourceReportsEnvVarWhenSet() {
+        Map<String, String> envs = Map.of("DIAL_KEY", "from-env");
+        ApiKeyResolver resolver = new ApiKeyResolver(envs::get, msg -> {
+            throw new AssertionError("describeSource must not prompt");
+        });
+
+        assertEquals("env-var ($DIAL_KEY)", resolver.describeSource(envWithKeyVar("DIAL_KEY"), null));
+    }
+
+    @Test
+    void describeSourceReportsFileWhenFlagSetAndEnvBlank(@TempDir Path tmp) throws Exception {
+        Path file = tmp.resolve("key.txt");
+        Files.writeString(file, "secret");
+        ApiKeyResolver resolver = new ApiKeyResolver(name -> null, msg -> {
+            throw new AssertionError("describeSource must not prompt");
+        });
+
+        String label = resolver.describeSource(envWithKeyVar("DIAL_KEY"), file);
+
+        assertEquals("file (" + file + ")", label);
+    }
+
+    @Test
+    void describeSourceFlagsUnreadableFile(@TempDir Path tmp) {
+        Path missing = tmp.resolve("missing.txt");
+        ApiKeyResolver resolver = new ApiKeyResolver(name -> null, msg -> {
+            throw new AssertionError("describeSource must not prompt");
+        });
+
+        String label = resolver.describeSource(envWithKeyVar("DIAL_KEY"), missing);
+
+        assertTrue(label.contains("NOT readable"), "expected unreadable marker, got: " + label);
+    }
+
+    @Test
+    void describeSourceReportsWouldPromptWhenNoSourceAvailable() {
+        ApiKeyResolver resolver = new ApiKeyResolver(name -> null, msg -> {
+            throw new AssertionError("describeSource must not prompt");
+        });
+
+        assertEquals(
+                "would prompt (no env var set, no --api-key-file)",
+                resolver.describeSource(envWithKeyVar("DIAL_KEY"), null));
+    }
 }

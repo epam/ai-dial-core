@@ -83,4 +83,45 @@ class ProfileLoaderTest {
 
         assertEquals("dev", profile.getDefaults().getEnv());
     }
+
+    @Test
+    void saveRoundTripsProfile(@TempDir Path tmp) throws Exception {
+        Path source = tmp.resolve("source.yaml");
+        Files.writeString(source, """
+                defaults:
+                  env: dev
+                environments:
+                  dev:
+                    api_url: "https://dial-core.dev.example"
+                    auth: { type: api_key, key_env_var: DIAL_DEV_API_KEY }
+                  prod:
+                    api_url: "https://dial-core.prod.example"
+                    auth: { type: api_key, key_env_var: DIAL_PROD_API_KEY }
+                """);
+        CliProfile loaded = ProfileLoader.load(source);
+        loaded.getDefaults().setEnv("prod");
+
+        Path target = tmp.resolve("written.yaml");
+        ProfileLoader.save(target, loaded);
+        CliProfile reloaded = ProfileLoader.load(target);
+
+        assertEquals("prod", reloaded.getDefaults().getEnv());
+        assertEquals("https://dial-core.dev.example", reloaded.getEnvironments().get("dev").getApiUrl());
+        assertEquals("DIAL_PROD_API_KEY", reloaded.getEnvironments().get("prod").getAuth().getKeyEnvVar());
+    }
+
+    @Test
+    void saveCreatesParentDirectoryIfMissing(@TempDir Path tmp) {
+        Path nested = tmp.resolve("a").resolve("b").resolve("c").resolve("config.yaml");
+        CliProfile profile = new CliProfile();
+        Defaults defaults = new Defaults();
+        defaults.setEnv("dev");
+        profile.setDefaults(defaults);
+
+        ProfileLoader.save(nested, profile);
+
+        assertTrue(Files.exists(nested));
+        CliProfile reloaded = ProfileLoader.load(nested);
+        assertEquals("dev", reloaded.getDefaults().getEnv());
+    }
 }
