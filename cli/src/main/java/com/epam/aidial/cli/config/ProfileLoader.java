@@ -11,10 +11,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.function.Function;
 
 public final class ProfileLoader {
 
     static final Path DEFAULT_PATH = Paths.get(System.getProperty("user.home"), ".dial-cli", "config.yaml");
+    static final String CONFIG_PATH_ENV_VAR = "DIAL_CLI_CONFIG";
+
+    static Function<String, String> envLookup = System::getenv;
 
     private static final YAMLMapper MAPPER = YAMLMapper.builder()
             .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
@@ -27,7 +31,7 @@ public final class ProfileLoader {
     }
 
     public static CliProfile load(Path path) {
-        Path resolved = (path != null) ? path : DEFAULT_PATH;
+        Path resolved = resolvePath(path);
         if (!Files.exists(resolved)) {
             return new CliProfile();
         }
@@ -40,7 +44,7 @@ public final class ProfileLoader {
     }
 
     public static void save(Path path, CliProfile profile) {
-        Path resolved = (path != null) ? path : DEFAULT_PATH;
+        Path resolved = resolvePath(path);
         Path parent = resolved.toAbsolutePath().getParent();
         try {
             Files.createDirectories(parent);
@@ -50,5 +54,16 @@ public final class ProfileLoader {
         } catch (IOException e) {
             throw new CliConfigException("Failed to write CLI profile at " + resolved, e);
         }
+    }
+
+    static Path resolvePath(Path explicit) {
+        if (explicit != null) {
+            return explicit;
+        }
+        String envValue = envLookup.apply(CONFIG_PATH_ENV_VAR);
+        if (envValue != null && !envValue.isBlank()) {
+            return Paths.get(envValue);
+        }
+        return DEFAULT_PATH;
     }
 }

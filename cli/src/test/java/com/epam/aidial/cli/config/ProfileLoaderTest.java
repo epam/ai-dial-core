@@ -1,5 +1,6 @@
 package com.epam.aidial.cli.config;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -13,6 +14,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProfileLoaderTest {
+
+    @AfterEach
+    void resetEnvLookup() {
+        ProfileLoader.envLookup = System::getenv;
+    }
 
     @Test
     void loadsValidProfile(@TempDir Path tmp) throws Exception {
@@ -108,6 +114,48 @@ class ProfileLoaderTest {
         assertEquals("prod", reloaded.getDefaults().getEnv());
         assertEquals("https://dial-core.dev.example", reloaded.getEnvironments().get("dev").getApiUrl());
         assertEquals("DIAL_PROD_API_KEY", reloaded.getEnvironments().get("prod").getAuth().getKeyEnvVar());
+    }
+
+    @Test
+    void usesDialCliConfigEnvVarWhenPathOmitted(@TempDir Path tmp) throws Exception {
+        Path file = tmp.resolve("env-set.yaml");
+        Files.writeString(file, "defaults: { env: from-env }\n");
+        ProfileLoader.envLookup = name -> "DIAL_CLI_CONFIG".equals(name) ? file.toString() : null;
+
+        CliProfile profile = ProfileLoader.load(null);
+
+        assertEquals("from-env", profile.getDefaults().getEnv());
+    }
+
+    @Test
+    void explicitPathBeatsDialCliConfigEnvVar(@TempDir Path tmp) throws Exception {
+        Path explicit = tmp.resolve("explicit.yaml");
+        Files.writeString(explicit, "defaults: { env: explicit }\n");
+        Path envFile = tmp.resolve("env.yaml");
+        Files.writeString(envFile, "defaults: { env: from-env }\n");
+        ProfileLoader.envLookup = name -> "DIAL_CLI_CONFIG".equals(name) ? envFile.toString() : null;
+
+        CliProfile profile = ProfileLoader.load(explicit);
+
+        assertEquals("explicit", profile.getDefaults().getEnv());
+    }
+
+    @Test
+    void blankDialCliConfigFallsThroughToDefault() {
+        ProfileLoader.envLookup = name -> "DIAL_CLI_CONFIG".equals(name) ? "   " : null;
+
+        Path resolved = ProfileLoader.resolvePath(null);
+
+        assertEquals(ProfileLoader.DEFAULT_PATH, resolved);
+    }
+
+    @Test
+    void unsetDialCliConfigFallsThroughToDefault() {
+        ProfileLoader.envLookup = name -> null;
+
+        Path resolved = ProfileLoader.resolvePath(null);
+
+        assertEquals(ProfileLoader.DEFAULT_PATH, resolved);
     }
 
     @Test
