@@ -15,7 +15,7 @@ import java.util.concurrent.Callable;
         description = "Manage DIAL model entities.",
         mixinStandardHelpOptions = true,
         subcommands = {ModelCommand.Get.class, ModelCommand.List.class, ModelCommand.Add.class,
-                ModelCommand.Update.class, ModelCommand.Delete.class}
+                ModelCommand.Update.class, ModelCommand.Delete.class, ModelCommand.Validate.class}
 )
 public class ModelCommand {
 
@@ -103,6 +103,26 @@ public class ModelCommand {
         @Override
         public Integer call() {
             return EntityWriter.deleteEntity(model.parent, spec, "models", name, ifMatch);
+        }
+    }
+
+    @Command(name = "validate",
+            description = "Validate a proposed model spec via POST /v1/admin/validate (no write).")
+    static class Validate implements Callable<Integer> {
+        @ParentCommand
+        ModelCommand model;
+        @Spec
+        CommandSpec spec;
+        @Option(names = "--name", required = true,
+                description = "Canonical id (models/public/<name>).")
+        String name;
+        @Option(names = "--from-file", required = true,
+                description = "JSON or YAML file with the model spec (.yaml/.yml parsed as YAML).")
+        Path fromFile;
+
+        @Override
+        public Integer call() {
+            return EntityWriter.validateEntity(model.parent, spec, "models", "Model", name, fromFile);
         }
     }
 }

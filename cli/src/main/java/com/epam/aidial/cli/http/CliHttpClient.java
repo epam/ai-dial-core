@@ -117,7 +117,7 @@ public class CliHttpClient {
         if (status == 412) {
             return 6;
         }
-        if (status == 400) {
+        if (status == 400 || status == 422) {
             return 2;
         }
         return 1;
