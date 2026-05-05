@@ -372,7 +372,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 
 | ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
-| **2C.0** | `dial-cli model add` (POST). `--dry-run`. Exit codes per 06 §2.8 (`0` / `5` / `2` / `3`). No `--template` yet (Phase 4). | 1C.2, 2S.11 | 05 §1; 06 §2.8 | 📋 | — |
+| **2C.0** | `dial-cli model add` (POST). `--dry-run`. Exit codes per 06 §2.8 (`0` / `5` / `2` / `3`). No `--template` yet (Phase 4). **Design calls (2026-05-05)**: `--name` required flag (canonical id only — simple names exit 2 per 05 §1); `--from-file` JSON/YAML by extension; `--dry-run` = local preview, no HTTP; `Content-Type: application/json` always (YAML re-serialized). Reviewer-driven additions: `403 → 3` and `500 → 1` end-to-end test cases for the Add subcommand (unit-level coverage already in `CliHttpClientTest`). `EntityWriter` sibling to `EntityReader`; `requireCanonicalId` hardcodes `public/` bucket — 3C.0 will parameterize. `Response` record gained `etag` field for future `--if-match` (2C.1). | 1C.2, 2S.11 | 05 §1; 06 §2.8 | ✅ | `6ba4aa5a` |
 | **2C.1** | `dial-cli model update` (PUT) with `--set k=v` (GET → local-merge → PUT). `--if-match`. Exit codes (`0` / `4` / `6` / `2`). | 2C.0 | 05 §1 (Update ergonomics) | 📋 | — |
 | **2C.2** | `dial-cli model delete` with `--if-match`. | 2C.0 | 05 §1 | 📋 | — |
 | **2C.3** | `dial-cli model validate` against `POST /v1/admin/validate`. | 2S.12, 2C.0 | 05 §1 | 📋 | — |
