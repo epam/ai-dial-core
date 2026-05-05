@@ -69,9 +69,40 @@ jbang dial-cli@epam get models --env uat
 # Option C: Docker (for CI or air-gapped environments)
 docker run ghcr.io/epam/dial-cli get models --env prod
 
+# Option D: Bundled in the ai-dial-core image (alpha — see §1.1.1 below)
+docker run ghcr.io/epam/ai-dial-core:<version> dial-cli get models --env prod
+
 # Verify
 dial-cli version
 ```
+
+#### 1.1.1 Bundled in the `ai-dial-core` Docker image (alpha)
+
+For DevOps teams already pinning the `ai-dial-core` image in their config-management CI, the same image doubles as a CLI runner — the CLI uber-jar is shipped at `/opt/cli/dial-cli.jar` with a wrapper at `/usr/local/bin/dial-cli`. The UX matches the planned standalone `ghcr.io/epam/dial-cli` image (Option C above); the bundled-in-core path exists so internal alpha-testers don't have to wait for the standalone image to ship.
+
+The container's entrypoint runs the server only when invoked with no arguments — passing `dial-cli …` as the command runs the CLI instead (see `docker-entrypoint.sh`).
+
+```shell
+# Read against a remote DIAL Core (profile passed explicitly via --config to avoid HOME juggling)
+docker run --rm \
+  -v "$HOME/.dial-cli/config.yaml:/etc/dial-cli/config.yaml:ro" \
+  -e DIAL_UAT_API_KEY \
+  ghcr.io/epam/ai-dial-core:<version> \
+  dial-cli --config /etc/dial-cli/config.yaml get models --env uat
+
+# Apply a manifest tree from the working directory in CI
+docker run --rm \
+  -v "$PWD/config:/work:ro" \
+  -v "$HOME/.dial-cli/config.yaml:/etc/dial-cli/config.yaml:ro" \
+  -e DIAL_UAT_API_KEY \
+  -w /work \
+  ghcr.io/epam/ai-dial-core:<version> \
+  dial-cli --config /etc/dial-cli/config.yaml apply -f manifests/ --env uat
+```
+
+Profile, credential, and exit-code semantics are identical to the standalone CLI (§1.2, §2.1, §2.8). Use the `--config` flag to point at the mounted profile rather than mounting at the in-container `$HOME` — it sidesteps the appuser-vs-host-uid mismatch and works regardless of the user the container runs as.
+
+> **Alpha — not the supported distribution.** The standalone `ghcr.io/epam/dial-cli` image (Option C) remains the supported channel for non-internal users. The bundled-in-core path will stay alongside it as a convenience for teams that already pull the core image; it is not a replacement.
 
 Shell completions:
 

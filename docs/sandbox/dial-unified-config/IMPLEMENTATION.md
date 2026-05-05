@@ -119,7 +119,7 @@ Concrete deferrals for MVP:
 
 - `./gradlew :cli:build` produces a runnable JVM JAR (`cli/build/libs/dial-cli-<version>.jar`). Quarkus JVM-mode startup is ~100–500 ms — fine for kubectl-style usage.
 - `quarkus.native.*` properties are unset; no Quarkus extension reflection-config work for native compatibility.
-- **MVP distribution channels**: Docker image (`ghcr.io/epam/dial-cli`) and runnable JAR (`java -jar dial-cli.jar …`). Both are listed in design 05 §6.
+- **MVP distribution channels**: Docker image (`ghcr.io/epam/dial-cli`), runnable JAR (`java -jar dial-cli.jar …`), and **bundled inside the `ai-dial-core` image** as an alpha convenience channel (same uber-jar copied to `/opt/cli/dial-cli.jar` with a `/usr/local/bin/dial-cli` wrapper — see slice **Dist.1** in §5.5). All three are listed in design 05 §6.
 - **Deferred distribution channels**: GitHub Releases native binaries (linux/darwin/windows × amd64/arm64) and Homebrew tap (need GraalVM); JBang channel (deferred from MVP — adds packaging/publishing surface that doesn't pay off until external operators install the CLI).
 - **Re-enabling native-image** is a single post-MVP slice that lands once `epam/ai-dial-ci` adds GraalVM support — at that point the design's full distribution matrix becomes deliverable.
 
@@ -435,6 +435,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 - **4S.2** Server: split apply per-entity outcomes into `created` / `updated` / `unchanged` (today only `applied` / `applied_invalid` / `FAILED` / `skipped`) so the CLI can render the design 06 §2.7 summary buckets without N extra round-trips. Surfaced during 4C.0 architect plan (§1.1 deviation). — 03 §7
 - **4C.6** CLI: render `created / updated / unchanged / failed` summary on `apply` (depends on **4S.2** wire change). 4C.0 ships an `applied / failed` aggregate as the closest-available stand-in. — 06 §2.7
 - **4C.7** CLI: `dial-cli apply -f <directory>` recursive walk over `.yaml` / `.yml` / `.json` files. **Techdebt** — slice 4C.0 ships file-only by design (slice-register row scope) but design 06 §2.7 / §2.8 examples assume directory input. — 06 §2.7
+- **Dist.1** Build / distribution: bundle the `:cli` Quarkus uber-jar into the `ai-dial-core` Docker image at `/opt/cli/dial-cli.jar` with a `/usr/local/bin/dial-cli` wrapper, so the same image DevOps already pins for the server can be reused as a CLI runner in config-management CI pipelines (mirrors the planned standalone `ghcr.io/epam/dial-cli` image; alpha convenience channel — not a replacement). Touches `Dockerfile` only; no production code changes. — 05 §6, 06 §1.1.1
 
 ---
 

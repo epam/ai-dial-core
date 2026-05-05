@@ -6,6 +6,7 @@ COPY --chown=gradle:gradle . /home/gradle/src
 WORKDIR /home/gradle/src
 RUN --mount=type=secret,id=GPR_USERNAME,env=GPR_USERNAME --mount=type=secret,id=GPR_PASSWORD,env=GPR_PASSWORD gradle --no-daemon build --stacktrace -PdisableCompression=true -x test
 RUN mkdir /build && tar -xf /home/gradle/src/server/build/distributions/server*.tar --strip-components=1 -C /build
+RUN cp /home/gradle/src/cli/build/cli-*-runner.jar /tmp/dial-cli.jar
 
 FROM eclipse-temurin:21-jdk-alpine
 
@@ -23,6 +24,13 @@ RUN adduser -u 1001 --disabled-password --gecos "" appuser
 
 COPY --from=builder --chown=appuser:appuser /build/ .
 RUN chown -R appuser:appuser /app
+
+# dial-cli alpha distribution: same image doubles as a CLI runner via
+# `docker run <img> dial-cli …`; docker-entrypoint.sh exec's non-empty argv as-is.
+RUN mkdir -p /opt/cli && chown appuser:appuser /opt/cli
+COPY --from=builder --chown=appuser:appuser /tmp/dial-cli.jar /opt/cli/dial-cli.jar
+RUN printf '#!/bin/sh\nexec java -jar /opt/cli/dial-cli.jar "$@"\n' > /usr/local/bin/dial-cli \
+    && chmod +x /usr/local/bin/dial-cli
 
 COPY --chown=appuser:appuser docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

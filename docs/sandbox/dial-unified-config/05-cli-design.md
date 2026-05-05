@@ -526,6 +526,7 @@ dial-cli apply -f manifests/bundles/onboard-claude-sonnet.yaml --env uat \
 | GitHub Releases | Pre-built native binaries for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64 |
 | Homebrew | `brew install epam/tap/dial-cli` |
 | Docker | `docker run ghcr.io/epam/dial-cli get models --env prod` |
+| Bundled in `ai-dial-core` image | `docker run ghcr.io/epam/ai-dial-core:<version> dial-cli get models --env prod` (alpha — same uber-jar at `/opt/cli/dial-cli.jar` with `/usr/local/bin/dial-cli` wrapper; convenience channel for DevOps CI / config-management pipelines that already pin the core image) |
 | JBang | `jbang dial-cli@epam get models` (JVM fallback for platforms without native image) |
 
 See `dial-cli-technology-analysis.md` for the full technology comparison and rationale.
