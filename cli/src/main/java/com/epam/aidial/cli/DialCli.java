@@ -24,7 +24,8 @@ import java.nio.file.Path;
                 SchemaCommand.class,
                 SettingsCommand.class,
                 ExportCommand.class,
-                DiffCommand.class
+                DiffCommand.class,
+                CompletionCommand.class
         }
 )
 public class DialCli {
