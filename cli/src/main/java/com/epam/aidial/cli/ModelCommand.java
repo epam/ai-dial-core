@@ -15,7 +15,8 @@ import java.util.concurrent.Callable;
         description = "Manage DIAL model entities.",
         mixinStandardHelpOptions = true,
         subcommands = {ModelCommand.Get.class, ModelCommand.List.class, ModelCommand.Add.class,
-                ModelCommand.Update.class, ModelCommand.Delete.class, ModelCommand.Validate.class}
+                ModelCommand.Update.class, ModelCommand.Delete.class, ModelCommand.Validate.class,
+                ModelCommand.Promote.class}
 )
 public class ModelCommand {
 
@@ -123,6 +124,27 @@ public class ModelCommand {
         @Override
         public Integer call() {
             return EntityWriter.validateEntity(model.parent, spec, "models", "Model", name, fromFile);
+        }
+    }
+
+    @Command(name = "promote",
+            description = "Promote a model from one environment to another via POST /v1/admin/apply.")
+    static class Promote implements Callable<Integer> {
+        @ParentCommand
+        ModelCommand model;
+        @Spec
+        CommandSpec spec;
+        @Option(names = "--from", required = true, description = "Source environment.")
+        String fromEnv;
+        @Option(names = "--to", required = true, description = "Target environment.")
+        String toEnv;
+        @Option(names = "--name", required = true,
+                description = "Canonical id (models/public/<name>).")
+        String name;
+
+        @Override
+        public Integer call() {
+            return EntityWriter.promoteEntity(model.parent, spec, "models", "Model", name, fromEnv, toEnv);
         }
     }
 }

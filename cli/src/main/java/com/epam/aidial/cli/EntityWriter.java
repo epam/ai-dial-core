@@ -136,6 +136,102 @@ public final class EntityWriter {
         return 0;
     }
 
+    public static int promoteEntity(DialCli root, CommandSpec spec, String type, String kind,
+                                    String canonicalId, String sourceEnv, String targetEnv) {
+        String simpleName;
+        try {
+            simpleName = requireCanonicalId(type, canonicalId);
+        } catch (IllegalArgumentException e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 2;
+        }
+        EntityReader.ResolvedEnv source = EntityReader.resolveEnv(root, spec, sourceEnv);
+        if (source == null) {
+            return 2;
+        }
+        EntityReader.ResolvedEnv target = EntityReader.resolveEnv(root, spec, targetEnv);
+        if (target == null) {
+            return 2;
+        }
+        String path = "/v1/" + type + "/public/" + URLEncoder.encode(simpleName, StandardCharsets.UTF_8);
+        CliHttpClient.Response getResp;
+        try {
+            getResp = new CliHttpClient(source.apiUrl(), source.apiKey()).get(path);
+        } catch (CliHttpClient.NetworkException e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 1;
+        }
+        if (getResp.status() >= 300) {
+            spec.commandLine().getErr().println("Source " + source.envName() + ": HTTP "
+                    + getResp.status() + " " + getResp.body());
+            return CliHttpClient.toExitCode(getResp.status());
+        }
+        ObjectNode envelope = JSON.createObjectNode();
+        ObjectNode manifest = JSON.createObjectNode();
+        manifest.put("kind", kind);
+        manifest.put("name", simpleName);
+        try {
+            manifest.set("spec", JSON.readTree(getResp.body()));
+        } catch (JsonProcessingException e) {
+            spec.commandLine().getErr().println("Failed to parse source " + source.envName() + " response: " + e.getMessage());
+            return 1;
+        }
+        envelope.putArray("manifests").add(manifest);
+        envelope.put("precheck", true);
+        String body;
+        try {
+            body = JSON.writeValueAsString(envelope);
+        } catch (JsonProcessingException e) {
+            spec.commandLine().getErr().println("Failed to serialize apply envelope: " + e.getMessage());
+            return 1;
+        }
+        if (root.dryRun) {
+            spec.commandLine().getOut().println(body);
+            return 0;
+        }
+        CliHttpClient.Response applyResp;
+        try {
+            applyResp = new CliHttpClient(target.apiUrl(), target.apiKey()).post("/v1/admin/apply", body);
+        } catch (CliHttpClient.NetworkException e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 1;
+        }
+        if (applyResp.status() != 200 && applyResp.status() != 422) {
+            spec.commandLine().getErr().println("Target " + target.envName() + ": HTTP "
+                    + applyResp.status() + " " + applyResp.body());
+            return CliHttpClient.toExitCode(applyResp.status());
+        }
+        try {
+            JsonNode parsed = JSON.readTree(applyResp.body());
+            int applied = parsed.path("applied").asInt(0);
+            JsonNode results = parsed.path("results");
+            if (applied > 0 && applyResp.status() == 200) {
+                for (JsonNode r : results) {
+                    if ("applied_invalid".equalsIgnoreCase(r.path("status").asText())) {
+                        spec.commandLine().getErr().println("warn: "
+                                + r.path("entityId").asText("(unknown)")
+                                + " applied with validation warnings"
+                                + (r.has("error") ? " — " + r.path("error").asText() : ""));
+                    }
+                }
+                spec.commandLine().getOut().println("Promoted " + canonicalId + " from "
+                        + source.envName() + " to " + target.envName());
+                return 0;
+            }
+            for (JsonNode r : results) {
+                if ("FAILED".equalsIgnoreCase(r.path("status").asText())) {
+                    spec.commandLine().getErr().println(
+                            r.path("entityId").asText("(unknown)") + ": FAILED"
+                                    + (r.has("error") ? " — " + r.path("error").asText() : ""));
+                }
+            }
+            return 2;
+        } catch (JsonProcessingException e) {
+            spec.commandLine().getErr().println("Failed to parse apply response: " + e.getMessage());
+            return 1;
+        }
+    }
+
     public static int validateEntity(DialCli root, CommandSpec spec, String type, String kind,
                                      String canonicalId, Path fromFile) {
         String simpleName;
