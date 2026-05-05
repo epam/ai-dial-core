@@ -1209,6 +1209,236 @@ class ModelCommandTest {
         assertTrue(r.err.contains("canonical id"), r.err);
     }
 
+    @Test
+    void modelDiffSingleModelChangedField(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfile(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort());
+            respond("/v1/models/public/m", 200, "{\"name\":\"m\",\"endpoint\":\"http://src\"}");
+            target.createContext("/v1/models/public/m", exchange ->
+                    send(exchange, 200, "{\"name\":\"m\",\"endpoint\":\"http://tgt\"}"));
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "diff", "--source", "dev", "--target", "uat",
+                    "--name", "models/public/m");
+
+            assertEquals(0, r.exitCode, r.err);
+            assertTrue(r.out.contains("~ endpoint"), r.out);
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelDiffSingleModelNoDifferences(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfile(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort());
+            respond("/v1/models/public/m", 200, "{\"name\":\"m\",\"endpoint\":\"http://x\"}");
+            target.createContext("/v1/models/public/m", exchange ->
+                    send(exchange, 200, "{\"name\":\"m\",\"endpoint\":\"http://x\"}"));
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "diff", "--source", "dev", "--target", "uat",
+                    "--name", "models/public/m");
+
+            assertEquals(0, r.exitCode, r.err);
+            assertTrue(r.out.contains("No differences."), r.out);
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelDiffSingleModel404OnSourceShowsAdded(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfile(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort());
+            respond("/v1/models/public/m", 404, "{\"error\":\"not found\"}");
+            target.createContext("/v1/models/public/m", exchange ->
+                    send(exchange, 200, "{\"name\":\"m\",\"endpoint\":\"http://x\"}"));
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "diff", "--source", "dev", "--target", "uat",
+                    "--name", "models/public/m");
+
+            assertEquals(0, r.exitCode, r.err);
+            assertTrue(r.out.contains("+ name"), r.out);
+            assertTrue(r.out.contains("+ endpoint"), r.out);
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelDiffSingleModel404OnTargetShowsRemoved(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfile(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort());
+            respond("/v1/models/public/m", 200, "{\"name\":\"m\",\"endpoint\":\"http://x\"}");
+            target.createContext("/v1/models/public/m", exchange ->
+                    send(exchange, 404, "{\"error\":\"not found\"}"));
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "diff", "--source", "dev", "--target", "uat",
+                    "--name", "models/public/m");
+
+            assertEquals(0, r.exitCode, r.err);
+            assertTrue(r.out.contains("- name"), r.out);
+            assertTrue(r.out.contains("- endpoint"), r.out);
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelDiffListAddedRemovedAndChanged(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfile(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort());
+            server.createContext("/v1/models/public/", exchange -> send(exchange, 200, """
+                    {"items":[
+                      {"name":"shared","endpoint":"http://src"},
+                      {"name":"src-only","endpoint":"http://src-only"}
+                    ],"hasMore":false}"""));
+            target.createContext("/v1/models/public/", exchange -> send(exchange, 200, """
+                    {"items":[
+                      {"name":"shared","endpoint":"http://tgt"},
+                      {"name":"tgt-only","endpoint":"http://tgt-only"}
+                    ],"hasMore":false}"""));
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "diff", "--source", "dev", "--target", "uat");
+
+            assertEquals(0, r.exitCode, r.err);
+            assertTrue(r.out.contains("- src-only"), r.out);
+            assertTrue(r.out.contains("+ tgt-only"), r.out);
+            assertTrue(r.out.contains("~ shared.endpoint"), r.out);
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelDiffListEmptySourceShowsAllAdded(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfile(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort());
+            server.createContext("/v1/models/public/", exchange -> send(exchange, 200,
+                    "{\"items\":[],\"hasMore\":false}"));
+            target.createContext("/v1/models/public/", exchange -> send(exchange, 200,
+                    "{\"items\":[{\"name\":\"m\",\"endpoint\":\"http://x\"}],\"hasMore\":false}"));
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "diff", "--source", "dev", "--target", "uat");
+
+            assertEquals(0, r.exitCode, r.err);
+            assertTrue(r.out.contains("+ m"), r.out);
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelDiffListIdenticalReportsNoDifferences(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfile(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort());
+            String identical = "{\"items\":[{\"name\":\"m\",\"endpoint\":\"http://x\"}],\"hasMore\":false}";
+            server.createContext("/v1/models/public/", exchange -> send(exchange, 200, identical));
+            target.createContext("/v1/models/public/", exchange -> send(exchange, 200, identical));
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "diff", "--source", "dev", "--target", "uat");
+
+            assertEquals(0, r.exitCode, r.err);
+            assertTrue(r.out.contains("No differences."), r.out);
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelDiffListWarnsOnHasMore(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfile(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort());
+            server.createContext("/v1/models/public/", exchange -> send(exchange, 200,
+                    "{\"items\":[{\"name\":\"m\"}],\"hasMore\":true}"));
+            target.createContext("/v1/models/public/", exchange -> send(exchange, 200,
+                    "{\"items\":[{\"name\":\"m\"}],\"hasMore\":false}"));
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "diff", "--source", "dev", "--target", "uat");
+
+            assertEquals(0, r.exitCode, r.err);
+            assertTrue(r.err.contains("[warn]"), r.err);
+            assertTrue(r.err.contains("dev"), r.err);
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelDiffSourceAuthFailureExitsOne(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfile(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort());
+            respond("/v1/models/public/m", 401, "{\"error\":\"unauthorized\"}");
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "diff", "--source", "dev", "--target", "uat",
+                    "--name", "models/public/m");
+
+            assertEquals(1, r.exitCode);
+            assertTrue(r.err.contains("dev"), r.err);
+            assertTrue(r.err.contains("401"), r.err);
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelDiffRejectsSimpleName(@TempDir Path tmp) throws Exception {
+        Path config = writeTwoEnvProfile(tmp, baseUrl, baseUrl);
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "diff", "--source", "dev", "--target", "uat", "--name", "gpt-4");
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("canonical id"), r.err);
+    }
+
+    @Test
+    void modelDiffRejectsAmbiguousPartialCanonicalId(@TempDir Path tmp) throws Exception {
+        Path config = writeTwoEnvProfile(tmp, baseUrl, baseUrl);
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "diff", "--source", "dev", "--target", "uat",
+                "--name", "models/public/foo/bar");
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("canonical id"), r.err);
+    }
+
     private void respond(String path, int status, String body) {
         server.createContext(path, exchange -> send(exchange, status, body));
     }
