@@ -27,3 +27,11 @@ application {
 test {
     useJUnitPlatform()
 }
+
+// Quarkus registers `build/classes/java/quarkus-generated-sources/{grpc,avdl,avpr,avsc}` as
+// source dirs of the main source set, and `compileQuarkusGeneratedSourcesJava` outputs into
+// the same locations that `generateEffectiveLombokConfig` walks. Without this dependency
+// Gradle 8.10+ flags an implicit-dependency validation error and the CI build fails.
+tasks.matching { it.name == 'generateEffectiveLombokConfig' }.configureEach {
+    mustRunAfter('compileQuarkusGeneratedSourcesJava')
+}
