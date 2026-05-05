@@ -54,6 +54,20 @@ public class CliHttpClient {
         return sendForString(req);
     }
 
+    public Response put(String pathAndQuery, String body, String ifMatch) {
+        URI uri = buildUri(pathAndQuery);
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
+                .header("Api-Key", apiKey)
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(30))
+                .PUT(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
+        if (ifMatch != null && !ifMatch.isBlank()) {
+            builder.header("If-Match", ifMatch);
+        }
+        return sendForString(builder.build());
+    }
+
     private URI buildUri(String pathAndQuery) {
         try {
             return URI.create(apiUrl + pathAndQuery);
@@ -86,6 +100,9 @@ public class CliHttpClient {
         }
         if (status == 409) {
             return 5;
+        }
+        if (status == 412) {
+            return 6;
         }
         if (status == 400) {
             return 2;

@@ -14,7 +14,7 @@ import java.util.concurrent.Callable;
         name = "model",
         description = "Manage DIAL model entities.",
         mixinStandardHelpOptions = true,
-        subcommands = {ModelCommand.Get.class, ModelCommand.List.class, ModelCommand.Add.class}
+        subcommands = {ModelCommand.Get.class, ModelCommand.List.class, ModelCommand.Add.class, ModelCommand.Update.class}
 )
 public class ModelCommand {
 
@@ -65,6 +65,26 @@ public class ModelCommand {
         @Override
         public Integer call() {
             return EntityWriter.addEntity(model.parent, spec, "models", name, fromFile);
+        }
+    }
+
+    @Command(name = "update",
+            description = "Update a model (PUT). Fails with exit 4 if it does not exist, 6 on stale ETag.")
+    static class Update implements Callable<Integer> {
+        @ParentCommand
+        ModelCommand model;
+        @Spec
+        CommandSpec spec;
+        @Parameters(index = "0", description = "Canonical id (models/public/<name>).")
+        String name;
+        @Option(names = "--set", description = "Field override 'path=value' (repeatable). Dotted paths nest; values are JSON-coerced.")
+        java.util.List<String> sets;
+        @Option(names = "--if-match", description = "ETag for optimistic concurrency. Defaults to the GET response's ETag.")
+        String ifMatch;
+
+        @Override
+        public Integer call() {
+            return EntityWriter.updateEntity(model.parent, spec, "models", name, sets, ifMatch);
         }
     }
 }
