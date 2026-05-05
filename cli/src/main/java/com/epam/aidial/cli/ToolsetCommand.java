@@ -2,19 +2,29 @@ package com.epam.aidial.cli;
 
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
 import picocli.CommandLine.Spec;
 
+import java.nio.file.Path;
 import java.util.concurrent.Callable;
 
 @Command(
         name = "toolset",
-        description = "Read DIAL toolset entities.",
+        description = "Manage DIAL toolset entities.",
         mixinStandardHelpOptions = true,
-        subcommands = {ToolsetCommand.Get.class, ToolsetCommand.List.class}
+        subcommands = {ToolsetCommand.Get.class, ToolsetCommand.List.class,
+                ToolsetCommand.Add.class, ToolsetCommand.Update.class,
+                ToolsetCommand.Delete.class, ToolsetCommand.Validate.class,
+                ToolsetCommand.Promote.class, ToolsetCommand.Diff.class}
 )
 public class ToolsetCommand {
+
+    static final String TYPE = "toolsets";
+    static final String BUCKET = "public";
+    static final String KIND = "ToolSet";
+    static final String CANONICAL_PREFIX = TYPE + "/" + BUCKET + "/";
 
     @ParentCommand
     DialCli parent;
@@ -30,7 +40,7 @@ public class ToolsetCommand {
 
         @Override
         public Integer call() {
-            return EntityReader.readEntity(cmd.parent, spec, "toolsets", name);
+            return EntityReader.readEntity(cmd.parent, spec, TYPE, name);
         }
     }
 
@@ -43,7 +53,125 @@ public class ToolsetCommand {
 
         @Override
         public Integer call() {
-            return EntityReader.listEntities(cmd.parent, spec, "toolsets");
+            return EntityReader.listEntities(cmd.parent, spec, TYPE);
+        }
+    }
+
+    @Command(name = "add", description = "Create a toolset (POST). Fails with exit 5 if it already exists.")
+    static class Add implements Callable<Integer> {
+        @ParentCommand
+        ToolsetCommand cmd;
+        @Spec
+        CommandSpec spec;
+        @Option(names = "--name", required = true,
+                description = "Canonical id (toolsets/public/<name>).")
+        String name;
+        @Option(names = "--from-file", required = true,
+                description = "JSON or YAML file with the toolset spec (.yaml/.yml parsed as YAML).")
+        Path fromFile;
+
+        @Override
+        public Integer call() {
+            return EntityWriter.addEntity(cmd.parent, spec, TYPE, BUCKET, name, fromFile);
+        }
+    }
+
+    @Command(name = "update",
+            description = "Update a toolset (PUT). Fails with exit 4 if it does not exist, 6 on stale ETag.")
+    static class Update implements Callable<Integer> {
+        @ParentCommand
+        ToolsetCommand cmd;
+        @Spec
+        CommandSpec spec;
+        @Parameters(index = "0", description = "Canonical id (toolsets/public/<name>).")
+        String name;
+        @Option(names = "--set", description = "Field override 'path=value' (repeatable). Dotted paths nest; values are JSON-coerced.")
+        java.util.List<String> sets;
+        @Option(names = "--if-match", description = "ETag for optimistic concurrency. Defaults to the GET response's ETag.")
+        String ifMatch;
+
+        @Override
+        public Integer call() {
+            return EntityWriter.updateEntity(cmd.parent, spec, TYPE, BUCKET, name, sets, ifMatch);
+        }
+    }
+
+    @Command(name = "delete", description = "Delete a toolset (DELETE). Fails with exit 4 if missing, 6 on stale ETag.")
+    static class Delete implements Callable<Integer> {
+        @ParentCommand
+        ToolsetCommand cmd;
+        @Spec
+        CommandSpec spec;
+        @Parameters(index = "0", description = "Canonical id (toolsets/public/<name>).")
+        String name;
+        @Option(names = "--if-match", description = "ETag for optimistic concurrency.")
+        String ifMatch;
+
+        @Override
+        public Integer call() {
+            return EntityWriter.deleteEntity(cmd.parent, spec, TYPE, BUCKET, name, ifMatch);
+        }
+    }
+
+    @Command(name = "validate",
+            description = "Validate a proposed toolset spec via POST /v1/admin/validate (no write).")
+    static class Validate implements Callable<Integer> {
+        @ParentCommand
+        ToolsetCommand cmd;
+        @Spec
+        CommandSpec spec;
+        @Option(names = "--name", required = true,
+                description = "Canonical id (toolsets/public/<name>).")
+        String name;
+        @Option(names = "--from-file", required = true,
+                description = "JSON or YAML file with the toolset spec (.yaml/.yml parsed as YAML).")
+        Path fromFile;
+
+        @Override
+        public Integer call() {
+            return EntityWriter.validateEntity(cmd.parent, spec, TYPE, KIND, BUCKET, name, fromFile);
+        }
+    }
+
+    @Command(name = "promote",
+            description = "Promote a toolset from one environment to another via POST /v1/admin/apply.")
+    static class Promote implements Callable<Integer> {
+        @ParentCommand
+        ToolsetCommand cmd;
+        @Spec
+        CommandSpec spec;
+        @Option(names = "--from", required = true, description = "Source environment.")
+        String fromEnv;
+        @Option(names = "--to", required = true, description = "Target environment.")
+        String toEnv;
+        @Option(names = "--name", required = true,
+                description = "Canonical id (toolsets/public/<name>).")
+        String name;
+
+        @Override
+        public Integer call() {
+            return EntityWriter.promoteEntity(cmd.parent, spec, TYPE, KIND, BUCKET, name, fromEnv, toEnv);
+        }
+    }
+
+    @Command(name = "diff",
+            description = "Structural diff of a single toolset (with --name) or all toolsets between two environments.")
+    static class Diff implements Callable<Integer> {
+
+        @ParentCommand
+        ToolsetCommand cmd;
+        @Spec
+        CommandSpec spec;
+        @Option(names = "--source", required = true, description = "Source environment.")
+        String sourceEnv;
+        @Option(names = "--target", required = true, description = "Target environment.")
+        String targetEnv;
+        @Option(names = "--name", description = "Optional canonical id (toolsets/public/<name>) for a single-entity diff.")
+        String name;
+
+        @Override
+        public Integer call() {
+            return EntityDiff.run(cmd.parent, spec, TYPE, BUCKET, CANONICAL_PREFIX, sourceEnv, targetEnv, name);
         }
     }
 }
