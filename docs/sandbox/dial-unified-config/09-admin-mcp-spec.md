@@ -108,7 +108,7 @@ These are workflows users say in natural language. The MCP has *no* tool for any
 
 **Admin: "What rate limits actually apply to user X on model Y?"** *(post-v1)*
 - v1: agent fetches role list, model spec, and merges precedence in-context. Slow. Brittle.
-- Post-v1 with `dial_get_effective_policy(subject, target)` (§12): one server-side call returns the merged answer with provenance.
+- Post-v1 with `dial_get_effective_policy(subject, target)` (§11): one server-side call returns the merged answer with provenance.
 
 ---
 
@@ -137,7 +137,7 @@ These are workflows users say in natural language. The MCP has *no* tool for any
 
 | ID | Requirement |
 |---|---|
-| **M1** | Building blocks compose. Any workflow documented in `03-api-reference.md` is reachable via a sequence of v1 tool calls, with no MCP-side state required between calls. (REST parity is *not* a release gate — the §12 future-work list is acknowledged scope.) |
+| **M1** | Building blocks compose. Any workflow documented in `03-api-reference.md` is reachable via a sequence of v1 tool calls, with no MCP-side state required between calls. (REST parity is *not* a release gate — the §11 future-work list is acknowledged scope.) |
 | **M2** | All write tools accept `validate_only: true` to dry-run without mutating. |
 | **M3** | Tool responses follow the API response schema by default; tool-specific projections (`format: summary \| detailed`, two-array list envelope) are documented per tool. |
 | **M4** | Tool descriptions are concise and include 1–2 example invocations. Descriptions are loaded into every agent's context — keep them short; do not embed REST-equivalent details. |
@@ -246,7 +246,7 @@ Projections are applied server-side in the MCP layer, not in Core. Adding a new 
 - `create` → `POST`, returns `409 Conflict` if the entity exists. An LLM that hallucinates a slightly-wrong "this is new" gets a clean error and self-corrects.
 - `update` → `PUT`, returns `404 Not Found` if the entity is missing. Typo guard — no silent stub creation.
 
-Bulk upsert (`apply_manifests`) is intentionally *not* in v1 (see §12). When it lands, it remains the only path where create-or-update is implicit.
+Bulk upsert (`apply_manifests`) is intentionally *not* in v1 (see §11). When it lands, it remains the only path where create-or-update is implicit.
 
 ### 6.6 Example tool definition
 
@@ -289,7 +289,7 @@ Drift between the MCP and Core's REST contract is mitigated the standard way: pi
 - **Language:** Python.
 - **MCP framework:** Anthropic's `mcp` SDK / FastMCP.
 - **HTTP client:** `httpx` (or equivalent) — direct REST calls to Core.
-- **REST client typing:** for v1 the MCP does *not* depend on the `dial-api` Python package. Once `dial-api` is extended to cover the full Configuration API surface (see §12), the MCP can switch to it for typed REST clients without an architectural change.
+- **REST client typing:** for v1 the MCP does *not* depend on the `dial-api` Python package. Once `dial-api` is extended to cover the full Configuration API surface (see §11), the MCP can switch to it for typed REST clients without an architectural change.
 - **Schema source:** runtime fetch of `GET /v1/admin/schema/{type}` (M9). No build-time codegen.
 - **Transport:** HTTP/SSE (hosted) and stdio (laptop) — both supported by FastMCP from one entrypoint.
 
@@ -342,28 +342,13 @@ Pre-Phase-7 these are echoed to Core's application logs (best-effort, not query-
 | **MCP-0** | Spec + design review | None — this doc |
 | **MCP-1** | All 9 building-block tools (§6.1), HTTP/SSE + stdio transports, admin API key + user JWT auth | Core Phase 1 (read-only API) for the read tools; Core Phase 2/3 (writes) for the write tools — ship in two increments alongside Core |
 | **MCP-2** | Service-account OIDC for CI agents | None — additive auth |
-| **MCP-future** | Tools listed in §12 — each scoped to its driving need and Core dependency | Per item |
+| **MCP-future** | Tools listed in §11 — each scoped to its driving need and Core dependency | Per item |
 
 Read-only MCP-1 ships as soon as Core Phase 1 deploys to any environment. Write tools follow Core's Phase 2/3 entity-by-entity rollout.
 
 ---
 
-## 9. Success Metrics
-
-| Metric | First 90 days | At 12 months |
-|---|---|---|
-| Active environments with MCP enabled | ≥3 internal EPAM envs | ≥50% of DIAL production deployments |
-| Median time-to-first-useful-tool-call after install | <5 min | <3 min |
-| Tool calls / week (aggregate) | 100 | 5,000 |
-| Agent-initiated configuration changes / week | ≥0 (read-only first) | ≥30% of non-CI config changes |
-| `validate_only` → real-write conversion rate | — | >70% (indicates pre-validation is happening) |
-| Operator CSAT for "resolved a config question via agent" | — | ≥4/5 |
-
-**Eval-driven development.** Ship a harness in the repo that runs the §3.2 illustrative scenarios end-to-end against a staging Core on every PR. Tool descriptions and projections iterate against eval results, not just human review. ([Anthropic — Writing Effective Tools for Agents](https://www.anthropic.com/engineering/writing-tools-for-agents) §"Evaluating tools".)
-
----
-
-## 10. Risks & Mitigations
+## 9. Risks & Mitigations
 
 | Risk | Impact | Mitigation |
 |---|---|---|
@@ -376,7 +361,7 @@ Read-only MCP-1 ships as soon as Core Phase 1 deploys to any environment. Write 
 
 ---
 
-## 11. Open Questions
+## 10. Open Questions
 
 | # | Question | Needs to close |
 |---|---|---|
@@ -389,7 +374,7 @@ Read-only MCP-1 ships as soon as Core Phase 1 deploys to any environment. Write 
 
 ---
 
-## 12. Future Work (parked / out of scope for v1)
+## 11. Future Work (parked / out of scope for v1)
 
 Items deliberately excluded from MCP-1, with a short note on what would unlock them:
 
@@ -413,7 +398,7 @@ Items deliberately excluded from MCP-1, with a short note on what would unlock t
 
 ---
 
-## 13. References
+## 12. References
 
 - [`03-api-reference.md`](03-api-reference.md) — the REST surface this wraps
 - [`04-security-and-audit.md`](04-security-and-audit.md) — auth and audit integration
@@ -430,4 +415,4 @@ Items deliberately excluded from MCP-1, with a short note on what would unlock t
 
 - Resolve MCP-OQ-1 through MCP-OQ-6.
 - If approved: kick off MCP-1 scoping in the new repo, target a 2-week first cut of read-only tools against a staging DIAL Core.
-- Follow-up: confirm whether MCP-OQ-3's resolution affects the §12 `dial_diff_environments` and `dial_export` framings.
+- Follow-up: confirm whether MCP-OQ-3's resolution affects the §11 `dial_diff_environments` and `dial_export` framings.
