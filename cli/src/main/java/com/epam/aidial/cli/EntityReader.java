@@ -32,7 +32,7 @@ public final class EntityReader {
             Map.entry("roles", "platform"),
             Map.entry("keys", "platform"),
             Map.entry("routes", "platform"),
-            Map.entry("schemas", "platform"),
+            Map.entry("schemas", "public"),
             Map.entry("settings", "platform")
     );
 

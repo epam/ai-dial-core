@@ -154,9 +154,21 @@ class EntityReaderTypesTest {
     @Test
     void schemaGetCanonicalIdPassesThroughVerbatim(@TempDir Path tmp) throws Exception {
         Path config = setup(tmp);
-        respond("/v1/schemas/platform/my-schema", 200, "{\"name\":\"my-schema\"}");
+        respond("/v1/schemas/public/my-schema", 200, "{\"name\":\"my-schema\"}");
 
-        Result r = run(config, tmp, "schema", "get", "schemas/platform/my-schema");
+        Result r = run(config, tmp, "schema", "get", "schemas/public/my-schema");
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(r.out.contains("my-schema"), r.out);
+    }
+
+    @Test
+    void schemaListUsesPublicBucket(@TempDir Path tmp) throws Exception {
+        Path config = setup(tmp);
+        respond("/v1/schemas/public/", 200,
+                "{\"items\":[{\"name\":\"my-schema\"}],\"hasMore\":false}");
+
+        Result r = run(config, tmp, "schema", "list");
 
         assertEquals(0, r.exitCode, r.err);
         assertTrue(r.out.contains("my-schema"), r.out);

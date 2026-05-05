@@ -2,18 +2,28 @@ package com.epam.aidial.cli;
 
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.Option;
 import picocli.CommandLine.ParentCommand;
 import picocli.CommandLine.Spec;
 
+import java.nio.file.Path;
 import java.util.concurrent.Callable;
 
 @Command(
         name = "settings",
-        description = "Read DIAL global settings (singleton).",
+        description = "Manage DIAL global settings (singleton).",
         mixinStandardHelpOptions = true,
-        subcommands = {SettingsCommand.Get.class}
+        subcommands = {SettingsCommand.Get.class, SettingsCommand.Update.class,
+                SettingsCommand.Delete.class, SettingsCommand.Validate.class,
+                SettingsCommand.Promote.class, SettingsCommand.Diff.class}
 )
 public class SettingsCommand {
+
+    static final String TYPE = "settings";
+    static final String BUCKET = "platform";
+    static final String KIND = "Settings";
+    static final String CANONICAL_ID = TYPE + "/" + BUCKET + "/global";
+    static final String SINGLETON_PATH = "/v1/" + TYPE + "/" + BUCKET + "/global";
 
     @ParentCommand
     DialCli parent;
@@ -27,7 +37,95 @@ public class SettingsCommand {
 
         @Override
         public Integer call() {
-            return EntityReader.readSingleton(cmd.parent, spec, "settings");
+            return EntityReader.readSingleton(cmd.parent, spec, TYPE);
+        }
+    }
+
+    @Command(name = "update",
+            description = "Update global settings (PUT, upsert). The singleton has no 404 path.")
+    static class Update implements Callable<Integer> {
+        @ParentCommand
+        SettingsCommand cmd;
+        @Spec
+        CommandSpec spec;
+        @Option(names = "--set", description = "Field override 'path=value' (repeatable). Dotted paths nest; values are JSON-coerced.")
+        java.util.List<String> sets;
+        @Option(names = "--if-match", description = "ETag for optimistic concurrency. Defaults to the GET response's ETag.")
+        String ifMatch;
+
+        @Override
+        public Integer call() {
+            return EntityWriter.updateEntity(cmd.parent, spec, TYPE, BUCKET, CANONICAL_ID, sets, ifMatch);
+        }
+    }
+
+    @Command(name = "delete",
+            description = "Clear the API blob for global settings (DELETE). Idempotent (always 204).")
+    static class Delete implements Callable<Integer> {
+        @ParentCommand
+        SettingsCommand cmd;
+        @Spec
+        CommandSpec spec;
+        @Option(names = "--if-match", description = "ETag for optimistic concurrency.")
+        String ifMatch;
+
+        @Override
+        public Integer call() {
+            return EntityWriter.deleteEntity(cmd.parent, spec, TYPE, BUCKET, CANONICAL_ID, ifMatch);
+        }
+    }
+
+    @Command(name = "validate",
+            description = "Validate a proposed settings spec via POST /v1/admin/validate (no write).")
+    static class Validate implements Callable<Integer> {
+        @ParentCommand
+        SettingsCommand cmd;
+        @Spec
+        CommandSpec spec;
+        @Option(names = "--from-file", required = true,
+                description = "JSON or YAML file with the settings spec (.yaml/.yml parsed as YAML).")
+        Path fromFile;
+
+        @Override
+        public Integer call() {
+            return EntityWriter.validateEntity(cmd.parent, spec, TYPE, KIND, BUCKET, CANONICAL_ID, fromFile);
+        }
+    }
+
+    @Command(name = "promote",
+            description = "Promote global settings from one environment to another via POST /v1/admin/apply.")
+    static class Promote implements Callable<Integer> {
+        @ParentCommand
+        SettingsCommand cmd;
+        @Spec
+        CommandSpec spec;
+        @Option(names = "--from", required = true, description = "Source environment.")
+        String fromEnv;
+        @Option(names = "--to", required = true, description = "Target environment.")
+        String toEnv;
+
+        @Override
+        public Integer call() {
+            return EntityWriter.promoteEntity(cmd.parent, spec, TYPE, KIND, BUCKET, CANONICAL_ID, fromEnv, toEnv);
+        }
+    }
+
+    @Command(name = "diff",
+            description = "Structural diff of global settings between two environments.")
+    static class Diff implements Callable<Integer> {
+
+        @ParentCommand
+        SettingsCommand cmd;
+        @Spec
+        CommandSpec spec;
+        @Option(names = "--source", required = true, description = "Source environment.")
+        String sourceEnv;
+        @Option(names = "--target", required = true, description = "Target environment.")
+        String targetEnv;
+
+        @Override
+        public Integer call() {
+            return EntityDiff.runSingleton(cmd.parent, spec, SINGLETON_PATH, sourceEnv, targetEnv);
         }
     }
 }

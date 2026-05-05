@@ -26,9 +26,14 @@ public final class EntityWriter {
     }
 
     public static int addEntity(DialCli root, CommandSpec spec, String type, String canonicalId, Path fromFile) {
+        return addEntity(root, spec, type, "public", canonicalId, fromFile);
+    }
+
+    public static int addEntity(DialCli root, CommandSpec spec, String type, String bucket,
+                                String canonicalId, Path fromFile) {
         String name;
         try {
-            name = requireCanonicalId(type, canonicalId);
+            name = requireCanonicalId(type, bucket, canonicalId);
         } catch (IllegalArgumentException e) {
             spec.commandLine().getErr().println(e.getMessage());
             return 2;
@@ -51,7 +56,7 @@ public final class EntityWriter {
         if (resolved == null) {
             return 2;
         }
-        String path = "/v1/" + type + "/public/" + URLEncoder.encode(name, StandardCharsets.UTF_8);
+        String path = "/v1/" + type + "/" + bucket + "/" + URLEncoder.encode(name, StandardCharsets.UTF_8);
         CliHttpClient.Response resp;
         try {
             resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).post(path, body);
@@ -69,9 +74,14 @@ public final class EntityWriter {
 
     public static int updateEntity(DialCli root, CommandSpec spec, String type, String canonicalId,
                                    List<String> sets, String ifMatch) {
+        return updateEntity(root, spec, type, "public", canonicalId, sets, ifMatch);
+    }
+
+    public static int updateEntity(DialCli root, CommandSpec spec, String type, String bucket,
+                                   String canonicalId, List<String> sets, String ifMatch) {
         String name;
         try {
-            name = requireCanonicalId(type, canonicalId);
+            name = requireCanonicalId(type, bucket, canonicalId);
         } catch (IllegalArgumentException e) {
             spec.commandLine().getErr().println(e.getMessage());
             return 2;
@@ -80,7 +90,7 @@ public final class EntityWriter {
         if (resolved == null) {
             return 2;
         }
-        String path = "/v1/" + type + "/public/" + URLEncoder.encode(name, StandardCharsets.UTF_8);
+        String path = "/v1/" + type + "/" + bucket + "/" + URLEncoder.encode(name, StandardCharsets.UTF_8);
         CliHttpClient http = new CliHttpClient(resolved.apiUrl(), resolved.apiKey());
         CliHttpClient.Response getResp;
         try {
@@ -138,9 +148,14 @@ public final class EntityWriter {
 
     public static int promoteEntity(DialCli root, CommandSpec spec, String type, String kind,
                                     String canonicalId, String sourceEnv, String targetEnv) {
+        return promoteEntity(root, spec, type, kind, "public", canonicalId, sourceEnv, targetEnv);
+    }
+
+    public static int promoteEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
+                                    String canonicalId, String sourceEnv, String targetEnv) {
         String simpleName;
         try {
-            simpleName = requireCanonicalId(type, canonicalId);
+            simpleName = requireCanonicalId(type, bucket, canonicalId);
         } catch (IllegalArgumentException e) {
             spec.commandLine().getErr().println(e.getMessage());
             return 2;
@@ -153,7 +168,7 @@ public final class EntityWriter {
         if (target == null) {
             return 2;
         }
-        String path = "/v1/" + type + "/public/" + URLEncoder.encode(simpleName, StandardCharsets.UTF_8);
+        String path = "/v1/" + type + "/" + bucket + "/" + URLEncoder.encode(simpleName, StandardCharsets.UTF_8);
         CliHttpClient.Response getResp;
         try {
             getResp = new CliHttpClient(source.apiUrl(), source.apiKey()).get(path);
@@ -234,9 +249,14 @@ public final class EntityWriter {
 
     public static int validateEntity(DialCli root, CommandSpec spec, String type, String kind,
                                      String canonicalId, Path fromFile) {
+        return validateEntity(root, spec, type, kind, "public", canonicalId, fromFile);
+    }
+
+    public static int validateEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
+                                     String canonicalId, Path fromFile) {
         String simpleName;
         try {
-            simpleName = requireCanonicalId(type, canonicalId);
+            simpleName = requireCanonicalId(type, bucket, canonicalId);
         } catch (IllegalArgumentException e) {
             spec.commandLine().getErr().println(e.getMessage());
             return 2;
@@ -312,9 +332,14 @@ public final class EntityWriter {
     }
 
     public static int deleteEntity(DialCli root, CommandSpec spec, String type, String canonicalId, String ifMatch) {
+        return deleteEntity(root, spec, type, "public", canonicalId, ifMatch);
+    }
+
+    public static int deleteEntity(DialCli root, CommandSpec spec, String type, String bucket,
+                                   String canonicalId, String ifMatch) {
         String name;
         try {
-            name = requireCanonicalId(type, canonicalId);
+            name = requireCanonicalId(type, bucket, canonicalId);
         } catch (IllegalArgumentException e) {
             spec.commandLine().getErr().println(e.getMessage());
             return 2;
@@ -327,7 +352,7 @@ public final class EntityWriter {
         if (resolved == null) {
             return 2;
         }
-        String path = "/v1/" + type + "/public/" + URLEncoder.encode(name, StandardCharsets.UTF_8);
+        String path = "/v1/" + type + "/" + bucket + "/" + URLEncoder.encode(name, StandardCharsets.UTF_8);
         CliHttpClient.Response resp;
         try {
             resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).delete(path, ifMatch);
@@ -385,11 +410,11 @@ public final class EntityWriter {
         }
     }
 
-    private static String requireCanonicalId(String type, String identifier) {
-        String prefix = type + "/public/";
+    private static String requireCanonicalId(String type, String bucket, String identifier) {
+        String prefix = type + "/" + bucket + "/";
         if (!identifier.startsWith(prefix) || identifier.length() == prefix.length()) {
             throw new IllegalArgumentException(
-                    "--name must be a canonical id '" + type + "/public/<name>'; got '" + identifier + "'.");
+                    "--name must be a canonical id '" + type + "/" + bucket + "/<name>'; got '" + identifier + "'.");
         }
         String name = identifier.substring(prefix.length());
         if (name.contains("/")) {
