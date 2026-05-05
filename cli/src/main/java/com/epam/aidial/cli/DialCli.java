@@ -14,7 +14,15 @@ import java.nio.file.Path;
         subcommands = {
                 EnvCommand.class,
                 GetCommand.class,
-                ModelCommand.class
+                ModelCommand.class,
+                ApplicationCommand.class,
+                ToolsetCommand.class,
+                InterceptorCommand.class,
+                RoleCommand.class,
+                KeyCommand.class,
+                RouteCommand.class,
+                SchemaCommand.class,
+                SettingsCommand.class
         }
 )
 public class DialCli {

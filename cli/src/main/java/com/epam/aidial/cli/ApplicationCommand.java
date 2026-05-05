@@ -9,41 +9,41 @@ import picocli.CommandLine.Spec;
 import java.util.concurrent.Callable;
 
 @Command(
-        name = "model",
-        description = "Read DIAL model entities.",
+        name = "application",
+        description = "Read DIAL application entities.",
         mixinStandardHelpOptions = true,
-        subcommands = {ModelCommand.Get.class, ModelCommand.List.class}
+        subcommands = {ApplicationCommand.Get.class, ApplicationCommand.List.class}
 )
-public class ModelCommand {
+public class ApplicationCommand {
 
     @ParentCommand
     DialCli parent;
 
-    @Command(name = "get", description = "Get a single model by name (or canonical id).")
+    @Command(name = "get", description = "Get a single application by name (or canonical id).")
     static class Get implements Callable<Integer> {
         @ParentCommand
-        ModelCommand model;
+        ApplicationCommand cmd;
         @Spec
         CommandSpec spec;
-        @Parameters(index = "0", description = "Model name or canonical id (models/<bucket>/<name>).")
+        @Parameters(index = "0", description = "Application name or canonical id (applications/<bucket>/<name>).")
         String name;
 
         @Override
         public Integer call() {
-            return EntityReader.readEntity(model.parent, spec, "models", name);
+            return EntityReader.readEntity(cmd.parent, spec, "applications", name);
         }
     }
 
-    @Command(name = "list", description = "List models in the public bucket.")
+    @Command(name = "list", description = "List applications in the public bucket.")
     static class List implements Callable<Integer> {
         @ParentCommand
-        ModelCommand model;
+        ApplicationCommand cmd;
         @Spec
         CommandSpec spec;
 
         @Override
         public Integer call() {
-            return EntityReader.listEntities(model.parent, spec, "models");
+            return EntityReader.listEntities(cmd.parent, spec, "applications");
         }
     }
 }

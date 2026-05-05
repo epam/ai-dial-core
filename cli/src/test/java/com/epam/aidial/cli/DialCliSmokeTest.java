@@ -20,6 +20,40 @@ class DialCliSmokeTest {
     }
 
     @Test
+    void exposesAllPerTypeReadCommands() {
+        CommandLine cmd = new CommandLine(new DialCli());
+        Set<String> subcommands = cmd.getSubcommands().keySet();
+
+        Set<String> expected = Set.of(
+                "model", "application", "toolset",
+                "interceptor", "role", "key", "route", "schema", "settings");
+        assertTrue(subcommands.containsAll(expected),
+                "expected " + expected + ", got " + subcommands);
+    }
+
+    @Test
+    void perTypeCommandsExposeGetAndList() {
+        CommandLine root = new CommandLine(new DialCli());
+        for (String type : new String[]{"model", "application", "toolset",
+                "interceptor", "role", "key", "route", "schema"}) {
+            CommandLine typeCmd = root.getSubcommands().get(type);
+            Set<String> children = typeCmd.getSubcommands().keySet();
+            assertTrue(children.contains("get"), type + " missing `get`, has " + children);
+            assertTrue(children.contains("list"), type + " missing `list`, has " + children);
+        }
+    }
+
+    @Test
+    void settingsExposesGetOnly() {
+        CommandLine root = new CommandLine(new DialCli());
+        Set<String> children = root.getSubcommands().get("settings").getSubcommands().keySet();
+
+        assertTrue(children.contains("get"), "settings missing `get`, has " + children);
+        org.junit.jupiter.api.Assertions.assertFalse(
+                children.contains("list"), "settings should NOT expose `list` (singleton), has " + children);
+    }
+
+    @Test
     void envSubcommandExposesPhase1Children() {
         CommandLine env = new CommandLine(new DialCli()).getSubcommands().get("env");
         Set<String> children = env.getSubcommands().keySet();
