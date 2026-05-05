@@ -136,6 +136,38 @@ public final class EntityWriter {
         return 0;
     }
 
+    public static int deleteEntity(DialCli root, CommandSpec spec, String type, String canonicalId, String ifMatch) {
+        String name;
+        try {
+            name = requireCanonicalId(type, canonicalId);
+        } catch (IllegalArgumentException e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 2;
+        }
+        if (root.dryRun) {
+            spec.commandLine().getOut().println("Would delete " + canonicalId);
+            return 0;
+        }
+        EntityReader.ResolvedEnv resolved = EntityReader.resolveEnv(root, spec);
+        if (resolved == null) {
+            return 2;
+        }
+        String path = "/v1/" + type + "/public/" + URLEncoder.encode(name, StandardCharsets.UTF_8);
+        CliHttpClient.Response resp;
+        try {
+            resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).delete(path, ifMatch);
+        } catch (CliHttpClient.NetworkException e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 1;
+        }
+        if (resp.status() >= 300) {
+            spec.commandLine().getErr().println("HTTP " + resp.status() + " " + resp.body());
+            return CliHttpClient.toExitCode(resp.status());
+        }
+        spec.commandLine().getOut().println("Deleted " + canonicalId);
+        return 0;
+    }
+
     static void applySets(ObjectNode target, List<String> sets) {
         if (sets == null) {
             return;

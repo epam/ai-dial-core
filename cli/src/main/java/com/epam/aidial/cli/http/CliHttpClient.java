@@ -68,6 +68,19 @@ public class CliHttpClient {
         return sendForString(builder.build());
     }
 
+    public Response delete(String pathAndQuery, String ifMatch) {
+        URI uri = buildUri(pathAndQuery);
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
+                .header("Api-Key", apiKey)
+                .header("Accept", "application/json")
+                .timeout(Duration.ofSeconds(30))
+                .DELETE();
+        if (ifMatch != null && !ifMatch.isBlank()) {
+            builder.header("If-Match", ifMatch);
+        }
+        return sendForString(builder.build());
+    }
+
     private URI buildUri(String pathAndQuery) {
         try {
             return URI.create(apiUrl + pathAndQuery);

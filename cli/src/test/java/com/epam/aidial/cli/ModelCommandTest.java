@@ -687,6 +687,125 @@ class ModelCommandTest {
         assertTrue(putBody.get().contains("\"endpoint\":\"http://x\""), putBody.get());
     }
 
+    @Test
+    void modelDelete204HappyPath(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        java.util.concurrent.atomic.AtomicReference<String> method = new java.util.concurrent.atomic.AtomicReference<>();
+        server.createContext("/v1/models/public/m", exchange -> {
+            method.set(exchange.getRequestMethod());
+            send(exchange, 204, "");
+        });
+
+        Result r = run(config, apiKeyFile(tmp), "model", "delete", "models/public/m");
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals("DELETE", method.get());
+        assertTrue(r.out.contains("Deleted models/public/m"), r.out);
+    }
+
+    @Test
+    void modelDelete404ExitsFour(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        respond("/v1/models/public/missing", 404, "{\"error\":\"not found\"}");
+
+        Result r = run(config, apiKeyFile(tmp), "model", "delete", "models/public/missing");
+
+        assertEquals(4, r.exitCode);
+        assertTrue(r.err.contains("404"), r.err);
+    }
+
+    @Test
+    void modelDelete412OnStaleIfMatchExitsSix(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        java.util.concurrent.atomic.AtomicReference<String> ifMatch = new java.util.concurrent.atomic.AtomicReference<>();
+        server.createContext("/v1/models/public/m", exchange -> {
+            ifMatch.set(exchange.getRequestHeaders().getFirst("If-Match"));
+            send(exchange, 412, "{\"error\":\"stale\"}");
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "delete", "models/public/m", "--if-match", "\"stale\"");
+
+        assertEquals(6, r.exitCode);
+        assertEquals("\"stale\"", ifMatch.get());
+        assertTrue(r.err.contains("412"), r.err);
+    }
+
+    @Test
+    void modelDeleteWithoutIfMatchOmitsHeader(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        java.util.concurrent.atomic.AtomicReference<String> ifMatch = new java.util.concurrent.atomic.AtomicReference<>("present");
+        server.createContext("/v1/models/public/m", exchange -> {
+            ifMatch.set(exchange.getRequestHeaders().getFirst("If-Match"));
+            send(exchange, 204, "");
+        });
+
+        Result r = run(config, apiKeyFile(tmp), "model", "delete", "models/public/m");
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals(null, ifMatch.get());
+    }
+
+    @Test
+    void modelDeleteRejectsSimpleName(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+
+        Result r = run(config, apiKeyFile(tmp), "model", "delete", "gpt-4");
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("canonical id"), r.err);
+    }
+
+    @Test
+    void modelDeleteDryRunPrintsAndDoesNotHit(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        java.util.concurrent.atomic.AtomicBoolean hit = new java.util.concurrent.atomic.AtomicBoolean();
+        server.createContext("/v1/models/public/m", exchange -> {
+            hit.set(true);
+            send(exchange, 500, "{}");
+        });
+
+        Result r = run(config, apiKeyFile(tmp), "--dry-run",
+                "model", "delete", "models/public/m");
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(r.out.contains("Would delete models/public/m"), r.out);
+        assertTrue(!hit.get(), "DELETE must not fire on --dry-run");
+    }
+
+    @Test
+    void modelDelete401ExitsThree(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        respond("/v1/models/public/m", 401, "{\"error\":\"unauthorized\"}");
+
+        Result r = run(config, apiKeyFile(tmp), "model", "delete", "models/public/m");
+
+        assertEquals(3, r.exitCode);
+        assertTrue(r.err.contains("401"), r.err);
+    }
+
+    @Test
+    void modelDelete403ExitsThree(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        respond("/v1/models/public/m", 403, "{\"error\":\"forbidden\"}");
+
+        Result r = run(config, apiKeyFile(tmp), "model", "delete", "models/public/m");
+
+        assertEquals(3, r.exitCode);
+        assertTrue(r.err.contains("403"), r.err);
+    }
+
+    @Test
+    void modelDelete500ExitsOne(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        respond("/v1/models/public/m", 500, "{\"error\":\"internal\"}");
+
+        Result r = run(config, apiKeyFile(tmp), "model", "delete", "models/public/m");
+
+        assertEquals(1, r.exitCode);
+        assertTrue(r.err.contains("500"), r.err);
+    }
+
     private void respond(String path, int status, String body) {
         server.createContext(path, exchange -> send(exchange, status, body));
     }
