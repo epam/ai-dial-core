@@ -25,6 +25,7 @@ import java.nio.file.Path;
                 SettingsCommand.class,
                 ExportCommand.class,
                 DiffCommand.class,
+                ApplyCommand.class,
                 CompletionCommand.class
         }
 )
