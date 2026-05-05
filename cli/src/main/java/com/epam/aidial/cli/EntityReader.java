@@ -215,6 +215,10 @@ public final class EntityReader {
     }
 
     static ResolvedEnv resolveEnv(DialCli root, CommandSpec spec) {
+        return resolveEnv(root, spec, null);
+    }
+
+    static ResolvedEnv resolveEnv(DialCli root, CommandSpec spec, String explicitEnv) {
         CliProfile profile;
         try {
             profile = ProfileLoader.load(root.configPath);
@@ -222,7 +226,7 @@ public final class EntityReader {
             spec.commandLine().getErr().println(e.getMessage());
             return null;
         }
-        String envName = root.env;
+        String envName = (explicitEnv != null && !explicitEnv.isBlank()) ? explicitEnv : root.env;
         if (envName == null || envName.isBlank()) {
             envName = (profile.getDefaults() != null) ? profile.getDefaults().getEnv() : null;
         }
@@ -237,7 +241,8 @@ public final class EntityReader {
             spec.commandLine().getErr().println("Environment '" + envName + "' not found in profile.");
             return null;
         }
-        String apiUrl = (root.apiUrl != null && !root.apiUrl.isBlank()) ? root.apiUrl : env.getApiUrl();
+        boolean useApiUrlOverride = explicitEnv == null && root.apiUrl != null && !root.apiUrl.isBlank();
+        String apiUrl = useApiUrlOverride ? root.apiUrl : env.getApiUrl();
         if (apiUrl == null || apiUrl.isBlank()) {
             spec.commandLine().getErr().println(
                     "Environment '" + envName + "' has no api_url and no --api-url override.");
