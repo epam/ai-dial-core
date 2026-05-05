@@ -106,6 +106,8 @@ Profile, credential, and exit-code semantics are identical to the standalone CLI
 
 > **Alpha — not the supported distribution.** The standalone `ghcr.io/epam/dial-cli` image (Option C) remains the supported channel for non-internal users. The bundled-in-core path will stay alongside it as a convenience for teams that already pull the core image; it is not a replacement.
 
+> **Newcomer playground.** A runnable sample profile + one manifest per entity type + a 5-min README lives at `sample/dial-cli/` (sibling of `sample/aidial.config.json`). Quickest way to see the CLI work end-to-end without writing your own manifests.
+
 Shell completions:
 
 ```shell

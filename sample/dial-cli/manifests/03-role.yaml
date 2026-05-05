@@ -1,0 +1,11 @@
+---
+kind: Role
+name: roles/platform/example-user
+spec:
+  # Limits keyed by canonical ID for API-managed deployments (per OQ-23).
+  # File-sourced models would key by simple name; both shapes coexist in the
+  # same map, see 06-cli-user-guide.md §3.
+  limits:
+    "models/public/example-chat-model":
+      minute: "100000"
+      day: "10000000"

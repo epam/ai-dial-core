@@ -1,0 +1,9 @@
+---
+kind: Key
+name: keys/platform/example-ci-key
+spec:
+  project: "ExampleCI"
+  roles: ["example-user"]
+  secured: false
+  # Omit `key` to let the server generate `sk-<uuid>` (per OQ-12 dual-format).
+  # Read it back via:  dial-cli key get keys/platform/example-ci-key --reveal-secrets

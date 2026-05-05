@@ -1,0 +1,6 @@
+---
+kind: Interceptor
+name: interceptors/platform/example-interceptor
+spec:
+  endpoint: "http://localhost:4088/api/v1/interceptor/handle"
+  description: "Example interceptor — replace endpoint with your own filter / guard."
