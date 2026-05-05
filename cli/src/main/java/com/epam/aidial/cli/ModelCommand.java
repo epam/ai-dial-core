@@ -14,7 +14,8 @@ import java.util.concurrent.Callable;
         name = "model",
         description = "Manage DIAL model entities.",
         mixinStandardHelpOptions = true,
-        subcommands = {ModelCommand.Get.class, ModelCommand.List.class, ModelCommand.Add.class, ModelCommand.Update.class}
+        subcommands = {ModelCommand.Get.class, ModelCommand.List.class, ModelCommand.Add.class,
+                ModelCommand.Update.class, ModelCommand.Delete.class}
 )
 public class ModelCommand {
 
@@ -85,6 +86,23 @@ public class ModelCommand {
         @Override
         public Integer call() {
             return EntityWriter.updateEntity(model.parent, spec, "models", name, sets, ifMatch);
+        }
+    }
+
+    @Command(name = "delete", description = "Delete a model (DELETE). Fails with exit 4 if missing, 6 on stale ETag.")
+    static class Delete implements Callable<Integer> {
+        @ParentCommand
+        ModelCommand model;
+        @Spec
+        CommandSpec spec;
+        @Parameters(index = "0", description = "Canonical id (models/public/<name>).")
+        String name;
+        @Option(names = "--if-match", description = "ETag for optimistic concurrency.")
+        String ifMatch;
+
+        @Override
+        public Integer call() {
+            return EntityWriter.deleteEntity(model.parent, spec, "models", name, ifMatch);
         }
     }
 }

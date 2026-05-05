@@ -154,6 +154,41 @@ class CliHttpClientTest {
     }
 
     @Test
+    void deleteSendsApiKeyAndIfMatchHeader() {
+        AtomicReference<String> apiKeyHeader = new AtomicReference<>();
+        AtomicReference<String> ifMatch = new AtomicReference<>();
+        AtomicReference<String> method = new AtomicReference<>();
+        server.createContext("/v1/models/public/m", exchange -> {
+            apiKeyHeader.set(exchange.getRequestHeaders().getFirst("Api-Key"));
+            ifMatch.set(exchange.getRequestHeaders().getFirst("If-Match"));
+            method.set(exchange.getRequestMethod());
+            send(exchange, 204, "");
+        });
+
+        CliHttpClient.Response r = new CliHttpClient(baseUrl, "the-key").delete("/v1/models/public/m", "\"v1\"");
+
+        assertEquals(204, r.status());
+        assertEquals("DELETE", method.get());
+        assertEquals("the-key", apiKeyHeader.get());
+        assertEquals("\"v1\"", ifMatch.get());
+    }
+
+    @Test
+    void deleteOmitsIfMatchHeaderWhenNullOrBlank() {
+        AtomicReference<String> ifMatch = new AtomicReference<>("present");
+        server.createContext("/v1/models/public/m", exchange -> {
+            ifMatch.set(exchange.getRequestHeaders().getFirst("If-Match"));
+            send(exchange, 204, "");
+        });
+
+        new CliHttpClient(baseUrl, "k").delete("/v1/models/public/m", null);
+        assertEquals(null, ifMatch.get());
+
+        new CliHttpClient(baseUrl, "k").delete("/v1/models/public/m", "  ");
+        assertEquals(null, ifMatch.get());
+    }
+
+    @Test
     void putOmitsIfMatchHeaderWhenNullOrBlank() {
         AtomicReference<String> ifMatch = new AtomicReference<>("present");
         server.createContext("/v1/models/public/m", exchange -> {
