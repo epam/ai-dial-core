@@ -462,6 +462,231 @@ class ModelCommandTest {
         assertEquals(2, r.exitCode);
     }
 
+    @Test
+    void modelUpdate200HappyPathSendsMergedBodyAndAutoIfMatch(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        java.util.concurrent.atomic.AtomicReference<String> putBody = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<String> ifMatch = new java.util.concurrent.atomic.AtomicReference<>();
+        server.createContext("/v1/models/public/m", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                exchange.getResponseHeaders().add("ETag", "\"v1\"");
+                send(exchange, 200, "{\"name\":\"m\",\"endpoint\":\"http://old\",\"pricing\":{\"prompt\":1.0}}");
+            } else {
+                ifMatch.set(exchange.getRequestHeaders().getFirst("If-Match"));
+                putBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                exchange.getResponseHeaders().add("ETag", "\"v2\"");
+                send(exchange, 200, "{\"name\":\"m\"}");
+            }
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "update", "models/public/m",
+                "--set", "endpoint=http://new",
+                "--set", "pricing.prompt=0.003");
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(r.out.contains("Updated models/public/m"), r.out);
+        assertEquals("\"v1\"", ifMatch.get());
+        assertTrue(putBody.get().contains("\"endpoint\":\"http://new\""), putBody.get());
+        assertTrue(putBody.get().contains("\"pricing\":{\"prompt\":0.003}"), putBody.get());
+        assertTrue(putBody.get().contains("\"name\":\"m\""), putBody.get());
+    }
+
+    @Test
+    void modelUpdate404OnGetExitsFour(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        respond("/v1/models/public/missing", 404, "{\"error\":\"not found\"}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "update", "models/public/missing", "--set", "endpoint=http://x");
+
+        assertEquals(4, r.exitCode);
+        assertTrue(r.err.contains("404"), r.err);
+    }
+
+    @Test
+    void modelUpdate412OnPutExitsSix(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        server.createContext("/v1/models/public/m", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                exchange.getResponseHeaders().add("ETag", "\"v1\"");
+                send(exchange, 200, "{\"name\":\"m\"}");
+            } else {
+                send(exchange, 412, "{\"error\":\"stale\"}");
+            }
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "update", "models/public/m", "--set", "endpoint=http://x");
+
+        assertEquals(6, r.exitCode);
+        assertTrue(r.err.contains("412"), r.err);
+    }
+
+    @Test
+    void modelUpdateExplicitIfMatchOverridesGetEtag(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        java.util.concurrent.atomic.AtomicReference<String> ifMatch = new java.util.concurrent.atomic.AtomicReference<>();
+        server.createContext("/v1/models/public/m", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                exchange.getResponseHeaders().add("ETag", "\"v1\"");
+                send(exchange, 200, "{\"name\":\"m\"}");
+            } else {
+                ifMatch.set(exchange.getRequestHeaders().getFirst("If-Match"));
+                send(exchange, 200, "{\"name\":\"m\"}");
+            }
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "update", "models/public/m",
+                "--set", "endpoint=http://x",
+                "--if-match", "\"explicit\"");
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals("\"explicit\"", ifMatch.get());
+    }
+
+    @Test
+    void modelUpdateRejectsSimpleName(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "update", "gpt-4", "--set", "endpoint=http://x");
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("canonical id"), r.err);
+    }
+
+    @Test
+    void modelUpdateRejectsInvalidSetPair(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        server.createContext("/v1/models/public/m", exchange -> {
+            exchange.getResponseHeaders().add("ETag", "\"v1\"");
+            send(exchange, 200, "{\"name\":\"m\"}");
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "update", "models/public/m", "--set", "noequalshere");
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("--set"), r.err);
+    }
+
+    @Test
+    void modelUpdateAcceptsTypedJsonValues(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        java.util.concurrent.atomic.AtomicReference<String> putBody = new java.util.concurrent.atomic.AtomicReference<>();
+        server.createContext("/v1/models/public/m", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                exchange.getResponseHeaders().add("ETag", "\"v1\"");
+                send(exchange, 200, "{\"name\":\"m\"}");
+            } else {
+                putBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                send(exchange, 200, "{\"name\":\"m\"}");
+            }
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "update", "models/public/m",
+                "--set", "maxTotalTokens=200000",
+                "--set", "userRoles=[\"basic\",\"admin\"]",
+                "--set", "displayName=Anthropic Claude");
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(putBody.get().contains("\"maxTotalTokens\":200000"), putBody.get());
+        assertTrue(putBody.get().contains("\"userRoles\":[\"basic\",\"admin\"]"), putBody.get());
+        assertTrue(putBody.get().contains("\"displayName\":\"Anthropic Claude\""), putBody.get());
+    }
+
+    @Test
+    void modelUpdateDryRunPrintsMergedBodyAndDoesNotPut(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        java.util.concurrent.atomic.AtomicBoolean putHit = new java.util.concurrent.atomic.AtomicBoolean();
+        server.createContext("/v1/models/public/m", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                exchange.getResponseHeaders().add("ETag", "\"v1\"");
+                send(exchange, 200, "{\"name\":\"m\",\"endpoint\":\"http://old\"}");
+            } else {
+                putHit.set(true);
+                send(exchange, 500, "{}");
+            }
+        });
+
+        Result r = run(config, apiKeyFile(tmp), "--dry-run",
+                "model", "update", "models/public/m", "--set", "endpoint=http://new");
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(r.out.contains("\"endpoint\":\"http://new\""), r.out);
+        assertTrue(!putHit.get(), "PUT must not fire on --dry-run");
+    }
+
+    @Test
+    void modelUpdate401OnGetExitsThree(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        respond("/v1/models/public/m", 401, "{\"error\":\"unauthorized\"}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "update", "models/public/m", "--set", "endpoint=http://x");
+
+        assertEquals(3, r.exitCode);
+        assertTrue(r.err.contains("401"), r.err);
+    }
+
+    @Test
+    void modelUpdateRejectsSetOverwritingNonObject(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        server.createContext("/v1/models/public/m", exchange -> {
+            exchange.getResponseHeaders().add("ETag", "\"v1\"");
+            send(exchange, 200, "{\"name\":\"m\",\"pricing\":1.5}");
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "update", "models/public/m", "--set", "pricing.prompt=0.003");
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("non-object"), r.err);
+        assertTrue(r.err.contains("pricing"), r.err);
+    }
+
+    @Test
+    void modelUpdate403ExitsThree(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        server.createContext("/v1/models/public/m", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                exchange.getResponseHeaders().add("ETag", "\"v1\"");
+                send(exchange, 200, "{\"name\":\"m\"}");
+            } else {
+                send(exchange, 403, "{\"error\":\"forbidden\"}");
+            }
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "update", "models/public/m", "--set", "endpoint=http://x");
+
+        assertEquals(3, r.exitCode);
+    }
+
+    @Test
+    void modelUpdateNoSetsStillRoundTrips(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        java.util.concurrent.atomic.AtomicReference<String> putBody = new java.util.concurrent.atomic.AtomicReference<>();
+        server.createContext("/v1/models/public/m", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                exchange.getResponseHeaders().add("ETag", "\"v1\"");
+                send(exchange, 200, "{\"name\":\"m\",\"endpoint\":\"http://x\"}");
+            } else {
+                putBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                send(exchange, 200, "{\"name\":\"m\"}");
+            }
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "update", "models/public/m");
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(putBody.get().contains("\"endpoint\":\"http://x\""), putBody.get());
+    }
+
     private void respond(String path, int status, String body) {
         server.createContext(path, exchange -> send(exchange, status, body));
     }

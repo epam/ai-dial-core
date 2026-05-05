@@ -88,6 +88,7 @@ class CliHttpClientTest {
         assertEquals(3, CliHttpClient.toExitCode(403));
         assertEquals(4, CliHttpClient.toExitCode(404));
         assertEquals(5, CliHttpClient.toExitCode(409));
+        assertEquals(6, CliHttpClient.toExitCode(412));
         assertEquals(1, CliHttpClient.toExitCode(500));
         assertEquals(1, CliHttpClient.toExitCode(0));
     }
@@ -124,6 +125,47 @@ class CliHttpClientTest {
         assertEquals("the-key", apiKeyHeader.get());
         assertEquals("application/json", contentType.get());
         assertEquals("{\"endpoint\":\"http://x\"}", capturedBody.get());
+    }
+
+    @Test
+    void putSendsApiKeyContentTypeBodyAndIfMatchHeader() {
+        AtomicReference<String> apiKeyHeader = new AtomicReference<>();
+        AtomicReference<String> contentType = new AtomicReference<>();
+        AtomicReference<String> ifMatch = new AtomicReference<>();
+        AtomicReference<String> capturedBody = new AtomicReference<>();
+        server.createContext("/v1/models/public/m", exchange -> {
+            apiKeyHeader.set(exchange.getRequestHeaders().getFirst("Api-Key"));
+            contentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
+            ifMatch.set(exchange.getRequestHeaders().getFirst("If-Match"));
+            capturedBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            exchange.getResponseHeaders().add("ETag", "\"new\"");
+            send(exchange, 200, "{\"name\":\"m\"}");
+        });
+
+        CliHttpClient.Response r = new CliHttpClient(baseUrl, "the-key").put(
+                "/v1/models/public/m", "{\"endpoint\":\"http://x\"}", "\"old\"");
+
+        assertEquals(200, r.status());
+        assertEquals("\"new\"", r.etag());
+        assertEquals("the-key", apiKeyHeader.get());
+        assertEquals("application/json", contentType.get());
+        assertEquals("\"old\"", ifMatch.get());
+        assertEquals("{\"endpoint\":\"http://x\"}", capturedBody.get());
+    }
+
+    @Test
+    void putOmitsIfMatchHeaderWhenNullOrBlank() {
+        AtomicReference<String> ifMatch = new AtomicReference<>("present");
+        server.createContext("/v1/models/public/m", exchange -> {
+            ifMatch.set(exchange.getRequestHeaders().getFirst("If-Match"));
+            send(exchange, 200, "{}");
+        });
+
+        new CliHttpClient(baseUrl, "k").put("/v1/models/public/m", "{}", null);
+        assertEquals(null, ifMatch.get());
+
+        new CliHttpClient(baseUrl, "k").put("/v1/models/public/m", "{}", "  ");
+        assertEquals(null, ifMatch.get());
     }
 
     private void respond(String path, int status, String body) {
