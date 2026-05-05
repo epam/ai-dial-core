@@ -406,7 +406,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 
 | ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
-| **3C.0** | Generic Picocli command class parameterized by entity type so `add` / `update` / `delete` / `validate` / `promote` / `diff` ship for all remaining types. (If reviewer prefers per-type symmetry, split — but the principle §2.1 favors one parameterized class.) | 2C.5, 3S.2, 3S.3, 3S.4 | 05 §1 | 📋 | — |
+| **3C.0** | Per-type Picocli command classes (Approach B — mirrors ModelCommand 1:1) so `add` / `update` / `delete` / `validate` / `promote` / `diff` ship for all remaining types. **Decisions (2026-05-05):** approach B over A/C — Picocli @ParentCommand typing forces per-type wrappers and the existing per-type read-only classes are §2.2-correct to extend. Settings ships symmetric verbs (Update/Delete/Validate/Promote/Diff, no Add — POST 405 — and no List — singleton); user picked symmetric over the architect's reduced-set initial proposal. EntityWriter gains bucket-parameter overloads; 5/6-arg signatures stay as forwarders to keep ModelCommand untouched. New `EntityDiff` helper shared by 7 per-type Diff classes + 1 singleton variant. **Schemas bucket bug fix folded in:** `EntityReader.TYPE_DEFAULT_BUCKET` had `schemas → platform` from 1C.3 but server `EntityBucketBinding` binds schemas to `public`; fix is two lines (1 source + 1 test) directly motivated by the new schema-write commands needing correct bucket routing. | 2C.5, 3S.2, 3S.3, 3S.4 | 05 §1; 06 §3 | ✅ | `88a95869` |
 
 ### 5.5 Phase 4 — Declarative apply + diff (NICE TO HAVE)
 
