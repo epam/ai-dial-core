@@ -140,7 +140,7 @@ These are workflows users say in natural language. The MCP has *no* tool for any
 | **M1** | Building blocks compose. Any workflow documented in `03-api-reference.md` is reachable via a sequence of v1 tool calls, with no MCP-side state required between calls. (REST parity is *not* a release gate — the §12 future-work list is acknowledged scope.) |
 | **M2** | All write tools accept `validate_only: true` to dry-run without mutating. |
 | **M3** | Tool responses follow the API response schema by default; tool-specific projections (`format: summary \| detailed`, two-array list envelope) are documented per tool. |
-| **M4** | Tool descriptions include example invocations and the corresponding REST call so agents can fall back to HTTP if a tool is unavailable. |
+| **M4** | Tool descriptions are concise and include 1–2 example invocations. Descriptions are loaded into every agent's context — keep them short; do not embed REST-equivalent details. |
 | **M5** | Destructive tools (`dial_delete_resource`) require an explicit `confirm: true` argument. |
 | **M6** | Auth is pluggable: admin API key, service-account OIDC, user JWT pass-through. The MCP does not store secrets long-term — it reads from env or per-session config. |
 | **M7** | The MCP is stateless across tool calls — each call is an independent HTTP request to Core. The one cached value per session is the result of `GET /v1/bucket` (used to resolve the `private` alias) — refreshed at session start, no cross-call state otherwise. |
@@ -222,18 +222,18 @@ Default page size matches Core's default (100) with a hard cap (500) per `03-api
 
 | Type | `summary` fields (in addition to `id`, `name`, `etag`, `kind`) |
 |---|---|
-| `models` | `displayName`, `displayVersion`, `iconUrl`, `status` |
-| `applications` | `displayName`, `iconUrl`, `status` |
-| `toolsets` | `displayName`, `status` |
-| `interceptors` | `displayName`, `status` |
-| `roles` | `status` |
-| `keys` | `role`, `status` |
-| `routes` | `paths`, `methods`, `status` |
-| `schemas` | `displayName`, `status` |
+| `models` | `displayName`, `displayVersion`, `status`, `description` |
+| `applications` | `displayName`, `status`, `description` |
+| `toolsets` | `displayName`, `status`, `description` |
+| `interceptors` | `displayName`, `status`, `description` |
+| `roles` | `status`, `description` |
+| `keys` | `role`, `status`, `description` |
+| `routes` | `paths`, `methods`, `status`, `description` |
+| `schemas` | `displayName`, `status`, `description` |
 | `settings` | (singleton — not listed) |
-| `files` | `contentType`, `size`, `updatedAt` |
-| `prompts` | `displayName`, `updatedAt` |
-| `conversations` | `displayName`, `updatedAt` |
+| `files` | `contentType`, `size`, `description` |
+| `prompts` | `displayName`, `description` |
+| `conversations` | `displayName`, `description` |
 
 > Field choices in the table are illustrative — confirm against actual entity shapes during MCP-1 evals (MCP-OQ-2).
 
