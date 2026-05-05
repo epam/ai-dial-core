@@ -13,7 +13,8 @@ import java.nio.file.Path;
         mixinStandardHelpOptions = true,
         subcommands = {
                 EnvCommand.class,
-                GetCommand.class
+                GetCommand.class,
+                ModelCommand.class
         }
 )
 public class DialCli {
