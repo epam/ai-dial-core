@@ -2,17 +2,19 @@ package com.epam.aidial.cli;
 
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
 import picocli.CommandLine.Spec;
 
+import java.nio.file.Path;
 import java.util.concurrent.Callable;
 
 @Command(
         name = "model",
-        description = "Read DIAL model entities.",
+        description = "Manage DIAL model entities.",
         mixinStandardHelpOptions = true,
-        subcommands = {ModelCommand.Get.class, ModelCommand.List.class}
+        subcommands = {ModelCommand.Get.class, ModelCommand.List.class, ModelCommand.Add.class}
 )
 public class ModelCommand {
 
@@ -44,6 +46,25 @@ public class ModelCommand {
         @Override
         public Integer call() {
             return EntityReader.listEntities(model.parent, spec, "models");
+        }
+    }
+
+    @Command(name = "add", description = "Create a model (POST). Fails with exit 5 if it already exists.")
+    static class Add implements Callable<Integer> {
+        @ParentCommand
+        ModelCommand model;
+        @Spec
+        CommandSpec spec;
+        @Option(names = "--name", required = true,
+                description = "Canonical id (models/public/<name>).")
+        String name;
+        @Option(names = "--from-file", required = true,
+                description = "JSON or YAML file with the model spec (.yaml/.yml parsed as YAML).")
+        Path fromFile;
+
+        @Override
+        public Integer call() {
+            return EntityWriter.addEntity(model.parent, spec, "models", name, fromFile);
         }
     }
 }

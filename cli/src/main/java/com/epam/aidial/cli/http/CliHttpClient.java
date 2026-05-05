@@ -32,21 +32,40 @@ public class CliHttpClient {
     }
 
     public Response get(String pathAndQuery, String accept) {
-        URI uri;
-        try {
-            uri = URI.create(apiUrl + pathAndQuery);
-        } catch (IllegalArgumentException e) {
-            throw new NetworkException("Invalid URL " + apiUrl + pathAndQuery + ": " + e.getMessage(), e);
-        }
+        URI uri = buildUri(pathAndQuery);
         HttpRequest req = HttpRequest.newBuilder(uri)
                 .header("Api-Key", apiKey)
                 .header("Accept", accept)
                 .timeout(Duration.ofSeconds(30))
                 .GET()
                 .build();
+        return sendForString(req);
+    }
+
+    public Response post(String pathAndQuery, String body) {
+        URI uri = buildUri(pathAndQuery);
+        HttpRequest req = HttpRequest.newBuilder(uri)
+                .header("Api-Key", apiKey)
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(30))
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                .build();
+        return sendForString(req);
+    }
+
+    private URI buildUri(String pathAndQuery) {
+        try {
+            return URI.create(apiUrl + pathAndQuery);
+        } catch (IllegalArgumentException e) {
+            throw new NetworkException("Invalid URL " + apiUrl + pathAndQuery + ": " + e.getMessage(), e);
+        }
+    }
+
+    private Response sendForString(HttpRequest req) {
         try {
             HttpResponse<String> r = delegate.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            return new Response(r.statusCode(), r.body());
+            return new Response(r.statusCode(), r.body(), r.headers().firstValue("etag").orElse(null));
         } catch (IOException e) {
             throw new NetworkException("Network error contacting " + apiUrl + ": " + e.getMessage(), e);
         } catch (InterruptedException e) {
@@ -65,10 +84,16 @@ public class CliHttpClient {
         if (status == 404) {
             return 4;
         }
+        if (status == 409) {
+            return 5;
+        }
+        if (status == 400) {
+            return 2;
+        }
         return 1;
     }
 
-    public record Response(int status, String body) { }
+    public record Response(int status, String body, String etag) { }
 
     public static class NetworkException extends RuntimeException {
         public NetworkException(String message, Throwable cause) {

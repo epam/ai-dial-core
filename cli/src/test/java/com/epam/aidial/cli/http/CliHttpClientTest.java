@@ -81,12 +81,49 @@ class CliHttpClientTest {
     @Test
     void toExitCodeMappings() {
         assertEquals(0, CliHttpClient.toExitCode(200));
+        assertEquals(0, CliHttpClient.toExitCode(201));
         assertEquals(0, CliHttpClient.toExitCode(204));
+        assertEquals(2, CliHttpClient.toExitCode(400));
         assertEquals(3, CliHttpClient.toExitCode(401));
         assertEquals(3, CliHttpClient.toExitCode(403));
         assertEquals(4, CliHttpClient.toExitCode(404));
+        assertEquals(5, CliHttpClient.toExitCode(409));
         assertEquals(1, CliHttpClient.toExitCode(500));
         assertEquals(1, CliHttpClient.toExitCode(0));
+    }
+
+    @Test
+    void postReturnsResponseBodyStatusAndEtag() {
+        server.createContext("/v1/models/public/m", exchange -> {
+            exchange.getResponseHeaders().add("ETag", "\"abc123\"");
+            send(exchange, 201, "{\"name\":\"m\"}");
+        });
+
+        CliHttpClient.Response r = new CliHttpClient(baseUrl, "k").post(
+                "/v1/models/public/m", "{\"endpoint\":\"http://x\"}");
+
+        assertEquals(201, r.status());
+        assertEquals("{\"name\":\"m\"}", r.body());
+        assertEquals("\"abc123\"", r.etag());
+    }
+
+    @Test
+    void postSendsApiKeyAndContentTypeHeadersAndBody() {
+        AtomicReference<String> apiKeyHeader = new AtomicReference<>();
+        AtomicReference<String> contentType = new AtomicReference<>();
+        AtomicReference<String> capturedBody = new AtomicReference<>();
+        server.createContext("/v1/models/public/m", exchange -> {
+            apiKeyHeader.set(exchange.getRequestHeaders().getFirst("Api-Key"));
+            contentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
+            capturedBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            send(exchange, 201, "{}");
+        });
+
+        new CliHttpClient(baseUrl, "the-key").post("/v1/models/public/m", "{\"endpoint\":\"http://x\"}");
+
+        assertEquals("the-key", apiKeyHeader.get());
+        assertEquals("application/json", contentType.get());
+        assertEquals("{\"endpoint\":\"http://x\"}", capturedBody.get());
     }
 
     private void respond(String path, int status, String body) {

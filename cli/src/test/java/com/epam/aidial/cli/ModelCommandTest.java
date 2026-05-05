@@ -270,6 +270,198 @@ class ModelCommandTest {
         assertTrue(r.err.contains("Unsupported resource type"), r.err);
     }
 
+    @Test
+    void modelAdd201HappyPath(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("model.json");
+        Files.writeString(body, "{\"type\":\"chat\",\"endpoint\":\"http://x\"}");
+        java.util.concurrent.atomic.AtomicReference<String> capturedBody = new java.util.concurrent.atomic.AtomicReference<>();
+        server.createContext("/v1/models/public/new-model", exchange -> {
+            capturedBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            exchange.getResponseHeaders().add("ETag", "\"e1\"");
+            send(exchange, 201, "{\"name\":\"new-model\"}");
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--name", "models/public/new-model", "--from-file", body.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(r.out.contains("Created models/public/new-model"), r.out);
+        assertEquals("{\"type\":\"chat\",\"endpoint\":\"http://x\"}", capturedBody.get());
+    }
+
+    @Test
+    void modelAddDryRunPrintsBodyAndDoesNotPost(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("model.json");
+        Files.writeString(body, "{\"type\":\"chat\",\"endpoint\":\"http://x\"}");
+        java.util.concurrent.atomic.AtomicBoolean hit = new java.util.concurrent.atomic.AtomicBoolean();
+        server.createContext("/v1/models/public/new-model", exchange -> {
+            hit.set(true);
+            send(exchange, 500, "{}");
+        });
+
+        Result r = run(config, apiKeyFile(tmp), "--dry-run",
+                "model", "add", "--name", "models/public/new-model", "--from-file", body.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(r.out.contains("\"endpoint\":\"http://x\""), r.out);
+        assertTrue(!hit.get(), "Server should not be called on --dry-run");
+    }
+
+    @Test
+    void modelAdd409ExitsFive(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{\"type\":\"chat\",\"endpoint\":\"http://x\"}");
+        respond("/v1/models/public/dup", 409, "{\"error\":\"exists\"}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--name", "models/public/dup", "--from-file", body.toString());
+
+        assertEquals(5, r.exitCode);
+        assertTrue(r.err.contains("409"), r.err);
+    }
+
+    @Test
+    void modelAdd400ExitsTwo(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{\"type\":\"chat\",\"upstreams\":[{\"endpoint\":\"http://x\",\"key\":\"***\"}]}");
+        respond("/v1/models/public/sentinel", 400, "{\"error\":\"sentinel\"}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--name", "models/public/sentinel", "--from-file", body.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("400"), r.err);
+    }
+
+    @Test
+    void modelAdd401ExitsThree(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{\"type\":\"chat\"}");
+        respond("/v1/models/public/x", 401, "{}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--name", "models/public/x", "--from-file", body.toString());
+
+        assertEquals(3, r.exitCode);
+    }
+
+    @Test
+    void modelAdd403ExitsThree(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{\"type\":\"chat\"}");
+        respond("/v1/models/public/x", 403, "{\"error\":\"forbidden\"}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--name", "models/public/x", "--from-file", body.toString());
+
+        assertEquals(3, r.exitCode);
+        assertTrue(r.err.contains("403"), r.err);
+    }
+
+    @Test
+    void modelAdd500ExitsOne(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{\"type\":\"chat\"}");
+        respond("/v1/models/public/x", 500, "{\"error\":\"internal\"}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--name", "models/public/x", "--from-file", body.toString());
+
+        assertEquals(1, r.exitCode);
+        assertTrue(r.err.contains("500"), r.err);
+    }
+
+    @Test
+    void modelAddYamlFromFileSendsJson(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("model.yaml");
+        Files.writeString(body, "type: chat\nendpoint: http://yaml-host\n");
+        java.util.concurrent.atomic.AtomicReference<String> captured = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<String> contentType = new java.util.concurrent.atomic.AtomicReference<>();
+        server.createContext("/v1/models/public/yaml-m", exchange -> {
+            captured.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            contentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
+            send(exchange, 201, "{\"name\":\"yaml-m\"}");
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--name", "models/public/yaml-m", "--from-file", body.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals("application/json", contentType.get());
+        assertTrue(captured.get().contains("\"type\":\"chat\""), captured.get());
+        assertTrue(captured.get().contains("\"endpoint\":\"http://yaml-host\""), captured.get());
+        assertTrue(!captured.get().contains("type: chat"), "Wire body must be JSON, not YAML");
+    }
+
+    @Test
+    void modelAddRejectsSimpleName(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--name", "gpt-4", "--from-file", body.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("canonical id"), r.err);
+        assertTrue(r.err.contains("models/public/<name>"), r.err);
+    }
+
+    @Test
+    void modelAddRequiresName(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--from-file", body.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("--name"), r.err);
+    }
+
+    @Test
+    void modelAddRequiresFromFile(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--name", "models/public/x");
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("--from-file"), r.err);
+    }
+
+    @Test
+    void modelAddFileNotFoundExitsTwo(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--name", "models/public/x", "--from-file", tmp.resolve("missing.json").toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("File not found"), r.err);
+    }
+
+    @Test
+    void modelAddInvalidJsonFromFileExitsTwo(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("bad.json");
+        Files.writeString(body, "{not json");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--name", "models/public/x", "--from-file", body.toString());
+
+        assertEquals(2, r.exitCode);
+    }
+
     private void respond(String path, int status, String body) {
         server.createContext(path, exchange -> send(exchange, status, body));
     }
