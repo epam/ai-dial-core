@@ -12,7 +12,7 @@ This folder contains the proposal for unifying DIAL Core's configuration managem
 
 DIAL Core manages deployment configuration through a dual approach today: a polled JSON config file (`aidial.config.json`) for admin-managed entities and a blob-storage-backed Resource API for user-owned resources. A separate DIAL Admin Backend acts as an intermediary — writing config files and waiting for DIAL Core's 60-second file-watcher to pick up changes. This proposal adds a native Configuration API to DIAL Core for all admin-managed entities (stored via the existing ResourceService — Redis cache + Blob storage), builds a `dial-cli` tool with kubectl-like ergonomics on top of that API, and repositions the DIAL Admin Backend as a UI skin on the same API. The key insight: **DIAL Core already has the machinery.** The ResourceService (two-tier caching, distributed locking, ETag concurrency, pub/sub events) is production-proven. This is an extension of existing patterns, not new infrastructure.
 
-An agent-native surface over the same API — a **DIAL Admin MCP server** — is being scoped in parallel so assistants like Claude Code, Claude desktop, and in-product DIAL QuickApps can read, analyze, and safely mutate configuration through the same contract the CLI and Admin Backend use. See [`09-admin-mcp-spec.md`](09-admin-mcp-spec.md) (raw draft).
+An agent-native surface over the same API — a **DIAL MCP server** — is being scoped in parallel so assistants like Claude Code, Claude Desktop, and in-product DIAL QuickApps can read, analyze, and safely mutate DIAL resources through the same contract the CLI and Admin Backend use. The MCP exposes a single small set of building-block tools (~9 in v1) for both administrators and end-users; authorization is enforced by DIAL Core based on the caller's identity. See [`09-admin-mcp-spec.md`](09-admin-mcp-spec.md).
 
 ## Why this matters
 
@@ -37,7 +37,7 @@ An agent-native surface over the same API — a **DIAL Admin MCP server** — is
 | **DevOps / platform engineer (user of the CLI)** | [`06-cli-user-guide.md`](06-cli-user-guide.md) | [`07-migration-and-rollout.md`](07-migration-and-rollout.md) |
 | **Security / compliance reviewer** | [`04-security-and-audit.md`](04-security-and-audit.md) | [`02-architecture.md`](02-architecture.md) for context |
 | **PM / program management** | This README → [`07-migration-and-rollout.md`](07-migration-and-rollout.md) | [`08-open-questions-and-references.md`](08-open-questions-and-references.md) |
-| **Agent / MCP tooling reviewer** | [`09-admin-mcp-spec.md`](09-admin-mcp-spec.md) (raw draft) | [`03-api-reference.md`](03-api-reference.md), [`04-security-and-audit.md`](04-security-and-audit.md) |
+| **Agent / MCP tooling reviewer** | [`09-admin-mcp-spec.md`](09-admin-mcp-spec.md) | [`03-api-reference.md`](03-api-reference.md), [`04-security-and-audit.md`](04-security-and-audit.md) |
 
 ## Document index
 
@@ -52,7 +52,7 @@ An agent-native surface over the same API — a **DIAL Admin MCP server** — is
 | 6 | [`06-cli-user-guide.md`](06-cli-user-guide.md) | ~10 pages | DevOps / platform |
 | 7 | [`07-migration-and-rollout.md`](07-migration-and-rollout.md) | ~5 pages | Leads, PM, DevOps |
 | 8 | [`08-open-questions-and-references.md`](08-open-questions-and-references.md) | ~4 pages | Reviewers, stakeholders |
-| 9 | [`09-admin-mcp-spec.md`](09-admin-mcp-spec.md) | ~8 pages | Dev team, PM, agent-tooling reviewers (raw draft) |
+| 9 | [`09-admin-mcp-spec.md`](09-admin-mcp-spec.md) | ~8 pages | Dev team, PM, agent-tooling reviewers |
 
 ## Status at a glance
 
