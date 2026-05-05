@@ -84,6 +84,7 @@ class CliHttpClientTest {
         assertEquals(0, CliHttpClient.toExitCode(201));
         assertEquals(0, CliHttpClient.toExitCode(204));
         assertEquals(2, CliHttpClient.toExitCode(400));
+        assertEquals(2, CliHttpClient.toExitCode(422));
         assertEquals(3, CliHttpClient.toExitCode(401));
         assertEquals(3, CliHttpClient.toExitCode(403));
         assertEquals(4, CliHttpClient.toExitCode(404));

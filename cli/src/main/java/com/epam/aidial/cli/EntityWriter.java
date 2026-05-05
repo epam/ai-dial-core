@@ -136,6 +136,85 @@ public final class EntityWriter {
         return 0;
     }
 
+    public static int validateEntity(DialCli root, CommandSpec spec, String type, String kind,
+                                     String canonicalId, Path fromFile) {
+        String simpleName;
+        try {
+            simpleName = requireCanonicalId(type, canonicalId);
+        } catch (IllegalArgumentException e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 2;
+        }
+        String specJson;
+        try {
+            specJson = loadBodyAsJson(fromFile);
+        } catch (NoSuchFileException e) {
+            spec.commandLine().getErr().println("File not found: " + fromFile);
+            return 2;
+        } catch (IOException e) {
+            spec.commandLine().getErr().println("Failed to read " + fromFile + ": " + e.getMessage());
+            return 2;
+        }
+        ObjectNode envelope = JSON.createObjectNode();
+        ObjectNode manifest = JSON.createObjectNode();
+        manifest.put("kind", kind);
+        manifest.put("name", simpleName);
+        try {
+            manifest.set("spec", JSON.readTree(specJson));
+        } catch (JsonProcessingException e) {
+            spec.commandLine().getErr().println("Failed to parse spec body: " + e.getMessage());
+            return 2;
+        }
+        envelope.putArray("manifests").add(manifest);
+        envelope.put("precheck", true);
+        String body;
+        try {
+            body = JSON.writeValueAsString(envelope);
+        } catch (JsonProcessingException e) {
+            spec.commandLine().getErr().println("Failed to serialize validate envelope: " + e.getMessage());
+            return 1;
+        }
+        if (root.dryRun) {
+            spec.commandLine().getOut().println(body);
+            return 0;
+        }
+        EntityReader.ResolvedEnv resolved = EntityReader.resolveEnv(root, spec);
+        if (resolved == null) {
+            return 2;
+        }
+        CliHttpClient.Response resp;
+        try {
+            resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).post("/v1/admin/validate", body);
+        } catch (CliHttpClient.NetworkException e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 1;
+        }
+        if (resp.status() != 200 && resp.status() != 422) {
+            spec.commandLine().getErr().println("HTTP " + resp.status() + " " + resp.body());
+            return CliHttpClient.toExitCode(resp.status());
+        }
+        try {
+            JsonNode parsed = JSON.readTree(resp.body());
+            int failed = parsed.path("failed").asInt(0);
+            JsonNode results = parsed.path("results");
+            if (failed == 0 && resp.status() == 200) {
+                spec.commandLine().getOut().println("Valid: " + canonicalId);
+                return 0;
+            }
+            for (JsonNode r : results) {
+                if ("FAILED".equalsIgnoreCase(r.path("status").asText())) {
+                    spec.commandLine().getErr().println(
+                            r.path("entityId").asText("(unknown)") + ": FAILED"
+                                    + (r.has("error") ? " — " + r.path("error").asText() : ""));
+                }
+            }
+            return 2;
+        } catch (JsonProcessingException e) {
+            spec.commandLine().getErr().println("Failed to parse validate response: " + e.getMessage());
+            return 1;
+        }
+    }
+
     public static int deleteEntity(DialCli root, CommandSpec spec, String type, String canonicalId, String ifMatch) {
         String name;
         try {

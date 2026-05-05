@@ -806,6 +806,198 @@ class ModelCommandTest {
         assertTrue(r.err.contains("500"), r.err);
     }
 
+    @Test
+    void modelValidate200ValidExitsZero(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{\"type\":\"chat\",\"endpoint\":\"http://x\"}");
+        java.util.concurrent.atomic.AtomicReference<String> sentBody = new java.util.concurrent.atomic.AtomicReference<>();
+        server.createContext("/v1/admin/validate", exchange -> {
+            sentBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            send(exchange, 200, "{\"valid\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"valid\"}]}");
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "validate", "--name", "models/public/m", "--from-file", body.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(r.out.contains("Valid: models/public/m"), r.out);
+        assertTrue(sentBody.get().contains("\"manifests\""), sentBody.get());
+        assertTrue(sentBody.get().contains("\"kind\":\"Model\""), sentBody.get());
+        assertTrue(sentBody.get().contains("\"name\":\"m\""), sentBody.get());
+        assertTrue(sentBody.get().contains("\"spec\":{\"type\":\"chat\",\"endpoint\":\"http://x\"}"), sentBody.get());
+    }
+
+    @Test
+    void modelValidate422FailedExitsTwo(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{\"type\":\"chat\",\"endpoint\":\"http://x\",\"interceptors\":[\"missing\"]}");
+        respond("/v1/admin/validate", 422,
+                "{\"valid\":0,\"failed\":1,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"FAILED\",\"error\":\"interceptor 'missing' not found\"}]}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "validate", "--name", "models/public/m", "--from-file", body.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("interceptor 'missing' not found"), r.err);
+        assertTrue(r.err.contains("FAILED"), r.err);
+    }
+
+    @Test
+    void modelValidate422SkippedNotPrintedAsFailure(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{\"type\":\"chat\"}");
+        respond("/v1/admin/validate", 422,
+                "{\"valid\":0,\"failed\":1,\"results\":["
+                        + "{\"entityId\":\"models/public/m\",\"status\":\"FAILED\",\"error\":\"bad endpoint\"},"
+                        + "{\"entityId\":\"models/public/sibling\",\"status\":\"skipped\"}"
+                        + "]}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "validate", "--name", "models/public/m", "--from-file", body.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("FAILED"), r.err);
+        assertTrue(r.err.contains("bad endpoint"), r.err);
+        assertTrue(!r.err.contains("sibling"), "skipped entries must not be printed as failures: " + r.err);
+    }
+
+    @Test
+    void modelValidate200WithFailedExitsTwo(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{\"type\":\"chat\"}");
+        respond("/v1/admin/validate", 200,
+                "{\"valid\":0,\"failed\":1,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"FAILED\",\"error\":\"missing endpoint\"}]}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "validate", "--name", "models/public/m", "--from-file", body.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("missing endpoint"), r.err);
+    }
+
+    @Test
+    void modelValidate400ExitsTwo(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{\"type\":\"chat\"}");
+        respond("/v1/admin/validate", 400, "{\"error\":\"missing manifests\"}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "validate", "--name", "models/public/m", "--from-file", body.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("400"), r.err);
+    }
+
+    @Test
+    void modelValidate403ExitsThree(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{\"type\":\"chat\"}");
+        respond("/v1/admin/validate", 403, "{\"error\":\"forbidden\"}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "validate", "--name", "models/public/m", "--from-file", body.toString());
+
+        assertEquals(3, r.exitCode);
+        assertTrue(r.err.contains("403"), r.err);
+    }
+
+    @Test
+    void modelValidate401ExitsThree(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{\"type\":\"chat\"}");
+        respond("/v1/admin/validate", 401, "{}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "validate", "--name", "models/public/m", "--from-file", body.toString());
+
+        assertEquals(3, r.exitCode);
+    }
+
+    @Test
+    void modelValidate500ExitsOne(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{\"type\":\"chat\"}");
+        respond("/v1/admin/validate", 500, "{\"error\":\"internal\"}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "validate", "--name", "models/public/m", "--from-file", body.toString());
+
+        assertEquals(1, r.exitCode);
+    }
+
+    @Test
+    void modelValidateRejectsSimpleName(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "validate", "--name", "gpt-4", "--from-file", body.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("canonical id"), r.err);
+    }
+
+    @Test
+    void modelValidateDryRunPrintsEnvelopeAndDoesNotPost(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.json");
+        Files.writeString(body, "{\"type\":\"chat\",\"endpoint\":\"http://x\"}");
+        java.util.concurrent.atomic.AtomicBoolean hit = new java.util.concurrent.atomic.AtomicBoolean();
+        server.createContext("/v1/admin/validate", exchange -> {
+            hit.set(true);
+            send(exchange, 500, "{}");
+        });
+
+        Result r = run(config, apiKeyFile(tmp), "--dry-run",
+                "model", "validate", "--name", "models/public/m", "--from-file", body.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(r.out.contains("\"manifests\""), r.out);
+        assertTrue(r.out.contains("\"kind\":\"Model\""), r.out);
+        assertTrue(r.out.contains("\"precheck\":true"), r.out);
+        assertTrue(!hit.get(), "Server must not be called on --dry-run");
+    }
+
+    @Test
+    void modelValidateYamlFromFileSendsJson(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("m.yaml");
+        Files.writeString(body, "type: chat\nendpoint: http://yaml-host\n");
+        java.util.concurrent.atomic.AtomicReference<String> sentBody = new java.util.concurrent.atomic.AtomicReference<>();
+        server.createContext("/v1/admin/validate", exchange -> {
+            sentBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            send(exchange, 200, "{\"valid\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"valid\"}]}");
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "validate", "--name", "models/public/m", "--from-file", body.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(sentBody.get().contains("\"endpoint\":\"http://yaml-host\""), sentBody.get());
+        assertTrue(!sentBody.get().contains("type: chat"), "Spec must be JSON, not YAML");
+    }
+
+    @Test
+    void modelValidateInvalidJsonFromFileExitsTwo(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("bad.json");
+        Files.writeString(body, "{not json");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "validate", "--name", "models/public/m", "--from-file", body.toString());
+
+        assertEquals(2, r.exitCode);
+    }
+
     private void respond(String path, int status, String body) {
         server.createContext(path, exchange -> send(exchange, status, body));
     }
