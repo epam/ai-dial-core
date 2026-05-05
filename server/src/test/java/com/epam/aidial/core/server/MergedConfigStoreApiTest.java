@@ -59,7 +59,12 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         Config merged = dial.getProxy().getConfigStore().get();
         Model blobModel = merged.getModels().get("models/public/" + blobName);
         assertNotNull(blobModel, () -> "Expected canonical-ID key in merged Config: " + merged.getModels().keySet());
-        assertEquals(blobName, blobModel.getName(), "Entity.name must be the simple name");
+        // Slice 2S.15 / OQ-23: Model.name carries the canonical ID for API-managed entries so
+        // legacy /openai/models, /openai/deployments, and rate-limit role-limit lookups see the
+        // canonical form. The admin Configuration API listing controller projects simpleName from
+        // the map key independently (asserted below).
+        assertEquals("models/public/" + blobName, blobModel.getName(),
+                "Entity.name carries the canonical ID for API-managed entries");
         assertNotNull(merged.getModels().get("test-model-v1"), "File model must still coexist by simple name");
 
         Response get = send(HttpMethod.GET, "/v1/models/public/" + blobName, null, "",
@@ -88,7 +93,8 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         Config merged = dial.getProxy().getConfigStore().get();
         Interceptor blob = merged.getInterceptors().get("interceptors/platform/" + blobName);
         assertNotNull(blob, () -> "Expected canonical-ID key in merged Config: " + merged.getInterceptors().keySet());
-        assertEquals(blobName, blob.getName());
+        // Slice 2S.15: API-managed entries carry the canonical ID as their name (per OQ-23).
+        assertEquals("interceptors/platform/" + blobName, blob.getName());
         assertNotNull(merged.getInterceptors().get("interceptor1"), "File interceptor must still coexist");
     }
 

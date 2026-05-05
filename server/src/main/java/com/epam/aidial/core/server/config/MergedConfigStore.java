@@ -24,7 +24,6 @@ import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -287,7 +286,6 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
         merged.setGlobalInterceptors(base.getGlobalInterceptors());
 
-        List<Runnable> resetSimpleName = new ArrayList<>();
         Map<String, JsonNode> blobBodies = new HashMap<>();
         Map<ResourceTypes, Map<String, InvalidEntityRecord>> pendingInvalid = new EnumMap<>(ResourceTypes.class);
 
@@ -326,8 +324,8 @@ public final class MergedConfigStore implements ConfigStore {
                             type, bucket, bucketLocation, name);
                     AddedEntity added;
                     try {
-                        added = addBlobEntity(type, canonicalId, name, node,
-                                models, interceptors, roles, keys, routes, schemas, resetSimpleName);
+                        added = addBlobEntity(type, canonicalId, node,
+                                models, interceptors, roles, keys, routes, schemas);
                     } catch (Exception parseError) {
                         recordInvalid(pendingInvalid, type, canonicalId, name,
                                 "JSON parse failure: " + parseError.getMessage(),
@@ -341,8 +339,7 @@ public final class MergedConfigStore implements ConfigStore {
                             secretFieldProcessor.decryptFields(added.entity(), descriptor);
                         } catch (Exception decryptError) {
                             // Roll back the partial insertion so decryption-failure entities never
-                            // reach addProjectKeys (locked 2S.9 invariant). Queued resetSimpleName
-                            // runnables for this entity run harmlessly against the orphaned object.
+                            // reach addProjectKeys (locked 2S.9 invariant).
                             removeAddedEntity(type, canonicalId, models, interceptors, roles, keys, routes, schemas);
                             recordInvalid(pendingInvalid, type, canonicalId, name,
                                     "Decryption failure: " + decryptError.getMessage(),
@@ -388,9 +385,11 @@ public final class MergedConfigStore implements ConfigStore {
                 : null;
         ConfigPostProcessor.processSemantic(merged, apiKeyStore, onSkip);
 
-        // ConfigPostProcessor sets entity.name = mapKey (canonical ID for API entries).
-        // Reset name to the simple name so projections match the design 02 §4 / 04 §4.3 shape.
-        resetSimpleName.forEach(Runnable::run);
+        // ConfigPostProcessor sets entity.name = mapKey: canonical ID for API entries
+        // ("models/public/foo"), simple name for file entries ("gpt-4"). This is the OQ-23 contract:
+        // canonical IDs surface on legacy /openai/models, /openai/deployments, and rate-limit
+        // role-limit lookups for API-managed deployments. The new admin Configuration API listing
+        // controller projects simpleName(mapKey) independently per design 03 §4.
 
         Map<ResourceTypes, Map<String, InvalidEntityRecord>> finalInvalid =
                 pendingInvalid.isEmpty() ? Map.of() : Collections.unmodifiableMap(pendingInvalid);
@@ -462,28 +461,25 @@ public final class MergedConfigStore implements ConfigStore {
         return type.urlSegment() + ResourceDescriptor.PATH_SEPARATOR + bucket + ResourceDescriptor.PATH_SEPARATOR + name;
     }
 
-    private static AddedEntity addBlobEntity(ResourceTypes type, String canonicalId, String simpleName, JsonNode node,
+    private static AddedEntity addBlobEntity(ResourceTypes type, String canonicalId, JsonNode node,
                                              Map<String, Model> models, Map<String, Interceptor> interceptors,
                                              Map<String, Role> roles, Map<String, Key> keys,
-                                             LinkedHashMap<String, Route> routes, Map<String, String> schemas,
-                                             List<Runnable> resetSimpleName) throws JsonProcessingException {
+                                             LinkedHashMap<String, Route> routes, Map<String, String> schemas)
+            throws JsonProcessingException {
         switch (type) {
             case MODEL -> {
                 Model entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Model.class);
                 models.put(canonicalId, entity);
-                resetSimpleName.add(() -> entity.setName(simpleName));
                 return new AddedEntity(entity);
             }
             case INTERCEPTOR -> {
                 Interceptor entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Interceptor.class);
                 interceptors.put(canonicalId, entity);
-                resetSimpleName.add(() -> entity.setName(simpleName));
                 return new AddedEntity(entity);
             }
             case ROLE -> {
                 Role entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Role.class);
                 roles.put(canonicalId, entity);
-                resetSimpleName.add(() -> entity.setName(simpleName));
                 return new AddedEntity(entity);
             }
             case PROJECT_KEY -> {
@@ -494,7 +490,6 @@ public final class MergedConfigStore implements ConfigStore {
             case ROUTE -> {
                 Route entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Route.class);
                 routes.put(canonicalId, entity);
-                resetSimpleName.add(() -> entity.setName(simpleName));
                 return new AddedEntity(entity);
             }
             case APP_TYPE_SCHEMA -> {
