@@ -1,0 +1,8 @@
+---
+kind: ToolSet
+name: toolsets/public/example-git-tools
+spec:
+  transport: http
+  endpoint: "http://localhost:9090/mcp/git"
+  allowed_tools: ["branch", "remote"]
+  description: "Example MCP toolset — git remote operations."

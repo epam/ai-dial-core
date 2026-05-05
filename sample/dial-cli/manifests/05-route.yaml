@@ -1,0 +1,10 @@
+---
+kind: Route
+name: routes/platform/example-rate
+spec:
+  paths: ["/v1/rate"]
+  rewritePath: true
+  methods: ["GET"]
+  response:
+    status: 200
+    body: "OK"

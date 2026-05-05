@@ -1,0 +1,14 @@
+# dial-cli profile — playground.
+# Copy / edit / point DIAL_CLI_CONFIG at this file (or pass --config).
+# Sibling of sample/aidial.config.json + sample/aidial.settings.json.
+
+defaults:
+  output: table
+  env: local
+
+environments:
+  local:
+    api_url: "http://localhost:8080"
+    auth:
+      type: api_key
+      key_env_var: DIAL_LOCAL_API_KEY
