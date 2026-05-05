@@ -998,6 +998,217 @@ class ModelCommandTest {
         assertEquals(2, r.exitCode);
     }
 
+    private Path writeTwoEnvProfile(Path tmp, String sourceUrl, String targetUrl) throws Exception {
+        Path config = tmp.resolve("config.yaml");
+        Files.writeString(config, """
+                defaults: { env: dev }
+                environments:
+                  dev:
+                    api_url: "%s"
+                    auth: { type: api_key, key_env_var: NONEXISTENT_DIAL_TEST_KEY }
+                  uat:
+                    api_url: "%s"
+                    auth: { type: api_key, key_env_var: NONEXISTENT_DIAL_TEST_KEY }
+                """.formatted(sourceUrl, targetUrl));
+        return config;
+    }
+
+    @Test
+    void modelPromote200AppliedInvalidWarnsButExitsZero(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfile(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort());
+            respond("/v1/models/public/m", 200, "{\"name\":\"m\",\"type\":\"chat\"}");
+            target.createContext("/v1/admin/apply", exchange -> send(exchange, 200,
+                    "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied_invalid\",\"error\":\"dangling ref\"}]}"));
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "promote", "--from", "dev", "--to", "uat",
+                    "--name", "models/public/m");
+
+            assertEquals(0, r.exitCode, r.err);
+            assertTrue(r.out.contains("Promoted models/public/m"), r.out);
+            assertTrue(r.err.contains("warn"), r.err);
+            assertTrue(r.err.contains("applied with validation warnings"), r.err);
+            assertTrue(r.err.contains("dangling ref"), r.err);
+        } finally {
+            target.stop(0);
+        }
+    }
+
+
+    @Test
+    void modelPromote200HappyPath(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfile(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort());
+            // Source GET
+            respond("/v1/models/public/m", 200,
+                    "{\"name\":\"m\",\"type\":\"chat\",\"endpoint\":\"http://src/x\"}");
+            // Target apply
+            java.util.concurrent.atomic.AtomicReference<String> applyBody = new java.util.concurrent.atomic.AtomicReference<>();
+            target.createContext("/v1/admin/apply", exchange -> {
+                applyBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                send(exchange, 200,
+                        "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied\"}]}");
+            });
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "promote", "--from", "dev", "--to", "uat",
+                    "--name", "models/public/m");
+
+            assertEquals(0, r.exitCode, r.err);
+            assertTrue(r.out.contains("Promoted models/public/m from dev to uat"), r.out);
+            assertTrue(applyBody.get().contains("\"manifests\""), applyBody.get());
+            assertTrue(applyBody.get().contains("\"kind\":\"Model\""), applyBody.get());
+            assertTrue(applyBody.get().contains("\"name\":\"m\""), applyBody.get());
+            assertTrue(applyBody.get().contains("\"precheck\":true"), applyBody.get());
+            assertTrue(applyBody.get().contains("\"endpoint\":\"http://src/x\""), applyBody.get());
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelPromoteSource404ExitsFour(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfile(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort());
+            respond("/v1/models/public/missing", 404, "{\"error\":\"not found\"}");
+            java.util.concurrent.atomic.AtomicBoolean targetHit = new java.util.concurrent.atomic.AtomicBoolean();
+            target.createContext("/v1/admin/apply", exchange -> {
+                targetHit.set(true);
+                send(exchange, 200, "{}");
+            });
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "promote", "--from", "dev", "--to", "uat",
+                    "--name", "models/public/missing");
+
+            assertEquals(4, r.exitCode);
+            assertTrue(r.err.contains("Source dev"), r.err);
+            assertTrue(r.err.contains("404"), r.err);
+            assertTrue(!targetHit.get(), "Target apply must not fire when source GET fails");
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelPromoteTarget422ExitsTwo(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfile(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort());
+            respond("/v1/models/public/m", 200,
+                    "{\"name\":\"m\",\"type\":\"chat\",\"endpoint\":\"http://src\"}");
+            target.createContext("/v1/admin/apply", exchange -> send(exchange, 422,
+                    "{\"applied\":0,\"failed\":1,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"FAILED\",\"error\":\"missing interceptor\"}]}"));
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "promote", "--from", "dev", "--to", "uat",
+                    "--name", "models/public/m");
+
+            assertEquals(2, r.exitCode);
+            assertTrue(r.err.contains("missing interceptor"), r.err);
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelPromoteTarget403ExitsThree(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfile(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort());
+            respond("/v1/models/public/m", 200, "{\"name\":\"m\",\"type\":\"chat\"}");
+            target.createContext("/v1/admin/apply", exchange -> send(exchange, 403, "{\"error\":\"forbidden\"}"));
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "promote", "--from", "dev", "--to", "uat",
+                    "--name", "models/public/m");
+
+            assertEquals(3, r.exitCode);
+            assertTrue(r.err.contains("Target uat"), r.err);
+            assertTrue(r.err.contains("403"), r.err);
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelPromoteDryRunPrintsEnvelopeAndDoesNotApply(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfile(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort());
+            respond("/v1/models/public/m", 200,
+                    "{\"name\":\"m\",\"type\":\"chat\",\"endpoint\":\"http://src\"}");
+            java.util.concurrent.atomic.AtomicBoolean targetHit = new java.util.concurrent.atomic.AtomicBoolean();
+            target.createContext("/v1/admin/apply", exchange -> {
+                targetHit.set(true);
+                send(exchange, 500, "{}");
+            });
+
+            Result r = run(config, apiKeyFile(tmp), "--dry-run",
+                    "model", "promote", "--from", "dev", "--to", "uat",
+                    "--name", "models/public/m");
+
+            assertEquals(0, r.exitCode, r.err);
+            assertTrue(r.out.contains("\"manifests\""), r.out);
+            assertTrue(r.out.contains("\"kind\":\"Model\""), r.out);
+            assertTrue(r.out.contains("\"precheck\":true"), r.out);
+            assertTrue(!targetHit.get(), "Target apply must not fire on --dry-run");
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelPromoteUnknownSourceEnvExitsTwo(@TempDir Path tmp) throws Exception {
+        Path config = writeTwoEnvProfile(tmp, baseUrl, baseUrl);
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "promote", "--from", "ghost", "--to", "uat",
+                "--name", "models/public/m");
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("'ghost' not found"), r.err);
+    }
+
+    @Test
+    void modelPromoteUnknownTargetEnvExitsTwo(@TempDir Path tmp) throws Exception {
+        Path config = writeTwoEnvProfile(tmp, baseUrl, baseUrl);
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "promote", "--from", "dev", "--to", "phantom",
+                "--name", "models/public/m");
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("'phantom' not found"), r.err);
+    }
+
+    @Test
+    void modelPromoteRejectsSimpleName(@TempDir Path tmp) throws Exception {
+        Path config = writeTwoEnvProfile(tmp, baseUrl, baseUrl);
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "promote", "--from", "dev", "--to", "uat", "--name", "gpt-4");
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("canonical id"), r.err);
+    }
+
     private void respond(String path, int status, String body) {
         server.createContext(path, exchange -> send(exchange, status, body));
     }
