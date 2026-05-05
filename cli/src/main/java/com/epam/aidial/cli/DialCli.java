@@ -22,7 +22,8 @@ import java.nio.file.Path;
                 KeyCommand.class,
                 RouteCommand.class,
                 SchemaCommand.class,
-                SettingsCommand.class
+                SettingsCommand.class,
+                ExportCommand.class
         }
 )
 public class DialCli {

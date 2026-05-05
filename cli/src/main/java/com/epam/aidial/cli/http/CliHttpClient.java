@@ -5,6 +5,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
 public class CliHttpClient {
@@ -27,6 +28,10 @@ public class CliHttpClient {
     }
 
     public Response get(String pathAndQuery) {
+        return get(pathAndQuery, "application/json");
+    }
+
+    public Response get(String pathAndQuery, String accept) {
         URI uri;
         try {
             uri = URI.create(apiUrl + pathAndQuery);
@@ -35,12 +40,12 @@ public class CliHttpClient {
         }
         HttpRequest req = HttpRequest.newBuilder(uri)
                 .header("Api-Key", apiKey)
-                .header("Accept", "application/json")
+                .header("Accept", accept)
                 .timeout(Duration.ofSeconds(30))
                 .GET()
                 .build();
         try {
-            HttpResponse<String> r = delegate.send(req, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> r = delegate.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             return new Response(r.statusCode(), r.body());
         } catch (IOException e) {
             throw new NetworkException("Network error contacting " + apiUrl + ": " + e.getMessage(), e);
