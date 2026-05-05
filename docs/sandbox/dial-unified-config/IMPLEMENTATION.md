@@ -423,7 +423,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 
 | ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
-| **4C.0** | `dial-cli apply -f <path>` — single-doc and multi-doc YAML manifest parsing, validate-first gate (`POST /v1/admin/validate`) then `POST /v1/admin/apply`. `--dry-run`. Exit codes per 06 §2.8. **No template DSL, no overlays, no bundles in MVP — manifests must be fully resolved.** | 4S.0, 4S.1 | 03 §7; 05 §5.1 | 🚧 | — |
+| **4C.0** | `dial-cli apply -f <path>` — single-doc and multi-doc YAML manifest parsing, validate-first gate (`POST /v1/admin/validate`) then `POST /v1/admin/apply`. `--dry-run`. Exit codes per 06 §2.8. **No template DSL, no overlays, no bundles in MVP — manifests must be fully resolved.** | 4S.0, 4S.1 | 03 §7; 05 §5.1; 06 §2.7-§2.8 | ✅ | `74acbba5` |
 
 **Deferred beyond MVP** (if Phase-4 demand emerges post-MVP):
 
