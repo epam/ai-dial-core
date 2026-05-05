@@ -423,7 +423,7 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 
 | ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
-| **4C.0** | `dial-cli apply -f <path>` — single-doc and multi-doc YAML manifest parsing, validate-first gate (`POST /v1/admin/validate`) then `POST /v1/admin/apply`. `--dry-run`. Exit codes per 06 §2.8. **No template DSL, no overlays, no bundles in MVP — manifests must be fully resolved.** | 4S.0, 4S.1 | 03 §7; 05 §5.1 | 📋 | — |
+| **4C.0** | `dial-cli apply -f <path>` — single-doc and multi-doc YAML manifest parsing, validate-first gate (`POST /v1/admin/validate`) then `POST /v1/admin/apply`. `--dry-run`. Exit codes per 06 §2.8. **No template DSL, no overlays, no bundles in MVP — manifests must be fully resolved.** | 4S.0, 4S.1 | 03 §7; 05 §5.1 | 🚧 | — |
 
 **Deferred beyond MVP** (if Phase-4 demand emerges post-MVP):
 
@@ -432,6 +432,9 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 - **4C.3** Bundles — 05 §5.3
 - **4C.4** `${SECRET:*}` resolution — 05 §3.1
 - **4C.5** `promote --template auto` reverse-match — 05 §4
+- **4S.2** Server: split apply per-entity outcomes into `created` / `updated` / `unchanged` (today only `applied` / `applied_invalid` / `FAILED` / `skipped`) so the CLI can render the design 06 §2.7 summary buckets without N extra round-trips. Surfaced during 4C.0 architect plan (§1.1 deviation). — 03 §7
+- **4C.6** CLI: render `created / updated / unchanged / failed` summary on `apply` (depends on **4S.2** wire change). 4C.0 ships an `applied / failed` aggregate as the closest-available stand-in. — 06 §2.7
+- **4C.7** CLI: `dial-cli apply -f <directory>` recursive walk over `.yaml` / `.yml` / `.json` files. **Techdebt** — slice 4C.0 ships file-only by design (slice-register row scope) but design 06 §2.7 / §2.8 examples assume directory input. — 06 §2.7
 
 ---
 
