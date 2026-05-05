@@ -9,41 +9,41 @@ import picocli.CommandLine.Spec;
 import java.util.concurrent.Callable;
 
 @Command(
-        name = "model",
-        description = "Read DIAL model entities.",
+        name = "toolset",
+        description = "Read DIAL toolset entities.",
         mixinStandardHelpOptions = true,
-        subcommands = {ModelCommand.Get.class, ModelCommand.List.class}
+        subcommands = {ToolsetCommand.Get.class, ToolsetCommand.List.class}
 )
-public class ModelCommand {
+public class ToolsetCommand {
 
     @ParentCommand
     DialCli parent;
 
-    @Command(name = "get", description = "Get a single model by name (or canonical id).")
+    @Command(name = "get", description = "Get a single toolset by name (or canonical id).")
     static class Get implements Callable<Integer> {
         @ParentCommand
-        ModelCommand model;
+        ToolsetCommand cmd;
         @Spec
         CommandSpec spec;
-        @Parameters(index = "0", description = "Model name or canonical id (models/<bucket>/<name>).")
+        @Parameters(index = "0", description = "Toolset name or canonical id (toolsets/<bucket>/<name>).")
         String name;
 
         @Override
         public Integer call() {
-            return EntityReader.readEntity(model.parent, spec, "models", name);
+            return EntityReader.readEntity(cmd.parent, spec, "toolsets", name);
         }
     }
 
-    @Command(name = "list", description = "List models in the public bucket.")
+    @Command(name = "list", description = "List toolsets in the public bucket.")
     static class List implements Callable<Integer> {
         @ParentCommand
-        ModelCommand model;
+        ToolsetCommand cmd;
         @Spec
         CommandSpec spec;
 
         @Override
         public Integer call() {
-            return EntityReader.listEntities(model.parent, spec, "models");
+            return EntityReader.listEntities(cmd.parent, spec, "toolsets");
         }
     }
 }

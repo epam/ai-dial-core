@@ -18,14 +18,22 @@ public class GetCommand implements Callable<Integer> {
     @Parameters(arity = "0..1", description = "Resource type (e.g. models, roles, keys).")
     String resourceType;
 
+    private static final java.util.Set<String> LIST_TYPES = java.util.Set.of(
+            "models", "applications", "toolsets",
+            "interceptors", "roles", "keys", "routes", "schemas"
+    );
+
     @Override
     public Integer call() {
         if (resourceType == null) {
             spec.commandLine().getErr().println("Resource type required (e.g. 'dial-cli get models').");
             return 2;
         }
-        if ("models".equals(resourceType)) {
-            return ModelCommand.listEntities(parent, spec, "models");
+        if (LIST_TYPES.contains(resourceType)) {
+            return EntityReader.listEntities(parent, spec, resourceType);
+        }
+        if ("settings".equals(resourceType)) {
+            return EntityReader.readSingleton(parent, spec, "settings");
         }
         spec.commandLine().getErr().println("Unsupported resource type: " + resourceType);
         return 2;
