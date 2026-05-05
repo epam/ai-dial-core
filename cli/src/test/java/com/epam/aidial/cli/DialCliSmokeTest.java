@@ -77,6 +77,20 @@ class DialCliSmokeTest {
         assertHelpExitsZero("get", "--help");
     }
 
+    @Test
+    void versionExitsZeroAndPrintsVersionLine() {
+        CommandLine cmd = new CommandLine(new DialCli());
+        java.io.StringWriter out = new java.io.StringWriter();
+        cmd.setOut(new java.io.PrintWriter(out));
+        cmd.setErr(new java.io.PrintWriter(java.io.OutputStream.nullOutputStream()));
+
+        int exit = cmd.execute("--version");
+
+        assertEquals(0, exit);
+        assertTrue(out.toString().contains("dial-cli"),
+                "expected `dial-cli` in --version output, got: " + out);
+    }
+
     private static void assertHelpExitsZero(String... args) {
         CommandLine cmd = new CommandLine(new DialCli());
         cmd.setOut(new java.io.PrintWriter(java.io.OutputStream.nullOutputStream()));
