@@ -11,6 +11,7 @@ import java.nio.file.Path;
 @Command(
         name = "dial-cli",
         mixinStandardHelpOptions = true,
+        version = "dial-cli 0.0.0",
         subcommands = {
                 EnvCommand.class,
                 GetCommand.class,
