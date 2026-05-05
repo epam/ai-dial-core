@@ -214,7 +214,7 @@ public final class EntityReader {
         return "/v1/" + type + "/" + bucket + "/" + URLEncoder.encode(identifier, StandardCharsets.UTF_8);
     }
 
-    private static ResolvedEnv resolveEnv(DialCli root, CommandSpec spec) {
+    static ResolvedEnv resolveEnv(DialCli root, CommandSpec spec) {
         CliProfile profile;
         try {
             profile = ProfileLoader.load(root.configPath);
@@ -257,5 +257,5 @@ public final class EntityReader {
 
     private record TableShape(String[] headers, String[] fields) { }
 
-    private record ResolvedEnv(String envName, String apiUrl, String apiKey) { }
+    record ResolvedEnv(String envName, String apiUrl, String apiKey) { }
 }
