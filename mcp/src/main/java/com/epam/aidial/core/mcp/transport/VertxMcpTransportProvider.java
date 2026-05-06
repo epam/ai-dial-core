@@ -1,5 +1,7 @@
 package com.epam.aidial.core.mcp.transport;
 
+import com.epam.aidial.core.mcp.ratelimit.Decision;
+import com.epam.aidial.core.mcp.ratelimit.McpSessionLimiter;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.TypeRef;
@@ -19,7 +21,9 @@ import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -34,7 +38,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 public class VertxMcpTransportProvider implements McpStreamableServerTransportProvider {
 
-    private static final String MESSAGE_EVENT_TYPE = "message";
     private static final String JSON = "application/json";
     private static final String SSE = "text/event-stream";
 
@@ -43,6 +46,7 @@ public class VertxMcpTransportProvider implements McpStreamableServerTransportPr
     private final ConcurrentHashMap<String, McpStreamableServerSession> sessions = new ConcurrentHashMap<>();
     private volatile boolean closing;
     private volatile McpStreamableServerSession.Factory sessionFactory;
+    private volatile McpSessionLimiter limiter;
 
     public VertxMcpTransportProvider(Vertx vertx) {
         this.vertx = vertx;
@@ -58,6 +62,10 @@ public class VertxMcpTransportProvider implements McpStreamableServerTransportPr
     @Override
     public void setSessionFactory(McpStreamableServerSession.Factory factory) {
         this.sessionFactory = factory;
+    }
+
+    public void setLimiter(McpSessionLimiter limiter) {
+        this.limiter = limiter;
     }
 
     @Override
@@ -149,6 +157,7 @@ public class VertxMcpTransportProvider implements McpStreamableServerTransportPr
             return;
         }
 
+        boolean acquired = false;
         try {
             if (message instanceof McpSchema.JSONRPCResponse jsonResp) {
                 session.accept(jsonResp).block();
@@ -157,6 +166,14 @@ public class VertxMcpTransportProvider implements McpStreamableServerTransportPr
                 session.accept(notification).block();
                 response.setStatusCode(202).end();
             } else if (message instanceof McpSchema.JSONRPCRequest jsonReq) {
+                if (limiter != null) {
+                    Decision decision = limiter.tryAcquire(sessionId);
+                    if (decision instanceof Decision.Deny deny) {
+                        writeRateLimitError(response, jsonReq.id(), deny.retryAfterSeconds(), responseContext);
+                        return;
+                    }
+                    acquired = true;
+                }
                 response.setChunked(true);
                 response.putHeader("Content-Type", SSE);
                 response.putHeader("Cache-Control", "no-cache");
@@ -173,7 +190,43 @@ public class VertxMcpTransportProvider implements McpStreamableServerTransportPr
             if (!response.ended()) {
                 response.setStatusCode(500).end();
             }
+        } finally {
+            if (acquired && limiter != null) {
+                limiter.release(sessionId);
+            }
         }
+    }
+
+    private void writeRateLimitError(HttpServerResponse response, Object requestId, long retryAfterSeconds,
+                                     Context responseContext) {
+        Map<String, Object> data = Map.of("retry_after", retryAfterSeconds);
+        Map<String, Object> error = Map.of(
+                "code", -32000,
+                "message", "rate limit exceeded",
+                "data", data);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("jsonrpc", "2.0");
+        body.put("id", requestId);
+        body.put("error", error);
+        String json;
+        try {
+            json = jsonMapper.writeValueAsString(body);
+        } catch (Exception e) {
+            log.error("Failed to serialize rate-limit error response", e);
+            if (!response.ended()) {
+                response.setStatusCode(500).end();
+            }
+            return;
+        }
+        String finalJson = json;
+        responseContext.runOnContext(v -> {
+            if (response.ended()) {
+                return;
+            }
+            response.setStatusCode(200)
+                    .putHeader("Content-Type", JSON)
+                    .end(finalJson);
+        });
     }
 
     private void handleInitialize(HttpServerRequest request, McpSchema.JSONRPCRequest jsonReq) {
@@ -253,6 +306,9 @@ public class VertxMcpTransportProvider implements McpStreamableServerTransportPr
             response.setStatusCode(404).end();
             return;
         }
+        if (limiter != null) {
+            limiter.evict(sessionId);
+        }
         vertx.executeBlocking(() -> {
             try {
                 session.delete().block();
@@ -296,11 +352,7 @@ public class VertxMcpTransportProvider implements McpStreamableServerTransportPr
                     return;
                 }
                 String eventId = messageId != null ? messageId : sessionId;
-                StringBuilder sb = new StringBuilder();
-                sb.append("id: ").append(eventId).append('\n');
-                sb.append("event: ").append(MESSAGE_EVENT_TYPE).append('\n');
-                sb.append("data: ").append(json).append("\n\n");
-                String chunk = sb.toString();
+                String chunk = "id: " + eventId + "\nevent: message\ndata: " + json + "\n\n";
 
                 responseContext.runOnContext(v -> {
                     if (closed || response.ended()) {

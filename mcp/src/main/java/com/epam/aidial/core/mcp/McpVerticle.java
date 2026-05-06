@@ -1,6 +1,7 @@
 package com.epam.aidial.core.mcp;
 
 import com.epam.aidial.core.mcp.client.DialClient;
+import com.epam.aidial.core.mcp.ratelimit.McpSessionLimiter;
 import com.epam.aidial.core.mcp.transport.VertxMcpTransportProvider;
 import io.modelcontextprotocol.json.schema.JsonSchemaValidator;
 import io.modelcontextprotocol.server.McpAsyncServer;
@@ -43,6 +44,9 @@ public class McpVerticle extends AbstractVerticle {
         dialClient = new DialClient(vertx, vertxContext, targetUrl);
         log.info("MCP DialClient bound to {} (threading bridge: captured-context dispatch)", targetUrl);
 
+        McpSessionLimiter limiter = buildLimiterIfEnabled(mcpSettings);
+        transportProvider.setLimiter(limiter);
+
         // No-op validator: zero tools registered until M.1.x, and DIAL excludes the SDK's
         // transitive json-schema-validator (incompatible with :config's networknt 1.5.2).
         JsonSchemaValidator noopValidator = (schema, instance) -> JsonSchemaValidator.ValidationResponse.asValid("");
@@ -53,6 +57,18 @@ public class McpVerticle extends AbstractVerticle {
                 .build();
         log.info("MCP verticle started; transport adapter wired (M.0.0-bridge), DialClient ready (M.0.1-pre)");
         startPromise.complete();
+    }
+
+    private static McpSessionLimiter buildLimiterIfEnabled(JsonObject mcpSettings) {
+        JsonObject rateLimit = mcpSettings.getJsonObject("rateLimit", new JsonObject());
+        if (!rateLimit.getBoolean("enabled", true)) {
+            return null;
+        }
+        int callsPerMinute = rateLimit.getInteger("callsPerMinute", 60);
+        int burstCapacity = rateLimit.getInteger("burstCapacity", 10);
+        JsonObject concurrency = mcpSettings.getJsonObject("concurrency", new JsonObject());
+        int maxConcurrent = concurrency.getInteger("maxConcurrentCallsPerSession", 5);
+        return new McpSessionLimiter(callsPerMinute, burstCapacity, maxConcurrent);
     }
 
     private String resolveDialTargetUrl() {
