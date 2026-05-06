@@ -2,6 +2,7 @@ dependencies {
     // Project dependencies (internal modules)
     implementation project(':config')
     implementation project(':credentials')
+    implementation project(':mcp')
     implementation project(':storage')
 
     // External dependencies

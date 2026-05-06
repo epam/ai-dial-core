@@ -5,6 +5,7 @@ import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
+import com.epam.aidial.core.mcp.McpRequestHandler;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.controller.Controller;
 import com.epam.aidial.core.server.controller.ControllerSelector;
@@ -80,6 +81,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     public static final String HEALTH_CHECK_PATH = "/health";
     public static final String VERSION_PATH = "/version";
+    public static final String MCP_PATH_PREFIX = "/mcp";
 
     public static final Pattern TOOLSET_PROXY_PATTERN = RouteTemplate.TOOL_SET_MCP_PROXY.getPattern();
     public static final Pattern TOOLSET_PROXY_METADATA_PATTERN = RouteTemplate.TOOL_SET_PROXY_METADATA.getPattern();
@@ -140,6 +142,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ConsentService consentService;
     private final DeploymentService deploymentService;
     private final HealthCheckController healthCheckController;
+    private final McpRequestHandler mcpRequestHandler;
     private final WellKnownResourceMetadataService resourceMetadataService;
     private final WellKnownResourceMetadataController resourceMetadataController;
     private final ToolSetService toolSetService;
@@ -234,6 +237,15 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         if (request.method() == HttpMethod.GET && path.equals(VERSION_PATH)) {
             respond(request, HttpStatus.OK, version);
+            return;
+        }
+
+        if (isDialMcpPath(path)) {
+            if (mcpRequestHandler == null) {
+                respond(request, HttpStatus.NOT_FOUND);
+            } else {
+                mcpRequestHandler.handle(request);
+            }
             return;
         }
 
@@ -394,6 +406,13 @@ public class Proxy implements Handler<HttpServerRequest> {
     private void respond(HttpServerRequest request, HttpStatus status, String body, Map<String, String> headers) {
         headers.forEach(request.response()::putHeader);
         respond(request, status, body);
+    }
+
+    private static boolean isDialMcpPath(String path) {
+        if (!path.startsWith(MCP_PATH_PREFIX)) {
+            return false;
+        }
+        return path.length() == MCP_PATH_PREFIX.length() || path.charAt(MCP_PATH_PREFIX.length()) == '/';
     }
 
     private static boolean isMcpResourcePath(String path) {
