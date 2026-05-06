@@ -352,7 +352,7 @@ See `dial_secrets_storage_analysis.md` for the full evaluation of alternative ap
 
 ## 3. Audit
 
-> **STATUS: WIP / DEFERRED.** The audit subsystem is **deferred to Phase 7** (Audit & Compliance) — after full entity-management API support, CLI surface, and Admin MCP land. §3 below remains as the working design draft for that future phase. **Phase 1–6 make no commitment to R-Audit-1 or R-Audit-2** and ship without an audit trail. Cross-references from other documents to specific §3 subsections (storage layout, event schema, CLI commands, `/v1/admin/audit`, `dial_admin_query_audit` MCP tool) all carry the same WIP status. See [`07-migration-and-rollout.md`](07-migration-and-rollout.md) Phase 7 for the rollout placement and rationale.
+> **STATUS: WIP / DEFERRED.** The audit subsystem is **deferred to Phase 7** (Audit & Compliance) — after full entity-management API support, CLI surface, and Admin MCP land. §3 below remains as the working design draft for that future phase. **Phase 1–6 make no commitment to R-Audit-1 or R-Audit-2** and ship without an audit trail. Cross-references from other documents to specific §3 subsections (storage layout, event schema, CLI commands, `/v1/admin/audit`, `dial_query_audit` MCP tool) all carry the same WIP status. See [`07-migration-and-rollout.md`](07-migration-and-rollout.md) Phase 7 for the rollout placement and rationale.
 
 ### 3.1 Requirements
 
