@@ -27,6 +27,8 @@ import com.epam.aidial.core.credentials.util.TimeProvider;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataValidator;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
+import com.epam.aidial.core.mcp.McpRequestHandler;
+import com.epam.aidial.core.mcp.McpVerticle;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.MergedConfigStore;
@@ -272,12 +274,19 @@ public class AiDial {
             Duration clientChannelTtl = Duration.ofMillis(resourceServiceSettings.getResourceTypesExpiration().get(ResourceTypes.CLIENT_CHANNEL.name()));
             ClientChannelService clientChannelService = new ClientChannelService(lockService, redis, taskExecutor, clock, storage.getPrefix(), clientChannelTtl);
 
+            McpRequestHandler mcpRequestHandler = null;
+            if (settings("mcp").getBoolean("enabled", true)) {
+                vertx.deployVerticle(new McpVerticle())
+                        .onFailure(err -> log.error("MCP verticle failed to deploy", err));
+                mcpRequestHandler = new McpRequestHandler();
+            }
+
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
-                    consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
+                    consentService, deploymentService, healthCheckController, mcpRequestHandler, wellKnownResourceMetadataService, resourceMetadataController,
                     toolSetService, applicationSchemaService, authorizationHeaderProvider, resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version());
 

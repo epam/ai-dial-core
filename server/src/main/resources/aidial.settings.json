@@ -84,5 +84,32 @@
   },
   "asyncTaskExecutor": {
     "useVirtualThreads": true
+  },
+  "mcp": {
+    "enabled": true,
+    "rateLimit": {
+      "enabled": true,
+      "callsPerMinute": 60,
+      "burstCapacity": 10
+    },
+    "concurrency": {
+      "maxConcurrentCallsPerSession": 5
+    },
+    "upload": {
+      "sourceUrl": {
+        "enabled": false,
+        "allowedUrlPrefixes": [],
+        "blockedCidrs": [
+          "10.0.0.0/8",
+          "172.16.0.0/12",
+          "192.168.0.0/16",
+          "169.254.0.0/16",
+          "fe80::/10",
+          "127.0.0.0/8",
+          "::1/128",
+          "169.254.169.254/32"
+        ]
+      }
+    }
   }
 }
