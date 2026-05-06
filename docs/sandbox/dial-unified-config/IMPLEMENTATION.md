@@ -18,6 +18,7 @@ Ship a working MVP of the Configuration API + `dial-cli` covering Phases 1, 2, 3
 - Mechanical extension of CRUD to `roles`, `keys`, `interceptors`, `routes`, `schemas`, `settings`, plus admin-managed `applications`, `toolsets`, `files`, `prompts`, `conversations` (Phase 3).
 - `dial-cli` `get` / `add` / `update` / `delete` / `validate` / `promote` / `diff` for all types.
 - Cross-replica propagation via Phase 1.5 pub/sub — included because the cost is low and the demo loses authority without it.
+- **DIAL Admin MCP server** (MCP-1 per spec 09 §6.1 — all 9 building-block tools) shipping interleaved with Track A: read tools after Phase 1, write tools after Phase 2/3. Third surface over the same Configuration API contract — strengthens the demo by showing CLI + MCP + UI all riding the same wire.
 
 **MVP stretch (Phase 4 core):**
 
@@ -71,12 +72,13 @@ These principles drive every slice and every agent prompt. The codebase's prior 
 
 ### 3.1 Tracks
 
-Two parallel tracks. Server work depends only on prior server slices; CLI work depends on the corresponding server slice's wire contract being stable (PR open or merged — not necessarily landed).
+Three parallel tracks. Server work depends only on prior server slices; CLI and MCP work depend on the corresponding server slice's wire contract being stable (PR open or merged — not necessarily landed).
 
 | Track | Owner(s) | Scope | Module(s) |
 |---|---|---|---|
 | **A — Server** | Implementation lead + core-team contributors | `server/`, `storage/`, `config/`, `credentials/` | `:server`, `:storage`, `:config`, `:credentials` |
 | **B — CLI** | Second implementer | New sibling `:cli` Gradle module in **the same repo** (Picocli + Quarkus, JVM-mode for MVP — see §3.4 GraalVM deferral) | `:cli` (new) |
+| **C — MCP** | Implementation lead + MCP team | New sibling `:mcp` Gradle module per spec 09 §7.1 — embedded as a Vert.x verticle in Core's JVM, mounted at `/mcp`; REST-only loopback to Core's Configuration API for extraction discipline | `:mcp` (new) |
 
 ### 3.2 Branching model
 
@@ -102,7 +104,7 @@ Two parallel tracks. Server work depends only on prior server slices; CLI work d
 
 ### 3.3 Parallelization rules
 
-- Track B starts as soon as Track A's slice **1S.1** (`GET /v1/models/public/{name}`) PR is open. The CLI doesn't need it merged — only the wire contract stable.
+- Tracks **B (CLI)** and **C (MCP)** start as soon as Track A's slice **1S.1** (`GET /v1/models/public/{name}`) PR is open. Neither needs it merged — only the wire contract stable.
 - Within a track, slices marked **Mechanical** (Phase-3 entity-type sweep) parallelize across multiple worktrees once the pattern is validated on the first one.
 - Phase-1.5 pub/sub PRs ship concurrently with Phase-2 write-API PRs; pub/sub merges *after* the write path lands so events have something to fire on.
 - **Use `isolation: "worktree"`** on `Agent` calls when launching a slice that's independent from current in-flight work. Keeps coordinator context clean and lets multiple slices proceed concurrently.
@@ -440,6 +442,36 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 
 ---
 
+### 5.6 MCP-1 — DIAL Admin MCP server (Track C, interleaved with Phases 1–3)
+
+> Spec: `09-admin-mcp-spec.md`. MCP-1 ships all 9 building-block tools per §6.1; read tools depend on Phase 1 reads, write tools depend on Phase 2/3 writes. MCP-2 (service-account OIDC) and audit tools are deferred — see footer.
+
+**Track C — MCP**
+
+| ID | Slice | Depends on | Design anchors | Status | Commit |
+|---|---|---|---|---|---|
+| **M.0-pre** | `:mcp` Gradle module bootstrap. Add `include 'mcp'` to `settings.gradle`; `mcp/build.gradle` with `implementation project(':config')` + `io.modelcontextprotocol.sdk:mcp` + Lombok wiring (matches sibling modules). Wire `/mcp` path-prefix branch into `Proxy.handleRequest()` short-circuiting to a new `McpRequestHandler`. Deploy MCP verticle in `AiDial.start()` when `mcp.enabled = true`. Wire `mcp.*` settings into `aidial.settings.json` defaults. Document extraction discipline in `mcp/CONTRIBUTING.md` (REST-only loopback, no direct service injection). | — | 09 §1, §7.1, §7.2, §8 kickoff checklist | 📋 | — |
+| **M.0.1-pre** | Threading bridge: pick captured-context dispatch (option a per §7.2 recommendation) or worker-pool dispatch (option b); wire Vert.x context lifecycle for tool handlers. `DialClient` HTTP wrapper (REST-only loopback facade — the swap point for future extraction). Integration test harness mirroring `ResourceApiTest` style. | M.0-pre | 09 §7.2 | 📋 | — |
+| **M.0.2-pre** | Per-session rate-limiting + concurrency cap (defaults: `mcp.rateLimit.callsPerMinute = 60`, `burstCapacity = 10`, `mcp.concurrency.maxConcurrentCallsPerSession = 5`). Token-bucket per session-id. Structured error with `retry_after` hint on overflow. | M.0-pre | 09 §7.1 (M10), §9 risk row 1 | 📋 | — |
+| **M.1.0** | Read tools bootstrap: `dial_describe_schema(type)`, `dial_list_resources(path, recursive?, filter?, format?, cursor?)`, `dial_get_resource(id, format?)`. In-process registry lookup against `:config` JSON Schema generators (M9 — `dial_describe_schema` is a function call, not an HTTP round-trip). Bucket-alias resolution (`private` / `public` / `platform` per §6.2); lazy per-session bucket fetch on first `private` use. Two-array list envelope (§6.3: `items` + `folders`). Format projection (`summary` mode list / `detailed` default get) per §6.4. Error shaping with remediation hints. | 1S.1 (contract), M.0-pre, M.0.1-pre, M.0.2-pre | 09 §1, §6.1–§6.4, §7.4, §7.5 | 📋 | — |
+| **M.1.1** | Read-tools entity-type sweep across `models`, `applications`, `toolsets`, `interceptors`, `roles`, `keys`, `routes`, `schemas`, `settings`, `files`, `prompts`, `conversations`. Reuse formatter + alias-resolution from M.1.0. Singleton-type special-case: `settings` blocks `dial_list_resources` with `405` + remediation hint to use `dial_get_resource(id='settings/platform/global')`. **Mechanical** after M.1.0 pattern locked. | M.1.0, 1S.3, 1S.4 | 09 §6.3–§6.4 | 📋 | — |
+| **M.2.0** | Write tools bootstrap: `dial_create_resource(id, spec, validate_only?)`, `dial_update_resource(id, spec, if_match?, validate_only?)`, `dial_delete_resource(id, confirm, if_match?)`. ETag header handling on reads/writes. `validate_only` dry-run forwarded to Core. `confirm: true` guard on delete. Structured error response on 409 / 404 / 412 with remediation. | 2S.11 (model write), 2S.10 (secret-field handling), M.1.0 | 09 §6.1 (tools 4–6), §6.5, §6.6, §7.4 | 📋 | — |
+| **M.2.1** | Write-tools entity-type sweep matching M.1.1 scope. Singleton-type special-case: `settings` `POST` returns `405` + remediation hint (no POST surface; use `PUT` for upsert). Forwards keys-controller DELETE ordering to Core (Core enforces per 2S.14). **Mechanical** after M.2.0 pattern locked. | M.2.0, 3S.2, 3S.3, 3S.4 | 09 §6.1 (tools 4–6) | 📋 | — |
+| **M.3.0** | File tools: `dial_upload_file(id, content \| source_url, content_type?, max_bytes?)`, `dial_download_file(id, max_bytes?)`. Exact-one-of (`content` XOR `source_url`) via `oneOf` input schema (§6.7). SSRF protection on `source_url` (RFC 1918 / link-local / loopback / cloud-metadata blocklist; allow-list via `mcp.upload.sourceUrl.allowedUrlPrefixes`; feature opt-in via `mcp.upload.sourceUrl.enabled = false` default). Base64 binary content. Image-content block on download for `image/*` MIME (§6.8). | 1S.5 (admin authz preflight), 3S.4 (file write), M.0-pre, M.0.1-pre | 09 §6.1 (tools 7–8), §6.7–§6.8, §7.1 | 📋 | — |
+| **M.4.0** | Publication tool: `dial_publish_resource(id, target)`. Forwards to `POST /v1/ops/publication/create` (`DialClient` wraps `Publication` request body with `resources[]` + `targetFolder`). Initiates async PENDING; admin approval required before resource is publicly visible. **Note**: targets the existing Resource Operations API, not the Configuration API — see spec §6.1 tool 9 note. | 3S.4 (files/prompts/conversations write), 1.5S.3 (pub/sub for state observability), M.0-pre | 09 §6.1 (tool 9), §3.2 illustrative composition | 📋 | — |
+| **M.5.0** | Auth + correlation headers. Forward credentials verbatim (admin API key as `API-KEY` header; user JWT as `Authorization: Bearer`). Stateless routing — no MCP-side session state beyond per-session bucket cache. Correlation headers on every Core call: `X-DIAL-Client: dial-mcp/<version>`, `X-DIAL-Client-Session: <uuid>`, `X-DIAL-Client-Agent: claude-code\|claude-desktop\|quickapp\|ci\|other`. Headers reach Core's structured logs in v1; full audit integration awaits Phase 7. | M.0-pre, all preceding M.* slices | 09 §7.4, §7.5 | 📋 | — |
+| **M.6.0** | Integration testing + tool documentation. End-to-end tests for all 9 tools against staged Core via `ResourceApiTest`-style harness. Tool descriptions: 1–2 example invocations per tool (M4 requirement). Validate extraction discipline (no direct service injection; `DialClient` swap point live; dependency-graph CI check passes). | All M.* slices | 09 §7.1 extraction discipline rules 1–6, §8 kickoff checklist | 📋 | — |
+
+**Deferred (not in MVP):**
+
+- **MCP-2 — service-account OIDC for CI agents.** v1 CI agents use admin API keys per spec §7.4 fallback. Not decomposed for MVP. See spec §8.
+- **MCP audit tools** (`dial_query_audit`, `dial_get_entity_history`, `dial_snapshot_at_time`, `dial_rollback_entity`). Deferred to Core Phase 7 audit subsystem. See spec §11.
+- **MCP-future tools** (`dial_apply_manifests`, `dial_get_effective_policy`, `dial_diff_environments`, `dial_export`, `dial_search_resources`, `dial_deploy_codeapp`). Spec §11; depend on Core surface that doesn't exist yet or on real operator demand.
+- **Stdio transport for laptop devs.** Resolved as deferred (MCP-OQ-8) — laptop developers point Claude Desktop at `http://<host>:<port>/mcp` instead. Stdio launcher reassessed once real demand exists.
+- **Module extraction to standalone service.** Spec §11 — kept viable by §7.1 extraction discipline (REST-only loopback, no direct service injection). Triggers: release-cadence becomes blocking, or external owner takes over, or Python ecosystem alignment matters more than in-repo type sharing.
+
+---
+
 ## 6. Smallest demo path (if days budget tightens)
 
 ```
@@ -457,10 +489,14 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
   ↓
 3S.0-pre → 3S.2 (roles + keys + interceptors only) → 3C.0 (those types)
   ↓
-DEMO
+M.0-pre → M.0.1-pre → M.0.2-pre → M.1.0 → M.1.1   # MCP read surface
+  ↓
+M.2.0 → M.2.1 → M.5.0 → M.6.0                     # MCP write surface + auth + tests
+  ↓
+DEMO (API + CLI + MCP — three surfaces, one contract)
 ```
 
-~25 PRs, end-to-end across the API + CLI + cross-replica + multiple entity types. Phase-3 entity-sweep can be partial; reviewer feedback determines where to stop.
+~34 PRs, end-to-end across the API + CLI + MCP + cross-replica + multiple entity types. Phase-3 entity-sweep can be partial; reviewer feedback determines where to stop. M.3.0 (file tools) and M.4.0 (publication) are *recommended* for the demo but can be cut if days budget tightens.
 
 ---
 
