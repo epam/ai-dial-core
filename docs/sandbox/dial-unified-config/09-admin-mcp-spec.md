@@ -1,6 +1,6 @@
-# 09 — DIAL MCP Server (Spec v0.3 — building blocks, embedded module)
+# 09 — DIAL MCP Server (Spec v0.4 — building blocks, embedded module, OQs resolved)
 
-> **Status:** Draft v0.3 — single-surface design locked, building-block tool set sized down to 9 tools, v1 ships as an in-repo Java Gradle module embedded in DIAL Core as a Vert.x verticle. Architectural discipline ensures the module is extractable to a standalone service later with minimal code change. Summary-view projections per type and a few session-model questions remain open.
+> **Status:** Draft v0.4 — all eight open questions resolved (§10). Single-surface design with 9 building-block tools, in-repo Java Gradle module embedded in DIAL Core as a Vert.x verticle, mounted on Core's existing port. Architectural discipline ensures the module is extractable to a standalone service later with minimal code change. Ready to kick off MCP-1 implementation.
 > **Audience:** Product, DIAL Core dev team, MCP tooling team, DevOps leads, anyone building agents that talk to DIAL.
 > **Prerequisites:** [`03-api-reference.md`](03-api-reference.md) (the API this wraps), [`04-security-and-audit.md`](04-security-and-audit.md) (auth model).
 
@@ -129,7 +129,7 @@ These are workflows users say in natural language. The MCP has *no* tool for any
 - **N1.** Not a replacement for `dial-cli` (human workflows) or the DIAL Admin Backend (operators who prefer a GUI).
 - **N2.** No business logic beyond what the API already enforces — MCP does not re-validate or re-author workflows.
 - **N3.** No workflow tools for user scenarios — discovery, recommendation, scoring, and external-source orchestration belong to the agent.
-- **N4.** No multi-DIAL-instance federation. Each MCP server talks to exactly one DIAL Core deployment. (Multi-env in a single session: see MCP-OQ-3.)
+- **N4.** No multi-DIAL-instance federation. Each MCP server instance is pinned to exactly one DIAL Core deployment / environment. Cross-env workflows are agent-side compositions across two MCP connections.
 - **N5.** Not a hosting/tenancy layer. MCP delegates all auth and multi-tenancy to DIAL Core.
 - **N6.** Not a config generator or template engine — agents author specs in-session, the MCP just persists them.
 
@@ -147,7 +147,7 @@ These are workflows users say in natural language. The MCP has *no* tool for any
 | **M6** | Auth is pluggable: admin API key, service-account OIDC, user JWT pass-through. The MCP does not store secrets long-term — it reads from env or per-session config. |
 | **M7** | The MCP is stateless across tool calls — each call is an independent HTTP request to Core. The one cached value per session is the result of `GET /v1/bucket` (used to resolve the `private` alias) — refreshed at session start, no cross-call state otherwise. |
 | **M8** | Every tool call carries a correlation ID forwarded to DIAL Core (§7.4). |
-| **M9** | Schema evolution: when a new entity type is added to DIAL Core, it surfaces via `dial_describe_schema(type)` without an MCP release — the MCP fetches `GET /v1/admin/schema/{type}` at tool-call time for unknown types. |
+| **M9** | Schema embedding & evolution: in v1 the MCP module loads schemas at startup from the same in-process `config/` types and JSON Schema generators Core uses — `dial_describe_schema(type)` is a registry lookup, not an HTTP round-trip. Because MCP and Core ship in the same release, new entity types appear in lockstep with no MCP-side change beyond adding them to the `type` enum. The runtime-fetch path (`GET /v1/admin/schema/{type}`) is preserved as the canonical REST contract and is the fallback used by the post-extraction model (§11). |
 | **M10** | Rate limits: MCP respects DIAL Core's rate limits; additionally applies a client-side token bucket per-session to protect against runaway agent loops. |
 
 ---
@@ -237,7 +237,7 @@ Default page size matches Core's default (100) with a hard cap (500) per `03-api
 | `prompts` | `displayName`, `description` |
 | `conversations` | `displayName`, `description` |
 
-> Field choices in the table are illustrative — confirm against actual entity shapes during MCP-1 evals (MCP-OQ-2).
+> Per MCP-OQ-2 (resolved §10): ship the table as-is. Revisit only if eval data shows a specific projection underserves agent decision-making.
 
 Projections are applied server-side in the MCP layer, not in Core. Adding a new field to a type does not require an MCP release; the field just doesn't show in `summary` until the projection table is updated.
 
@@ -307,7 +307,7 @@ Following this, extraction reduces to: copy the module to a new repo, replace th
 - **MCP framework:** the Java MCP SDK (`io.modelcontextprotocol.sdk:mcp`).
 - **HTTP client:** Vert.x `WebClient` for loopback calls to Core; supports `localhost`-fast-path when both endpoints share an event loop.
 - **Schema source:** runtime fetch of `GET /v1/admin/schema/{type}` (M9). No build-time codegen.
-- **Transport:** HTTP/SSE inside the embedded module (mounted on a dedicated path on Core's port, or a separate port — see MCP-OQ-7); stdio for laptop developers via a separate launcher artifact (see §7.3).
+- **Transport:** HTTP/SSE mounted on Core's existing HTTP port at a dedicated path (e.g. `/mcp`) — no new port to open in ingress / TLS / firewall config (resolves MCP-OQ-7). Stdio is not shipped in v1; laptop devs running `./gradlew :server:run` reach MCP at `http://localhost:8080/mcp` (resolves MCP-OQ-8).
 
 Rationale for Java over Python (the v0.2 lean):
 
@@ -322,11 +322,10 @@ The Python ecosystem alignment argument (DIAL apps and interceptors are largely 
 
 | Shape | Audience |
 |---|---|
-| Verticle inside DIAL Core (default — no extra deploy step) | Hosted environments — operators, QuickApps, CI agents reach MCP at the Core endpoint |
+| Verticle inside DIAL Core, mounted on Core's HTTP port at `/mcp` (default — no extra deploy step) | Hosted environments — operators, QuickApps, CI agents reach MCP at the Core endpoint |
 | Local Core (`./gradlew :server:run`) with MCP enabled | Laptop developers — Claude Desktop / Claude Code points at `http://localhost:8080/mcp` |
-| Stdio launcher JAR (separate build target inside the same module) | Claude Desktop instances that don't speak HTTP MCP — proxies stdio to a configured `MCP_DIAL_TARGET_URL` |
 
-The stdio launcher is a small standalone main class that ships as a separate JAR build target from the same Gradle module. GraalVM native-image is an option (~30ms cold-start, parity with Python `uvx`) if laptop install friction becomes an issue; defer until it's a real problem.
+Stdio transport is not shipped in v1 (resolves MCP-OQ-8). Laptop demand can be reassessed once usage data exists; if real, a small launcher JAR (or GraalVM native-image binary, ~30ms cold-start) can ship from the same Gradle module without architectural change.
 
 When/if the module is extracted to a standalone service (§11), the deployment table gains a Helm chart entry / Docker image and the in-Core verticle is removed; existing audiences keep their entrypoints (URL change only).
 
@@ -360,7 +359,7 @@ Pre-Phase-7 these are echoed to Core's application logs (best-effort, not query-
 | Phase | Scope | Core prereq |
 |---|---|---|
 | **MCP-0** | Spec + design review | None — this doc |
-| **MCP-1** | All 9 building-block tools (§6.1), HTTP/SSE transport from the embedded verticle, admin API key + user JWT auth. Stdio launcher gated on MCP-OQ-8. | Core Phase 1 (read-only API) for the read tools; Core Phase 2/3 (writes) for the write tools — ship in two increments alongside Core |
+| **MCP-1** | All 9 building-block tools (§6.1), HTTP/SSE transport from the embedded verticle on Core's existing port at `/mcp`, admin API key + user JWT auth. One MCP server instance per environment. | Core Phase 1 (read-only API) for the read tools; Core Phase 2/3 (writes) for the write tools — ship in two increments alongside Core |
 | **MCP-2** | Service-account OIDC for CI agents | None — additive auth |
 | **MCP-future** | Tools listed in §11 — each scoped to its driving need and Core dependency | Per item |
 
@@ -384,16 +383,18 @@ Read-only MCP-1 ships as soon as Core Phase 1 deploys to any environment. Write 
 
 ## 10. Open Questions
 
-| # | Question | Needs to close |
+All eight MCP-OQs are resolved as of v0.4. Original questions kept (struck through) so the rationale remains traceable; resolutions inline.
+
+| # | Question | Resolution |
 |---|---|---|
-| MCP-OQ-1 | **Module name**: `mcp/` (terse, matches `config/`/`storage/` style) or `dial-mcp/` (explicit prefix)? | MCP-1 kickoff |
-| MCP-OQ-2 | **Per-type `summary` projections** (§6.4 table): are the listed fields the right ones, or revise based on first eval pass? | Before MCP-1 ships |
-| MCP-OQ-3 | **Multi-env in a single MCP session**: one tool call against `env=prod`, next against `env=uat` — safe, or pin each MCP server instance to one env? | Before MCP-1 ships |
-| MCP-OQ-4 | **`describe_schema` caching**: M7 says stateless aside from `/v1/bucket`. Add a session-level TTL cache for schemas (~60s) to avoid round-trips on common writes? | MCP-1 scoping |
-| MCP-OQ-5 | **Confirmation UX for destructive ops**: is `confirm: true` enough, or should the server require a two-step flow (`prepare_delete` → `commit_delete`)? | Before MCP-1 destructive tools land |
-| MCP-OQ-6 | **MCP-internal observability**: expose tool latency / error rate via `/metrics`? Or rely on Core logs + agent traces? | MCP-1 scoping |
-| MCP-OQ-7 | **Endpoint placement**: mount MCP on a dedicated path on Core's existing port (`/mcp/*`), or a separate port? Affects ingress / TLS / rate-limit configuration. | Before MCP-1 ships |
-| MCP-OQ-8 | **Stdio laptop story**: ship the launcher JAR in v1, or punt until laptop demand is real (HTTP-only first cut, point Claude Desktop at local Core)? | MCP-1 scoping |
+| ~~MCP-OQ-1~~ | ~~**Module name**: `mcp/` (terse, matches `config/`/`storage/` style) or `dial-mcp/` (explicit prefix)?~~ | **Resolved:** `mcp/`. Matches the existing sibling-module naming convention (`config/`, `storage/`, `credentials/`, `server/`). |
+| ~~MCP-OQ-2~~ | ~~**Per-type `summary` projections** (§6.4 table): are the listed fields the right ones, or revise based on first eval pass?~~ | **Resolved:** ship the §6.4 table as-is. Revisit only if eval data shows a specific projection underserves agent decision-making. |
+| ~~MCP-OQ-3~~ | ~~**Multi-env in a single MCP session**: one tool call against `env=prod`, next against `env=uat` — safe, or pin each MCP server instance to one env?~~ | **Resolved:** **pin each MCP server instance to exactly one environment.** Cross-env workflows (promote, diff) are agent-side compositions across two MCP server connections — same pattern Claude Code already uses for any multi-target setup. |
+| ~~MCP-OQ-4~~ | ~~**`describe_schema` caching**: M7 says stateless aside from `/v1/bucket`. Add a session-level TTL cache for schemas (~60s) to avoid round-trips on common writes?~~ | **Resolved:** no caching needed in v1. With the embedded-module model the MCP loads schemas at startup directly from the in-process `config/` Gradle module and JSON Schema generators Core already uses (M9). `dial_describe_schema(type)` is a registry lookup, not an HTTP round-trip — there is no cost to cache. The cache discussion only resurfaces if/when the module is extracted (§11), at which point a session-level TTL cache becomes part of the extraction-trigger checklist. |
+| ~~MCP-OQ-5~~ | ~~**Confirmation UX for destructive ops**: is `confirm: true` enough, or should the server require a two-step flow (`prepare_delete` → `commit_delete`)?~~ | **Resolved:** `confirm: true` is enough for v1. A two-step flow is a candidate for the L2 capability set (§11) where elicitation lands natively. |
+| ~~MCP-OQ-6~~ | ~~**MCP-internal observability**: expose tool latency / error rate via `/metrics`? Or rely on Core logs + agent traces?~~ | **Resolved:** rely on Core's existing application logs (§7.5) and agent-side traces. No `/metrics` exposed by the MCP module in v1; revisit if operator feedback shows blind spots. |
+| ~~MCP-OQ-7~~ | ~~**Endpoint placement**: mount MCP on a dedicated path on Core's existing port (`/mcp/*`), or a separate port? Affects ingress / TLS / rate-limit configuration.~~ | **Resolved:** mount on Core's existing port at `/mcp`. No new ingress / TLS / firewall configuration required; existing rate-limit and auth infrastructure applies uniformly. |
+| ~~MCP-OQ-8~~ | ~~**Stdio laptop story**: ship the launcher JAR in v1, or punt until laptop demand is real (HTTP-only first cut, point Claude Desktop at local Core)?~~ | **Resolved:** punt. v1 is HTTP/SSE-only; laptop devs point Claude Desktop / Claude Code at a local or remote Core's `/mcp` endpoint. Stdio launcher reassessed once real demand exists. |
 
 ---
 
@@ -405,8 +406,8 @@ Items deliberately excluded from MCP-1, with a short note on what would unlock t
 |---|---|---|
 | `dial_get_effective_policy(subject, target)` | Aggregate role / limit / key precedence into one server-side answer for "what limits actually apply to user X on model Y?" | Core exposes the merge as an endpoint |
 | `dial_apply_manifests(...)` | Multi-resource transactional writes (e.g. interceptor + global-settings update in one call) | Real demand from operators / CI agents |
-| `dial_diff_environments(source_env, target_env, ...)` | Cross-env drift inspection | Multi-env MCP session model is locked (MCP-OQ-3) |
-| `dial_export(env, type?)` | Full-config snapshot | Same as diff_environments |
+| `dial_diff_environments(source_env, target_env, ...)` | Cross-env drift inspection within a single tool call | Real demand from operators. With MCP-OQ-3 resolved as "one MCP per env," cross-env workflows are already viable as agent-side compositions across two MCP connections; a server-side diff tool only earns its place if that composition proves too cumbersome. |
+| `dial_export(env, type?)` | Full-config snapshot | Real demand from operators / CI. Same composition-vs-tool tradeoff as `diff_environments`. |
 | `dial_search_resources(query, types?)` | Cross-type / cross-bucket name search | Agents thrash on `list + filter` enough to justify a server-side index |
 | Audit tools (`query_audit`, `get_entity_history`, `snapshot_at_time`, `rollback_entity`) | Root-cause + rollback workflows | Core Phase 7 audit subsystem ships |
 | `dial_deploy_codeapp(name, code, runtime)` | Codeapp authoring lifecycle in one call | Codeapp service has a clean async readiness signal |
@@ -438,6 +439,6 @@ Items deliberately excluded from MCP-1, with a short note on what would unlock t
 
 ## Next
 
-- Resolve MCP-OQ-1 through MCP-OQ-8.
-- If approved: kick off MCP-1 scoping as a new `mcp/` Gradle module in `ai-dial-core`, target a 2-week first cut of read-only tools against the local Core build, with the §7.1 extraction discipline written down as a `mcp/CONTRIBUTING.md`-level rule.
-- Follow-up: confirm whether MCP-OQ-3's resolution affects the §11 `dial_diff_environments` and `dial_export` framings.
+- All eight MCP-OQs resolved (§10). Spec is implementation-ready.
+- Kick off MCP-1: create the `mcp/` Gradle module in `ai-dial-core`, write the §7.1 extraction discipline into `mcp/CONTRIBUTING.md`, target a 2-week first cut of read-only tools against the local Core build.
+- Once Core Phase 1 deploys to a staging env, smoke-test the read tools end-to-end against the §3.2 illustrative compositions before scoping the write tools alongside Core Phase 2/3.
