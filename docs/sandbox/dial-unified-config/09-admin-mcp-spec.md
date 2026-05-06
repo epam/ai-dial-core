@@ -1,6 +1,6 @@
-# 09 — DIAL MCP Server (Spec v0.2 — building blocks)
+# 09 — DIAL MCP Server (Spec v0.3 — building blocks, embedded module)
 
-> **Status:** Draft v0.2 — single-surface design locked, building-block tool set sized down to 9 tools, stack & deployment reframed (external Python sidecar). Naming, summary-view projections per type, and a few session-model questions remain open.
+> **Status:** Draft v0.3 — single-surface design locked, building-block tool set sized down to 9 tools, v1 ships as an in-repo Java Gradle module embedded in DIAL Core as a Vert.x verticle. Architectural discipline ensures the module is extractable to a standalone service later with minimal code change. Summary-view projections per type and a few session-model questions remain open.
 > **Audience:** Product, DIAL Core dev team, MCP tooling team, DevOps leads, anyone building agents that talk to DIAL.
 > **Prerequisites:** [`03-api-reference.md`](03-api-reference.md) (the API this wraps), [`04-security-and-audit.md`](04-security-and-audit.md) (auth model).
 
@@ -10,7 +10,9 @@ This document specifies a Model Context Protocol (MCP) server that exposes DIAL'
 
 ## 1. Summary
 
-Build `ai-dial-mcp`: a standalone Python MCP server, distributed as a separate repository, that exposes 9 building-block tools — describe-schema, list/get/create/update/delete resource, upload/download file, publish resource — against DIAL Core's REST API. Agents compose these into the higher-level workflows users actually want (promote a model, scaffold an app, integrate an external toolset, save resources from a chat). The MCP doesn't bake workflows in; agents are good at composition, the MCP makes composition cheap.
+Build `dial-mcp`: a Java Gradle module inside the existing `ai-dial-core` repository, deployed as a Vert.x verticle alongside the rest of DIAL Core. The module exposes 9 building-block tools — describe-schema, list/get/create/update/delete resource, upload/download file, publish resource — against DIAL Core's REST API. Agents compose these into the higher-level workflows users actually want (promote a model, scaffold an app, integrate an external toolset, save resources from a chat). The MCP doesn't bake workflows in; agents are good at composition, the MCP makes composition cheap.
+
+The embedded-module shape is chosen for v1 delivery speed (one repo, one build, one release; type-sharing with `config/` for free), with explicit architectural discipline (§7.1) that keeps extraction to a standalone sidecar a build-and-deploy change rather than a refactor. See §11 for the extraction trigger conditions.
 
 A single tool surface serves both audiences:
 
@@ -273,42 +275,60 @@ The peer `dial_create_resource` has the same shape minus `if_match`, returns `40
 
 ## 7. Architecture
 
-### 7.1 Repository
+### 7.1 Module placement
 
-Separate, standalone repository — e.g. `epam-edp/ai-dial-mcp`. **Not** part of `ai-dial-core`. Independent release cycle, own changelog, own CI, own version. This:
+v1 ships as a new Gradle module **`mcp/`** sibling to the existing `config/`, `storage/`, `credentials/`, and `server/` modules in the `ai-dial-core` repository. The module is deployed as a Vert.x verticle by `AiDial.java` at startup, sharing the Core JVM but isolated through its own thread pool and per-session concurrency caps (M10). The module is toggleable via `mcp.enabled = true|false` so operators who don't want MCP can disable it without rebuilding.
 
-- Decouples MCP iteration from Core's release train.
-- Lets the MCP team pick its own stack (Python — see §7.2) without coupling to Core's Java toolchain.
-- Lowers the OSS contribution barrier (small focused repo).
-- Mirrors how third-party agent integrations against DIAL would be structured anyway — the internal MCP becomes a reference implementation.
+This shape was chosen for v1 over a separate-repo Python sidecar because:
 
-Drift between the MCP and Core's REST contract is mitigated the standard way: pin a Core version range in tests, run integration tests against a staging Core on every PR, surface contract changes as failing CI.
+- **Delivery speed.** One repo, one CI, one Helm artifact, one release. Halves time-to-first-deploy.
+- **Type sharing for free.** The MCP module imports `Config`, `Application`, `Model`, etc. directly from `config/`, with the same Jackson serialization, JSON Schema generation, and field-encryption semantics Core uses for its REST controllers. No codegen, no drift.
+- **Faster feedback.** Integration tests against the actual Core build in the same PR — no version-pinning dance.
+- **L2 readiness.** If/when bidirectional MCP features (HITL elicitation, sampling, MCP-proxy in the chat-completion path) become a priority, the same module evolves; no re-platforming.
+
+The deliberate cost is **release-cadence coupling**: every MCP iteration is a Core release. The mitigation is the architectural discipline below — the module is built to be extractable to a standalone service later (see §11) so coupling is a v1 cost, not a permanent commitment.
+
+#### Extraction discipline (preserved through v1)
+
+To keep future extraction a config-and-deploy change rather than a refactor, the `mcp/` module follows these rules:
+
+1. **REST-only access to Core.** The module talks to Core *only* through Core's public REST API (loopback HTTP via `localhost`), even when running in-process. No direct injection of `ResourceService`, `PublicationService`, `ApplicationService`, etc. A thin `DialClient` HTTP wrapper is the single swap point if extracted.
+2. **Minimal cross-module dependencies.** The Gradle module depends only on `config/` (for entity types) and a small set of `credentials/` constants (for auth-header conventions). It does **not** depend on `server/` internals. CI enforces this with a dependency-graph check.
+3. **Config-driven Core URL.** `MCP_DIAL_TARGET_URL` env var, defaulting to `http://localhost:${server.port}`. Extraction = change the env var, not the code.
+4. **Auth tokens forwarded verbatim.** Even when in-process, MCP passes the caller's JWT or API key to Core's REST surface; never bypasses authn/authz on the basis of "we're in the same JVM." Same trust boundary either way.
+5. **Own verticle, own thread pool.** Operational isolation from chat hot path. Extraction = remove the verticle deployment from `AiDial.java`.
+6. **Tests live in the module.** The module is testable standalone, against a staged Core via testcontainers or HTTP mocks.
+
+Following this, extraction reduces to: copy the module to a new repo, replace the in-tree `config/` Gradle dependency with a published artifact (or inline the small slice used), drop the verticle deployment from `AiDial.java`, build a Docker image, point `MCP_DIAL_TARGET_URL` at the in-cluster Core service URL. Estimate: a couple of days of work — no controller refactoring, no auth re-platforming.
 
 ### 7.2 Stack
 
-- **Language:** Python.
-- **MCP framework:** Anthropic's `mcp` SDK / FastMCP.
-- **HTTP client:** `httpx` (or equivalent) — direct REST calls to Core.
-- **REST client typing:** for v1 the MCP does *not* depend on the `dial-api` Python package. Once `dial-api` is extended to cover the full Configuration API surface (see §11), the MCP can switch to it for typed REST clients without an architectural change.
+- **Language:** Java 21 (matches Core).
+- **MCP framework:** the Java MCP SDK (`io.modelcontextprotocol.sdk:mcp`).
+- **HTTP client:** Vert.x `WebClient` for loopback calls to Core; supports `localhost`-fast-path when both endpoints share an event loop.
 - **Schema source:** runtime fetch of `GET /v1/admin/schema/{type}` (M9). No build-time codegen.
-- **Transport:** HTTP/SSE (hosted) and stdio (laptop) — both supported by FastMCP from one entrypoint.
+- **Transport:** HTTP/SSE inside the embedded module (mounted on a dedicated path on Core's port, or a separate port — see MCP-OQ-7); stdio for laptop developers via a separate launcher artifact (see §7.3).
 
-Rationale for Python:
+Rationale for Java over Python (the v0.2 lean):
 
-- DIAL ecosystem is Python-heavy: `dial-api` Python package, most apps and interceptors, the analytics component. Same contributor pool that maintains those can hack on the MCP without context-switching.
-- Python MCP SDK is first-class; FastMCP is the most idiomatic way to build a service-shaped MCP in 2026.
-- Future code reuse via `dial-api` is loose-coupled (a published PyPI dependency), preserving the MCP's independent release cadence.
-- Java was considered for code reuse with `dial-cli-core`; once the CLI's compile-time validators / template engine / single-binary distribution requirements were factored out, the case for Java weakened — the MCP's actual reuse needs are minimal at v1, and the Python ecosystem fit dominates.
+- The in-repo embedded model makes Java the natural choice — Python embedded in a JVM is overkill and a Python sidecar isn't really "embedded."
+- Real code reuse with `config/` POJOs, Jackson serialization, JSON Schema generation, and `CredentialEncryptionService` — same pattern the CLI extracts from `dial-cli-core`.
+- The Java MCP SDK is real and stable in 2026; less reference material than TS/Python ecosystems but functional and supported.
+- L2 (elicitation, sampling, MCP-proxy in the gateway path) is Java-resident anyway; building L1 in Java warms up that expertise rather than re-platforming on the way to L2.
+
+The Python ecosystem alignment argument (DIAL apps and interceptors are largely Python) is preserved for **post-extraction** — if/when extraction happens and the operating constraints shift, a Python rewrite remains an option. v1 prioritizes delivery speed and type-sharing.
 
 ### 7.3 Deployment
 
 | Shape | Audience |
 |---|---|
-| Helm chart entry / Docker image as a sidecar to DIAL Core | Hosted environments (operators, QuickApps, CI agents) |
-| `uvx ai-dial-mcp` for laptop install | Claude Code / Claude Desktop users |
-| Stdio entrypoint of the same package | Claude Desktop instances that don't speak HTTP MCP |
+| Verticle inside DIAL Core (default — no extra deploy step) | Hosted environments — operators, QuickApps, CI agents reach MCP at the Core endpoint |
+| Local Core (`./gradlew :server:run`) with MCP enabled | Laptop developers — Claude Desktop / Claude Code points at `http://localhost:8080/mcp` |
+| Stdio launcher JAR (separate build target inside the same module) | Claude Desktop instances that don't speak HTTP MCP — proxies stdio to a configured `MCP_DIAL_TARGET_URL` |
 
-The MCP is *not* embedded in DIAL Core. The deep-integration argument doesn't hold up for a building-block surface — every v1 tool is reachable through the public REST API, including bucket-alias resolution via the existing `GET /v1/bucket` endpoint. Embedding would couple MCP iteration to Core's release train without buying capability the surface needs.
+The stdio launcher is a small standalone main class that ships as a separate JAR build target from the same Gradle module. GraalVM native-image is an option (~30ms cold-start, parity with Python `uvx`) if laptop install friction becomes an issue; defer until it's a real problem.
+
+When/if the module is extracted to a standalone service (§11), the deployment table gains a Helm chart entry / Docker image and the in-Core verticle is removed; existing audiences keep their entrypoints (URL change only).
 
 ### 7.4 Auth
 
@@ -326,7 +346,7 @@ All authorization decisions are made by Core's `ConfigAuthorizationService`. The
 Every MCP tool call adds headers forwarded to DIAL Core:
 
 ```
-X-DIAL-Client: ai-dial-mcp/<version>
+X-DIAL-Client: dial-mcp/<version>
 X-DIAL-Client-Session: <uuid>
 X-DIAL-Client-Agent: claude-code | claude-desktop | quickapp | ci | other
 ```
@@ -340,7 +360,7 @@ Pre-Phase-7 these are echoed to Core's application logs (best-effort, not query-
 | Phase | Scope | Core prereq |
 |---|---|---|
 | **MCP-0** | Spec + design review | None — this doc |
-| **MCP-1** | All 9 building-block tools (§6.1), HTTP/SSE + stdio transports, admin API key + user JWT auth | Core Phase 1 (read-only API) for the read tools; Core Phase 2/3 (writes) for the write tools — ship in two increments alongside Core |
+| **MCP-1** | All 9 building-block tools (§6.1), HTTP/SSE transport from the embedded verticle, admin API key + user JWT auth. Stdio launcher gated on MCP-OQ-8. | Core Phase 1 (read-only API) for the read tools; Core Phase 2/3 (writes) for the write tools — ship in two increments alongside Core |
 | **MCP-2** | Service-account OIDC for CI agents | None — additive auth |
 | **MCP-future** | Tools listed in §11 — each scoped to its driving need and Core dependency | Per item |
 
@@ -352,12 +372,13 @@ Read-only MCP-1 ships as soon as Core Phase 1 deploys to any environment. Write 
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Agent loops / runaway tool calls | DoS on Core's admin surface | Client-side token bucket (M10), Core rate limits, MCP per-session concurrency cap |
+| Agent loops / runaway tool calls | DoS on Core's admin surface; chat hot path degraded | Client-side token bucket (M10), Core rate limits, MCP-verticle dedicated thread pool + per-session concurrency cap, kill-switch via `mcp.enabled = false` |
 | Agent-driven mass deletion | Data loss | `confirm: true` on `dial_delete_resource`; reconciliation job; audit (post-Phase-7) |
 | Auth misconfiguration (over-scoped token) | Agent acts with more privilege than intended | Recommend env-specific keys with admin role only on lower envs; user-JWT passthrough has no such risk |
-| Schema drift between MCP and Core | Agents write invalid specs | Runtime fetch of schemas (M9); integration tests against staging Core on every PR |
+| Schema drift between MCP-declared inputs and Core | Agents write invalid specs | In-repo type sharing eliminates the v0.2 drift class; runtime fetch of dynamic schemas (M9) covers the rest; integration tests against the same Core build |
 | MCP protocol churn | Breaking changes from Anthropic | Pin SDK major version; document protocol version in tool responses |
-| Drift between MCP-encoded knowledge and Core's REST contract (separate-repo cost) | Wrong tool descriptions, broken inputSchemas | Pinned Core version + integration tests; CI fail-loud on contract change |
+| Discipline erosion — MCP module starts calling Core internals directly | Extraction becomes expensive; module fuses with `server/` | Dependency-graph CI check (§7.1); architectural review on every MCP→Core call |
+| Release-cadence coupling — MCP iteration tied to Core releases | Slow turnaround on tool-description / projection tweaks | Feature-flag MCP behaviors; treat MCP-internal changes as patch-level Core releases; if friction becomes blocking, pull the extraction trigger (§11) |
 
 ---
 
@@ -365,12 +386,14 @@ Read-only MCP-1 ships as soon as Core Phase 1 deploys to any environment. Write 
 
 | # | Question | Needs to close |
 |---|---|---|
-| MCP-OQ-1 | **Repo name & GitHub org**: `ai-dial-mcp` under `epam-edp`? Confirm. | MCP-1 kickoff |
+| MCP-OQ-1 | **Module name**: `mcp/` (terse, matches `config/`/`storage/` style) or `dial-mcp/` (explicit prefix)? | MCP-1 kickoff |
 | MCP-OQ-2 | **Per-type `summary` projections** (§6.4 table): are the listed fields the right ones, or revise based on first eval pass? | Before MCP-1 ships |
 | MCP-OQ-3 | **Multi-env in a single MCP session**: one tool call against `env=prod`, next against `env=uat` — safe, or pin each MCP server instance to one env? | Before MCP-1 ships |
 | MCP-OQ-4 | **`describe_schema` caching**: M7 says stateless aside from `/v1/bucket`. Add a session-level TTL cache for schemas (~60s) to avoid round-trips on common writes? | MCP-1 scoping |
 | MCP-OQ-5 | **Confirmation UX for destructive ops**: is `confirm: true` enough, or should the server require a two-step flow (`prepare_delete` → `commit_delete`)? | Before MCP-1 destructive tools land |
 | MCP-OQ-6 | **MCP-internal observability**: expose tool latency / error rate via `/metrics`? Or rely on Core logs + agent traces? | MCP-1 scoping |
+| MCP-OQ-7 | **Endpoint placement**: mount MCP on a dedicated path on Core's existing port (`/mcp/*`), or a separate port? Affects ingress / TLS / rate-limit configuration. | Before MCP-1 ships |
+| MCP-OQ-8 | **Stdio laptop story**: ship the launcher JAR in v1, or punt until laptop demand is real (HTTP-only first cut, point Claude Desktop at local Core)? | MCP-1 scoping |
 
 ---
 
@@ -387,8 +410,10 @@ Items deliberately excluded from MCP-1, with a short note on what would unlock t
 | `dial_search_resources(query, types?)` | Cross-type / cross-bucket name search | Agents thrash on `list + filter` enough to justify a server-side index |
 | Audit tools (`query_audit`, `get_entity_history`, `snapshot_at_time`, `rollback_entity`) | Root-cause + rollback workflows | Core Phase 7 audit subsystem ships |
 | `dial_deploy_codeapp(name, code, runtime)` | Codeapp authoring lifecycle in one call | Codeapp service has a clean async readiness signal |
-| `dial-api` Python package adoption | Typed REST client + future schema validation reuse | `dial-api` extended to cover the Configuration API |
-| OpenAPI spec from Core as a release artifact | Stack-agnostic third-party clients | Separate Core-side task |
+| **Extract `mcp/` module to a standalone service** | Independent release cadence; OSS contribution friction reduction; stack flexibility (e.g. Python rewrite for ecosystem alignment) | Release-cadence coupling becomes the bottleneck on MCP iteration; OR Core-team capacity shifts and an external owner takes over; OR Python ecosystem alignment becomes more valuable than in-repo type sharing. The §7.1 discipline keeps this a build-and-deploy change rather than a refactor. |
+| **L2 — Core-embedded MCP capabilities** | HITL elicitation driven by Core policy; sampling rooted in Core data; live resource subscriptions backed by Core events; MCP-proxy in the chat-completion gateway path | HITL becomes a real product requirement, OR DIAL aspires to be an MCP control plane for upstream tools. Separate spec when triggered. |
+| `dial-api` Python package adoption | Typed REST client for a post-extraction Python rewrite | Extraction triggered AND target stack is Python |
+| OpenAPI spec from Core as a release artifact | Stack-agnostic third-party clients (Admin Backend reskin, third-party agent integrations) | Separate Core-side task |
 | DIAL-app-with-MCP-endpoint deployment pattern | Eat-own-dogfood: MCP server hosted as a DIAL application, discoverable in the app catalog | DIAL codeapp infrastructure stabilizes; MCP-as-DIAL-app pattern proven in QA |
 | Multi-tenancy awareness | Tenant-scoped tool calls | Core MT work (OQ-22 / OQ-26) lands |
 | Agent prompt library / starter-prompt catalog | Lower time-to-first-tool-call | Post-MCP-1 once we have real usage data |
@@ -407,12 +432,12 @@ Items deliberately excluded from MCP-1, with a short note on what would unlock t
 - [Model Context Protocol spec](https://modelcontextprotocol.io)
 - [Writing Effective Tools for Agents — Anthropic](https://www.anthropic.com/engineering/writing-tools-for-agents)
 - [MCP Best Practices — Phil Schmid](https://www.philschmid.de/mcp-best-practices)
-- Anthropic MCP SDKs — `mcp` (Python — chosen), `@modelcontextprotocol/sdk` (TypeScript — alternative)
+- Anthropic MCP SDKs — `io.modelcontextprotocol.sdk:mcp` (Java — chosen for v1 embedded), `mcp` (Python — alternative for post-extraction), `@modelcontextprotocol/sdk` (TypeScript — alternative)
 
 ---
 
 ## Next
 
-- Resolve MCP-OQ-1 through MCP-OQ-6.
-- If approved: kick off MCP-1 scoping in the new repo, target a 2-week first cut of read-only tools against a staging DIAL Core.
+- Resolve MCP-OQ-1 through MCP-OQ-8.
+- If approved: kick off MCP-1 scoping as a new `mcp/` Gradle module in `ai-dial-core`, target a 2-week first cut of read-only tools against the local Core build, with the §7.1 extraction discipline written down as a `mcp/CONTRIBUTING.md`-level rule.
 - Follow-up: confirm whether MCP-OQ-3's resolution affects the §11 `dial_diff_environments` and `dial_export` framings.
