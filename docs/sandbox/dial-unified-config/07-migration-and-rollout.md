@@ -265,7 +265,7 @@ Phase 5 is a **major Admin Backend refactor**, not a thin adapter swap. The dire
 - Storage: Redis Streams (hot) + blob archival (cold) per [`04-security-and-audit.md`](04-security-and-audit.md) §3.4.
 - `GET /v1/admin/audit` query API + filters per [`04-security-and-audit.md`](04-security-and-audit.md) §3.5.
 - `dial-cli audit` command group (history, log, snapshot, rollback, reconcile) per [`06-cli-user-guide.md`](06-cli-user-guide.md).
-- `dial_admin_query_audit` MCP tool per [`09-admin-mcp-spec.md`](09-admin-mcp-spec.md).
+- `dial_query_audit` MCP tool per [`09-admin-mcp-spec.md`](09-admin-mcp-spec.md).
 - Admin Backend audit-table retirement + Admin UI history-view rewrite (moved here from Phase 5).
 - Snapshot / point-in-time reconstruction + boundary-snapshot preservation.
 - `PublicationService` audit — to be triaged at Phase-7 planning, may slip to Phase 7.5+.
