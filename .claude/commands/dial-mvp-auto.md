@@ -77,7 +77,7 @@ For each slice in the confirmed batch:
 
 ## Important
 
-- **Use only for mechanical or semi-mechanical slices** — Phase-3 entity-type sweep (3S.2 after the first type validates the pattern), Phase-3 CLI extension (3C.0), Phase-2 prereqs that are isolated refactors (2S.0-pre, 2S.1-pre, 2S.2-pre).
+- **Use only for mechanical or semi-mechanical slices** — Phase-3 entity-type sweep (3S.2 after the first type validates the pattern), Phase-3 CLI extension (3C.0), Phase-2 prereqs that are isolated refactors (2S.0-pre, 2S.1-pre, 2S.2-pre), MCP read-tools sweep (**M.1.1**, after M.1.0 pattern locked), MCP write-tools sweep (**M.2.1**, after M.2.0 pattern locked).
 - **Don't use for high-uncertainty slices** — 1S.0 bootstrap, 2S.8 `MergedConfigStore`, 2S.10 `SecretFieldProcessor`, 4S.0 apply endpoint. Use plain `/dial-mvp <id>` for those — every halt becomes a real halt and the user reviews the architect plan and the diff.
 - The user pre-approves the **batch** at Step 2, not the individual slices. Each slice's self-tests still gate auto-proceed at the architect and merge halts.
 - Self-test items are **halt triggers, not pass-fail booleans the orchestrator gets to game**. When in doubt, halt.
