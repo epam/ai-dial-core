@@ -278,7 +278,7 @@ public class AiDial {
             McpRequestHandler mcpRequestHandler = null;
             if (settings("mcp").getBoolean("enabled", true)) {
                 VertxMcpTransportProvider mcpTransportProvider = new VertxMcpTransportProvider(vertx);
-                vertx.deployVerticle(new McpVerticle(mcpTransportProvider))
+                vertx.deployVerticle(new McpVerticle(mcpTransportProvider, settings.getJsonObject("mcp", new JsonObject())))
                         .onFailure(err -> log.error("MCP verticle failed to deploy", err));
                 mcpRequestHandler = new McpRequestHandler(mcpTransportProvider);
             }

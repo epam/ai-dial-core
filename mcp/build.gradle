@@ -4,6 +4,7 @@ dependencies {
 
     // External dependencies
     implementation("io.vertx:vertx-core:${vertx_version}")
+    implementation("io.vertx:vertx-web-client:${vertx_version}")
     implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
     implementation("org.slf4j:slf4j-api:${slf4j_version}")
     // Use the Jackson 2 SDK variant to align with the codebase Jackson 2 baseline.
@@ -20,6 +21,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter-api:${junit_version}")
     testImplementation("org.mockito:mockito-core:${mockito_version}")
     testImplementation("org.mockito:mockito-junit-jupiter:${mockito_version}")
+    testImplementation("io.vertx:vertx-web-client:${vertx_version}")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:${junit_version}")
 }
 

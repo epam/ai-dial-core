@@ -87,6 +87,7 @@
   },
   "mcp": {
     "enabled": true,
+    "dialTargetUrl": "http://localhost:8080",
     "rateLimit": {
       "enabled": true,
       "callsPerMinute": 60,
