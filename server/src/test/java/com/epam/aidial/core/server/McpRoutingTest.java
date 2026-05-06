@@ -12,33 +12,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class McpRoutingTest extends ResourceBaseTest {
 
-    // Mirrors McpRequestHandler.STUB_BODY (package-private, in a sibling module).
-    static final String STUB_BODY =
-            "{\"error\":\"mcp_transport_not_wired\","
-                    + "\"message\":\"MCP transport adapter not yet implemented (M.0.0-bridge)\"}";
-
-    @Test
-    void getMcpRoot_returns503StubBody() {
-        Response response = send(HttpMethod.GET, "/mcp");
-        assertEquals(503, response.status());
-        assertEquals(STUB_BODY, response.body());
-        assertEquals("application/json", response.headers().get("content-type"));
-    }
-
-    @Test
-    void getMcpSubPath_returns503StubBody() {
-        Response response = send(HttpMethod.GET, "/mcp/some/sub/path");
-        assertEquals(503, response.status());
-        assertEquals(STUB_BODY, response.body());
-    }
-
-    @Test
-    void postMcpRoot_returns503StubBody() {
-        Response response = send(HttpMethod.POST, "/mcp", null, "{}");
-        assertEquals(503, response.status());
-        assertEquals(STUB_BODY, response.body());
-    }
-
     @Test
     void mcpPrefixDoesNotSwallowSimilarPaths() {
         // /mcpfoo must fall through to normal Proxy routing (no MCP short-circuit) and hit the

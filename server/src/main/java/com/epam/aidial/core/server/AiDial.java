@@ -29,6 +29,7 @@ import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataVa
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
 import com.epam.aidial.core.mcp.McpRequestHandler;
 import com.epam.aidial.core.mcp.McpVerticle;
+import com.epam.aidial.core.mcp.transport.VertxMcpTransportProvider;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.MergedConfigStore;
@@ -276,9 +277,10 @@ public class AiDial {
 
             McpRequestHandler mcpRequestHandler = null;
             if (settings("mcp").getBoolean("enabled", true)) {
-                vertx.deployVerticle(new McpVerticle())
+                VertxMcpTransportProvider mcpTransportProvider = new VertxMcpTransportProvider(vertx);
+                vertx.deployVerticle(new McpVerticle(mcpTransportProvider))
                         .onFailure(err -> log.error("MCP verticle failed to deploy", err));
-                mcpRequestHandler = new McpRequestHandler();
+                mcpRequestHandler = new McpRequestHandler(mcpTransportProvider);
             }
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,

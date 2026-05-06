@@ -6,6 +6,15 @@ dependencies {
     implementation("io.vertx:vertx-core:${vertx_version}")
     implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
     implementation("org.slf4j:slf4j-api:${slf4j_version}")
+    // Use the Jackson 2 SDK variant to align with the codebase Jackson 2 baseline.
+    // Exclude the SDK's transitive json-schema-validator (2.x); :config already pins networknt 1.5.2,
+    // and a no-op JsonSchemaValidator is supplied explicitly to McpServer in McpVerticle.
+    implementation("io.modelcontextprotocol.sdk:mcp-core:1.1.2") {
+        exclude group: "com.networknt", module: "json-schema-validator"
+    }
+    implementation("io.modelcontextprotocol.sdk:mcp-json-jackson2:1.1.2") {
+        exclude group: "com.networknt", module: "json-schema-validator"
+    }
 
     // Test dependencies
     testImplementation("org.junit.jupiter:junit-jupiter-api:${junit_version}")
