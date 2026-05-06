@@ -81,6 +81,7 @@ Stop the loop and ask the user when:
 ## Important
 
 - The user is the only approver of architect plans, slice diffs, and halt-decisions. There is no per-slice formal code-owner review — that happens once at MVP-complete via the big PR `feature/unified-config` → `development`.
+- **Track C (MCP)** slices use the same agent loop and halt rules as Track A / B. Slice ID prefix `M.*` (e.g. `M.0-pre`, `M.1.0`, `M.2.1`). MCP read tools depend on Phase 1 read API; write tools on Phase 2/3. See IMPLEMENTATION.md §5.6 for the full register.
 - Update slice statuses as you go; don't batch the edits to the end.
 - If a review round amends a design doc, also add a one-line entry to the project memory `project_unified_config_review.md` per IMPLEMENTATION.md §8.
 - After the slice is squash-merged into `feature/unified-config`, stop and hand off to the user. The next slice begins on the user's signal in a fresh session.
