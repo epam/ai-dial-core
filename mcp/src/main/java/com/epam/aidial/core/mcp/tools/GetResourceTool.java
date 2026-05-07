@@ -15,8 +15,10 @@ import java.util.Map;
 
 /**
  * {@code dial_get_resource(id, format?)} — spec 09 §6.1 tool 3, §6.4 (default {@code detailed}).
- * Surfaces the {@code ETag} response header verbatim ({@code null} for config-type GETs in
- * Phase 1 — pre-existing Core gap; file ETag becomes reachable here in M.1.1).
+ * Surfaces the {@code ETag} response header verbatim — the value is {@code null} for config
+ * types and for metadata-routed GETs (the {@code FileMetadataController} doesn't emit ETag);
+ * agents that need an ETag for if-match writes call {@code dial_download_file} or use the
+ * write-tool's response in M.2.x.
  */
 public final class GetResourceTool {
 
@@ -37,7 +39,9 @@ public final class GetResourceTool {
                 "object",
                 Map.of(
                         "id", Map.of("type", "string",
-                                "description", "Canonical id '{type}/{bucket}/{name}'. M.1.0 pilot: models/roles/settings."),
+                                "description", "Canonical id '{type}/{bucket}/{name}'. For hierarchical types "
+                                        + "(files, prompts, conversations), {name} may include slashes "
+                                        + "(e.g. 'files/<bucket>/photos/cover.png')."),
                         "format", formatProp),
                 List.of("id"),
                 false, null, null);

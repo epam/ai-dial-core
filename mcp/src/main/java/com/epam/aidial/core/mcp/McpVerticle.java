@@ -67,7 +67,7 @@ public class McpVerticle extends AbstractVerticle {
                 .tools(DescribeSchemaTool.create(schemaRegistry), listTool.spec(), getTool.spec())
                 .jsonSchemaValidator(noopValidator)
                 .build();
-        log.info("MCP verticle started with read tools (M.1.0): dial_describe_schema, dial_list_resources, dial_get_resource");
+        log.info("MCP verticle started with read tools: dial_describe_schema, dial_list_resources, dial_get_resource");
         startPromise.complete();
     }
 

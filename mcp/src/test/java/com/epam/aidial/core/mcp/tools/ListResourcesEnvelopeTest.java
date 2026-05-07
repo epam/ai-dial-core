@@ -22,7 +22,7 @@ class ListResourcesEnvelopeTest {
                 + "],\"hasMore\":false}";
         DialResponse resp = new DialResponse(200, coreBody, MultiMap.caseInsensitiveMultiMap());
 
-        McpSchema.CallToolResult result = ListResourcesTool.shape(resp, "models", "public", "public", "summary");
+        McpSchema.CallToolResult result = ListResourcesTool.shape(resp, ResourceId.parseListPath("models/public/"), "public", "summary");
 
         assertFalse(Boolean.TRUE.equals(result.isError()));
         JsonNode envelope = parseFirstText(result);
@@ -44,7 +44,7 @@ class ListResourcesEnvelopeTest {
                 + "{\"name\":\"m1\",\"displayName\":\"M1\",\"endpoint\":\"http://x\",\"upstreams\":[]}],\"hasMore\":false}";
         DialResponse resp = new DialResponse(200, coreBody, MultiMap.caseInsensitiveMultiMap());
 
-        JsonNode envelope = parseFirstText(ListResourcesTool.shape(resp, "models", "public", "public", "summary"));
+        JsonNode envelope = parseFirstText(ListResourcesTool.shape(resp, ResourceId.parseListPath("models/public/"), "public", "summary"));
         JsonNode item = envelope.get("items").get(0);
 
         assertTrue(item.has("displayName"));
@@ -56,7 +56,7 @@ class ListResourcesEnvelopeTest {
     void coreErrorBecomesStructuredHttpError() throws Exception {
         DialResponse resp = new DialResponse(403, "denied", MultiMap.caseInsensitiveMultiMap());
 
-        McpSchema.CallToolResult result = ListResourcesTool.shape(resp, "roles", "platform", "platform", "summary");
+        McpSchema.CallToolResult result = ListResourcesTool.shape(resp, ResourceId.parseListPath("roles/platform/"), "platform", "summary");
 
         assertTrue(Boolean.TRUE.equals(result.isError()));
         String text = ((McpSchema.TextContent) result.content().get(0)).text();
@@ -69,10 +69,64 @@ class ListResourcesEnvelopeTest {
                 + "\"limits\":{\"foo\":{}}}],\"hasMore\":false}";
         DialResponse resp = new DialResponse(200, coreBody, MultiMap.caseInsensitiveMultiMap());
 
-        JsonNode envelope = parseFirstText(ListResourcesTool.shape(resp, "roles", "platform", "platform", "detailed"));
+        JsonNode envelope = parseFirstText(ListResourcesTool.shape(resp, ResourceId.parseListPath("roles/platform/"), "platform", "detailed"));
         JsonNode item = envelope.get("items").get(0);
 
         assertTrue(item.has("limits"), "detailed format preserves all original fields");
+    }
+
+    @Test
+    void hierarchicalListSplitsFoldersAndItemsByNodeType() throws Exception {
+        String coreBody = "{"
+                + "\"name\":\"\",\"parentPath\":null,\"bucket\":\"abc\",\"url\":\"files/abc/\","
+                + "\"nodeType\":\"FOLDER\",\"resourceType\":\"FILE\","
+                + "\"items\":["
+                + "{\"name\":\"photos\",\"parentPath\":null,\"bucket\":\"abc\","
+                + "\"url\":\"files/abc/photos/\",\"nodeType\":\"FOLDER\",\"resourceType\":\"FILE\"},"
+                + "{\"name\":\"readme.txt\",\"parentPath\":null,\"bucket\":\"abc\","
+                + "\"url\":\"files/abc/readme.txt\",\"nodeType\":\"ITEM\",\"resourceType\":\"FILE\","
+                + "\"contentType\":\"text/plain\",\"size\":12}],"
+                + "\"nextToken\":\"opaque-cursor\"}";
+        DialResponse resp = new DialResponse(200, coreBody, MultiMap.caseInsensitiveMultiMap());
+
+        JsonNode envelope = parseFirstText(
+                ListResourcesTool.shape(resp, ResourceId.parseListPath("files/private/"), "abc", "summary"));
+
+        assertEquals("files/abc/", envelope.get("path").asText(),
+                "envelope path always uses the resolved bucket, never the alias (spec §6.2)");
+        assertEquals(1, envelope.get("items").size());
+        assertEquals(1, envelope.get("folders").size());
+
+        JsonNode folder = envelope.get("folders").get(0);
+        assertEquals("folder", folder.get("kind").asText());
+        assertEquals("photos", folder.get("name").asText());
+        assertEquals("files/abc/photos/", folder.get("path").asText());
+
+        JsonNode item = envelope.get("items").get(0);
+        assertEquals("resource", item.get("kind").asText());
+        assertEquals("readme.txt", item.get("name").asText());
+        assertEquals("files/abc/readme.txt", item.get("id").asText());
+        assertEquals("text/plain", item.get("contentType").asText());
+        assertEquals(12, item.get("size").asInt());
+
+        assertEquals("opaque-cursor", envelope.get("nextCursor").asText());
+        assertTrue(envelope.get("hasMore").asBoolean());
+    }
+
+    @Test
+    void hierarchicalItemPathPreservesParentPath() throws Exception {
+        String coreBody = "{\"items\":["
+                + "{\"name\":\"cover.png\",\"parentPath\":\"photos\",\"bucket\":\"abc\","
+                + "\"url\":\"files/abc/photos/cover.png\",\"nodeType\":\"ITEM\","
+                + "\"resourceType\":\"FILE\",\"contentType\":\"image/png\",\"size\":2048}]}";
+        DialResponse resp = new DialResponse(200, coreBody, MultiMap.caseInsensitiveMultiMap());
+
+        JsonNode envelope = parseFirstText(
+                ListResourcesTool.shape(resp, ResourceId.parseListPath("files/private/photos/"), "abc", "summary"));
+
+        JsonNode item = envelope.get("items").get(0);
+        assertEquals("files/abc/photos/cover.png", item.get("id").asText());
+        assertEquals("cover.png", item.get("name").asText());
     }
 
     private static JsonNode parseFirstText(McpSchema.CallToolResult result) throws Exception {
