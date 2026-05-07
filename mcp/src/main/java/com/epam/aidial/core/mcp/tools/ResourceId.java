@@ -1,5 +1,6 @@
 package com.epam.aidial.core.mcp.tools;
 
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -19,10 +20,28 @@ public record ResourceId(String type, String bucket, String name) {
             "models", "applications", "toolsets", "interceptors", "roles", "keys", "routes",
             "schemas", "settings", "files", "prompts", "conversations");
 
-    private static final Set<String> METADATA_LIST_TYPES = Set.of(
+    static final Set<String> METADATA_LIST_TYPES = Set.of(
             "applications", "toolsets", "files", "prompts", "conversations");
 
     private static final Set<String> METADATA_GET_TYPES = Set.of("files");
+
+    /**
+     * MCP-side mapping of canonical type segment to the {@code kind} discriminator accepted by
+     * {@code POST /v1/admin/validate} (spec 09 §6.1 tools 4-5, §6.6). Hierarchical resource
+     * surfaces ({@code files}, {@code prompts}, {@code conversations}) are intentionally absent
+     * — they are not validate-only-able; agents must drop {@code validate_only} or call against
+     * a config type instead.
+     */
+    static final Map<String, String> TYPE_TO_KIND = Map.of(
+            "models", "Model",
+            "applications", "Application",
+            "toolsets", "ToolSet",
+            "interceptors", "Interceptor",
+            "roles", "Role",
+            "keys", "Key",
+            "routes", "Route",
+            "schemas", "Schema",
+            "settings", "Settings");
 
     public static ResourceId parse(String id) {
         if (id == null || id.isBlank()) {
@@ -76,5 +95,15 @@ public record ResourceId(String type, String bucket, String name) {
      */
     public boolean supportsRecursive() {
         return METADATA_LIST_TYPES.contains(type);
+    }
+
+    /**
+     * Whether this type's writes go through {@code ResourceController} (PUT-upsert) rather than
+     * {@code ConfigResourceController} (POST/PUT split). MCP write tools layer
+     * {@code If-None-Match: *} / {@code If-Match: *} to recover the create/update split for
+     * these types. {@code files} is excluded — its writes are binary and out of M.2.0 scope.
+     */
+    public boolean isResourceControllerType() {
+        return METADATA_LIST_TYPES.contains(type) && !"files".equals(type);
     }
 }
