@@ -95,6 +95,7 @@ import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SpanProcessor;
 import io.vertx.config.spi.utils.JsonObjectHelper;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
 import io.vertx.core.http.HttpClient;
@@ -277,9 +278,11 @@ public class AiDial {
 
             McpRequestHandler mcpRequestHandler = null;
             VertxMcpTransportProvider mcpTransportProvider = null;
+            Promise<Void> mcpReady = null;
             if (settings("mcp").getBoolean("enabled", true)) {
                 mcpTransportProvider = new VertxMcpTransportProvider(vertx);
-                mcpRequestHandler = new McpRequestHandler(mcpTransportProvider);
+                mcpReady = Promise.promise();
+                mcpRequestHandler = new McpRequestHandler(mcpTransportProvider, vertx, mcpReady.future());
             }
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
@@ -300,8 +303,13 @@ public class AiDial {
                 if (mcpSettings.getString("dialTargetUrl") == null && System.getenv("MCP_DIAL_TARGET_URL") == null) {
                     mcpSettings.put("dialTargetUrl", "http://localhost:" + server.actualPort());
                 }
+                Promise<Void> ready = mcpReady;
                 vertx.deployVerticle(new McpVerticle(mcpTransportProvider, mcpSettings))
-                        .onFailure(err -> log.error("MCP verticle failed to deploy", err));
+                        .onSuccess(id -> ready.complete())
+                        .onFailure(err -> {
+                            log.error("MCP verticle failed to deploy", err);
+                            ready.fail(err);
+                        });
             }
         } catch (Throwable e) {
             log.error("Proxy failed to start:", e);
