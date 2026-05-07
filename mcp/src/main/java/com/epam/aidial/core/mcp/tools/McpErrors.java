@@ -43,6 +43,21 @@ public final class McpErrors {
                 + "Use dial_get_resource(id='settings/platform/global').");
     }
 
+    public static McpSchema.CallToolResult conflictError(String id) {
+        return errorResult("HTTP 409: Resource '" + id + "' already exists. "
+                + "Call dial_update_resource to modify it, or pick a new id.");
+    }
+
+    public static McpSchema.CallToolResult notFoundError(String id) {
+        return errorResult("HTTP 404: Resource '" + id + "' not found. "
+                + "Call dial_create_resource to create it, or call dial_get_resource first to verify the id.");
+    }
+
+    public static McpSchema.CallToolResult preconditionFailedError(String id, String suppliedEtag) {
+        return errorResult("HTTP 412: Stale if_match etag '" + suppliedEtag + "' for resource '" + id
+                + "'. Call dial_get_resource to fetch the current etag, then retry.");
+    }
+
     public static McpSchema.CallToolResult message(String text) {
         return errorResult(text);
     }
