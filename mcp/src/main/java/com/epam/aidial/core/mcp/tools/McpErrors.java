@@ -28,6 +28,16 @@ public final class McpErrors {
         return errorResult("Unknown type '" + type + "'. Call dial_describe_schema for the full type catalog.");
     }
 
+    public static McpSchema.CallToolResult recursiveNotSupported(String type) {
+        return errorResult("recursive=true is not supported for the flat type '" + type
+                + "'. Drop recursive or list a hierarchical type (files, prompts, conversations).");
+    }
+
+    public static McpSchema.CallToolResult cursorNotSupported(String type) {
+        return errorResult("cursor is not supported for the flat type '" + type
+                + "' — single-page listing, no pagination. Drop the cursor argument.");
+    }
+
     public static McpSchema.CallToolResult settingsListNotAllowed() {
         return errorResult("dial_list_resources is not supported for the settings singleton. "
                 + "Use dial_get_resource(id='settings/platform/global').");

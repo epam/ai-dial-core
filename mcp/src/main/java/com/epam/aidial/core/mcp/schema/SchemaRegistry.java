@@ -27,9 +27,11 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * In-process schema lookup for {@code dial_describe_schema} (spec 09 §M9). Generates JSON
  * Schemas from {@code :config} POJOs lazily on first use via Victools, returns the DIAL
- * meta-schema for {@code schemas}, and surfaces a structured "not yet implemented" envelope
+ * meta-schema for {@code schemas}, and surfaces a structured "not implemented" envelope
  * for resource types that have no {@code :config} POJO ({@code files}, {@code prompts},
- * {@code conversations} — deferred to M.1.1).
+ * {@code conversations}). Hand-writing schemas for those types would defeat §M9's lockstep
+ * guarantee — they remain envelope-only until the underlying entity definitions move into
+ * the {@code :config} module or a similarly-tracked source of truth.
  *
  * <p>Schema generation is lazy — eager construction on the verticle event loop adds enough
  * latency to the start-up window to race the MCP SDK handshake during integration tests.
@@ -58,8 +60,8 @@ public class SchemaRegistry {
     public String getSchema(String urlSegmentType) {
         if (NOT_IMPLEMENTED_TYPES.contains(urlSegmentType)) {
             ObjectNode envelope = McpJson.MAPPER.createObjectNode();
-            envelope.put("error", "Schema for '" + urlSegmentType + "' is not yet available in M.1.0. "
-                    + "It will be added in M.1.1.");
+            envelope.put("error", "Schema for '" + urlSegmentType + "' is not available — "
+                    + "type has no :config POJO and §M9 disallows hand-written schemas.");
             envelope.put("type", urlSegmentType);
             envelope.put("hint", "Use dial_describe_schema with one of: " + String.join(", ", SUPPORTED_TYPES));
             return envelope.toString();
