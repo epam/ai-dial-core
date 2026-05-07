@@ -24,7 +24,7 @@ class McpReadToolsTest extends ResourceBaseTest {
         String sessionId = McpTestSupport.handshake(this);
         JsonNode tools = McpTestSupport.callMcp(this, sessionId, McpTestSupport.toolsListEnvelope(), null)
                 .get("result").get("tools");
-        assertEquals(8, tools.size());
+        assertEquals(9, tools.size());
         java.util.Set<String> names = new java.util.HashSet<>();
         for (JsonNode tool : tools) {
             names.add(tool.get("name").asText());
