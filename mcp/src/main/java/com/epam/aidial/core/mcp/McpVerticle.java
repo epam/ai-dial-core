@@ -6,10 +6,13 @@ import com.epam.aidial.core.mcp.schema.SchemaRegistry;
 import com.epam.aidial.core.mcp.tools.CreateResourceTool;
 import com.epam.aidial.core.mcp.tools.DeleteResourceTool;
 import com.epam.aidial.core.mcp.tools.DescribeSchemaTool;
+import com.epam.aidial.core.mcp.tools.DownloadFileTool;
 import com.epam.aidial.core.mcp.tools.GetResourceTool;
 import com.epam.aidial.core.mcp.tools.ListResourcesTool;
 import com.epam.aidial.core.mcp.tools.SessionBucketCache;
+import com.epam.aidial.core.mcp.tools.SourceUrlGuard;
 import com.epam.aidial.core.mcp.tools.UpdateResourceTool;
+import com.epam.aidial.core.mcp.tools.UploadFileTool;
 import com.epam.aidial.core.mcp.transport.VertxMcpTransportProvider;
 import io.modelcontextprotocol.json.schema.JsonSchemaValidator;
 import io.modelcontextprotocol.server.McpAsyncServer;
@@ -18,8 +21,14 @@ import io.modelcontextprotocol.spec.McpSchema;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Context;
 import io.vertx.core.Promise;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.ext.web.client.WebClient;
+import io.vertx.ext.web.client.WebClientOptions;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
+import java.util.Objects;
 
 /**
  * Hosts the MCP tool surface in its own verticle to isolate it from the Core HTTP hot path.
@@ -34,11 +43,14 @@ public class McpVerticle extends AbstractVerticle {
     private static final String DEFAULT_DIAL_TARGET_URL = "http://localhost:8080";
     private static final String DIAL_TARGET_URL_ENV = "MCP_DIAL_TARGET_URL";
     private static final String DIAL_TARGET_URL_KEY = "dialTargetUrl";
+    private static final long DEFAULT_UPLOAD_MAX_BYTES = 10_485_760L;
+    private static final int EXTERNAL_FETCH_TIMEOUT_MS = 10_000;
 
     private final VertxMcpTransportProvider transportProvider;
     private final JsonObject mcpSettings;
     private McpAsyncServer server;
     private DialClient dialClient;
+    private WebClient externalFetcher;
 
     public McpVerticle(VertxMcpTransportProvider transportProvider, JsonObject mcpSettings) {
         this.transportProvider = transportProvider;
@@ -67,16 +79,41 @@ public class McpVerticle extends AbstractVerticle {
         UpdateResourceTool updateTool = new UpdateResourceTool(dialClient, bucketCache);
         DeleteResourceTool deleteTool = new DeleteResourceTool(dialClient, bucketCache);
 
+        JsonObject upload = mcpSettings.getJsonObject("upload", new JsonObject());
+        long uploadMaxBytes = upload.getLong("defaultMaxBytes", DEFAULT_UPLOAD_MAX_BYTES);
+        SourceUrlGuard sourceUrlGuard = buildSourceUrlGuard(upload.getJsonObject("sourceUrl", new JsonObject()));
+        externalFetcher = WebClient.create(vertx, new WebClientOptions()
+                .setFollowRedirects(false)
+                .setConnectTimeout(EXTERNAL_FETCH_TIMEOUT_MS)
+                .setIdleTimeout(EXTERNAL_FETCH_TIMEOUT_MS));
+        UploadFileTool uploadTool = new UploadFileTool(dialClient, externalFetcher, vertxContext,
+                bucketCache, sourceUrlGuard, uploadMaxBytes);
+        DownloadFileTool downloadTool = new DownloadFileTool(dialClient, bucketCache, uploadMaxBytes);
+
         server = McpServer.async(transportProvider)
                 .serverInfo(SERVER_NAME, SERVER_VERSION)
                 .capabilities(McpSchema.ServerCapabilities.builder().tools(true).build())
                 .tools(DescribeSchemaTool.create(schemaRegistry), listTool.spec(), getTool.spec(),
-                        createTool.spec(), updateTool.spec(), deleteTool.spec())
+                        createTool.spec(), updateTool.spec(), deleteTool.spec(),
+                        uploadTool.spec(), downloadTool.spec())
                 .jsonSchemaValidator(noopValidator)
                 .build();
         log.info("MCP verticle started with tools: dial_describe_schema, dial_list_resources, dial_get_resource, "
-                + "dial_create_resource, dial_update_resource, dial_delete_resource");
+                + "dial_create_resource, dial_update_resource, dial_delete_resource, "
+                + "dial_upload_file, dial_download_file");
         startPromise.complete();
+    }
+
+    private static SourceUrlGuard buildSourceUrlGuard(JsonObject sourceUrl) {
+        boolean enabled = sourceUrl.getBoolean("enabled", false);
+        List<String> allowed = stringList(sourceUrl.getJsonArray("allowedUrlPrefixes", new JsonArray()));
+        JsonArray blockedRaw = sourceUrl.getJsonArray("blockedCidrs");
+        List<String> blocked = blockedRaw != null ? stringList(blockedRaw) : SourceUrlGuard.DEFAULT_BLOCKED_CIDRS;
+        return new SourceUrlGuard(enabled, allowed, blocked, SourceUrlGuard.systemResolver());
+    }
+
+    private static List<String> stringList(JsonArray array) {
+        return array.stream().filter(Objects::nonNull).map(Object::toString).toList();
     }
 
     private static McpSessionLimiter buildLimiterIfEnabled(JsonObject mcpSettings) {
@@ -105,6 +142,9 @@ public class McpVerticle extends AbstractVerticle {
 
     @Override
     public void stop(Promise<Void> stopPromise) {
+        if (externalFetcher != null) {
+            externalFetcher.close();
+        }
         transportProvider.closeGracefully().subscribe(
                 null,
                 err -> {
