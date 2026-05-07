@@ -129,7 +129,7 @@ public final class UploadFileTool {
                     String bucket = tuple.getT1();
                     FetchedPayload p = tuple.getT2();
                     MultipartForm form = MultipartForm.create()
-                            .binaryFileUpload("attachment", leafName(parsed.name()), Buffer.buffer(p.bytes), p.contentType);
+                            .binaryFileUpload("attachment", parsed.leafName(), Buffer.buffer(p.bytes), p.contentType);
                     return dialClient.requestMultipart(HttpMethod.PUT, parsed.toMutationCorePath(bucket),
                                     auth, Map.of(), form)
                             .map(resp -> shape(resp, parsed, bucket, p));
@@ -202,11 +202,6 @@ public final class UploadFileTool {
                             sink.success(new FetchedPayload(bytes, mime));
                         })
                         .onFailure(sink::error))));
-    }
-
-    private static String leafName(String name) {
-        int slash = name.lastIndexOf('/');
-        return slash < 0 ? name : name.substring(slash + 1);
     }
 
     private static McpSchema.CallToolResult shape(DialResponse resp, ResourceId id, String resolvedBucket,

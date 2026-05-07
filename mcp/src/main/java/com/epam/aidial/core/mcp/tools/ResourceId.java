@@ -115,4 +115,10 @@ public record ResourceId(String type, String bucket, String name) {
     public boolean isResourceControllerType() {
         return METADATA_LIST_TYPES.contains(type) && !"files".equals(type);
     }
+
+    /** Last path-segment of {@code name} — for hierarchical types this is the file/leaf name. */
+    public String leafName() {
+        int slash = name.lastIndexOf('/');
+        return slash < 0 ? name : name.substring(slash + 1);
+    }
 }
