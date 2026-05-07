@@ -78,7 +78,7 @@ public final class CreateResourceTool {
         }
         if ("settings".equals(parsed.type())) {
             return Mono.just(McpErrors.message("dial_create_resource does not support the 'settings' singleton. "
-                    + "Settings is upserted via the REST API or by dial-cli."));
+                    + "Use dial_update_resource to PUT-upsert the singleton at settings/platform/global."));
         }
         boolean validateOnly = Boolean.TRUE.equals(args.get("validate_only"));
         if (validateOnly && !ResourceId.TYPE_TO_KIND.containsKey(parsed.type())) {

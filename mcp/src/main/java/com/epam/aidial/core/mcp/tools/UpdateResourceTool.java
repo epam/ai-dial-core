@@ -78,10 +78,6 @@ public final class UpdateResourceTool {
             return Mono.just(McpErrors.message("dial_update_resource does not support 'files'. "
                     + "Use dial_upload_file for file content (when available)."));
         }
-        if ("settings".equals(parsed.type())) {
-            return Mono.just(McpErrors.message("dial_update_resource does not support the 'settings' singleton. "
-                    + "Settings is upserted via the REST API or by dial-cli."));
-        }
         boolean validateOnly = Boolean.TRUE.equals(args.get("validate_only"));
         if (validateOnly && !ResourceId.TYPE_TO_KIND.containsKey(parsed.type())) {
             return Mono.just(McpErrors.message("validate_only is not supported for type '" + parsed.type()

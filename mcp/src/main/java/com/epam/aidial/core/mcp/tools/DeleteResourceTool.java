@@ -14,8 +14,9 @@ import java.util.Map;
 
 /**
  * {@code dial_delete_resource(id, confirm, if_match?)} — spec 09 §6.1 tool 6. {@code confirm: true}
- * is gated MCP-side before any HTTP call. {@code files} and {@code settings} are rejected with a
- * remediation hint (binary file deletes and singleton resets are out of scope).
+ * is gated MCP-side before any HTTP call. Routes through {@link ResourceId#toMutationCorePath} so
+ * {@code files} hits the plain {@code /v1/files/...} controller (not the M.1.1 metadata-GET route).
+ * The settings singleton DELETE clears its API blob.
  */
 public final class DeleteResourceTool {
 
@@ -65,14 +66,6 @@ public final class DeleteResourceTool {
         } catch (IllegalArgumentException e) {
             return Mono.just(McpErrors.message(e.getMessage()));
         }
-        if ("files".equals(parsed.type())) {
-            return Mono.just(McpErrors.message("dial_delete_resource does not support 'files'. "
-                    + "Use the REST API directly for file deletes."));
-        }
-        if ("settings".equals(parsed.type())) {
-            return Mono.just(McpErrors.message("dial_delete_resource does not support the 'settings' singleton. "
-                    + "Settings is a singleton and is not user-deletable."));
-        }
         boolean confirm = Boolean.TRUE.equals(args.get("confirm"));
         if (!confirm) {
             return Mono.just(McpErrors.message("confirm must be true to proceed with deletion. "
@@ -96,7 +89,7 @@ public final class DeleteResourceTool {
         }
 
         return resolvedBucket
-                .flatMap(bucket -> dialClient.request(HttpMethod.DELETE, parsed.toCorePath(bucket), auth, correlation, null)
+                .flatMap(bucket -> dialClient.request(HttpMethod.DELETE, parsed.toMutationCorePath(bucket), auth, correlation, null)
                         .map(resp -> shape(resp, parsed, bucket, idiom, userIfMatch)))
                 .onErrorResume(t -> Mono.just(McpErrors.upstreamError(t)));
     }

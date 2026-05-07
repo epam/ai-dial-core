@@ -258,6 +258,79 @@ class McpWriteToolsTest extends ResourceBaseTest {
         String text = result.get("content").get(0).get("text").asText();
         assertTrue(text.contains("settings"));
         assertTrue(text.contains("singleton"));
+        assertTrue(text.contains("dial_update_resource"),
+                () -> "settings rejection must redirect to PUT-upsert path: " + text);
+    }
+
+    @Test
+    void updateResourceSettingsUpsertsViaPut() throws Exception {
+        String sessionId = McpTestSupport.handshake(this);
+        JsonNode result = updateResource(sessionId, "settings/platform/global",
+                "{\"globalInterceptors\":[\"interceptor1\"]}", null);
+        assertFalse(result.get("isError").asBoolean(), () -> "Body: " + result.toString());
+        JsonNode body = MAPPER.readTree(result.get("content").get(0).get("text").asText());
+        assertTrue(body.get("updated").asBoolean());
+        assertEquals("settings/platform/global", body.get("id").asText());
+
+        Response get = send(HttpMethod.GET, "/v1/settings/platform/global", null, "",
+                "authorization", "admin");
+        assertEquals(200, get.status());
+        JsonNode getBody = MAPPER.readTree(get.body());
+        assertEquals("api", getBody.get("source").asText(),
+                "PUT through MCP must upsert the API blob; GET source flips from default to api");
+        assertEquals(1, getBody.get("globalInterceptors").size());
+    }
+
+    @Test
+    void deleteResourceSettingsClearsApiBlob() throws Exception {
+        String sessionId = McpTestSupport.handshake(this);
+        JsonNode put = updateResource(sessionId, "settings/platform/global",
+                "{\"globalInterceptors\":[\"x\"]}", null);
+        assertFalse(put.get("isError").asBoolean());
+
+        JsonNode deleted = deleteResource(sessionId, "settings/platform/global", true, null);
+        assertFalse(deleted.get("isError").asBoolean(), () -> "Body: " + deleted.toString());
+        JsonNode body = MAPPER.readTree(deleted.get("content").get(0).get("text").asText());
+        assertTrue(body.get("deleted").asBoolean());
+
+        Response get = send(HttpMethod.GET, "/v1/settings/platform/global", null, "",
+                "authorization", "admin");
+        JsonNode getBody = MAPPER.readTree(get.body());
+        assertEquals("default", getBody.get("source").asText(),
+                "DELETE through MCP must clear the API blob; source reverts to file/default");
+    }
+
+    @Test
+    void deleteResourceFileFromUserBucket() throws Exception {
+        String sessionId = McpTestSupport.handshake(this);
+        Response uploaded = upload(HttpMethod.PUT, "/v1/files/" + bucket + "/mcp-delete-file.txt", null,
+                "hello-mcp-delete");
+        assertEquals(200, uploaded.status(), () -> "file upload failed: " + uploaded.body());
+
+        ObjectNode args = MAPPER.createObjectNode()
+                .put("id", "files/" + bucket + "/mcp-delete-file.txt")
+                .put("confirm", true);
+        JsonNode result = McpTestSupport.callTool(this, sessionId, "dial_delete_resource", args, null);
+        assertFalse(result.get("isError").asBoolean(), () -> "Body: " + result.toString());
+        JsonNode body = MAPPER.readTree(result.get("content").get(0).get("text").asText());
+        assertTrue(body.get("deleted").asBoolean());
+        assertEquals("files/" + bucket + "/mcp-delete-file.txt", body.get("id").asText());
+
+        Response get = send(HttpMethod.GET, "/v1/metadata/files/" + bucket + "/mcp-delete-file.txt", null, "");
+        assertEquals(404, get.status(), "file must be gone after MCP delete");
+    }
+
+    @Test
+    void deleteResourceFileMissingReturns404Error() throws Exception {
+        String sessionId = McpTestSupport.handshake(this);
+        ObjectNode args = MAPPER.createObjectNode()
+                .put("id", "files/" + bucket + "/never-existed.txt")
+                .put("confirm", true);
+        JsonNode result = McpTestSupport.callTool(this, sessionId, "dial_delete_resource", args, null);
+        assertTrue(result.get("isError").asBoolean(), () -> "Body: " + result.toString());
+        String text = result.get("content").get(0).get("text").asText();
+        assertTrue(text.contains("HTTP 404"), () -> "Expected HTTP 404 in: " + text);
+        assertTrue(text.contains("never-existed.txt"));
     }
 
     private JsonNode createResource(String sessionId, String id, String spec) throws Exception {
