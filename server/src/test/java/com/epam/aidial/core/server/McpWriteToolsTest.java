@@ -39,11 +39,11 @@ class McpWriteToolsTest extends ResourceBaseTest {
             """;
 
     @Test
-    void toolsListExposesAllSixTools() throws Exception {
+    void toolsListExposesAllTools() throws Exception {
         String sessionId = McpTestSupport.handshake(this);
         JsonNode tools = McpTestSupport.callMcp(this, sessionId, McpTestSupport.toolsListEnvelope(), null)
                 .get("result").get("tools");
-        assertEquals(6, tools.size());
+        assertEquals(8, tools.size());
         Set<String> names = new HashSet<>();
         for (JsonNode tool : tools) {
             names.add(tool.get("name").asText());
