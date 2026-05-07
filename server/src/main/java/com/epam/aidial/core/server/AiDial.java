@@ -276,10 +276,9 @@ public class AiDial {
             ClientChannelService clientChannelService = new ClientChannelService(lockService, redis, taskExecutor, clock, storage.getPrefix(), clientChannelTtl);
 
             McpRequestHandler mcpRequestHandler = null;
+            VertxMcpTransportProvider mcpTransportProvider = null;
             if (settings("mcp").getBoolean("enabled", true)) {
-                VertxMcpTransportProvider mcpTransportProvider = new VertxMcpTransportProvider(vertx);
-                vertx.deployVerticle(new McpVerticle(mcpTransportProvider, settings.getJsonObject("mcp", new JsonObject())))
-                        .onFailure(err -> log.error("MCP verticle failed to deploy", err));
+                mcpTransportProvider = new VertxMcpTransportProvider(vertx);
                 mcpRequestHandler = new McpRequestHandler(mcpTransportProvider);
             }
 
@@ -295,6 +294,15 @@ public class AiDial {
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
             log.info("Proxy started on {}", server.actualPort());
+
+            if (mcpTransportProvider != null) {
+                JsonObject mcpSettings = settings.getJsonObject("mcp", new JsonObject()).copy();
+                if (mcpSettings.getString("dialTargetUrl") == null && System.getenv("MCP_DIAL_TARGET_URL") == null) {
+                    mcpSettings.put("dialTargetUrl", "http://localhost:" + server.actualPort());
+                }
+                vertx.deployVerticle(new McpVerticle(mcpTransportProvider, mcpSettings))
+                        .onFailure(err -> log.error("MCP verticle failed to deploy", err));
+            }
         } catch (Throwable e) {
             log.error("Proxy failed to start:", e);
             stop();

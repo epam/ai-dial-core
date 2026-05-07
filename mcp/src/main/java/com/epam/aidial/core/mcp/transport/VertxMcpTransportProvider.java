@@ -2,6 +2,8 @@ package com.epam.aidial.core.mcp.transport;
 
 import com.epam.aidial.core.mcp.ratelimit.Decision;
 import com.epam.aidial.core.mcp.ratelimit.McpSessionLimiter;
+import com.epam.aidial.core.mcp.tools.ToolContext;
+import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.TypeRef;
@@ -178,7 +180,10 @@ public class VertxMcpTransportProvider implements McpStreamableServerTransportPr
                 response.putHeader("Content-Type", SSE);
                 response.putHeader("Cache-Control", "no-cache");
                 VertxSessionTransport transport = new VertxSessionTransport(sessionId, response, responseContext);
-                session.responseStream(jsonReq, transport).block();
+                McpTransportContext transportContext = buildTransportContext(request);
+                session.responseStream(jsonReq, transport)
+                        .contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext))
+                        .block();
                 if (!response.ended()) {
                     response.end();
                 }
@@ -194,6 +199,26 @@ public class VertxMcpTransportProvider implements McpStreamableServerTransportPr
             if (acquired && limiter != null) {
                 limiter.release(sessionId);
             }
+        }
+    }
+
+    /**
+     * Extracts inbound auth headers ({@code Api-Key}, {@code Authorization}) and publishes them
+     * into the SDK's {@link McpTransportContext} so tool handlers can forward them verbatim to
+     * Core via {@code DialClient}. Forwarded only when present — absent headers map to an empty
+     * forward set, leaving Core authn to enforce the policy.
+     */
+    private McpTransportContext buildTransportContext(HttpServerRequest request) {
+        Map<String, String> auth = new LinkedHashMap<>();
+        copyHeader(request, "Api-Key", auth);
+        copyHeader(request, "Authorization", auth);
+        return McpTransportContext.create(Map.of(ToolContext.AUTH_HEADERS_KEY, auth));
+    }
+
+    private static void copyHeader(HttpServerRequest request, String name, Map<String, String> sink) {
+        String value = request.getHeader(name);
+        if (value != null && !value.isBlank()) {
+            sink.put(name, value);
         }
     }
 

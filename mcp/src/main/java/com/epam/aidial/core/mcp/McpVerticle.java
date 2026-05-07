@@ -2,6 +2,11 @@ package com.epam.aidial.core.mcp;
 
 import com.epam.aidial.core.mcp.client.DialClient;
 import com.epam.aidial.core.mcp.ratelimit.McpSessionLimiter;
+import com.epam.aidial.core.mcp.schema.SchemaRegistry;
+import com.epam.aidial.core.mcp.tools.DescribeSchemaTool;
+import com.epam.aidial.core.mcp.tools.GetResourceTool;
+import com.epam.aidial.core.mcp.tools.ListResourcesTool;
+import com.epam.aidial.core.mcp.tools.SessionBucketCache;
 import com.epam.aidial.core.mcp.transport.VertxMcpTransportProvider;
 import io.modelcontextprotocol.json.schema.JsonSchemaValidator;
 import io.modelcontextprotocol.server.McpAsyncServer;
@@ -47,15 +52,22 @@ public class McpVerticle extends AbstractVerticle {
         McpSessionLimiter limiter = buildLimiterIfEnabled(mcpSettings);
         transportProvider.setLimiter(limiter);
 
-        // No-op validator: zero tools registered until M.1.x, and DIAL excludes the SDK's
-        // transitive json-schema-validator (incompatible with :config's networknt 1.5.2).
+        // No-op validator: DIAL excludes the SDK's transitive json-schema-validator
+        // (incompatible with :config's networknt 1.5.2). M.1.x tools validate at the boundary.
         JsonSchemaValidator noopValidator = (schema, instance) -> JsonSchemaValidator.ValidationResponse.asValid("");
+
+        SchemaRegistry schemaRegistry = new SchemaRegistry();
+        SessionBucketCache bucketCache = new SessionBucketCache(dialClient);
+        ListResourcesTool listTool = new ListResourcesTool(dialClient, bucketCache);
+        GetResourceTool getTool = new GetResourceTool(dialClient, bucketCache);
+
         server = McpServer.async(transportProvider)
                 .serverInfo(SERVER_NAME, SERVER_VERSION)
-                .capabilities(McpSchema.ServerCapabilities.builder().tools(false).build())
+                .capabilities(McpSchema.ServerCapabilities.builder().tools(true).build())
+                .tools(DescribeSchemaTool.create(schemaRegistry), listTool.spec(), getTool.spec())
                 .jsonSchemaValidator(noopValidator)
                 .build();
-        log.info("MCP verticle started; transport adapter wired (M.0.0-bridge), DialClient ready (M.0.1-pre)");
+        log.info("MCP verticle started with read tools (M.1.0): dial_describe_schema, dial_list_resources, dial_get_resource");
         startPromise.complete();
     }
 

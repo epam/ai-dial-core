@@ -1,4 +1,6 @@
 package com.epam.aidial.core.mcp.client;
 
-public record DialResponse(int statusCode, String body) {
+import io.vertx.core.MultiMap;
+
+public record DialResponse(int statusCode, String body, MultiMap headers) {
 }

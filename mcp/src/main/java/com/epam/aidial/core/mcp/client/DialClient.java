@@ -52,7 +52,7 @@ public class DialClient {
             (bodyBuffer != null ? req.sendBuffer(bodyBuffer) : req.send())
                     .onSuccess(resp -> {
                         String responseBody = resp.bodyAsString() != null ? resp.bodyAsString() : "";
-                        sink.success(new DialResponse(resp.statusCode(), responseBody));
+                        sink.success(new DialResponse(resp.statusCode(), responseBody, resp.headers()));
                     })
                     .onFailure(sink::error);
         }));

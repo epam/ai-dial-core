@@ -7,6 +7,9 @@ dependencies {
     implementation("io.vertx:vertx-web-client:${vertx_version}")
     implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
     implementation("org.slf4j:slf4j-api:${slf4j_version}")
+    // M.1.0: POJO -> JSON Schema generation for dial_describe_schema (spec 09 §M9 in-process registry).
+    implementation("com.github.victools:jsonschema-generator:4.38.0")
+    implementation("com.github.victools:jsonschema-module-jackson:4.38.0")
     // Use the Jackson 2 SDK variant to align with the codebase Jackson 2 baseline.
     // Exclude the SDK's transitive json-schema-validator (2.x); :config already pins networknt 1.5.2,
     // and a no-op JsonSchemaValidator is supplied explicitly to McpServer in McpVerticle.
