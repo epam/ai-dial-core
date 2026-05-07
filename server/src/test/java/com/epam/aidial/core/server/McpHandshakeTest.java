@@ -37,7 +37,7 @@ class McpHandshakeTest extends ResourceBaseTest {
     }
 
     @Test
-    void toolsListReturnsEmptyArray() throws Exception {
+    void toolsListReturnsRegisteredTools() throws Exception {
         String sessionId = sendInitialize().headers().get(SESSION_HEADER);
         sendInitialized(sessionId);
 
@@ -53,7 +53,8 @@ class McpHandshakeTest extends ResourceBaseTest {
         JsonNode tools = body.get("result").get("tools");
         assertNotNull(tools);
         assertTrue(tools.isArray());
-        assertEquals(0, tools.size());
+        // M.1.0 registers three read tools; full coverage lives in McpReadToolsTest.
+        assertTrue(tools.size() >= 3, "expected the M.1.0 read tools to be registered");
     }
 
     @Test

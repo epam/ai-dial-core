@@ -80,6 +80,7 @@ class DialClientTest {
 
         assertEquals(200, response.statusCode());
         assertEquals("{\"ok\":true}", response.body());
+        assertNotNull(response.headers());
 
         assertEquals(HttpMethod.POST, capturedMethod.get());
         assertEquals("/v1/echo", capturedPath.get());
@@ -105,8 +106,26 @@ class DialClientTest {
 
         assertEquals(200, response.statusCode());
         assertNotNull(response.body());
+        assertNotNull(response.headers());
         assertEquals(HttpMethod.GET, capturedMethod.get());
         assertEquals("/v1/bucket", capturedPath.get());
+    }
+
+    @Test
+    void headersAreCopiedFromResponse() throws Exception {
+        DialClient client = new DialClient(vertx, vertx.getOrCreateContext(), "http://localhost:" + stubPort);
+
+        DialResponse response = client.request(
+                        HttpMethod.GET,
+                        "/v1/bucket",
+                        Map.of("api-key", "k"),
+                        Map.of(),
+                        null)
+                .toFuture()
+                .get(5, TimeUnit.SECONDS);
+
+        assertNotNull(response.headers());
+        assertEquals("application/json", response.headers().get("Content-Type"));
     }
 
     @Test
