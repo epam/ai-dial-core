@@ -86,6 +86,19 @@ class ResourceIdTest {
     }
 
     @Test
+    void toMutationCorePathSkipsMetadataPrefixForFiles() {
+        ResourceId fileId = ResourceId.parse("files/abc/photos/cover.png");
+        assertEquals("/v1/metadata/files/abc/photos/cover.png", fileId.toCorePath("abc"));
+        assertEquals("/v1/files/abc/photos/cover.png", fileId.toMutationCorePath("abc"));
+
+        ResourceId model = ResourceId.parse("models/public/gpt-4");
+        assertEquals(model.toCorePath("public"), model.toMutationCorePath("public"));
+
+        ResourceId settings = ResourceId.parse("settings/platform/global");
+        assertEquals("/v1/settings/platform/global", settings.toMutationCorePath("platform"));
+    }
+
+    @Test
     void toListCorePathRoutesPerType() {
         ResourceId models = ResourceId.parseListPath("models/public/");
         assertEquals("/v1/models/public/", models.toListCorePath("public"));

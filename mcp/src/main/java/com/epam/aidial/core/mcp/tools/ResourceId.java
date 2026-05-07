@@ -83,6 +83,15 @@ public record ResourceId(String type, String bucket, String name) {
         return prefix + type + "/" + resolvedBucket + "/" + name;
     }
 
+    /**
+     * Builds the Core URL for a write op (POST / PUT / DELETE). Differs from
+     * {@link #toCorePath} only for {@code files}: the metadata route is GET-only — writes
+     * (here, DELETE; M.3.0 owns upload) target the plain {@code /v1/files/{bucket}/{name}}.
+     */
+    public String toMutationCorePath(String resolvedBucket) {
+        return "/v1/" + type + "/" + resolvedBucket + "/" + name;
+    }
+
     /** Builds the Core URL for a folder listing. Pair with a {@link #parseListPath} result. */
     public String toListCorePath(String resolvedBucket) {
         String prefix = METADATA_LIST_TYPES.contains(type) ? "/v1/metadata/" : "/v1/";
