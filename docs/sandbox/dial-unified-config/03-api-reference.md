@@ -212,7 +212,9 @@ Listing is per-bucket — `GET /v1/{type}/{bucket}/`. Admin enumerates the relev
 
 `hasMore` is **always present** (`true` or `false`) on every listing response; `nextCursor` is present **iff** `hasMore: true` and is omitted on the last page. The two fields are kept consistent — the two-field shape is convenient for clients that prefer either explicit `hasMore` checks or `nextCursor`-presence checks. The cursor is opaque and clients must not parse it. The Admin MCP's `dial_admin_list_entities` paginates the underlying listing endpoint (issuing `?limit=500` per page) until `hasMore: false` (for bounded entity types) or until its per-invocation ceiling of 2,500 items (5 pages) for potentially unbounded types (`files`, `prompts`, `conversations`) — see [`09-admin-mcp-spec.md`](09-admin-mcp-spec.md) §6.1 for the full draining and truncation semantics.
 
-**`name` field synthesis.** The `name` value on each list item (and on `GET` of a single entity) is **always synthesized** by the controller — for API-managed entities from `ResourceDescriptor.getName()` (last URL segment), for file-sourced entities from the corresponding map key in `Config` (e.g., the `Map.Entry` key in `Config.models`). It is never deserialized from the persisted JSON body. This matches today's `FileConfigStore` behavior, where `Model.name` is set by `model.setName(name)` from the map key after Jackson deserializes the body. Implementers wiring the new listing controller must populate `name` from the descriptor / map key — not expect it on the persisted body.
+**`name` field synthesis.** The `name` value on each list item (and on `GET` of a single entity) is **always synthesized** by the controller — for API-managed entities the **full canonical ID** (the `Config` map key, e.g. `models/public/gpt-4`); for file-sourced entities the simple-name `Config` map key (e.g. `gpt-4`). It is never deserialized from the persisted JSON body. **Amendment 2026-05-08 (Polish.1):** prior to this round API-managed entries projected `simpleName(mapKey)` in the listing/GET; canonical IDs were exposed only on the legacy `/openai/...` listings. Operators copy-pasting an API entry's listing row into a per-entity URL needed to reconstruct the canonical prefix manually, and a file-vs-API simple-name collision silently lost one row in the listing. Polish.1 projects the full canonical ID for API entries so the row is copy-paste-friendly and the dedup keying on the full map key (see *Listing dedup* below) preserves both rows on collision. File-sourced entries are unchanged. Implementers wiring the listing controller must populate `name` from the canonical map key for API entries and from the simple map key for file entries — not expect it on the persisted body.
+
+**Listing dedup.** The listing builder dedupes rows by the full `Config` map key — *not* by simple name. A file entry keyed `gpt-4` and an API entry keyed `models/public/gpt-4` therefore appear as **two distinct rows**, distinguished by the `name` field (simple vs canonical) and by the Owner-only `source` field (`"file"` vs `"api"`). Pre-Polish.1 the dedup was simple-name-keyed, so a file/API simple-name twin silently dropped one row.
 
 **Owner view — admin or bucket-owner caller:**
 
@@ -229,14 +231,14 @@ Listing is per-bucket — `GET /v1/{type}/{bucket}/`. Admin enumerates the relev
       "source": "file"
     },
     {
-      "name": "anthropic.claude-sonnet-4-6",
+      "name": "models/public/anthropic.claude-sonnet-4-6",
       "type": "chat",
       "endpoint": "...",
       "status": "valid",
       "source": "api"
     },
     {
-      "name": "old-broken-model",
+      "name": "models/public/old-broken-model",
       "type": "chat",
       "endpoint": "...",
       "status": "invalid",
@@ -260,8 +262,8 @@ Listing is per-bucket — `GET /v1/{type}/{bucket}/`. Admin enumerates the relev
   "bucket": "public",
   "items": [
     { "name": "chat-gpt-35-turbo", "type": "chat", "endpoint": "...", "status": "valid" },
-    { "name": "anthropic.claude-sonnet-4-6", "type": "chat", "endpoint": "...", "status": "valid" },
-    { "name": "old-broken-model", "type": "chat", "endpoint": "...", "status": "invalid" }
+    { "name": "models/public/anthropic.claude-sonnet-4-6", "type": "chat", "endpoint": "...", "status": "valid" },
+    { "name": "models/public/old-broken-model", "type": "chat", "endpoint": "...", "status": "invalid" }
   ]
 }
 ```

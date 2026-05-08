@@ -61,8 +61,8 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         assertNotNull(blobModel, () -> "Expected canonical-ID key in merged Config: " + merged.getModels().keySet());
         // Slice 2S.15 / OQ-23: Model.name carries the canonical ID for API-managed entries so
         // legacy /openai/models, /openai/deployments, and rate-limit role-limit lookups see the
-        // canonical form. The admin Configuration API listing controller projects simpleName from
-        // the map key independently (asserted below).
+        // canonical form. Polish.1 (2026-05-08) extends this to the admin Configuration API GET
+        // / listing projection — canonical ID for API entries, simple name for file entries.
         assertEquals("models/public/" + blobName, blobModel.getName(),
                 "Entity.name carries the canonical ID for API-managed entries");
         assertNotNull(merged.getModels().get("test-model-v1"), "File model must still coexist by simple name");
@@ -70,8 +70,8 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         Response get = send(HttpMethod.GET, "/v1/models/public/" + blobName, null, "",
                 "authorization", "admin");
         verify(get, 200);
-        assertTrue(get.body().contains("\"name\":\"" + blobName + "\""),
-                () -> "Expected simple name in projection: " + get.body());
+        assertTrue(get.body().contains("\"name\":\"models/public/" + blobName + "\""),
+                () -> "Expected canonical name in projection: " + get.body());
         assertTrue(get.body().contains("\"endpoint\""),
                 () -> "Expected endpoint field in projection: " + get.body());
     }
@@ -123,8 +123,35 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         Response list = send(HttpMethod.GET, "/v1/models/public/", null, "",
                 "authorization", "admin");
         verify(list, 200);
-        assertTrue(list.body().contains("\"name\":\"" + blobName + "\""),
-                () -> "Expected simple name in listing: " + list.body());
+        assertTrue(list.body().contains("\"name\":\"models/public/" + blobName + "\""),
+                () -> "Expected canonical name for API entry in listing: " + list.body());
+    }
+
+    @Test
+    void testFileAndApiTwinsAppearAsSeparateListingRows() {
+        // Polish.1 (2026-05-08): the listing dedup is keyed by Config map key, not by simple name,
+        // so a file entry 'test-model-v1' and an API entry 'models/public/test-model-v1' coexist
+        // as distinct rows. Pre-Polish.1 the simple-name dedup silently dropped one of them.
+        String simpleName = "test-model-v1"; // file fixture in aidial.config.json
+        String body = """
+                {
+                    "type": "chat",
+                    "endpoint": "http://localhost:7001/openai/deployments/twin/chat/completions"
+                }
+                """;
+        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
+                simpleName, body);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        Response list = send(HttpMethod.GET, "/v1/models/public/", null, "",
+                "authorization", "admin");
+        verify(list, 200);
+        assertTrue(list.body().contains("\"name\":\"" + simpleName + "\""),
+                () -> "File entry must appear by simple name: " + list.body());
+        assertTrue(list.body().contains("\"name\":\"models/public/" + simpleName + "\""),
+                () -> "API twin must appear by canonical id: " + list.body());
     }
 
     @Test
