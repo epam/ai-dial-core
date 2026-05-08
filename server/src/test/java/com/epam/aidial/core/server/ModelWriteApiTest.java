@@ -79,8 +79,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         verify(get, 200);
         assertTrue(get.body().contains("\"source\":\"api\""), () -> "Expected source=api: " + get.body());
         assertTrue(get.body().contains("\"status\":\"valid\""), () -> "Expected status=valid: " + get.body());
-        assertTrue(get.body().contains("\"name\":\"test-model-create\""),
-                () -> "Expected name in body: " + get.body());
+        assertTrue(get.body().contains("\"name\":\"models/public/test-model-create\""),
+                () -> "Expected canonical name in body: " + get.body());
     }
 
     @Test
@@ -267,8 +267,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         Response get = send(HttpMethod.GET, "/v1/models/public/test-model-immediate-post", null, "",
                 "authorization", "admin");
         verify(get, 200);
-        assertTrue(get.body().contains("\"name\":\"test-model-immediate-post\""),
-                () -> "Expected immediate visibility of POST: " + get.body());
+        assertTrue(get.body().contains("\"name\":\"models/public/test-model-immediate-post\""),
+                () -> "Expected immediate visibility of POST (canonical name): " + get.body());
     }
 
     @Test

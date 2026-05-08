@@ -427,6 +427,12 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 |---|---|---|---|---|---|
 | **4C.0** | `dial-cli apply -f <path>` — single-doc and multi-doc YAML manifest parsing, validate-first gate (`POST /v1/admin/validate`) then `POST /v1/admin/apply`. `--dry-run`. Exit codes per 06 §2.8. **No template DSL, no overlays, no bundles in MVP — manifests must be fully resolved.** | 4S.0, 4S.1 | 03 §7; 05 §5.1; 06 §2.7-§2.8 | ✅ | `74acbba5` |
 
+**Polish round (post-MVP, follow-on to user-reported `/dial-uc-debug` issues — 2026-05-08):**
+
+| ID | Slice | Depends on | Design anchors | Status | Commit |
+|---|---|---|---|---|---|
+| **Polish.1** | Listing canonical IDs for API entries + dedup-by-full-key. `ConfigResourceController.handleGet` lambdas project the canonical map key as `name` for API entries (`fromApi(key) ? key : simpleName(key)`); `respondList` / `handleSchemaGet` listing branches dedup the row map by full Config map key (not simple name) so file/API simple-name twins appear as distinct rows. Schema single-entity GET canonical match also emits canonical name. Simple-name fallback in GET preserved — file entries remain GET-able. **Tests flipped:** `MergedConfigStoreApiTest` (single-GET + listing assertions), `ModelWriteApiTest.testPost201HappyPath` / `testPostImmediatelyVisibleOnGet`, `CanonicalIdListingTest.testApiManagedModelAdminGetProjectsCanonicalId` (renamed). **New regression guard:** `MergedConfigStoreApiTest.testFileAndApiTwinsAppearAsSeparateListingRows` locks the dedup-by-key invariant. Amends design 03 §4 *name field synthesis* + listing example payloads + new *Listing dedup* paragraph; locked-decision amendment captured in `project_unified_config_review.md`. | 2S.15 | 03 §4 (amended) | 🚧 | — |
+
 **Deferred beyond MVP** (if Phase-4 demand emerges post-MVP):
 
 - **4C.1** Template DSL (`extends`, `includes`, `!if`, `!for`, function set) — 05 §3
