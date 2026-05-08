@@ -156,19 +156,19 @@ public class ConfigResourceController implements Controller {
         return switch (entityType) {
             case "models" -> handleSingleOrList(
                     config.getModels(), ResourceTypes.MODEL,
-                    (key, model) -> projectItem(model, simpleName(key), fromApi(key), admin, revealSecrets));
+                    (key, model) -> projectItem(model, displayName(key), fromApi(key), admin, revealSecrets));
             case "interceptors" -> handleSingleOrList(
                     config.getInterceptors(), ResourceTypes.INTERCEPTOR,
-                    (key, interceptor) -> projectItem(interceptor, simpleName(key), fromApi(key), true, revealSecrets));
+                    (key, interceptor) -> projectItem(interceptor, displayName(key), fromApi(key), true, revealSecrets));
             case "roles" -> handleSingleOrList(
                     config.getRoles(), ResourceTypes.ROLE,
-                    (key, role) -> projectItem(role, simpleName(key), fromApi(key), true, revealSecrets));
+                    (key, role) -> projectItem(role, displayName(key), fromApi(key), true, revealSecrets));
             case "keys" -> handleSingleOrList(
                     config.getKeys(), ResourceTypes.PROJECT_KEY,
-                    (key, value) -> projectItem(value, simpleName(key), fromApi(key), true, revealSecrets));
+                    (key, value) -> projectItem(value, displayName(key), fromApi(key), true, revealSecrets));
             case "routes" -> handleSingleOrList(
                     config.getRoutes(), ResourceTypes.ROUTE,
-                    (key, route) -> projectItem(route, simpleName(key), fromApi(key), true, revealSecrets));
+                    (key, route) -> projectItem(route, displayName(key), fromApi(key), true, revealSecrets));
             case "schemas" -> handleSchemaGet(config, admin);
             case SETTINGS_TYPE -> handleSettingsGet(config);
             default -> respondMethodNotAllowed();
@@ -219,17 +219,18 @@ public class ConfigResourceController implements Controller {
             context.respond(HttpStatus.BAD_REQUEST, "Invalid 'limit' query parameter");
             return Future.succeededFuture();
         }
-        // Sort valid entries by simple name; merge invalid records by simple name; collisions favor
-        // the valid (in-Config) entry — invalid records are only kept for entries dropped from Config.
-        Map<String, ObjectNode> bySimpleName = new TreeMap<>();
+        // Sort + dedup by the Config map key so file entries (simple-name keys) and API entries
+        // (canonical-ID keys) appear as distinct rows when both share a simple name; invalid records
+        // merge by their canonical ID and yield to a valid in-Config entry on collision.
+        Map<String, ObjectNode> byKey = new TreeMap<>();
         for (Map.Entry<String, T> entry : source.entrySet()) {
-            bySimpleName.put(simpleName(entry.getKey()), projector.apply(entry.getKey(), entry.getValue()));
+            byKey.put(entry.getKey(), projector.apply(entry.getKey(), entry.getValue()));
         }
         for (InvalidEntityRecord record : invalid.values()) {
-            bySimpleName.putIfAbsent(record.getSimpleName(), projectInvalidItem(record, admin));
+            byKey.putIfAbsent(record.getCanonicalId(), projectInvalidItem(record, admin));
         }
         ArrayNode items = ProxyUtil.MAPPER.createArrayNode();
-        bySimpleName.values().forEach(items::add);
+        byKey.values().forEach(items::add);
         context.respond(HttpStatus.OK, listEnvelope(items));
         return Future.succeededFuture();
     }
@@ -250,6 +251,15 @@ public class ConfigResourceController implements Controller {
         return key.startsWith(entityType + "/" + bucket + "/");
     }
 
+    /**
+     * Projected {@code name} value: full canonical ID for API-managed entries (so the listing
+     * row's name is copy-paste-friendly into chat-completion / canonical URLs), simple name for
+     * file-defined entries (their only addressable form). See design 03 §4 (amended 2026-05-08).
+     */
+    private String displayName(String key) {
+        return fromApi(key) ? key : simpleName(key);
+    }
+
     private Future<?> handleSchemaGet(Config config, boolean admin) throws JsonProcessingException {
         Map<String, String> schemas = config.getApplicationTypeSchemas();
         Map<String, InvalidEntityRecord> invalid = mergedConfigStore.getInvalidEntities()
@@ -259,23 +269,24 @@ public class ConfigResourceController implements Controller {
                 context.respond(HttpStatus.BAD_REQUEST, "Invalid 'limit' query parameter");
                 return Future.succeededFuture();
             }
-            Map<String, ObjectNode> bySimpleName = new TreeMap<>();
+            Map<String, ObjectNode> byKey = new TreeMap<>();
             for (Map.Entry<String, String> entry : schemas.entrySet()) {
-                bySimpleName.put(simpleName(entry.getKey()),
-                        projectSchemaItem(simpleName(entry.getKey()), entry.getValue(), fromApi(entry.getKey()), admin));
+                byKey.put(entry.getKey(),
+                        projectSchemaItem(displayName(entry.getKey()), entry.getValue(),
+                                fromApi(entry.getKey()), admin));
             }
             for (InvalidEntityRecord record : invalid.values()) {
-                bySimpleName.putIfAbsent(record.getSimpleName(), projectInvalidItem(record, admin));
+                byKey.putIfAbsent(record.getCanonicalId(), projectInvalidItem(record, admin));
             }
             ArrayNode items = ProxyUtil.MAPPER.createArrayNode();
-            bySimpleName.values().forEach(items::add);
+            byKey.values().forEach(items::add);
             context.respond(HttpStatus.OK, listEnvelope(items));
             return Future.succeededFuture();
         }
         // Canonical-ID first, simple-name fallback (see handleSingleOrList).
         String schemaJson = schemas.get(canonicalId());
         if (schemaJson != null) {
-            context.respond(HttpStatus.OK, projectSchemaItem(path, schemaJson, true, admin));
+            context.respond(HttpStatus.OK, projectSchemaItem(canonicalId(), schemaJson, true, admin));
             return Future.succeededFuture();
         }
         schemaJson = schemas.get(path);
