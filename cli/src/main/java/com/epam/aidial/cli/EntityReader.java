@@ -36,10 +36,14 @@ public final class EntityReader {
             Map.entry("settings", "platform")
     );
 
-    private static final TableShape DEFAULT_SHAPE = new TableShape(new String[]{"NAME"}, new String[]{"name"});
+    private static final TableShape DEFAULT_SHAPE = new TableShape(
+            new String[]{"NAME", "SOURCE", "STATUS"},
+            new String[]{"name", "source", "status"});
 
     private static final Map<String, TableShape> TYPE_TABLE_SHAPE = Map.of(
-            "models", new TableShape(new String[]{"NAME", "ENDPOINT"}, new String[]{"name", "endpoint"})
+            "models", new TableShape(
+                    new String[]{"NAME", "SOURCE", "STATUS", "ENDPOINT"},
+                    new String[]{"name", "source", "status", "endpoint"})
     );
 
     private static final String SETTINGS_SINGLETON_NAME = "global";
@@ -99,7 +103,7 @@ public final class EntityReader {
             return 1;
         }
         if (resp.status() >= 300) {
-            spec.commandLine().getErr().println("HTTP " + resp.status() + " " + resp.body());
+            spec.commandLine().getErr().println(formatHttpError(resp.status(), resp.body(), path));
             return CliHttpClient.toExitCode(resp.status());
         }
         try {
@@ -258,6 +262,37 @@ public final class EntityReader {
             spec.commandLine().getErr().println(e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Translate a non-2xx HTTP status into an operator-friendly stderr line. Wraps the four
+     * common per-entity codes (404 / 409 / 412 / generic) with a recognizable verb, then echoes
+     * the canonical-style identifier extracted from the request path so the message reads
+     * standalone without needing the URL on screen.
+     */
+    static String formatHttpError(int status, String body, String requestPath) {
+        String identifier = friendlyIdentifier(requestPath);
+        String trimmed = (body == null) ? "" : body.strip();
+        return switch (status) {
+            case 404 -> "Not found: " + identifier;
+            case 409 -> "Already exists: " + identifier
+                    + (trimmed.isEmpty() ? "" : " — " + trimmed);
+            case 412 -> "Stale ETag: " + identifier
+                    + (trimmed.isEmpty() ? "" : " — " + trimmed);
+            default -> "HTTP " + status + (trimmed.isEmpty() ? "" : " " + trimmed);
+        };
+    }
+
+    private static String friendlyIdentifier(String requestPath) {
+        if (requestPath == null) {
+            return "(unknown)";
+        }
+        String stripped = requestPath.startsWith("/v1/") ? requestPath.substring(4) : requestPath;
+        int query = stripped.indexOf('?');
+        if (query >= 0) {
+            stripped = stripped.substring(0, query);
+        }
+        return stripped.isBlank() ? "(unknown)" : stripped;
     }
 
     private record TableShape(String[] headers, String[] fields) { }

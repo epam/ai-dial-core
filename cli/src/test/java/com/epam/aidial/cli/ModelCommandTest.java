@@ -115,6 +115,20 @@ class ModelCommandTest {
     }
 
     @Test
+    void modelGetOutputFlagAfterSubcommand(@TempDir Path tmp) throws Exception {
+        // Cli.3 (2026-05-08): global flags carry ScopeType.INHERIT so `-o yaml` placed after
+        // the `model get` subcommand chain binds correctly. Pre-Cli.3 the option was ignored
+        // (or rejected as unknown by the leaf subcommand).
+        Path config = writeProfileAndKey(tmp);
+        respond("/v1/models/public/gpt-4", 200, "{\"name\":\"gpt-4\"}");
+
+        Result r = run(config, apiKeyFile(tmp), "model", "get", "gpt-4", "-o", "yaml");
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(r.out.contains("name: \"gpt-4\""), r.out);
+    }
+
+    @Test
     void modelGetCanonicalIdPassesThrough(@TempDir Path tmp) throws Exception {
         Path config = writeProfileAndKey(tmp);
         respond("/v1/models/public/gpt-4", 200, "{\"name\":\"gpt-4\",\"endpoint\":\"https://e\"}");
@@ -133,7 +147,7 @@ class ModelCommandTest {
         Result r = run(config, apiKeyFile(tmp), "model", "get", "missing");
 
         assertEquals(4, r.exitCode);
-        assertTrue(r.err.contains("404"), r.err);
+        assertTrue(r.err.contains("Not found"), r.err);
     }
 
     @Test
@@ -320,7 +334,7 @@ class ModelCommandTest {
                 "model", "add", "--name", "models/public/dup", "--from-file", body.toString());
 
         assertEquals(5, r.exitCode);
-        assertTrue(r.err.contains("409"), r.err);
+        assertTrue(r.err.contains("Already exists"), r.err);
     }
 
     @Test
@@ -489,7 +503,10 @@ class ModelCommandTest {
         assertEquals("\"v1\"", ifMatch.get());
         assertTrue(putBody.get().contains("\"endpoint\":\"http://new\""), putBody.get());
         assertTrue(putBody.get().contains("\"pricing\":{\"prompt\":0.003}"), putBody.get());
-        assertTrue(putBody.get().contains("\"name\":\"m\""), putBody.get());
+        // Cli.3 (2026-05-08): controller-projected fields (`name`, `status`, `source`,
+        // `validationWarnings`) are stripped from the merged body before PUT — the server
+        // synthesizes `name` from the URL and rejects the others as Unrecognized.
+        org.junit.jupiter.api.Assertions.assertFalse(putBody.get().contains("\"name\""), putBody.get());
     }
 
     @Test
@@ -501,7 +518,7 @@ class ModelCommandTest {
                 "model", "update", "models/public/missing", "--set", "endpoint=http://x");
 
         assertEquals(4, r.exitCode);
-        assertTrue(r.err.contains("404"), r.err);
+        assertTrue(r.err.contains("Not found"), r.err);
     }
 
     @Test
@@ -520,7 +537,7 @@ class ModelCommandTest {
                 "model", "update", "models/public/m", "--set", "endpoint=http://x");
 
         assertEquals(6, r.exitCode);
-        assertTrue(r.err.contains("412"), r.err);
+        assertTrue(r.err.contains("Stale ETag"), r.err);
     }
 
     @Test
@@ -711,7 +728,7 @@ class ModelCommandTest {
         Result r = run(config, apiKeyFile(tmp), "model", "delete", "models/public/missing");
 
         assertEquals(4, r.exitCode);
-        assertTrue(r.err.contains("404"), r.err);
+        assertTrue(r.err.contains("Not found"), r.err);
     }
 
     @Test
@@ -728,7 +745,7 @@ class ModelCommandTest {
 
         assertEquals(6, r.exitCode);
         assertEquals("\"stale\"", ifMatch.get());
-        assertTrue(r.err.contains("412"), r.err);
+        assertTrue(r.err.contains("Stale ETag"), r.err);
     }
 
     @Test
@@ -1093,7 +1110,7 @@ class ModelCommandTest {
 
             assertEquals(4, r.exitCode);
             assertTrue(r.err.contains("Source dev"), r.err);
-            assertTrue(r.err.contains("404"), r.err);
+            assertTrue(r.err.contains("Not found"), r.err);
             assertTrue(!targetHit.get(), "Target apply must not fire when source GET fails");
         } finally {
             target.stop(0);

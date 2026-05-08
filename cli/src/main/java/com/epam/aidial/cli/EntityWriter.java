@@ -22,6 +22,14 @@ public final class EntityWriter {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final YAMLMapper YAML = new YAMLMapper();
 
+    /**
+     * Controller-projected fields the server adds on GET responses (design 03 §4 + §1.5) but
+     * rejects on write — `name` is synthesized from the URL, `status` / `source` /
+     * `validationWarnings` are projection metadata, never persisted. Stripping them lets a
+     * GET → merge → PUT round-trip succeed without a {@code "Unrecognized field"} 400.
+     */
+    private static final String[] PROJECTION_FIELDS = {"name", "status", "source", "validationWarnings"};
+
     private EntityWriter() {
     }
 
@@ -65,7 +73,7 @@ public final class EntityWriter {
             return 1;
         }
         if (resp.status() >= 300) {
-            spec.commandLine().getErr().println("HTTP " + resp.status() + " " + resp.body());
+            spec.commandLine().getErr().println(EntityReader.formatHttpError(resp.status(), resp.body(), path));
             return CliHttpClient.toExitCode(resp.status());
         }
         spec.commandLine().getOut().println("Created " + canonicalId);
@@ -100,7 +108,7 @@ public final class EntityWriter {
             return 1;
         }
         if (getResp.status() >= 300) {
-            spec.commandLine().getErr().println("HTTP " + getResp.status() + " " + getResp.body());
+            spec.commandLine().getErr().println(EntityReader.formatHttpError(getResp.status(), getResp.body(), path));
             return CliHttpClient.toExitCode(getResp.status());
         }
         ObjectNode merged;
@@ -111,6 +119,7 @@ public final class EntityWriter {
                 return 1;
             }
             merged = (ObjectNode) current;
+            merged.remove(java.util.Arrays.asList(PROJECTION_FIELDS));
             applySets(merged, sets);
         } catch (IllegalArgumentException e) {
             spec.commandLine().getErr().println(e.getMessage());
@@ -139,7 +148,7 @@ public final class EntityWriter {
             return 1;
         }
         if (putResp.status() >= 300) {
-            spec.commandLine().getErr().println("HTTP " + putResp.status() + " " + putResp.body());
+            spec.commandLine().getErr().println(EntityReader.formatHttpError(putResp.status(), putResp.body(), path));
             return CliHttpClient.toExitCode(putResp.status());
         }
         spec.commandLine().getOut().println("Updated " + canonicalId);
@@ -177,8 +186,8 @@ public final class EntityWriter {
             return 1;
         }
         if (getResp.status() >= 300) {
-            spec.commandLine().getErr().println("Source " + source.envName() + ": HTTP "
-                    + getResp.status() + " " + getResp.body());
+            spec.commandLine().getErr().println("Source " + source.envName() + ": "
+                    + EntityReader.formatHttpError(getResp.status(), getResp.body(), path));
             return CliHttpClient.toExitCode(getResp.status());
         }
         ObjectNode envelope = JSON.createObjectNode();
@@ -212,8 +221,8 @@ public final class EntityWriter {
             return 1;
         }
         if (applyResp.status() != 200 && applyResp.status() != 422) {
-            spec.commandLine().getErr().println("Target " + target.envName() + ": HTTP "
-                    + applyResp.status() + " " + applyResp.body());
+            spec.commandLine().getErr().println("Target " + target.envName() + ": "
+                    + EntityReader.formatHttpError(applyResp.status(), applyResp.body(), "/v1/admin/apply"));
             return CliHttpClient.toExitCode(applyResp.status());
         }
         try {
@@ -306,7 +315,7 @@ public final class EntityWriter {
             return 1;
         }
         if (resp.status() != 200 && resp.status() != 422) {
-            spec.commandLine().getErr().println("HTTP " + resp.status() + " " + resp.body());
+            spec.commandLine().getErr().println(EntityReader.formatHttpError(resp.status(), resp.body(), "/v1/admin/validate"));
             return CliHttpClient.toExitCode(resp.status());
         }
         try {
@@ -361,7 +370,7 @@ public final class EntityWriter {
             return 1;
         }
         if (resp.status() >= 300) {
-            spec.commandLine().getErr().println("HTTP " + resp.status() + " " + resp.body());
+            spec.commandLine().getErr().println(EntityReader.formatHttpError(resp.status(), resp.body(), path));
             return CliHttpClient.toExitCode(resp.status());
         }
         spec.commandLine().getOut().println("Deleted " + canonicalId);
