@@ -1,6 +1,0 @@
-# CVE-2026-42577 — Netty epoll transport DoS via RST on half-closed TCP connection.
-# Fix only available in Netty 4.2.13.Final. Cannot adopt 4.2.x while project runs Vert.x 4.5.25
-# (Vert.x 4.5 is built against Netty 4.1; 4.2 alignment lives on Vert.x 5.x).
-# Revisit when: (a) a 4.1.x backport ships, or (b) Vert.x is upgraded to 5.x.
-# Added: 2026-05-08
-CVE-2026-42577

@@ -16,9 +16,3 @@ jobs:
       platforms: "linux/amd64,linux/arm64"
       java-version: 21
       trivy-limit-severities-for-sarif: false
-      # ORT 85.x SpdxDocumentReporter throws NoSuchElementException on this repo's
-      # dep graph because the ORT job in epam/ai-dial-ci@4.0.0 lacks GPR_USERNAME/
-      # GPR_PASSWORD, leaving private jclouds packages unresolved. Reports still
-      # post; only the CI-fail gate is bypassed. Revisit once ai-dial-ci plumbs
-      # GPR creds into the ORT job (or ORT upstream hardens SpdxDocumentReporter).
-      ort-bypassed: true
