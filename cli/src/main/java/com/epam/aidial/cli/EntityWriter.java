@@ -33,11 +33,12 @@ public final class EntityWriter {
     private EntityWriter() {
     }
 
-    public static int addEntity(DialCli root, CommandSpec spec, String type, String canonicalId, Path fromFile) {
-        return addEntity(root, spec, type, "public", canonicalId, fromFile);
+    public static int addEntity(DialCli root, CommandSpec spec, String type, String kind,
+                                String canonicalId, Path fromFile) {
+        return addEntity(root, spec, type, kind, "public", canonicalId, fromFile);
     }
 
-    public static int addEntity(DialCli root, CommandSpec spec, String type, String bucket,
+    public static int addEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
                                 String canonicalId, Path fromFile) {
         String name;
         try {
@@ -48,7 +49,7 @@ public final class EntityWriter {
         }
         String body;
         try {
-            body = loadBodyAsJson(fromFile);
+            body = loadSpecOrFail(fromFile, kind, canonicalId, spec.commandLine().getErr());
         } catch (NoSuchFileException e) {
             spec.commandLine().getErr().println("File not found: " + fromFile);
             return 2;
@@ -272,7 +273,7 @@ public final class EntityWriter {
         }
         String specJson;
         try {
-            specJson = loadBodyAsJson(fromFile);
+            specJson = loadSpecOrFail(fromFile, kind, canonicalId, spec.commandLine().getErr());
         } catch (NoSuchFileException e) {
             spec.commandLine().getErr().println("File not found: " + fromFile);
             return 2;
@@ -433,18 +434,44 @@ public final class EntityWriter {
         return name;
     }
 
-    private static String loadBodyAsJson(Path file) throws IOException {
+    /**
+     * Read the file and return JSON for its spec body. If the parsed root looks like a manifest
+     * envelope ({@code {kind, name?, spec}} matching {@code sample/dial-cli/manifests/*.yaml}),
+     * validate {@code kind} matches {@code expectedKind}, warn when the envelope's {@code name}
+     * disagrees with {@code canonicalId}, and return the inner {@code spec} as JSON. Files
+     * whose root isn't an envelope pass through (raw-spec backward compatibility).
+     */
+    static String loadSpecOrFail(Path file, String expectedKind, String canonicalId,
+                                 java.io.PrintWriter err) throws IOException {
         String filename = file.getFileName().toString().toLowerCase();
+        boolean yaml = filename.endsWith(".yaml") || filename.endsWith(".yml");
         String raw = Files.readString(file, StandardCharsets.UTF_8);
-        if (filename.endsWith(".yaml") || filename.endsWith(".yml")) {
-            JsonNode node = YAML.readTree(raw);
-            return JSON.writeValueAsString(node);
-        }
+        JsonNode root;
         try {
-            JSON.readTree(raw);
+            root = yaml ? YAML.readTree(raw) : JSON.readTree(raw);
         } catch (JsonProcessingException e) {
-            throw new IOException("invalid JSON: " + e.getMessage(), e);
+            throw new IOException("invalid " + (yaml ? "YAML" : "JSON") + ": " + e.getMessage(), e);
         }
-        return raw;
+        if (root == null || root.isMissingNode() || root.isNull()) {
+            throw new IOException("file is empty");
+        }
+        if (root.isObject() && root.has("kind") && root.has("spec") && root.get("spec").isObject()) {
+            JsonNode kindNode = root.get("kind");
+            if (!kindNode.isTextual() || kindNode.asText().isBlank()) {
+                throw new IOException("manifest envelope has empty 'kind'");
+            }
+            String declared = kindNode.asText();
+            if (!declared.equals(expectedKind)) {
+                throw new IOException("manifest 'kind' is '" + declared + "', expected '" + expectedKind + "'");
+            }
+            JsonNode envName = root.get("name");
+            if (envName != null && envName.isTextual() && !envName.asText().isBlank()
+                    && canonicalId != null && !envName.asText().equals(canonicalId)) {
+                err.println("[warn] manifest 'name' '" + envName.asText()
+                        + "' differs from --name '" + canonicalId + "'; using --name");
+            }
+            return JSON.writeValueAsString(root.get("spec"));
+        }
+        return JSON.writeValueAsString(root);
     }
 }

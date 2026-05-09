@@ -72,7 +72,7 @@ public class RoleCommand {
 
         @Override
         public Integer call() {
-            return EntityWriter.addEntity(cmd.parent, spec, TYPE, BUCKET, name, fromFile);
+            return EntityWriter.addEntity(cmd.parent, spec, TYPE, KIND, BUCKET, name, fromFile);
         }
     }
 

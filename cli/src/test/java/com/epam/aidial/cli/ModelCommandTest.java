@@ -477,6 +477,97 @@ class ModelCommandTest {
     }
 
     @Test
+    void modelAddAcceptsManifestEnvelope(@TempDir Path tmp) throws Exception {
+        // sample/dial-cli/manifests/06-model.yaml ships a {kind: Model, name, spec} envelope —
+        // make sure --from-file unwraps that shape and posts only the spec body.
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("envelope.yaml");
+        Files.writeString(body, """
+                kind: Model
+                name: models/public/new-model
+                spec:
+                  type: chat
+                  endpoint: "http://x"
+                """);
+        java.util.concurrent.atomic.AtomicReference<String> capturedBody = new java.util.concurrent.atomic.AtomicReference<>();
+        server.createContext("/v1/models/public/new-model", exchange -> {
+            capturedBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            send(exchange, 201, "{\"name\":\"new-model\"}");
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--name", "models/public/new-model", "--from-file", body.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(capturedBody.get().contains("\"type\":\"chat\""), capturedBody.get());
+        assertTrue(capturedBody.get().contains("\"endpoint\":\"http://x\""), capturedBody.get());
+        assertTrue(!capturedBody.get().contains("\"kind\""), "kind must not leak into POST body: " + capturedBody.get());
+        assertTrue(!capturedBody.get().contains("\"spec\""), "spec wrapper must not leak: " + capturedBody.get());
+    }
+
+    @Test
+    void modelAddRejectsWrongKindEnvelope(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("wrong.yaml");
+        Files.writeString(body, """
+                kind: Role
+                name: roles/platform/foo
+                spec:
+                  costLimit: { day: 1.0 }
+                """);
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--name", "models/public/x", "--from-file", body.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("'kind' is 'Role', expected 'Model'"), r.err);
+    }
+
+    @Test
+    void modelAddEnvelopeNameMismatchWarnsButProceeds(@TempDir Path tmp) throws Exception {
+        // --name is authoritative — the envelope's `name` field is informational. Warn loudly
+        // but don't block, so the same envelope file can be staged into several names.
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("envelope.yaml");
+        Files.writeString(body, """
+                kind: Model
+                name: models/public/declared-name
+                spec:
+                  type: chat
+                  endpoint: "http://x"
+                """);
+        respond("/v1/models/public/different-name", 201, "{\"name\":\"different-name\"}");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--name", "models/public/different-name", "--from-file", body.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(r.err.contains("[warn]"), r.err);
+        assertTrue(r.err.contains("declared-name"), r.err);
+        assertTrue(r.err.contains("different-name"), r.err);
+    }
+
+    @Test
+    void modelAddRawSpecBackwardCompat(@TempDir Path tmp) throws Exception {
+        // Files without a {kind,spec} envelope continue to be treated as the raw entity body.
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("raw.yaml");
+        Files.writeString(body, "type: chat\nendpoint: http://raw\n");
+        java.util.concurrent.atomic.AtomicReference<String> capturedBody = new java.util.concurrent.atomic.AtomicReference<>();
+        server.createContext("/v1/models/public/raw", exchange -> {
+            capturedBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            send(exchange, 201, "{\"name\":\"raw\"}");
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add", "--name", "models/public/raw", "--from-file", body.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(capturedBody.get().contains("\"type\":\"chat\""), capturedBody.get());
+        assertTrue(capturedBody.get().contains("\"endpoint\":\"http://raw\""), capturedBody.get());
+    }
+
+    @Test
     void modelUpdate200HappyPathSendsMergedBodyAndAutoIfMatch(@TempDir Path tmp) throws Exception {
         Path config = writeProfileAndKey(tmp);
         java.util.concurrent.atomic.AtomicReference<String> putBody = new java.util.concurrent.atomic.AtomicReference<>();
@@ -1013,6 +1104,55 @@ class ModelCommandTest {
                 "model", "validate", "--name", "models/public/m", "--from-file", body.toString());
 
         assertEquals(2, r.exitCode);
+    }
+
+    @Test
+    void modelValidateAcceptsManifestEnvelope(@TempDir Path tmp) throws Exception {
+        // The shape used in sample/dial-cli/manifests/*.yaml — `{kind, name, spec}` envelope —
+        // must validate without server-side "Unrecognized field 'kind'" errors. The CLI unwraps
+        // the spec before submission to /v1/admin/validate.
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("envelope.yaml");
+        Files.writeString(body, """
+                kind: Model
+                name: models/public/m
+                spec:
+                  type: chat
+                  endpoint: "http://x"
+                """);
+        java.util.concurrent.atomic.AtomicReference<String> sentBody = new java.util.concurrent.atomic.AtomicReference<>();
+        server.createContext("/v1/admin/validate", exchange -> {
+            sentBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            send(exchange, 200, "{\"valid\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"valid\"}]}");
+        });
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "validate", "--name", "models/public/m", "--from-file", body.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(sentBody.get().contains("\"spec\":{\"type\":\"chat\",\"endpoint\":\"http://x\"}"), sentBody.get());
+        // 'kind' on the manifest envelope on the wire is fine — that's the apply/validate
+        // payload's own kind. It must not appear *inside* the spec, though.
+        assertTrue(!sentBody.get().contains("\"spec\":{\"kind\""),
+                "kind must not leak into spec body: " + sentBody.get());
+    }
+
+    @Test
+    void modelValidateRejectsWrongKindEnvelope(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path body = tmp.resolve("wrong.yaml");
+        Files.writeString(body, """
+                kind: Role
+                name: roles/platform/foo
+                spec:
+                  costLimit: { day: 1.0 }
+                """);
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "validate", "--name", "models/public/m", "--from-file", body.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("'kind' is 'Role', expected 'Model'"), r.err);
     }
 
     private Path writeTwoEnvProfile(Path tmp, String sourceUrl, String targetUrl) throws Exception {

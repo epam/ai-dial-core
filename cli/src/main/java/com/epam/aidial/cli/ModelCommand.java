@@ -71,7 +71,7 @@ public class ModelCommand {
 
         @Override
         public Integer call() {
-            return EntityWriter.addEntity(model.parent, spec, "models", name, fromFile);
+            return EntityWriter.addEntity(model.parent, spec, "models", "Model", name, fromFile);
         }
     }
 
