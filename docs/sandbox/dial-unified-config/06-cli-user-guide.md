@@ -415,6 +415,8 @@ This is the **only** way to release API control of `globalSettings` — there is
 
 If you want create-or-update behavior in one shot (e.g. CI applying a manifest tree where some entities are new and some exist), use `dial-cli apply -f config/` — that's the canonical declarative path and the only place upsert lives. Optional `--if-match <etag>` on `update`/`delete` adds optimistic concurrency on top.
 
+**`--from-file` accepts two shapes.** Either a raw entity spec (top-level keys are the entity's own fields, e.g. `type: chat`, `endpoint: ...`) or a `kind`/`name`/`spec` manifest envelope — the same shape used by `dial-cli apply -f` and shipped in `sample/dial-cli/manifests/*.yaml`. Envelope shape is auto-detected and unwrapped to its `spec`; the CLI validates `kind` matches the command (e.g. `Model` for `model add` / `model validate`) and warns when the envelope's `name` differs from `--name` (the flag stays authoritative — same envelope file can be staged into several names). Raw-spec usage is unchanged.
+
 **Other entity types — same pattern:**
 
 ```shell
