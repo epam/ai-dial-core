@@ -23,11 +23,11 @@ Ship a working MVP of the Configuration API + `dial-cli` covering Phases 1, 2, 3
 **MVP stretch (Phase 4 core):**
 
 - `POST /v1/admin/apply` + `POST /v1/admin/validate` (multi-entity).
-- `dial-cli apply -f` and `dial-cli export` against fully-resolved manifests (no template DSL, no overlays, no bundles).
+- `dial-cli apply -f` and `dial-cli export` against fully-resolved manifests (no template DSL, no overlays, no bundles). **Amended 2026-05-09:** the template DSL / overlays / bundles / `${SECRET:*}` / `promote --template` / `apply -f <dir>` ergonomics promoted into MVP via slices 4C.1–4C.5 + 4C.7; this stretch line described the 4C.0-only baseline.
 
 **Explicitly out of MVP:**
 
-- Phase 4 advanced CLI ergonomics (templates / overlays / bundles / `${SECRET:*}` / `promote --template auto`).
+- ~~Phase 4 advanced CLI ergonomics (templates / overlays / bundles / `${SECRET:*}` / `promote --template auto`).~~ **Amended 2026-05-09:** templates (4C.1), overlays (4C.2), bundles (4C.3), `${SECRET:*}` (4C.4), `promote --template <name|auto>` (4C.5), and directory-walk apply (4C.7) promoted into MVP — see Track B rows in §5.5. The `created / updated / unchanged / failed` apply summary (4C.6) stays deferred — depends on the server-side **4S.2** wire change which the user explicitly held out of this round; 4C.0's `applied / failed` aggregate stands.
 - Phase 5 (Admin Backend migration), Phase 6 (file deprecation), Phase 7 (audit).
 
 ---
@@ -413,6 +413,8 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 ### 5.5 Phase 4 — Declarative apply + diff (NICE TO HAVE)
 
 > **MVP-cut**: deliver **4S.0**, **4S.1**, **4C.0** (apply with fully-resolved manifests). Defer the template DSL, overlays, bundles, and reverse-match `auto` promote.
+>
+> **Amended 2026-05-09:** template DSL (4C.1), overlays (4C.2), bundles (4C.3), `${SECRET:*}` resolution (4C.4), `promote --template <name|auto>` (4C.5), and directory-walk apply (4C.7) promoted into MVP — see Track B rows below. The `created / updated / unchanged / failed` apply summary (4C.6) stays deferred because it requires the server-side **4S.2** wire change held out of this round; 4C.0's `applied / failed` aggregate stands until 4S.2 ships.
 
 **Track A — Server**
 
@@ -426,6 +428,12 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 | ID | Slice | Depends on | Design anchors | Status | Commit |
 |---|---|---|---|---|---|
 | **4C.0** | `dial-cli apply -f <path>` — single-doc and multi-doc YAML manifest parsing, validate-first gate (`POST /v1/admin/validate`) then `POST /v1/admin/apply`. `--dry-run`. Exit codes per 06 §2.8. **No template DSL, no overlays, no bundles in MVP — manifests must be fully resolved.** | 4S.0, 4S.1 | 03 §7; 05 §5.1; 06 §2.7-§2.8 | ✅ | `74acbba5` |
+| **4C.1** | Template DSL: `extends` / `includes` composition with deep-merge + cycle detection on the `extends` chain; `!if` / `!for` YAML tags (the strategy choice — pre-parse rewrite vs custom SnakeYAML `Constructor` per design 05 §3.3 — is the architect-plan halt point); expression evaluator (`==`, `!=`, `&&`, `||`, `!`); fixed function set (`default`, `lower`, `upper`, `trim`, `join`, `base64`, `replace`); `${vars.*}` / `${params.*}` / `${entity.*}` substitution. Stamped-at-write-time per OQ-29 (no live linking). Integrates with `EntityWriter.loadSpecOrFail` envelope path (Cli.4) so `add` / `validate` / `apply` share resolution. **`${SECRET:*}` carved to 4C.4** to keep the substitution tier separable. | 4C.0 | 05 §3 (3.1–3.5); OQ-18, OQ-29 | 📋 | — |
+| **4C.2** | Environment overlays: `kind: <Entity>Overlay` + `target` + `patch` (RFC 7396 JSON Merge Patch) + `params` override; `--overlay <dir>` flag on `apply`; `.disable` marker resolution per the byte-for-byte stem rule (design 05 §5.2). Resolution pipeline: load base → match overlay by `target` → patch `spec` + merge `params` → continue into 4C.1's template resolution → apply per 4C.0. | 4C.0, 4C.1 | 05 §5.2 | 📋 | — |
+| **4C.3** | Bundle manifests: `kind: Bundle` expansion (CLI-only — server returns 400 per 4S.0); shared `params` scope; per-entity `spec:` (full replacement) or `patch:` (GET → JSON Merge Patch → full `spec:`, 404 → `{}` fallback per 05 §5.3). Documented sharp edge: concurrent `patch:` on shared entities silently overwrites (no per-entity ETag on the apply payload). Dependency-ordering of the expanded set inherits 4S.0's server-side OQ-6 ordering. | 4C.0, 4C.1 | 05 §5.3 | 📋 | — |
+| **4C.4** | `${SECRET:*}` resolver: env-var lookup inside the placeholder grammar from 4C.1 — `${SECRET:openai-key}` → `System.getenv("openai-key")`. Includes the `${ENV_VAR}` shell fallback (design 05 §5.1 line 376). Resolution at apply / promote time; missing secrets fail loudly (no silent empty-string substitution). Vault / OS-keychain extension stays deferred per OQ-19. | 4C.1 | 05 §3.1; OQ-19 | 📋 | — |
+| **4C.5** | `promote --template <name|auto>` re-enables the flag deferred in 2C.4. `--template <name>` resolves the explicit template against target env's `vars` + `--param`s; `--template auto` runs the reverse-match algorithm (design 05 §4 lines 308–318: resolve each template against source env, compare against fetched entity, exactly-one match → use it; zero / multiple → error with suggestions). Env-specific-hostname warning from 05 §4 step 5 also re-enables. | 4C.1, 2C.4 | 05 §4 | 📋 | — |
+| **4C.7** | `dial-cli apply -f <directory>`: recursive walk over `.yaml` / `.yml` / `.json` files; per-file documents become apply entries (multi-doc YAML still split by `---` per 4C.0). Closes the techdebt gap where the `Dist.2` newcomer playground pipes via `cat manifests/*.yaml` + temp file. | 4C.0 | 06 §2.7 | 📋 | — |
 
 **Polish round (post-MVP, follow-on to user-reported `/dial-uc-debug` issues — 2026-05-08):**
 
@@ -437,14 +445,8 @@ These map 1:1 to the named prerequisite PRs in `07-migration-and-rollout.md` §P
 
 **Deferred beyond MVP** (if Phase-4 demand emerges post-MVP):
 
-- **4C.1** Template DSL (`extends`, `includes`, `!if`, `!for`, function set) — 05 §3
-- **4C.2** Overlays (base + overlay) — 05 §5.2
-- **4C.3** Bundles — 05 §5.3
-- **4C.4** `${SECRET:*}` resolution — 05 §3.1
-- **4C.5** `promote --template auto` reverse-match — 05 §4
 - **4S.2** Server: split apply per-entity outcomes into `created` / `updated` / `unchanged` (today only `applied` / `applied_invalid` / `FAILED` / `skipped`) so the CLI can render the design 06 §2.7 summary buckets without N extra round-trips. Surfaced during 4C.0 architect plan (§1.1 deviation). — 03 §7
-- **4C.6** CLI: render `created / updated / unchanged / failed` summary on `apply` (depends on **4S.2** wire change). 4C.0 ships an `applied / failed` aggregate as the closest-available stand-in. — 06 §2.7
-- **4C.7** CLI: `dial-cli apply -f <directory>` recursive walk over `.yaml` / `.yml` / `.json` files. **Techdebt** — slice 4C.0 ships file-only by design (slice-register row scope) but design 06 §2.7 / §2.8 examples assume directory input. — 06 §2.7
+- **4C.6** CLI: render `created / updated / unchanged / failed` summary on `apply` (depends on **4S.2** wire change). 4C.0 ships an `applied / failed` aggregate as the closest-available stand-in. **Held out of the 2026-05-09 amendment** that promoted 4C.1–4C.5 + 4C.7 — user explicitly chose not to drag in the 4S.2 server-side change in this round. — 06 §2.7
 - **Dist.1** Build / distribution: bundle the `:cli` Quarkus uber-jar into the `ai-dial-core` Docker image at `/opt/cli/dial-cli.jar` with a `/usr/local/bin/dial-cli` wrapper, so the same image DevOps already pins for the server can be reused as a CLI runner in config-management CI pipelines (mirrors the planned standalone `ghcr.io/epam/dial-cli` image; alpha convenience channel — not a replacement). Touches `Dockerfile` only; no production code changes. — 05 §6, 06 §1.1.1
 - **Dist.2** Newcomer playground: ship `sample/dial-cli/` (sibling of the existing `sample/aidial.config.json` / `sample/aidial.settings.json`) with a single-environment profile + one manifest per writable entity type (Model, Application, ToolSet, Schema, Interceptor, Role, Key, Route, Settings) + a 5-minute README quickstart. Every manifest carries a leading `---` document marker so plain `cat manifests/*.yaml | dial-cli apply -f -` (via temp file in MVP — 4C.7 deferred) works as a single multi-doc batch. Verified end-to-end via `dial-cli apply -f --dry-run`: 9 entities parsed, canonical IDs stripped to simple names per 4C.0. — 06 §1, 06 §3
 
