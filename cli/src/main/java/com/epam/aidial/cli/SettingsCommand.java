@@ -85,10 +85,14 @@ public class SettingsCommand {
         @Option(names = "--from-file", required = true,
                 description = "JSON or YAML file with the settings spec (.yaml/.yml parsed as YAML).")
         Path fromFile;
+        @Option(names = "--template", description = "Template name from CLI profile to apply.")
+        String template;
+        @Option(names = "--param", description = "Template parameter 'key=value' (repeatable).")
+        java.util.List<String> params;
 
         @Override
         public Integer call() {
-            return EntityWriter.validateEntity(cmd.parent, spec, TYPE, KIND, BUCKET, CANONICAL_ID, fromFile);
+            return EntityWriter.validateEntity(cmd.parent, spec, TYPE, KIND, BUCKET, CANONICAL_ID, fromFile, template, params);
         }
     }
 

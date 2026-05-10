@@ -257,7 +257,9 @@ public final class EntityReader {
         }
         try {
             String apiKey = new ApiKeyResolver().resolve(envName, env, root.apiKeyFile);
-            return new ResolvedEnv(envName, apiUrl, apiKey);
+            Map<String, Object> vars = (env.getVars() != null) ? env.getVars() : Map.of();
+            Map<String, Object> templates = (profile.getTemplates() != null) ? profile.getTemplates() : Map.of();
+            return new ResolvedEnv(envName, apiUrl, apiKey, vars, templates);
         } catch (CliAuthException e) {
             spec.commandLine().getErr().println(e.getMessage());
             return null;
@@ -297,5 +299,6 @@ public final class EntityReader {
 
     private record TableShape(String[] headers, String[] fields) { }
 
-    record ResolvedEnv(String envName, String apiUrl, String apiKey) { }
+    record ResolvedEnv(String envName, String apiUrl, String apiKey,
+                       Map<String, Object> vars, Map<String, Object> templates) { }
 }

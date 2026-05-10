@@ -1,5 +1,6 @@
 package com.epam.aidial.cli.config;
 
+import com.epam.aidial.cli.template.ControlFlowExpander;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -7,6 +8,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -36,7 +38,11 @@ public final class ProfileLoader {
             return new CliProfile();
         }
         try {
-            CliProfile profile = MAPPER.readValue(resolved.toFile(), CliProfile.class);
+            String raw = Files.readString(resolved, StandardCharsets.UTF_8);
+            // Templates may carry '!if'/'!for' tags; rewrite them to sentinel keys so the
+            // standard YAML mapper can parse the profile without a custom Constructor.
+            String rewritten = ControlFlowExpander.rewriteYaml(raw);
+            CliProfile profile = MAPPER.readValue(rewritten, CliProfile.class);
             return (profile != null) ? profile : new CliProfile();
         } catch (IOException e) {
             throw new CliConfigException("Failed to parse CLI profile at " + resolved, e);
