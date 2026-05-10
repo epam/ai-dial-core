@@ -564,11 +564,14 @@ class TemplateResolutionTest {
     }
 
     @Test
-    void applySecretLeftAsIs(@TempDir Path tmp) throws Exception {
+    void applySecretMissingFailsLoud(@TempDir Path tmp) throws Exception {
+        // 4C.4: ${SECRET:*} resolves at apply time via System.getenv; missing values fail
+        // loud rather than passing through. The key below is never set in the test JVM,
+        // so resolution must abort the apply with exit 2 and a message naming the key.
         String templates = """
                 T:
                   fields:
-                    apiKey: "${SECRET:openai-key}"
+                    apiKey: "${SECRET:dial-cli-test-secret-never-set}"
                 """;
         Path config = writeProfile(tmp, templates, "");
         Path manifest = tmp.resolve("m.yaml");
@@ -579,18 +582,10 @@ class TemplateResolutionTest {
                 spec: {}
                 """);
 
-        AtomicReference<String> applyBody = new AtomicReference<>();
-        AtomicInteger hits = new AtomicInteger();
-        server.createContext("/v1/admin/validate", x -> send(x, 200,
-                "{\"valid\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"valid\"}]}"));
-        recordPost("/v1/admin/apply", 200,
-                "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied\"}]}",
-                applyBody, hits);
-
         Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
 
-        assertEquals(0, r.exitCode, r.err);
-        assertTrue(applyBody.get().contains("${SECRET:openai-key}"), applyBody.get());
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("dial-cli-test-secret-never-set"), r.err);
     }
 
     @Test
