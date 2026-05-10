@@ -37,8 +37,9 @@ public class ApplyCommand implements Callable<Integer> {
     CommandSpec spec;
 
     @Option(names = {"-f", "--file"}, required = true,
-            description = "Manifest file path. YAML (.yaml/.yml) supports multiple documents separated by '---'; "
-                    + "JSON (.json) accepts a single object or an array of manifests.")
+            description = "Manifest file or directory. YAML (.yaml/.yml) supports multiple documents separated by '---'; "
+                    + "JSON (.json) accepts a single object or an array of manifests. Directories are walked "
+                    + "recursively over .yaml/.yml/.json files; hidden paths (segments starting with '.') are skipped.")
     Path file;
 
     @Option(names = "--param",

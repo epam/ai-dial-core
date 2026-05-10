@@ -626,4 +626,207 @@ class ApplyCommandTest {
         assertEquals(2, r.exitCode);
         assertTrue(r.err.contains("models/public/"), r.err);
     }
+
+    @Test
+    void applyDirectoryRecursivelyAggregatesManifests(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path root = tmp.resolve("manifests");
+        Path subdir = root.resolve("nested");
+        Files.createDirectories(subdir);
+        Files.writeString(root.resolve("models.yaml"), """
+                kind: Model
+                name: models/public/m1
+                spec: { type: chat, endpoint: http://x }
+                ---
+                kind: Model
+                name: models/public/m2
+                spec: { type: chat, endpoint: http://y }
+                """);
+        Files.writeString(subdir.resolve("roles.yaml"), """
+                kind: Role
+                name: roles/platform/basic
+                spec: { limits: {} }
+                """);
+        AtomicReference<String> validateBody = new AtomicReference<>();
+        AtomicInteger validateHits = new AtomicInteger();
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger applyHits = new AtomicInteger();
+        recordPost("/v1/admin/validate", 200,
+                "{\"valid\":3,\"failed\":0,\"results\":["
+                        + "{\"entityId\":\"models/public/m1\",\"status\":\"valid\"},"
+                        + "{\"entityId\":\"models/public/m2\",\"status\":\"valid\"},"
+                        + "{\"entityId\":\"roles/platform/basic\",\"status\":\"valid\"}]}",
+                validateBody, validateHits);
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":3,\"failed\":0,\"results\":["
+                        + "{\"entityId\":\"models/public/m1\",\"status\":\"applied\"},"
+                        + "{\"entityId\":\"models/public/m2\",\"status\":\"applied\"},"
+                        + "{\"entityId\":\"roles/platform/basic\",\"status\":\"applied\"}]}",
+                applyBody, applyHits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", root.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals(1, validateHits.get());
+        assertEquals(1, applyHits.get());
+        assertTrue(validateBody.get().contains("\"name\":\"m1\""), validateBody.get());
+        assertTrue(validateBody.get().contains("\"name\":\"m2\""), validateBody.get());
+        assertTrue(validateBody.get().contains("\"name\":\"basic\""), validateBody.get());
+        assertTrue(applyBody.get().contains("\"name\":\"basic\""), applyBody.get());
+        assertTrue(r.out.contains("applied: 3, failed: 0"), r.out);
+    }
+
+    @Test
+    void applyDirectoryMixesYamlYmlJson(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path root = tmp.resolve("manifests");
+        Files.createDirectories(root);
+        Files.writeString(root.resolve("a.yaml"), """
+                kind: Model
+                name: models/public/a
+                spec: { type: chat, endpoint: http://a }
+                """);
+        Files.writeString(root.resolve("b.yml"), """
+                kind: Model
+                name: models/public/b
+                spec: { type: chat, endpoint: http://b }
+                """);
+        Files.writeString(root.resolve("c.json"), """
+                {"kind":"Role","name":"roles/platform/basic","spec":{"limits":{}}}
+                """);
+        AtomicReference<String> validateBody = new AtomicReference<>();
+        AtomicInteger validateHits = new AtomicInteger();
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger applyHits = new AtomicInteger();
+        recordPost("/v1/admin/validate", 200,
+                "{\"valid\":3,\"failed\":0,\"results\":[]}", validateBody, validateHits);
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":3,\"failed\":0,\"results\":[]}", applyBody, applyHits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", root.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(applyBody.get().contains("\"name\":\"a\""), applyBody.get());
+        assertTrue(applyBody.get().contains("\"name\":\"b\""), applyBody.get());
+        assertTrue(applyBody.get().contains("\"name\":\"basic\""), applyBody.get());
+    }
+
+    @Test
+    void applyDirectoryDeterministicOrder(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path root = tmp.resolve("manifests");
+        Files.createDirectories(root);
+        Files.writeString(root.resolve("c.yaml"), "kind: Model\nname: models/public/c\nspec: { type: chat, endpoint: http://c }\n");
+        Files.writeString(root.resolve("a.yaml"), "kind: Model\nname: models/public/a\nspec: { type: chat, endpoint: http://a }\n");
+        Files.writeString(root.resolve("b.yaml"), "kind: Model\nname: models/public/b\nspec: { type: chat, endpoint: http://b }\n");
+        AtomicInteger anyHits = new AtomicInteger();
+        server.createContext("/", exchange -> {
+            anyHits.incrementAndGet();
+            send(exchange, 500, "{}");
+        });
+
+        Result r = run(config, apiKeyFile(tmp), "--dry-run", "apply", "-f", root.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals(0, anyHits.get());
+        int posA = r.out.indexOf("\"name\":\"a\"");
+        int posB = r.out.indexOf("\"name\":\"b\"");
+        int posC = r.out.indexOf("\"name\":\"c\"");
+        assertTrue(posA >= 0 && posB >= 0 && posC >= 0, r.out);
+        assertTrue(posA < posB && posB < posC, "expected a < b < c in payload, got: " + r.out);
+    }
+
+    @Test
+    void applyDirectorySkipsNonManifestExtensions(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path root = tmp.resolve("manifests");
+        Files.createDirectories(root);
+        Files.writeString(root.resolve("model.yaml"), "kind: Model\nname: models/public/m\nspec: { type: chat, endpoint: http://x }\n");
+        Files.writeString(root.resolve("README.md"), "# notes");
+        Files.writeString(root.resolve("model.yaml.bak"), "garbage: !!! not yaml");
+        Files.writeString(root.resolve("notes.txt"), "hello");
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger applyHits = new AtomicInteger();
+        recordPost("/v1/admin/validate", 200,
+                "{\"valid\":1,\"failed\":0,\"results\":[]}", new AtomicReference<>(), new AtomicInteger());
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":1,\"failed\":0,\"results\":[]}", applyBody, applyHits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", root.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals(1, applyHits.get());
+        assertTrue(applyBody.get().contains("\"name\":\"m\""), applyBody.get());
+        assertFalse(applyBody.get().contains("README"), applyBody.get());
+        assertFalse(applyBody.get().contains("garbage"), applyBody.get());
+    }
+
+    @Test
+    void applyDirectorySkipsHiddenPaths(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path root = tmp.resolve("manifests");
+        Path hidden = root.resolve(".git");
+        Files.createDirectories(hidden);
+        Files.writeString(root.resolve("model.yaml"), "kind: Model\nname: models/public/m\nspec: { type: chat, endpoint: http://x }\n");
+        Files.writeString(hidden.resolve("staged.yaml"), "kind: Model\nname: models/public/should-skip\nspec: { type: chat, endpoint: http://x }\n");
+        Files.writeString(root.resolve(".hidden.yaml"), "kind: Model\nname: models/public/should-skip-2\nspec: { type: chat, endpoint: http://x }\n");
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger applyHits = new AtomicInteger();
+        recordPost("/v1/admin/validate", 200,
+                "{\"valid\":1,\"failed\":0,\"results\":[]}", new AtomicReference<>(), new AtomicInteger());
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":1,\"failed\":0,\"results\":[]}", applyBody, applyHits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", root.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(applyBody.get().contains("\"name\":\"m\""), applyBody.get());
+        assertFalse(applyBody.get().contains("should-skip"), applyBody.get());
+    }
+
+    @Test
+    void applyDirectoryEmptyExitsTwo(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path root = tmp.resolve("empty");
+        Files.createDirectories(root);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", root.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("No manifests found"), r.err);
+    }
+
+    @Test
+    void applyDirectoryDoesNotLoadDotDisableMarkers(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path root = tmp.resolve("manifests");
+        Files.createDirectories(root);
+        Files.writeString(root.resolve("model.yaml"), "kind: Model\nname: models/public/m\nspec: { type: chat, endpoint: http://x }\n");
+        Files.writeString(root.resolve("model.disable"), "");
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger applyHits = new AtomicInteger();
+        recordPost("/v1/admin/validate", 200,
+                "{\"valid\":1,\"failed\":0,\"results\":[]}", new AtomicReference<>(), new AtomicInteger());
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":1,\"failed\":0,\"results\":[]}", applyBody, applyHits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", root.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals(1, applyHits.get());
+    }
+
+    @Test
+    void applyDirectoryFileWithParseErrorAttributesPath(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path root = tmp.resolve("manifests");
+        Files.createDirectories(root);
+        Files.writeString(root.resolve("good.yaml"), "kind: Model\nname: models/public/g\nspec: { type: chat, endpoint: http://x }\n");
+        Files.writeString(root.resolve("bad.yaml"), "kind: Model\n  bad-indent: [unclosed");
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", root.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("bad.yaml"), r.err);
+    }
 }

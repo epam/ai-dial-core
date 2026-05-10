@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TemplateComposerTest {
 
     @Test
-    void cycleAtoBtoADetectedNamesBoth() {
+    void cycleBetweenAandBdetectedNamesBoth() {
         Map<String, Object> templates = Map.of(
                 "A", Map.of("extends", "B", "fields", Map.of("a", 1)),
                 "B", Map.of("extends", "A", "fields", Map.of("b", 2))

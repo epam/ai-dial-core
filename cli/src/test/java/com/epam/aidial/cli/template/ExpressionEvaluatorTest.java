@@ -54,7 +54,7 @@ class ExpressionEvaluatorTest {
     }
 
     @Test
-    void compoundAOrBAndC() {
+    void compoundOrAndPrecedence() {
         ExpressionEvaluator e = evaluator(Map.of());
         assertEquals(true, e.evaluate("true || false && false"));
         assertEquals(false, e.evaluate("false || false && true"));
