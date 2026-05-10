@@ -455,7 +455,7 @@ class TemplateResolutionTest {
     }
 
     @Test
-    void applyForNElement(@TempDir Path tmp) throws Exception {
+    void applyForLoopOverNthElement(@TempDir Path tmp) throws Exception {
         String templates = """
                 T:
                   fields:

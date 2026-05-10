@@ -13,10 +13,12 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 final class ManifestLoader {
 
@@ -50,7 +52,50 @@ final class ManifestLoader {
     private ManifestLoader() {
     }
 
-    static List<Manifest> load(Path file) throws ManifestParseException {
+    static List<Manifest> load(Path path) throws ManifestParseException {
+        if (Files.isDirectory(path)) {
+            return loadDirectory(path);
+        }
+        return loadFile(path);
+    }
+
+    private static List<Manifest> loadDirectory(Path root) throws ManifestParseException {
+        List<Path> files;
+        try (Stream<Path> walk = Files.walk(root)) {
+            files = walk
+                    .filter(Files::isRegularFile)
+                    .filter(p -> !hasHiddenSegment(root.relativize(p)))
+                    .filter(ManifestLoader::hasManifestExtension)
+                    .sorted(Comparator.comparing(Path::toString))
+                    .toList();
+        } catch (IOException | RuntimeException e) {
+            throw new ManifestParseException("Failed to walk directory " + root + ": " + e.getMessage());
+        }
+        List<Manifest> all = new ArrayList<>();
+        for (Path f : files) {
+            all.addAll(loadFile(f));
+        }
+        if (all.isEmpty()) {
+            throw new ManifestParseException("No manifests found in " + root);
+        }
+        return all;
+    }
+
+    private static boolean hasHiddenSegment(Path relative) {
+        for (Path seg : relative) {
+            if (seg.toString().startsWith(".")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasManifestExtension(Path file) {
+        String name = file.getFileName().toString().toLowerCase();
+        return name.endsWith(".yaml") || name.endsWith(".yml") || name.endsWith(".json");
+    }
+
+    private static List<Manifest> loadFile(Path file) throws ManifestParseException {
         String filename = file.getFileName().toString().toLowerCase();
         boolean yaml = filename.endsWith(".yaml") || filename.endsWith(".yml");
         String content;
