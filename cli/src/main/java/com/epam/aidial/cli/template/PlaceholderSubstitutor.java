@@ -3,14 +3,15 @@ package com.epam.aidial.cli.template;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 
 /**
  * Resolves {@code ${...}} placeholders inside string leaves. Supports three namespaces
  * ({@code vars}, {@code params}, {@code entity}) and the seven functions from {@link FunctionApplicator}.
- * The {@code SECRET:*} namespace is opt-in: if no {@code secretResolver} is provided
- * (4C.1 default), the placeholder is left unchanged for downstream resolution; if a resolver
- * is provided (4C.4 seam), it is called and the result is substituted.
+ * The {@code SECRET:*} prefix and a single-segment shell-env fallback both go through
+ * a {@link Function} that defaults to {@link System#getenv(String)}; tests pass a
+ * Map-backed stub via the two-arg constructor for determinism.
  */
 final class PlaceholderSubstitutor {
 
@@ -18,12 +19,12 @@ final class PlaceholderSubstitutor {
     private final Function<String, String> secretResolver;
 
     PlaceholderSubstitutor(Map<String, Object> ctx) {
-        this(ctx, null);
+        this(ctx, System::getenv);
     }
 
     PlaceholderSubstitutor(Map<String, Object> ctx, Function<String, String> secretResolver) {
         this.ctx = ctx;
-        this.secretResolver = secretResolver;
+        this.secretResolver = Objects.requireNonNull(secretResolver, "secretResolver");
     }
 
     /** Substitute every {@code ${...}} placeholder in {@code input}. */
@@ -67,6 +68,14 @@ final class PlaceholderSubstitutor {
         return -1;
     }
 
+    private String resolveSecret(String key) {
+        String resolved = secretResolver.apply(key);
+        if (resolved == null) {
+            throw new TemplateException("SECRET '" + key + "' is not available.");
+        }
+        return resolved;
+    }
+
     private String resolveExpression(String expr) {
         if (expr.isEmpty()) {
             throw new TemplateException("Empty '${}' placeholder.");
@@ -76,15 +85,7 @@ final class PlaceholderSubstitutor {
                     + "}' is not supported. Bind the inner value to a var or param first.");
         }
         if (expr.startsWith(TemplateResolver.SECRET_PREFIX)) {
-            String key = expr.substring(TemplateResolver.SECRET_PREFIX.length());
-            if (secretResolver == null) {
-                return "${" + expr + "}";
-            }
-            String resolved = secretResolver.apply(key);
-            if (resolved == null) {
-                throw new TemplateException("SECRET '" + key + "' is not available.");
-            }
-            return resolved;
+            return resolveSecret(expr.substring(TemplateResolver.SECRET_PREFIX.length()));
         }
         int paren = expr.indexOf('(');
         if (paren > 0 && expr.endsWith(")")) {
@@ -159,15 +160,26 @@ final class PlaceholderSubstitutor {
 
     /** Resolve a {@code namespace.key.subkey} path against the context. */
     private String resolvePath(String path) {
+        // Reached for SECRET: tokens that arrive as function args (e.g. base64(SECRET:foo))
+        // — top-level ${SECRET:*} short-circuits in resolveExpression before getting here.
+        if (path.startsWith(TemplateResolver.SECRET_PREFIX)) {
+            return resolveSecret(path.substring(TemplateResolver.SECRET_PREFIX.length()));
+        }
         String[] parts = path.split("\\.", -1);
         // Single-segment path: a '!for' loop binding (e.g. '${region}') lives at the top of
-        // the context map alongside 'vars'/'params'/'entity'.
+        // the context map alongside 'vars'/'params'/'entity'. When neither matches, fall back
+        // to the shell environment (design 05 §5.1 — `${ENV_VAR}` for CI/CD).
         if (parts.length == 1) {
             Object value = ctx.get(parts[0]);
-            if (value == null) {
-                throw new TemplateException("Missing placeholder value: '${" + path + "}'.");
+            if (value != null) {
+                return value.toString();
             }
-            return value.toString();
+            String env = secretResolver.apply(parts[0]);
+            if (env != null) {
+                return env;
+            }
+            throw new TemplateException("Missing placeholder value: '${" + path
+                    + "}' (not in vars/params/entity and no shell env var '" + parts[0] + "' is set).");
         }
         String namespace = parts[0];
         Object scope = ctx.get(namespace);
