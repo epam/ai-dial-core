@@ -1,6 +1,10 @@
 package com.epam.aidial.cli;
 
 import com.epam.aidial.cli.http.CliHttpClient;
+import com.epam.aidial.cli.template.ControlFlowExpander;
+import com.epam.aidial.cli.template.TemplateContext;
+import com.epam.aidial.cli.template.TemplateException;
+import com.epam.aidial.cli.template.TemplateResolver;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,7 +19,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class EntityWriter {
 
@@ -35,11 +41,16 @@ public final class EntityWriter {
 
     public static int addEntity(DialCli root, CommandSpec spec, String type, String kind,
                                 String canonicalId, Path fromFile) {
-        return addEntity(root, spec, type, kind, "public", canonicalId, fromFile);
+        return addEntity(root, spec, type, kind, "public", canonicalId, fromFile, null, null);
     }
 
     public static int addEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
                                 String canonicalId, Path fromFile) {
+        return addEntity(root, spec, type, kind, bucket, canonicalId, fromFile, null, null);
+    }
+
+    public static int addEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
+                                String canonicalId, Path fromFile, String templateName, List<String> paramFlags) {
         String name;
         try {
             name = requireCanonicalId(type, bucket, canonicalId);
@@ -47,9 +58,26 @@ public final class EntityWriter {
             spec.commandLine().getErr().println(e.getMessage());
             return 2;
         }
+        EntityReader.ResolvedEnv resolved = EntityReader.resolveEnv(root, spec);
+        if (resolved == null) {
+            return 2;
+        }
+        Map<String, Object> entityCtx = entityContext(name, kind);
+        Map<String, Object> params;
+        try {
+            params = parseParams(paramFlags);
+        } catch (IllegalArgumentException e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 2;
+        }
         String body;
         try {
-            body = loadSpecOrFail(fromFile, kind, canonicalId, spec.commandLine().getErr());
+            TemplateContext tpl = new TemplateContext(templateName, params,
+                    resolved.vars(), entityCtx, resolved.templates());
+            body = loadSpecOrFail(fromFile, kind, canonicalId, spec.commandLine().getErr(), tpl);
+        } catch (TemplateException e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 2;
         } catch (NoSuchFileException e) {
             spec.commandLine().getErr().println("File not found: " + fromFile);
             return 2;
@@ -60,10 +88,6 @@ public final class EntityWriter {
         if (root.dryRun) {
             spec.commandLine().getOut().println(body);
             return 0;
-        }
-        EntityReader.ResolvedEnv resolved = EntityReader.resolveEnv(root, spec);
-        if (resolved == null) {
-            return 2;
         }
         String path = "/v1/" + type + "/" + bucket + "/" + URLEncoder.encode(name, StandardCharsets.UTF_8);
         CliHttpClient.Response resp;
@@ -259,11 +283,16 @@ public final class EntityWriter {
 
     public static int validateEntity(DialCli root, CommandSpec spec, String type, String kind,
                                      String canonicalId, Path fromFile) {
-        return validateEntity(root, spec, type, kind, "public", canonicalId, fromFile);
+        return validateEntity(root, spec, type, kind, "public", canonicalId, fromFile, null, null);
     }
 
     public static int validateEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
                                      String canonicalId, Path fromFile) {
+        return validateEntity(root, spec, type, kind, bucket, canonicalId, fromFile, null, null);
+    }
+
+    public static int validateEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
+                                     String canonicalId, Path fromFile, String templateName, List<String> paramFlags) {
         String simpleName;
         try {
             simpleName = requireCanonicalId(type, bucket, canonicalId);
@@ -271,9 +300,26 @@ public final class EntityWriter {
             spec.commandLine().getErr().println(e.getMessage());
             return 2;
         }
+        EntityReader.ResolvedEnv resolved = EntityReader.resolveEnv(root, spec);
+        if (resolved == null) {
+            return 2;
+        }
+        Map<String, Object> entityCtx = entityContext(simpleName, kind);
+        Map<String, Object> params;
+        try {
+            params = parseParams(paramFlags);
+        } catch (IllegalArgumentException e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 2;
+        }
         String specJson;
         try {
-            specJson = loadSpecOrFail(fromFile, kind, canonicalId, spec.commandLine().getErr());
+            TemplateContext tpl = new TemplateContext(templateName, params,
+                    resolved.vars(), entityCtx, resolved.templates());
+            specJson = loadSpecOrFail(fromFile, kind, canonicalId, spec.commandLine().getErr(), tpl);
+        } catch (TemplateException e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 2;
         } catch (NoSuchFileException e) {
             spec.commandLine().getErr().println("File not found: " + fromFile);
             return 2;
@@ -303,10 +349,6 @@ public final class EntityWriter {
         if (root.dryRun) {
             spec.commandLine().getOut().println(body);
             return 0;
-        }
-        EntityReader.ResolvedEnv resolved = EntityReader.resolveEnv(root, spec);
-        if (resolved == null) {
-            return 2;
         }
         CliHttpClient.Response resp;
         try {
@@ -440,12 +482,20 @@ public final class EntityWriter {
      * validate {@code kind} matches {@code expectedKind}, warn when the envelope's {@code name}
      * disagrees with {@code canonicalId}, and return the inner {@code spec} as JSON. Files
      * whose root isn't an envelope pass through (raw-spec backward compatibility).
+     *
+     * <p>If a {@code templateName} (or any of {@code params}/{@code vars}/{@code entityCtx})
+     * is provided, the resolved spec is also passed through {@link TemplateResolver#resolve}
+     * — extends/includes are merged, {@code !if}/{@code !for} are expanded, and
+     * {@code ${...}} placeholders are substituted.
      */
     static String loadSpecOrFail(Path file, String expectedKind, String canonicalId,
-                                 java.io.PrintWriter err) throws IOException {
+                                 java.io.PrintWriter err, TemplateContext tpl) throws IOException {
         String filename = file.getFileName().toString().toLowerCase();
         boolean yaml = filename.endsWith(".yaml") || filename.endsWith(".yml");
         String raw = Files.readString(file, StandardCharsets.UTF_8);
+        if (yaml) {
+            raw = ControlFlowExpander.rewriteYaml(raw);
+        }
         JsonNode root;
         try {
             root = yaml ? YAML.readTree(raw) : JSON.readTree(raw);
@@ -455,6 +505,9 @@ public final class EntityWriter {
         if (root == null || root.isMissingNode() || root.isNull()) {
             throw new IOException("file is empty");
         }
+        JsonNode rawSpec;
+        String envelopeTemplate = tpl.templateName();
+        Map<String, Object> envelopeParams = tpl.params();
         if (root.isObject() && root.has("kind") && root.has("spec") && root.get("spec").isObject()) {
             JsonNode kindNode = root.get("kind");
             if (!kindNode.isTextual() || kindNode.asText().isBlank()) {
@@ -470,8 +523,72 @@ public final class EntityWriter {
                 err.println("[warn] manifest 'name' '" + envName.asText()
                         + "' differs from --name '" + canonicalId + "'; using --name");
             }
-            return JSON.writeValueAsString(root.get("spec"));
+            // Manifest-level template/params (CLI flags win on conflict).
+            if (envelopeTemplate == null || envelopeTemplate.isBlank()) {
+                JsonNode templateNode = root.get("template");
+                if (templateNode != null && templateNode.isTextual() && !templateNode.asText().isBlank()) {
+                    envelopeTemplate = templateNode.asText();
+                }
+            }
+            JsonNode paramsNode = root.get("params");
+            if (paramsNode != null && paramsNode.isObject()) {
+                Map<String, Object> merged = new HashMap<>();
+                paramsNode.fields().forEachRemaining(e -> merged.put(e.getKey(), JSON.convertValue(e.getValue(), Object.class)));
+                if (envelopeParams != null) {
+                    merged.putAll(envelopeParams);
+                }
+                envelopeParams = merged;
+            }
+            rawSpec = root.get("spec");
+        } else {
+            rawSpec = root;
         }
-        return JSON.writeValueAsString(root);
+        TemplateContext effective = new TemplateContext(envelopeTemplate, envelopeParams,
+                tpl.vars(), tpl.entityCtx(), tpl.templates());
+        JsonNode resolved = TemplateResolver.resolve(rawSpec, effective);
+        return JSON.writeValueAsString(resolved);
+    }
+
+    static Map<String, Object> entityContext(String simpleName, String kind) {
+        Map<String, Object> ctx = new HashMap<>();
+        ctx.put("name", simpleName);
+        if (kind != null) {
+            ctx.put("type", kind);
+        }
+        return ctx;
+    }
+
+    static Map<String, Object> parseParams(List<String> paramFlags) {
+        Map<String, Object> out = new HashMap<>();
+        if (paramFlags == null) {
+            return out;
+        }
+        for (String pair : paramFlags) {
+            int eq = pair.indexOf('=');
+            if (eq <= 0) {
+                throw new IllegalArgumentException("--param must be 'key=value'; got '" + pair + "'.");
+            }
+            String key = pair.substring(0, eq).trim();
+            String rawValue = pair.substring(eq + 1);
+            out.put(key, parseParamValue(rawValue));
+        }
+        return out;
+    }
+
+    private static Object parseParamValue(String raw) {
+        // Comma-separated list: 'a,b,c' → List<String>.
+        if (raw.startsWith("[") && raw.endsWith("]")) {
+            String inner = raw.substring(1, raw.length() - 1);
+            if (inner.isBlank()) {
+                return List.of();
+            }
+            String[] parts = inner.split(",", -1);
+            List<String> items = new java.util.ArrayList<>(parts.length);
+            for (String p : parts) {
+                items.add(p.trim());
+            }
+            return items;
+        }
+        return raw;
     }
 }

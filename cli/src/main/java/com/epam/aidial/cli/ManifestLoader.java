@@ -1,5 +1,6 @@
 package com.epam.aidial.cli;
 
+import com.epam.aidial.cli.template.ControlFlowExpander;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MappingIterator;
@@ -12,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,7 +45,7 @@ final class ManifestLoader {
             "InterceptorOverlay", "RoleOverlay", "KeyOverlay", "RouteOverlay",
             "SettingsOverlay", "FileOverlay", "PromptOverlay", "ConversationOverlay");
 
-    private static final List<String> DEFERRED_FIELDS = List.of("template", "params", "patch", "target");
+    private static final List<String> DEFERRED_FIELDS = List.of("patch", "target");
 
     private ManifestLoader() {
     }
@@ -58,6 +60,9 @@ final class ManifestLoader {
             throw new ManifestParseException("File not found: " + file);
         } catch (IOException e) {
             throw new ManifestParseException("Failed to read " + file + ": " + e.getMessage());
+        }
+        if (yaml) {
+            content = ControlFlowExpander.rewriteYaml(content);
         }
 
         List<JsonNode> docs = yaml ? parseYamlDocs(content, file) : parseJsonDocs(content, file);
@@ -154,7 +159,26 @@ final class ManifestLoader {
             }
             simpleName = stripCanonical(kind, nameNode.asText(), where);
         }
-        return new Manifest(kind, simpleName, specNode);
+
+        String templateName = null;
+        JsonNode templateNode = doc.get("template");
+        if (templateNode != null && !templateNode.isNull()) {
+            if (!templateNode.isTextual() || templateNode.asText().isBlank()) {
+                throw new ManifestParseException(where + ": 'template' must be a non-empty string");
+            }
+            templateName = templateNode.asText();
+        }
+
+        Map<String, Object> params = new HashMap<>();
+        JsonNode paramsNode = doc.get("params");
+        if (paramsNode != null && !paramsNode.isNull()) {
+            if (!paramsNode.isObject()) {
+                throw new ManifestParseException(where + ": 'params' must be a mapping");
+            }
+            paramsNode.fields().forEachRemaining(e ->
+                    params.put(e.getKey(), JSON.convertValue(e.getValue(), Object.class)));
+        }
+        return new Manifest(kind, simpleName, specNode, templateName, params);
     }
 
     private static String stripCanonical(String kind, String declared, String where) throws ManifestParseException {
@@ -171,7 +195,7 @@ final class ManifestLoader {
         return simple;
     }
 
-    record Manifest(String kind, String name, JsonNode spec) { }
+    record Manifest(String kind, String name, JsonNode spec, String templateName, Map<String, Object> params) { }
 
     static final class ManifestParseException extends Exception {
         ManifestParseException(String message) {

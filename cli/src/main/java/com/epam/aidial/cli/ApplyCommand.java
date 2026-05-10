@@ -1,6 +1,9 @@
 package com.epam.aidial.cli;
 
 import com.epam.aidial.cli.http.CliHttpClient;
+import com.epam.aidial.cli.template.TemplateContext;
+import com.epam.aidial.cli.template.TemplateException;
+import com.epam.aidial.cli.template.TemplateResolver;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,7 +17,9 @@ import picocli.CommandLine.Spec;
 
 import java.io.PrintWriter;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 
 @Command(
@@ -36,6 +41,10 @@ public class ApplyCommand implements Callable<Integer> {
                     + "JSON (.json) accepts a single object or an array of manifests.")
     Path file;
 
+    @Option(names = "--param",
+            description = "Template parameter override 'key=value' (repeatable). CLI overrides per-manifest 'params'.")
+    List<String> params;
+
     @Override
     public Integer call() {
         PrintWriter out = spec.commandLine().getOut();
@@ -49,13 +58,41 @@ public class ApplyCommand implements Callable<Integer> {
             return 2;
         }
 
+        EntityReader.ResolvedEnv resolved = EntityReader.resolveEnv(parent, spec);
+        if (resolved == null) {
+            return 2;
+        }
+
+        Map<String, Object> cliParams;
+        try {
+            cliParams = EntityWriter.parseParams(params);
+        } catch (IllegalArgumentException e) {
+            err.println(e.getMessage());
+            return 2;
+        }
+
         ObjectNode envelope = JSON.createObjectNode();
         ArrayNode arr = envelope.putArray("manifests");
         for (ManifestLoader.Manifest m : manifests) {
+            JsonNode resolvedSpec;
+            try {
+                Map<String, Object> mergedParams = new HashMap<>();
+                if (m.params() != null) {
+                    mergedParams.putAll(m.params());
+                }
+                mergedParams.putAll(cliParams);
+                Map<String, Object> entityCtx = EntityWriter.entityContext(m.name(), m.kind());
+                TemplateContext tpl = new TemplateContext(m.templateName(), mergedParams,
+                        resolved.vars(), entityCtx, resolved.templates());
+                resolvedSpec = TemplateResolver.resolve(m.spec(), tpl);
+            } catch (TemplateException e) {
+                err.println(m.name() + ": " + e.getMessage());
+                return 2;
+            }
             ObjectNode entry = arr.addObject();
             entry.put("kind", m.kind());
             entry.put("name", m.name());
-            entry.set("spec", m.spec());
+            entry.set("spec", resolvedSpec);
         }
         envelope.put("precheck", true);
 
@@ -72,10 +109,6 @@ public class ApplyCommand implements Callable<Integer> {
             return 0;
         }
 
-        EntityReader.ResolvedEnv resolved = EntityReader.resolveEnv(parent, spec);
-        if (resolved == null) {
-            return 2;
-        }
         CliHttpClient http = new CliHttpClient(resolved.apiUrl(), resolved.apiKey());
 
         Integer validateExit = runValidate(http, body, err);

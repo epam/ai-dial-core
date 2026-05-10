@@ -462,7 +462,9 @@ class ApplyCommandTest {
     }
 
     @Test
-    void applyTemplateFieldRejectedAsDeferred(@TempDir Path tmp) throws Exception {
+    void applyTemplateFieldUnknownTemplateExitsTwo(@TempDir Path tmp) throws Exception {
+        // 4C.1: 'template:' is accepted but must reference a known template. When the profile
+        // has no 'templates' block, an unknown template name surfaces as a TemplateException.
         Path config = writeProfileAndKey(tmp);
         Path manifest = tmp.resolve("m.yaml");
         Files.writeString(manifest, """
@@ -475,9 +477,7 @@ class ApplyCommandTest {
         Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
 
         assertEquals(2, r.exitCode);
-        assertTrue(r.err.contains("template"), r.err);
-        assertTrue(r.err.toLowerCase().contains("not supported") || r.err.toLowerCase().contains("deferred"),
-                "expected deferred-feature message, got: " + r.err);
+        assertTrue(r.err.contains("bedrock-chat"), r.err);
     }
 
     @Test
