@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ConsentService;
@@ -23,8 +24,8 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
-import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
@@ -41,6 +42,7 @@ import io.vertx.junit5.VertxTestContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -453,13 +455,126 @@ public class ResponsesControllerTest {
         assertEquals(tokenUsage, context.getTokenUsage());
     }
 
+    @Test
+    public void testPreviousResponseIdRejected(VertxTestContext textContext) throws Throwable {
+        when(context.getRequest()).thenReturn(request);
+        when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        when(request.body()).thenReturn(Future.succeededFuture(
+                Buffer.buffer("{\"model\":\"test\",\"previous_response_id\":\"resp_123\"}")));
+        when(context.respond(any(HttpStatus.class), anyString()))
+                .thenAnswer(invocation -> complete(textContext));
+
+        controller.handle();
+
+        await(textContext);
+
+        verify(context).respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
+    }
+
+    @Test
+    public void testConversationRejected(VertxTestContext textContext) throws Throwable {
+        when(context.getRequest()).thenReturn(request);
+        when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        when(request.body()).thenReturn(Future.succeededFuture(
+                Buffer.buffer("{\"model\":\"test\",\"conversation\":[]}")));
+        when(context.respond(any(HttpStatus.class), anyString()))
+                .thenAnswer(invocation -> complete(textContext));
+
+        controller.handle();
+
+        await(textContext);
+
+        verify(context).respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
+    }
+
+    @Test
+    public void testResponseIdMappingCreated(Vertx vertx, VertxTestContext textContext) throws Throwable {
+        Application deployment = new Application();
+        deployment.setName("test");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0, null);
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
+        Buffer requestBody = Buffer.buffer("{\"model\":\"test\"}");
+        Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-resp-id\",\"status\":\"completed\"}");
+        String expectedDialId = "resp_dial_fixed-uuid-1234";
+        ResponseMapping expectedMapping = ResponseMapping.builder()
+                .upstreamResponseId("upstream-resp-id")
+                .upstreamKey("endpoint")
+                .deploymentName("test")
+                .build();
+
+        when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        when(request.body()).thenReturn(Future.succeededFuture(requestBody));
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(upstreamRoute.next()).thenReturn(upstream);
+        when(upstreamRoute.get()).thenReturn(upstream);
+        when(context.getRequest()).thenReturn(request);
+        when(context.getResponse()).thenReturn(response);
+        when(context.getConfig()).thenReturn(new Config());
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+        when(proxyRequest.headers()).thenReturn(new HeadersMultiMap());
+        when(proxyRequest.send(any(Buffer.class))).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxyResponse.statusCode()).thenReturn(200);
+        when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
+        when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
+        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
+        when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
+        when(proxy.getRateLimiter().limit(context, deployment))
+                .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
+        when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
+                .thenReturn(deployment);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
+        when(proxy.getTokenStatsTracker().getTokenStats(context))
+                .thenReturn(Future.succeededFuture(new TokenUsage()));
+        when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
+        doAnswer(invocation -> {
+            textContext.completeNow();
+            return Future.succeededFuture(Boolean.TRUE);
+        }).when(apiKeyStore).invalidatePerRequestApiKey(any());
+        doCallRealMethod().when(context).setDeployment(any());
+        doCallRealMethod().when(context).getDeployment();
+        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).getRequestBody();
+        doCallRealMethod().when(context).setResponseBody(any());
+        doCallRealMethod().when(context).getResponseBody();
+        doCallRealMethod().when(context).setTokenUsage(any());
+        doCallRealMethod().when(context).getTokenUsage();
+        doCallRealMethod().when(context).setUpstreamRoute(any());
+        doCallRealMethod().when(context).getUpstreamRoute();
+        doCallRealMethod().when(context).setProxyResponse(any());
+        doCallRealMethod().when(context).getProxyResponse();
+
+        controller.handle();
+
+        await(textContext);
+
+        verify(proxy.getResponseMappingService()).saveMapping(eq(context), eq(expectedDialId), eq(expectedMapping));
+        ArgumentCaptor<Buffer> bodyCaptor = ArgumentCaptor.forClass(Buffer.class);
+        verify(response).end(bodyCaptor.capture());
+        JsonNode sentJson = ProxyUtil.MAPPER.readTree(bodyCaptor.getValue().getBytes());
+        assertEquals(expectedDialId, sentJson.path("id").asText());
+    }
+
     private static Future<?> complete(VertxTestContext textContext) {
         textContext.completeNow();
         return Future.succeededFuture();
     }
 
     private static void await(VertxTestContext textContext) throws Throwable {
-        textContext.awaitCompletion(1000, TimeUnit.SECONDS);
+        textContext.awaitCompletion(10, TimeUnit.SECONDS);
         if (textContext.failed()) {
             throw textContext.causeOfFailure();
         }

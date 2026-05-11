@@ -149,7 +149,7 @@ public class ResponseItemController implements Controller {
         }
 
         private boolean shouldDeleteMapping(int status) {
-            return deleteMappingOnSuccess && status != 200;
+            return deleteMappingOnSuccess && status == 200;
         }
     }
 }

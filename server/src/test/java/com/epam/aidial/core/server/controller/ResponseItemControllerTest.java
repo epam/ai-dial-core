@@ -1,0 +1,372 @@
+package com.epam.aidial.core.server.controller;
+
+import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ResponseMapping;
+import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.JsonNode;
+import io.vertx.core.Future;
+import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
+import io.vertx.core.http.HttpClientRequest;
+import io.vertx.core.http.HttpClientResponse;
+import io.vertx.core.http.HttpHeaders;
+import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.RequestOptions;
+import io.vertx.core.json.JsonObject;
+import io.vertx.junit5.VertxExtension;
+import io.vertx.junit5.VertxTestContext;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import static com.epam.aidial.core.server.controller.ResponseItemController.Operation.CANCEL;
+import static com.epam.aidial.core.server.controller.ResponseItemController.Operation.DELETE;
+import static com.epam.aidial.core.server.controller.ResponseItemController.Operation.GET;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith({MockitoExtension.class, VertxExtension.class})
+public class ResponseItemControllerTest {
+
+    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
+    private Proxy proxy;
+
+    @Mock
+    private ProxyContext context;
+
+    @Mock
+    private HttpServerResponse response;
+
+    private ResponseItemController controller(String dialId, ResponseItemController.Operation op) {
+        return new ResponseItemController(proxy, context, dialId, op);
+    }
+
+    @Test
+    public void testMappingNotFound(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        when(proxy.getResponseMappingService().getMapping(context, "resp_dial_unknown")).thenReturn(null);
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(context.getResponse()).thenReturn(response);
+        when(response.ended()).thenReturn(false);
+        when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
+
+        controller("resp_dial_unknown", GET).handle();
+
+        await(testContext);
+
+        verify(context).respond(
+                argThat((Throwable e) -> e instanceof HttpException
+                        && ((HttpException) e).getStatus() == HttpStatus.NOT_FOUND
+                        && e.getMessage().contains("Unknown or expired response_id")
+                        && e.getMessage().contains("response_id")),
+                anyString());
+    }
+
+    @Test
+    public void testGetForwardsToUpstream(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        ResponseMapping mapping = ResponseMapping.builder()
+                .upstreamResponseId("upstream-id-123")
+                .upstreamKey("endpoint")
+                .deploymentName("test-deployment")
+                .build();
+        Model deployment = new Model();
+        deployment.setName("test-deployment");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, 0, 0, null);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-id-123\",\"status\":\"completed\"}");
+
+        when(proxy.getResponseMappingService().getMapping(context, "resp_dial_123")).thenReturn(mapping);
+        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
+        when(upstreamRoute.get("endpoint")).thenReturn(upstream);
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
+        when(proxyRequest.send()).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxyResponse.statusCode()).thenReturn(200);
+        when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
+        when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
+        when(context.getResponse()).thenReturn(response);
+        when(response.setStatusCode(200)).thenReturn(response);
+        when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
+        when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+
+        controller("resp_dial_123", GET).handle();
+
+        await(testContext);
+
+        ArgumentCaptor<RequestOptions> optsCaptor = ArgumentCaptor.forClass(RequestOptions.class);
+        verify(httpClient).request(optsCaptor.capture());
+        assertEquals("/responses/upstream-id-123", optsCaptor.getValue().getURI());
+        assertEquals("adapter", optsCaptor.getValue().getHost());
+        assertEquals(HttpMethod.GET, optsCaptor.getValue().getMethod());
+
+        ArgumentCaptor<Buffer> bodyCaptor = ArgumentCaptor.forClass(Buffer.class);
+        verify(response).end(bodyCaptor.capture());
+        JsonNode sentJson = ProxyUtil.MAPPER.readTree(bodyCaptor.getValue().getBytes());
+        assertEquals("resp_dial_123", sentJson.path("id").asText());
+
+        verify(proxy.getResponseMappingService(), never()).deleteMapping(any(), anyString());
+    }
+
+    @Test
+    public void testCancelForwardsToUpstream(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        ResponseMapping mapping = ResponseMapping.builder()
+                .upstreamResponseId("upstream-id-123")
+                .upstreamKey("endpoint")
+                .deploymentName("test-deployment")
+                .build();
+        Model deployment = new Model();
+        deployment.setName("test-deployment");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, 0, 0, null);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-id-123\",\"status\":\"cancelled\"}");
+
+        when(proxy.getResponseMappingService().getMapping(context, "resp_dial_123")).thenReturn(mapping);
+        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
+        when(upstreamRoute.get("endpoint")).thenReturn(upstream);
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
+        when(proxyRequest.send()).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxyResponse.statusCode()).thenReturn(200);
+        when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
+        when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
+        when(context.getResponse()).thenReturn(response);
+        when(response.setStatusCode(200)).thenReturn(response);
+        when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
+        when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+
+        controller("resp_dial_123", CANCEL).handle();
+
+        await(testContext);
+
+        ArgumentCaptor<RequestOptions> optsCaptor = ArgumentCaptor.forClass(RequestOptions.class);
+        verify(httpClient).request(optsCaptor.capture());
+        assertEquals("/responses/upstream-id-123/cancel", optsCaptor.getValue().getURI());
+        assertEquals("adapter", optsCaptor.getValue().getHost());
+        assertEquals(HttpMethod.POST, optsCaptor.getValue().getMethod());
+    }
+
+    @Test
+    public void testDeleteDeletesMappingOn200(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        ResponseMapping mapping = ResponseMapping.builder()
+                .upstreamResponseId("upstream-id-del")
+                .upstreamKey("endpoint")
+                .deploymentName("test-deployment")
+                .build();
+        Model deployment = new Model();
+        deployment.setName("test-deployment");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, 0, 0, null);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+
+        when(proxy.getResponseMappingService().getMapping(context, "resp_dial_del")).thenReturn(mapping);
+        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
+        when(upstreamRoute.get("endpoint")).thenReturn(upstream);
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
+        when(proxyRequest.send()).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxyResponse.statusCode()).thenReturn(200);
+        when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
+        when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(null);
+        when(context.getResponse()).thenReturn(response);
+        when(response.setStatusCode(200)).thenReturn(response);
+        when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
+        when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+
+        controller("resp_dial_del", DELETE).handle();
+
+        await(testContext);
+
+        verify(proxy.getResponseMappingService()).deleteMapping(context, "resp_dial_del");
+    }
+
+    @Test
+    public void testDeleteKeepsMappingOnNon200(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        ResponseMapping mapping = ResponseMapping.builder()
+                .upstreamResponseId("upstream-id-del")
+                .upstreamKey("endpoint")
+                .deploymentName("test-deployment")
+                .build();
+        Model deployment = new Model();
+        deployment.setName("test-deployment");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, 0, 0, null);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+
+        when(proxy.getResponseMappingService().getMapping(context, "resp_dial_del")).thenReturn(mapping);
+        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
+        when(upstreamRoute.get("endpoint")).thenReturn(upstream);
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
+        when(proxyRequest.send()).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxyResponse.statusCode()).thenReturn(400);
+        when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"id\":\"upstream-id-del\"}")));
+        when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
+        when(context.getResponse()).thenReturn(response);
+        when(response.setStatusCode(400)).thenReturn(response);
+        when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
+        when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+
+        controller("resp_dial_del", DELETE).handle();
+
+        await(testContext);
+
+        verify(proxy.getResponseMappingService(), never()).deleteMapping(any(), anyString());
+    }
+
+    @Test
+    public void testNoResponsesEndpoint(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        ResponseMapping mapping = ResponseMapping.builder()
+                .upstreamResponseId("upstream-id")
+                .upstreamKey("endpoint")
+                .deploymentName("no-responses-deployment")
+                .build();
+        Model deployment = new Model();
+        deployment.setName("no-responses-deployment");
+
+        when(proxy.getResponseMappingService().getMapping(context, "resp_dial_x")).thenReturn(mapping);
+        when(proxy.getDeploymentService().findDeployment(context, "no-responses-deployment")).thenReturn(deployment);
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(context.respond(any(HttpStatus.class), anyString())).thenAnswer(invocation -> complete(testContext));
+
+        controller("resp_dial_x", GET).handle();
+
+        await(testContext);
+
+        verify(context).respond(HttpStatus.SERVICE_UNAVAILABLE,
+                "Deployment for response_id does not support Responses API");
+    }
+
+    @Test
+    public void testUpstreamNotFound(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        ResponseMapping mapping = ResponseMapping.builder()
+                .upstreamResponseId("upstream-id")
+                .upstreamKey("missing-upstream-key")
+                .deploymentName("test-deployment")
+                .build();
+        Model deployment = new Model();
+        deployment.setName("test-deployment");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+
+        when(proxy.getResponseMappingService().getMapping(context, "resp_dial_y")).thenReturn(mapping);
+        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
+        when(upstreamRoute.get("missing-upstream-key")).thenReturn(null);
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(context.respond(any(HttpStatus.class), anyString())).thenAnswer(invocation -> complete(testContext));
+
+        controller("resp_dial_y", GET).handle();
+
+        await(testContext);
+
+        verify(context).respond(HttpStatus.SERVICE_UNAVAILABLE,
+                "Upstream for response_id is no longer available");
+    }
+
+    @Test
+    public void testEmptyBodySkipsRewrite(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        ResponseMapping mapping = ResponseMapping.builder()
+                .upstreamResponseId("upstream-id-empty")
+                .upstreamKey("endpoint")
+                .deploymentName("test-deployment")
+                .build();
+        Model deployment = new Model();
+        deployment.setName("test-deployment");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, 0, 0, null);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+
+        when(proxy.getResponseMappingService().getMapping(context, "resp_dial_empty")).thenReturn(mapping);
+        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
+        when(upstreamRoute.get("endpoint")).thenReturn(upstream);
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
+        when(proxyRequest.send()).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxyResponse.statusCode()).thenReturn(200);
+        when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
+        when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(null);
+        when(context.getResponse()).thenReturn(response);
+        when(response.setStatusCode(200)).thenReturn(response);
+        when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
+        when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+
+        controller("resp_dial_empty", GET).handle();
+
+        await(testContext);
+
+        ArgumentCaptor<Buffer> bodyCaptor = ArgumentCaptor.forClass(Buffer.class);
+        verify(response).end(bodyCaptor.capture());
+        assertEquals(0, bodyCaptor.getValue().length());
+        verify(proxy.getResponseMappingService(), never()).deleteMapping(any(), anyString());
+    }
+
+    private static Future<?> complete(VertxTestContext testContext) {
+        testContext.completeNow();
+        return Future.succeededFuture();
+    }
+
+    private static void await(VertxTestContext testContext) throws Throwable {
+        testContext.awaitCompletion(1, TimeUnit.SECONDS);
+        if (testContext.failed()) {
+            throw testContext.causeOfFailure();
+        }
+    }
+
+    private static AsyncTaskExecutor taskExecutor(Vertx vertx) {
+        return new AsyncTaskExecutor(vertx, new JsonObject(Map.of("useVirtualThreads", false)));
+    }
+}
