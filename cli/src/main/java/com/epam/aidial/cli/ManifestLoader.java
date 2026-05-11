@@ -27,7 +27,7 @@ final class ManifestLoader {
 
     private static final String SETTINGS_SINGLETON_NAME = "global";
 
-    private static final Map<String, String> KIND_CANONICAL_PREFIX = Map.of(
+    static final Map<String, String> KIND_CANONICAL_PREFIX = Map.of(
             "Model", "models/public/",
             "Application", "applications/public/",
             "ToolSet", "toolsets/public/",
@@ -81,7 +81,7 @@ final class ManifestLoader {
         return all;
     }
 
-    private static boolean hasHiddenSegment(Path relative) {
+    static boolean hasHiddenSegment(Path relative) {
         for (Path seg : relative) {
             if (seg.toString().startsWith(".")) {
                 return true;
@@ -90,8 +90,12 @@ final class ManifestLoader {
         return false;
     }
 
-    private static boolean hasManifestExtension(Path file) {
-        String name = file.getFileName().toString().toLowerCase();
+    static boolean hasManifestExtension(Path file) {
+        return hasManifestExtension(file.getFileName().toString());
+    }
+
+    static boolean hasManifestExtension(String filename) {
+        String name = filename.toLowerCase();
         return name.endsWith(".yaml") || name.endsWith(".yml") || name.endsWith(".json");
     }
 
@@ -119,6 +123,10 @@ final class ManifestLoader {
             manifests.add(toManifest(docs.get(i), i, file));
         }
         return manifests;
+    }
+
+    static Set<String> allowedKinds() {
+        return ALLOWED_KINDS;
     }
 
     private static List<JsonNode> parseYamlDocs(String content, Path file) throws ManifestParseException {
@@ -223,10 +231,10 @@ final class ManifestLoader {
             paramsNode.fields().forEachRemaining(e ->
                     params.put(e.getKey(), JSON.convertValue(e.getValue(), Object.class)));
         }
-        return new Manifest(kind, simpleName, specNode, templateName, params);
+        return new Manifest(kind, simpleName, specNode, templateName, params, file);
     }
 
-    private static String stripCanonical(String kind, String declared, String where) throws ManifestParseException {
+    static String stripCanonical(String kind, String declared, String where) throws ManifestParseException {
         String prefix = KIND_CANONICAL_PREFIX.get(kind);
         if (!declared.startsWith(prefix) || declared.length() == prefix.length()) {
             throw new ManifestParseException(where + ": 'name' must be a canonical id '" + prefix
@@ -240,7 +248,14 @@ final class ManifestLoader {
         return simple;
     }
 
-    record Manifest(String kind, String name, JsonNode spec, String templateName, Map<String, Object> params) { }
+    /**
+     * A parsed manifest entry. {@code source} is the file the manifest was loaded from
+     * (used by overlay {@code .disable} matching to compute the file's relative path
+     * under the {@code -f} root); it is {@code null} when callers construct a manifest
+     * synthetically.
+     */
+    record Manifest(String kind, String name, JsonNode spec, String templateName,
+                    Map<String, Object> params, Path source) { }
 
     static final class ManifestParseException extends Exception {
         ManifestParseException(String message) {

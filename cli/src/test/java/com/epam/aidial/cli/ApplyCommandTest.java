@@ -829,4 +829,195 @@ class ApplyCommandTest {
         assertEquals(2, r.exitCode);
         assertTrue(r.err.contains("bad.yaml"), r.err);
     }
+
+    @Test
+    void applyOverlayPatchesSpec(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path baseRoot = tmp.resolve("base");
+        Path overlayRoot = tmp.resolve("overlay");
+        Files.createDirectories(baseRoot.resolve("models"));
+        Files.writeString(baseRoot.resolve("models/m.yaml"),
+                "kind: Model\nname: models/public/m\nspec:\n  type: chat\n  endpoint: http://base\n");
+        Files.createDirectories(overlayRoot.resolve("models"));
+        Files.writeString(overlayRoot.resolve("models/m.yaml"), """
+                kind: ModelOverlay
+                target: models/public/m
+                patch:
+                  endpoint: http://patched
+                """);
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger applyHits = new AtomicInteger();
+        recordPost("/v1/admin/validate", 200,
+                "{\"valid\":1,\"failed\":0,\"results\":[]}", new AtomicReference<>(), new AtomicInteger());
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":1,\"failed\":0,\"results\":[]}", applyBody, applyHits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply",
+                "-f", baseRoot.toString(),
+                "--overlay", overlayRoot.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals(1, applyHits.get());
+        assertTrue(applyBody.get().contains("\"endpoint\":\"http://patched\""), applyBody.get());
+        assertTrue(applyBody.get().contains("\"type\":\"chat\""), applyBody.get());
+    }
+
+    @Test
+    void applyOverlayDisableMarkerRemovesEntity(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path baseRoot = tmp.resolve("base");
+        Path overlayRoot = tmp.resolve("overlay");
+        Files.createDirectories(baseRoot.resolve("models"));
+        Files.writeString(baseRoot.resolve("models/keep.yaml"),
+                "kind: Model\nname: models/public/keep\nspec: { type: chat, endpoint: http://k }\n");
+        Files.writeString(baseRoot.resolve("models/drop.yaml"),
+                "kind: Model\nname: models/public/drop\nspec: { type: chat, endpoint: http://d }\n");
+        Files.createDirectories(overlayRoot.resolve("models"));
+        Files.writeString(overlayRoot.resolve("models/drop.disable"), "");
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger applyHits = new AtomicInteger();
+        recordPost("/v1/admin/validate", 200,
+                "{\"valid\":1,\"failed\":0,\"results\":[]}", new AtomicReference<>(), new AtomicInteger());
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":1,\"failed\":0,\"results\":[]}", applyBody, applyHits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply",
+                "-f", baseRoot.toString(),
+                "--overlay", overlayRoot.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(applyBody.get().contains("\"name\":\"keep\""), applyBody.get());
+        assertFalse(applyBody.get().contains("\"name\":\"drop\""), applyBody.get());
+    }
+
+    @Test
+    void applyOverlayMissingTargetExitsTwo(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path baseRoot = tmp.resolve("base");
+        Path overlayRoot = tmp.resolve("overlay");
+        Files.createDirectories(baseRoot.resolve("models"));
+        Files.writeString(baseRoot.resolve("models/m.yaml"),
+                "kind: Model\nname: models/public/m\nspec: { type: chat, endpoint: http://x }\n");
+        Files.createDirectories(overlayRoot);
+        Files.writeString(overlayRoot.resolve("ghost.yaml"), """
+                kind: ModelOverlay
+                target: models/public/ghost
+                patch:
+                  endpoint: http://y
+                """);
+
+        Result r = run(config, apiKeyFile(tmp), "apply",
+                "-f", baseRoot.toString(),
+                "--overlay", overlayRoot.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("matches no base manifest"), r.err);
+    }
+
+    @Test
+    void applyOverlayDisableWithSingleFileBaseExitsTwo(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path baseFile = tmp.resolve("m.yaml");
+        Files.writeString(baseFile, "kind: Model\nname: models/public/m\nspec: { type: chat, endpoint: http://x }\n");
+        Path overlayRoot = tmp.resolve("overlay");
+        Files.createDirectories(overlayRoot);
+        Files.writeString(overlayRoot.resolve("m.disable"), "");
+
+        Result r = run(config, apiKeyFile(tmp), "apply",
+                "-f", baseFile.toString(),
+                "--overlay", overlayRoot.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains(".disable") && r.err.contains("-f"), r.err);
+    }
+
+    @Test
+    void applyOverlayNullDeletesFieldEndToEnd(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path baseRoot = tmp.resolve("base");
+        Path overlayRoot = tmp.resolve("overlay");
+        Files.createDirectories(baseRoot.resolve("models"));
+        Files.writeString(baseRoot.resolve("models/m.yaml"),
+                "kind: Model\nname: models/public/m\nspec:\n  type: chat\n  endpoint: http://base\n");
+        Files.createDirectories(overlayRoot.resolve("models"));
+        Files.writeString(overlayRoot.resolve("models/m.yaml"), """
+                kind: ModelOverlay
+                target: models/public/m
+                patch:
+                  type: null
+                """);
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger applyHits = new AtomicInteger();
+        recordPost("/v1/admin/validate", 200,
+                "{\"valid\":1,\"failed\":0,\"results\":[]}", new AtomicReference<>(), new AtomicInteger());
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":1,\"failed\":0,\"results\":[]}", applyBody, applyHits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply",
+                "-f", baseRoot.toString(),
+                "--overlay", overlayRoot.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(applyBody.get().contains("\"endpoint\":\"http://base\""), applyBody.get());
+        assertFalse(applyBody.get().contains("\"type\""), "RFC 7396 null-delete must remove field end-to-end: "
+                + applyBody.get());
+    }
+
+    @Test
+    void applyOverlayParamsOverrideFlowsThroughTemplate(@TempDir Path tmp) throws Exception {
+        // Overlay overrides params consumed by a ${params.X} substitution in the manifest spec.
+        Path config = writeProfileAndKey(tmp);
+        Path baseRoot = tmp.resolve("base");
+        Path overlayRoot = tmp.resolve("overlay");
+        Files.createDirectories(baseRoot.resolve("models"));
+        Files.writeString(baseRoot.resolve("models/m.yaml"), """
+                kind: Model
+                name: models/public/m
+                params:
+                  region: us-east-1
+                spec:
+                  type: chat
+                  endpoint: "http://api-${params.region}.example"
+                """);
+        Files.createDirectories(overlayRoot.resolve("models"));
+        Files.writeString(overlayRoot.resolve("models/m.yaml"), """
+                kind: ModelOverlay
+                target: models/public/m
+                params:
+                  region: us-west-2
+                """);
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger applyHits = new AtomicInteger();
+        recordPost("/v1/admin/validate", 200,
+                "{\"valid\":1,\"failed\":0,\"results\":[]}", new AtomicReference<>(), new AtomicInteger());
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":1,\"failed\":0,\"results\":[]}", applyBody, applyHits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply",
+                "-f", baseRoot.toString(),
+                "--overlay", overlayRoot.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(applyBody.get().contains("\"endpoint\":\"http://api-us-west-2.example\""),
+                "overlay params must reach template resolution: " + applyBody.get());
+    }
+
+    @Test
+    void applyOverlayAllDisabledExitsTwo(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path baseRoot = tmp.resolve("base");
+        Path overlayRoot = tmp.resolve("overlay");
+        Files.createDirectories(baseRoot.resolve("models"));
+        Files.writeString(baseRoot.resolve("models/m.yaml"),
+                "kind: Model\nname: models/public/m\nspec: { type: chat, endpoint: http://x }\n");
+        Files.createDirectories(overlayRoot.resolve("models"));
+        Files.writeString(overlayRoot.resolve("models/m.disable"), "");
+
+        Result r = run(config, apiKeyFile(tmp), "apply",
+                "-f", baseRoot.toString(),
+                "--overlay", overlayRoot.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("No manifests remain"), r.err);
+    }
 }
