@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
@@ -28,6 +29,7 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -43,6 +45,9 @@ import java.util.List;
 
 @Slf4j
 public class ResponsesController extends BaseDeploymentPostController {
+
+    static final String DIAL_RESPONSE_ID_PREFIX = "resp_dial_";
+
     private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
 
     public ResponsesController(Proxy proxy, ProxyContext context) {
@@ -110,7 +115,14 @@ public class ResponsesController extends BaseDeploymentPostController {
     private ResponsesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
-            return new ResponsesApiRequest(ProxyUtil.parseObject(body));
+            ObjectNode tree = ProxyUtil.parseObject(body);
+            if (tree.has("previous_response_id")) {
+                throw new HttpException(HttpStatus.BAD_REQUEST, "previous_response_id is not supported");
+            }
+            if (tree.has("conversation")) {
+                throw new HttpException(HttpStatus.BAD_REQUEST, "conversation is not supported");
+            }
+            return new ResponsesApiRequest(tree);
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
@@ -203,12 +215,19 @@ public class ResponsesController extends BaseDeploymentPostController {
             upstreamRoute.fail(proxyResponse);
         }
 
-        BufferingReadStream responseStream = createResponseStream(proxyResponse, () ->
-                new ResponsesSseListener(new CollectResponsesApiOutputAttachmentsFn(proxy, context)));
-
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
-        context.setResponseStream(responseStream);
+
+        if (!context.isStreamingRequest()) {
+            // Read the entire response to replace the response ID with the DIAL ID
+            proxyResponse.body()
+                    .compose(body -> handleNonStreamingResponse(proxyResponse, body))
+                    .onFailure(this::handleProxyConnectionError);
+            return;
+        }
+
+        BufferingReadStream responseStream = createResponseStream(proxyResponse, () ->
+                new ResponsesSseListener(new CollectResponsesApiOutputAttachmentsFn(proxy, context)));
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
@@ -222,31 +241,80 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
+    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
+        return rewriteResponseId(proxyResponse, body)
+                .compose(rewritten -> {
+                    context.setResponseBody(rewritten);
+                    context.setResponseBodyTimestamp(System.currentTimeMillis());
+                    HttpServerResponse response = context.getResponse();
+                    ProxyUtil.handleChunkedResponse(response, proxyResponse);
+                    response.setChunked(false);
+                    response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
+                    response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+                    return response.end(rewritten);
+                })
+                .compose(ignore -> collectTokenUsage(context.getResponseBody()))
+                .transform(result -> {
+                    if (result.failed()) {
+                        log.warn("Failed to collect token usage", result.cause());
+                    }
+                    return collectResponseAttachments(context.getResponseBody(), new CollectResponsesApiOutputAttachmentsFn(proxy, context));
+                })
+                .onComplete(future -> {
+                    if (future.failed()) {
+                        log.warn("Failed to collect attachments from response", future.cause());
+                    }
+                    completeProxyResponse();
+                })
+                .mapEmpty();
+    }
+
+    private Future<Buffer> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
+        if (proxyResponse.statusCode() != 200) {
+            return Future.succeededFuture(body);
+        }
+        return proxy.getTaskExecutor().submit(() -> {
+            try {
+                ObjectNode json = (ObjectNode) ProxyUtil.MAPPER.readTree(body.getBytes());
+                JsonNode idNode = json.get("id");
+                if (idNode == null || idNode.isNull()) {
+                    return body;
+                }
+                String upstreamId = idNode.asText();
+                String dialId = DIAL_RESPONSE_ID_PREFIX + proxy.getGenerator().get();
+                Upstream upstream = context.getUpstreamRoute().get();
+                ResponseMapping mapping = ResponseMapping.builder()
+                        .upstreamResponseId(upstreamId)
+                        .upstreamKey(upstream.toStickyKey())
+                        .deploymentName(context.getDeployment().getName())
+                        .build();
+                proxy.getResponseMappingService().saveMapping(context, dialId, mapping);
+                json.put("id", dialId);
+                return Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(json));
+            } catch (Exception e) {
+                log.warn("Failed to rewrite response id", e);
+                return body;
+            }
+        });
+    }
+
     private void handleResponse(BufferingReadStream responseStream) {
-        Buffer responseBody = context.getResponseStream().getContent();
+        Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         Future<TokenUsage> tokenUsageFuture = collectTokenUsage(responseBody);
 
-        Future<Void> handleResponseFuture = tokenUsageFuture.transform(result -> {
-            if (result.failed()) {
-                log.warn("Failed to collect token usage", result.cause());
-            }
-            return collectResponseAttachments(responseBody, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
-        });
-
-        handleResponseFuture.onComplete(result -> {
+        tokenUsageFuture.onComplete(result -> {
             if (result.failed()) {
                 log.warn("Failed to collect attachments from response", result.cause());
             }
-            completeProxyResponse(responseStream);
+            HttpServerResponse response = context.getResponse();
+            responseStream.end(response);
+            completeProxyResponse();
         });
     }
 
-    private void completeProxyResponse(BufferingReadStream responseStream) {
-        HttpServerResponse response = context.getResponse();
-        responseStream.end(response);
-
+    private void completeProxyResponse() {
         proxy.getLogStore().save(context);
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
@@ -289,7 +357,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                         context.getProxyRequest().reset(); // drop connection to stop origin response
                     })
                     .compose(ignore -> {
-                        Buffer responseBody = context.getResponseStream().getContent();
+                        Buffer responseBody = responseStream.getContent();
                         context.setResponseBody(responseBody);
                         context.setResponseBodyTimestamp(System.currentTimeMillis());
                         return collectTokenUsage(responseBody);

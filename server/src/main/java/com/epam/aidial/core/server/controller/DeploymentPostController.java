@@ -297,7 +297,6 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
-        context.setResponseStream(responseStream);
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
@@ -316,7 +315,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
      */
     @VisibleForTesting
     void handleResponse(BufferingReadStream responseStream) {
-        Buffer responseBody = context.getResponseStream().getContent();
+        Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         Future<TokenUsage> tokenUsageFuture = collectTokenUsage(responseBody);
@@ -387,7 +386,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                         context.getProxyRequest().reset(); // drop connection to stop origin response
                     })
                     .compose(ignore -> {
-                        Buffer responseBody = context.getResponseStream().getContent();
+                        Buffer responseBody = responseStream.getContent();
                         context.setResponseBody(responseBody);
                         context.setResponseBodyTimestamp(System.currentTimeMillis());
                         return collectTokenUsage(responseBody);

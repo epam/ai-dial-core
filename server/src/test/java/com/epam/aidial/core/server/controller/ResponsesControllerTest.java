@@ -27,6 +27,8 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
@@ -210,6 +212,7 @@ public class ResponsesControllerTest {
         Model deployment = new Model();
         deployment.setName("test");
         deployment.setResponsesEndpoint("http://adapter/responses");
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
@@ -289,9 +292,9 @@ public class ResponsesControllerTest {
         when(proxyRequest.headers()).thenReturn(new HeadersMultiMap());
         when(proxyRequest.send(requestBody)).thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
+        when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(response.getStatusCode()).thenReturn(200);
-        when(response.end())
-                .thenAnswer(invocation -> complete(textContext));
+        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
         when(proxy.getRateLimiter().limit(context, deployment))
@@ -301,8 +304,9 @@ public class ResponsesControllerTest {
         when(proxy.getTokenStatsTracker().updateModelStats(context))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getClient().request(any()))
-                .thenReturn(Future.succeededFuture(proxyRequest));
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getTokenStatsTracker().startSpan(context))
                 .thenReturn(Future.succeededFuture());
@@ -312,42 +316,34 @@ public class ResponsesControllerTest {
         when(proxy.getAccessService().hasReadAccess(
                 ResourceDescriptorFactory.fromPublicUrl("files/public/file.txt"), context))
                 .thenReturn(true);
-        when(proxyResponse.handler(any())).thenAnswer(inv -> {
-            Handler<Buffer> handler = inv.getArgument(0);
-            handler.handle(responseBody);
-            return proxyResponse;
-        });
-        when(proxyResponse.endHandler(any())).thenAnswer(inv -> {
-            Handler<Buffer> handler = inv.getArgument(0);
-            handler.handle(null);
-            return proxyResponse;
-        });
         doAnswer(invocation -> {
             ApiKeyData proxyApiKeyData = invocation.getArgument(0);
             // side effect
             proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
             return null;
         }).when(apiKeyStore).assignPerRequestApiKey(any());
+        doAnswer(invocation -> {
+            textContext.completeNow();
+            return Future.succeededFuture(Boolean.TRUE);
+        }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setRequestBody(any());
         doCallRealMethod().when(context).getRequestBody();
         doCallRealMethod().when(context).setResponseBody(any());
         doCallRealMethod().when(context).getResponseBody();
-        doCallRealMethod().when(context).setResponseStream(any());
-        doCallRealMethod().when(context).getResponseStream();
         doCallRealMethod().when(context).setTokenUsage(any());
         doCallRealMethod().when(context).getTokenUsage();
-        doCallRealMethod().when(context).setProxyResponse(any());
-        doCallRealMethod().when(context).getProxyResponse();
         doCallRealMethod().when(context).setProxyApiKeyData(any());
         doCallRealMethod().when(context).getProxyApiKeyData();
+        doCallRealMethod().when(context).setProxyResponse(any());
+        doCallRealMethod().when(context).getProxyResponse();
 
         controller.handle();
 
         await(textContext);
 
-        verify(proxy.getClient()).request(argThat(req ->
+        verify(httpClient).request(argThat(req ->
                 "/responses?arg=value".equals(req.getURI().toString())));
         assertEquals(responseBody, context.getResponseBody());
         assertEquals(tokenUsage, context.getTokenUsage());
@@ -365,6 +361,7 @@ public class ResponsesControllerTest {
         Application deployment = new Application();
         deployment.setName("test");
         deployment.setResponsesEndpoint("http://adapter/responses");
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
@@ -409,8 +406,8 @@ public class ResponsesControllerTest {
         when(proxyRequest.headers()).thenReturn(new HeadersMultiMap());
         when(proxyRequest.send(requestBody)).thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
-        when(response.end())
-                .thenAnswer(invocation -> complete(textContext));
+        when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
+        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
         when(proxy.getRateLimiter().limit(context, deployment))
@@ -421,8 +418,9 @@ public class ResponsesControllerTest {
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(deployment, null, (String) null)).thenReturn(upstreamRoute);
-        when(proxy.getClient().request(any()))
-                .thenReturn(Future.succeededFuture(proxyRequest));
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
         when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
@@ -430,28 +428,22 @@ public class ResponsesControllerTest {
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getTokenStats(context))
                 .thenReturn(Future.succeededFuture(tokenUsage));
-        when(proxyResponse.handler(any())).thenAnswer(inv -> {
-            Handler<Buffer> handler = inv.getArgument(0);
-            handler.handle(responseBody);
-            return proxyResponse;
-        });
-        when(proxyResponse.endHandler(any())).thenAnswer(inv -> {
-            Handler<Buffer> handler = inv.getArgument(0);
-            handler.handle(null);
-            return proxyResponse;
-        });
+        doAnswer(invocation -> {
+            textContext.completeNow();
+            return Future.succeededFuture(Boolean.TRUE);
+        }).when(apiKeyStore).invalidatePerRequestApiKey(any());
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setRequestBody(any());
         doCallRealMethod().when(context).getRequestBody();
         doCallRealMethod().when(context).setResponseBody(any());
         doCallRealMethod().when(context).getResponseBody();
-        doCallRealMethod().when(context).setResponseStream(any());
-        doCallRealMethod().when(context).getResponseStream();
         doCallRealMethod().when(context).setTokenUsage(any());
         doCallRealMethod().when(context).getTokenUsage();
         doCallRealMethod().when(context).setUpstreamRoute(any());
         doCallRealMethod().when(context).getUpstreamRoute();
+        doCallRealMethod().when(context).setProxyResponse(any());
+        doCallRealMethod().when(context).getProxyResponse();
 
         controller.handle();
 
@@ -467,7 +459,7 @@ public class ResponsesControllerTest {
     }
 
     private static void await(VertxTestContext textContext) throws Throwable {
-        textContext.awaitCompletion(1, TimeUnit.SECONDS);
+        textContext.awaitCompletion(1000, TimeUnit.SECONDS);
         if (textContext.failed()) {
             throw textContext.causeOfFailure();
         }

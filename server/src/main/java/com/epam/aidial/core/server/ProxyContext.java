@@ -80,7 +80,6 @@ public class ProxyContext {
     private HttpClientResponse proxyResponse;
     private Buffer requestBody;
     private Buffer responseBody;
-    private BufferingReadStream responseStream; // received from origin
     private long requestTimestamp;
     private long requestBodyTimestamp;
     private long proxyConnectTimestamp;

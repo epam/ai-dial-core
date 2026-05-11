@@ -31,6 +31,7 @@ import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceOperationService;
+import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetService;
@@ -71,6 +72,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
 @Slf4j
@@ -154,6 +156,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ClientChannelService clientChannelService;
     private final AsyncTaskExecutor taskExecutor;
     private final String version;
+    private final ResponseMappingService responseMappingService;
+    private final Supplier<String> generator;
 
     @Override
     public void handle(HttpServerRequest request) {
