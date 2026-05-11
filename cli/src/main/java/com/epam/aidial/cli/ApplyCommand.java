@@ -42,6 +42,12 @@ public class ApplyCommand implements Callable<Integer> {
                     + "recursively over .yaml/.yml/.json files; hidden paths (segments starting with '.') are skipped.")
     Path file;
 
+    @Option(names = "--overlay",
+            description = "Overlay directory (kind: <Entity>Overlay manifests applying RFC 7396 JSON Merge Patch on base spec,"
+                    + " plus empty .disable marker files removing matched base entities). .disable markers require -f to"
+                    + " be a directory. See design 05 §5.2.")
+    Path overlay;
+
     @Option(names = "--param",
             description = "Template parameter override 'key=value' (repeatable). CLI overrides per-manifest 'params'.")
     List<String> params;
@@ -57,6 +63,18 @@ public class ApplyCommand implements Callable<Integer> {
         } catch (ManifestLoader.ManifestParseException e) {
             err.println(e.getMessage());
             return 2;
+        }
+        if (overlay != null) {
+            try {
+                manifests = OverlayResolver.apply(manifests, file, overlay);
+            } catch (OverlayResolver.OverlayResolveException e) {
+                err.println(e.getMessage());
+                return 2;
+            }
+            if (manifests.isEmpty()) {
+                err.println("No manifests remain after overlay resolution");
+                return 2;
+            }
         }
 
         EntityReader.ResolvedEnv resolved = EntityReader.resolveEnv(parent, spec);
