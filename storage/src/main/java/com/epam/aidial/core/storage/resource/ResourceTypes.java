@@ -23,7 +23,7 @@ public enum ResourceTypes implements ResourceType {
     CREDENTIALS("credentials", true, TimeUnit.MINUTES.toMillis(5)),
     ENCRYPTION_KEYS("encryption_keys", true, TimeUnit.MINUTES.toMillis(5)),
     CLIENT_CHANNEL("client_channels", true, TimeUnit.HOURS.toMillis(24)),
-    RESPONSE_MAPPING("response_mappings", true, TimeUnit.DAYS.toMillis(30));
+    RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5));
 
     private final String group;
     private final boolean requireCompression;
