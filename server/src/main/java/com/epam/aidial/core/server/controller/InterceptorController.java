@@ -68,7 +68,7 @@ public class InterceptorController extends BaseDeploymentPostController {
             RequestObject request = new ChatCompletionRequest(ProxyUtil.parseObject(requestBody));
             context.setStreamingRequest(request.isStreaming());
             if (ProxyUtil.processChain(request, enhancementFunctions)) {
-                context.setRequestBody(Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(request)));
+                context.setRequestBody(Buffer.buffer(request.serialize()));
             }
             proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
         } catch (Throwable e) {
