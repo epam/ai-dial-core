@@ -177,7 +177,7 @@ The following features are supported:
 
 #### applications.<application_name>.mcp
 
-Use `mcp` to specify configuration parameetrs for Model Context Protocol (MCP) interface for the application.
+Use `mcp` to specify configuration parameters for Model Context Protocol (MCP) interface for the application.
 
 Supported configuration parameters: 
 
