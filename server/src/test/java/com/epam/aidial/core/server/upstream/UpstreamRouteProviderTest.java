@@ -135,4 +135,27 @@ public class UpstreamRouteProviderTest {
 
         assertEquals(upstream1, result);
     }
+
+    @Test
+    public void testGet_WhenUpstreamEndpointIsMissed() {
+        Model model = new Model();
+        model.setName("model");
+        Upstream upstream1 = new Upstream();
+        upstream1.setTier(0);
+        upstream1.setWeight(2);
+        Upstream upstream2 = new Upstream();
+        upstream2.setTier(1);
+        upstream2.setWeight(2);
+        model.setUpstreams(List.of(upstream1, upstream2));
+
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("test", "prefix", null);
+        when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
+
+        UpstreamRoute route1 = provider.get(model, cacheBreakpointContext);
+        Upstream result = route1.next();
+
+        assertEquals(upstream1, result);
+    }
 }

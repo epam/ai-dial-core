@@ -97,10 +97,12 @@ public class UpstreamRouteProvider {
         if (context != null && context.getEntry() != null) {
             String endpoint = context.getEntry().endpoint();
             Upstream originalUpstream = null;
-            for (Upstream upstream : upstreams) {
-                if (upstream.getEndpoint().equals(endpoint)) {
-                    originalUpstream = upstream;
-                    break;
+            if (endpoint != null) {
+                for (Upstream upstream : upstreams) {
+                    if (endpoint.equals(upstream.getEndpoint())) {
+                        originalUpstream = upstream;
+                        break;
+                    }
                 }
             }
             if (originalUpstream != null) {
