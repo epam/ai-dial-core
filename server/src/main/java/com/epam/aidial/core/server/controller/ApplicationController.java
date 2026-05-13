@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.extraction.ApplicationDeploymentExtractor;
@@ -62,6 +63,10 @@ public class ApplicationController {
                 .map(deployment -> {
                     if (deployment instanceof Application application) {
                         boolean applicationRequestInfoAboutItSelf = applicationId.equals(context.getDecodedSourceDeployment());
+                        if (application.hasApplicationTypeSchemaId()) {
+                            application.setMcp(applicationSchemaService.getMcp(application));
+                            application.setViewerUrl(applicationSchemaService.getStringProperty(application, MetaSchemaHolder.APPLICATION_TYPE_VIEWER_URL));
+                        }
                         return applicationSchemaService.modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
                     }
                     throw new ResourceNotFoundException("Application is not found: " + applicationId);
