@@ -68,7 +68,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
         }
         context.getRequest().body()
-                .map(this::parseBody)
+                .map(ResponsesController::parseBody)
                 .compose(request -> {
                     String model = request.getModel();
                     return proxy.getTaskExecutor().submit(() -> setupDeployment(model))
@@ -114,7 +114,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 });
     }
 
-    private ResponsesApiRequest parseBody(Buffer body) {
+    private static ResponsesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
             ObjectNode tree = ProxyUtil.parseObject(body);
@@ -155,6 +155,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         ApiKeyData.initFromContext(proxyApiKeyData, context);
 
         context.setStreamingRequest(request.isStreaming());
+        context.setBackground(request.isBackground());
         ProxyUtil.processChain(request, enhancementFunctions);
         // Enhancement functions update the api key, and it should be saved after that
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);

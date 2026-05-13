@@ -79,4 +79,13 @@ public interface RequestObject {
      * @throws JsonProcessingException if the request cannot be serialized
      */
     byte[] serialize() throws JsonProcessingException;
+
+    /**
+     * Indicates whether this request is a background request.
+     *
+     * @return {@code true} if this is a background request; {@code false} otherwise
+     */
+    default boolean isBackground() {
+        return false;
+    }
 }
