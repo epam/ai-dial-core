@@ -2,7 +2,6 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
