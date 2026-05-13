@@ -253,10 +253,6 @@ public class DeploymentPostController extends BaseDeploymentPostController {
      */
     @VisibleForTesting
     void handleProxyRequest(HttpClientRequest proxyRequest) {
-        log.info("Connected to origin. Deployment: {}. Address: {}",
-                context.getDeployment().getName(),
-                proxyRequest.connection().remoteAddress());
-
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 

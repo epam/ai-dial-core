@@ -57,6 +57,7 @@ import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_
 import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -245,7 +246,7 @@ public class ResponsesControllerTest {
                     ]
                 }
                 """));
-        Buffer responseBody = Buffer.buffer("""
+        Buffer responseBody = Buffer.buffer(normalizeJson("""
                 {
                     "output": [
                         {
@@ -268,9 +269,10 @@ public class ResponsesControllerTest {
                           "reasoning_tokens": 0
                         },
                         "total_tokens": 28
-                    }
+                    },
+                    "id": "resp_dial_fixed-uuid-1234"
                 }
-                """);
+                """));
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setPromptTokens(19);
         tokenUsage.setCompletionTokens(9);
@@ -310,6 +312,7 @@ public class ResponsesControllerTest {
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
         when(proxy.getTokenStatsTracker().startSpan(context))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getAccessService().hasReadAccess(
@@ -372,7 +375,7 @@ public class ResponsesControllerTest {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\"}");
-        Buffer responseBody = Buffer.buffer("""
+        Buffer responseBody = Buffer.buffer(normalizeJson("""
                 {
                     "usage": {
                         "input_tokens": 19,
@@ -384,9 +387,10 @@ public class ResponsesControllerTest {
                           "reasoning_tokens": 0
                         },
                         "total_tokens": 28
-                    }
+                    },
+                    "id": "resp_dial_fixed-uuid-1234"
                 }
-                """);
+                """));
         TokenUsage tokenUsage = new TokenUsage();
         tokenUsage.setPromptTokens(20);
         tokenUsage.setCompletionTokens(10);
@@ -426,6 +430,7 @@ public class ResponsesControllerTest {
         when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
         when(proxy.getTokenStatsTracker().startSpan(context))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getTokenStats(context))
@@ -500,7 +505,7 @@ public class ResponsesControllerTest {
         Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0, null);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
-        Buffer requestBody = Buffer.buffer("{\"model\":\"test\"}");
+        Buffer requestBody = Buffer.buffer("{\"model\":\"test\",\"background\":true}");
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-resp-id\",\"status\":\"completed\"}");
         String expectedDialId = "resp_dial_fixed-uuid-1234";
         ResponseMapping expectedMapping = ResponseMapping.builder()
@@ -556,6 +561,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getUpstreamRoute();
         doCallRealMethod().when(context).setProxyResponse(any());
         doCallRealMethod().when(context).getProxyResponse();
+        doCallRealMethod().when(context).setBackground(anyBoolean());
+        doCallRealMethod().when(context).isBackground();
 
         controller.handle();
 

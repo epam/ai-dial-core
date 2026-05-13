@@ -272,7 +272,11 @@ public class BufferingReadStream implements ReadStream<Buffer> {
             return result.recover(error -> {
                 log.warn("Function call is failed with error. Try to recover SSE event", error);
                 return recover(error, event);
-            }).map(json -> send(event, json));
+            }).compose(json -> transform(event, json)).map(json -> send(event, json));
+        }
+
+        protected Future<JsonNode> transform(SseEvent event, @Nullable JsonNode tree) {
+            return Future.succeededFuture(tree);
         }
 
         protected Future<JsonNode> recover(Throwable error, SseEvent event) {

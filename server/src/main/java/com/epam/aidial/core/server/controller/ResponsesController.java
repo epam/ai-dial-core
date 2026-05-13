@@ -28,6 +28,7 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -39,6 +40,7 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
+import org.jspecify.annotations.NonNull;
 
 import java.io.IOException;
 import java.util.List;
@@ -226,8 +228,9 @@ public class ResponsesController extends BaseDeploymentPostController {
             return;
         }
 
+        String dialId = generateDialResponseId();
         BufferingReadStream responseStream = createResponseStream(proxyResponse, () ->
-                new ResponsesSseListener(new CollectResponsesApiOutputAttachmentsFn(proxy, context)));
+                new ResponsesSseListener(new CollectResponsesApiOutputAttachmentsFn(proxy, context), proxy, context, dialId));
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
@@ -273,29 +276,32 @@ public class ResponsesController extends BaseDeploymentPostController {
         if (proxyResponse.statusCode() != 200) {
             return Future.succeededFuture(body);
         }
-        return proxy.getTaskExecutor().submit(() -> {
-            try {
-                ObjectNode json = (ObjectNode) ProxyUtil.MAPPER.readTree(body.getBytes());
-                JsonNode idNode = json.get("id");
-                if (idNode == null || idNode.isNull()) {
-                    return body;
-                }
-                String upstreamId = idNode.asText();
-                String dialId = DIAL_RESPONSE_ID_PREFIX + proxy.getGenerator().get();
-                Upstream upstream = context.getUpstreamRoute().get();
-                ResponseMapping mapping = ResponseMapping.builder()
-                        .upstreamResponseId(upstreamId)
-                        .upstreamKey(upstream.toStickyKey())
-                        .deploymentName(context.getDeployment().getName())
-                        .build();
-                proxy.getResponseMappingService().saveMapping(context, dialId, mapping);
-                json.put("id", dialId);
-                return Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(json));
-            } catch (Exception e) {
-                log.warn("Failed to rewrite response id", e);
-                return body;
+        try {
+            ObjectNode json = (ObjectNode) ProxyUtil.MAPPER.readTree(body.getBytes());
+            JsonNode idNode = json.path("id");
+            if (idNode.isNull()) {
+                return Future.succeededFuture(body);
             }
-        });
+            String upstreamId = idNode.asText();
+            String dialId = generateDialResponseId();
+            json.put("id", dialId);
+            return saveIdMappingForBackgroundRequest(proxy, context, dialId, upstreamId)
+                    .map(ignore -> {
+                        try {
+                            return Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(json));
+                        } catch (JsonProcessingException e) {
+                            log.warn("Failed to rewrite response id", e);
+                            throw new RuntimeException(e);
+                        }
+                    });
+        } catch (IOException e) {
+            log.warn("Can't parse JSON response body. Error:", e);
+            return Future.succeededFuture(body);
+        }
+    }
+
+    private String generateDialResponseId() {
+        return DIAL_RESPONSE_ID_PREFIX + proxy.getGenerator().get();
     }
 
     private void handleResponse(BufferingReadStream responseStream) {
@@ -370,15 +376,60 @@ public class ResponsesController extends BaseDeploymentPostController {
         }
     }
 
+    private static Future<Void> saveIdMappingForBackgroundRequest(
+            Proxy proxy, ProxyContext context, String dialId, String upstreamId) {
+        if (!context.isBackground()) {
+            return Future.succeededFuture();
+        }
+
+        Upstream upstream = context.getUpstreamRoute().get();
+        ResponseMapping mapping = ResponseMapping.builder()
+                .upstreamResponseId(upstreamId)
+                .upstreamKey(upstream.toStickyKey())
+                .deploymentName(context.getDeployment().getName())
+                .build();
+        return proxy.getTaskExecutor().submit(() -> {
+            proxy.getResponseMappingService().saveMapping(context, dialId, mapping);
+            return null;
+        });
+    }
+
     private static class ResponsesSseListener extends BufferingReadStream.BaseEventListener {
 
-        public ResponsesSseListener(BaseResponseFunction function) {
+        private final Proxy proxy;
+        private final ProxyContext context;
+        private final String dialId;
+        private String upstreamId;
+
+        public ResponsesSseListener(BaseResponseFunction function, Proxy proxy, ProxyContext context, String dialId) {
             super(function);
+            this.proxy = proxy;
+            this.context = context;
+            this.dialId = dialId;
         }
 
         @Override
         protected boolean isLastEvent(SseEvent event, JsonNode data) {
             return "response.incomplete".equals(event.getEvent()) || "response.completed".equals(event.getEvent());
+        }
+
+        @Override
+        protected Future<JsonNode> transform(SseEvent event, JsonNode tree) {
+            if (tree instanceof ObjectNode node
+                    && node.get("response") instanceof ObjectNode response) {
+                JsonNode idNode = response.path("id");
+                if (!idNode.isNull()) {
+                    String upstreamResponseId = idNode.asText();
+                    response.put("id", dialId);
+                    if (upstreamId == null) {
+                        upstreamId = upstreamResponseId;
+                        return saveIdMappingForBackgroundRequest(proxy, context, dialId, upstreamId)
+                                .map(ignore -> node);
+                    }
+                }
+            }
+
+            return Future.succeededFuture(tree);
         }
     }
 }
