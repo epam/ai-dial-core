@@ -109,11 +109,7 @@ public final class FileConfigStore implements ConfigStore {
     private static void rejectShape(String typeSegment, Map<String, ?> map) {
         String prefix = typeSegment + "/";
         for (String key : map.keySet()) {
-            if (!key.startsWith(prefix)) {
-                continue;
-            }
-            int bucketEnd = key.indexOf('/', prefix.length());
-            if (bucketEnd > prefix.length() && bucketEnd < key.length() - 1) {
+            if (key.startsWith(prefix) && key.indexOf('/', prefix.length()) != -1) {
                 throw new IllegalArgumentException(
                         "File config '" + typeSegment + "' key '" + key + "' has the reserved "
                                 + "canonical-ID shape '" + typeSegment + "/<bucket>/<name>'. "
