@@ -55,7 +55,7 @@ public final class ControlFlowExpander {
             Matcher ifMatch = IF_LINE.matcher(line);
             if (ifMatch.matches()) {
                 String indent = ifMatch.group(1);
-                String expr = ifMatch.group(2).trim();
+                String expr = stripWrappingYamlQuotes(ifMatch.group(2).trim());
                 // Encode expression as a single-line key value. Use YAML-safe quoting: wrap in
                 // double quotes and escape any embedded double quote / backslash.
                 String safe = yamlEscape(expr);
@@ -82,6 +82,23 @@ public final class ControlFlowExpander {
 
     private static String yamlEscape(String s) {
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    // Operators often wrap an !if expression in double quotes so YAML accepts a value that
+    // begins with '${...}' (e.g. !if "${vars.x} != ''":). Those outer quotes are for YAML's
+    // sake — the expression grammar uses single-quoted literals — so strip them before the
+    // sentinel is built. Only strip when the pair spans the whole expression: the first '"'
+    // sits at index 0, its naive close is at the last index, and there is no interior '"'.
+    // This rejects ambiguous forms like "${x}" != "y" where the leading/trailing quotes are
+    // separate operand boundaries.
+    private static String stripWrappingYamlQuotes(String expr) {
+        if (expr.length() < 2 || expr.charAt(0) != '"' || expr.charAt(expr.length() - 1) != '"') {
+            return expr;
+        }
+        if (expr.indexOf('"', 1) != expr.length() - 1) {
+            return expr;
+        }
+        return expr.substring(1, expr.length() - 1);
     }
 
     /**

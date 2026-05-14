@@ -421,6 +421,83 @@ class TemplateResolutionTest {
     }
 
     @Test
+    void applyIfQuotedComparisonResolvesPlaceholdersWhenTrue(@TempDir Path tmp) throws Exception {
+        // Cli.6 regression: !if "${vars.flag} == 'true'": used to always fire because
+        // ExpressionEvaluator.readOperand swallowed the entire quoted block as a single
+        // literal and fell through to bare-operand truthiness (non-empty → true).
+        // ControlFlowExpander now strips the outer YAML quotes when they wrap the whole
+        // expression so the inner comparison is parsed normally.
+        String templates = """
+                T:
+                  fields:
+                    !if "${vars.flag} == 'true'":
+                      iconUrl: "shown"
+                """;
+        String vars = """
+                flag: "true"
+                """;
+        Path config = writeProfile(tmp, templates, vars);
+        Path manifest = tmp.resolve("m.yaml");
+        Files.writeString(manifest, """
+                kind: Model
+                name: models/public/m
+                template: T
+                spec: {}
+                """);
+
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger hits = new AtomicInteger();
+        server.createContext("/v1/admin/validate", x -> send(x, 200,
+                "{\"valid\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"valid\"}]}"));
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied\"}]}",
+                applyBody, hits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(applyBody.get().contains("\"iconUrl\":\"shown\""), applyBody.get());
+    }
+
+    @Test
+    void applyIfQuotedComparisonResolvesPlaceholdersWhenFalse(@TempDir Path tmp) throws Exception {
+        // Cli.6 regression: pre-fix, flag="false" still surfaced the body because the
+        // outer-quoted expression always evaluated truthy. Post-fix it must NOT fire.
+        String templates = """
+                T:
+                  fields:
+                    keep: "yes"
+                    !if "${vars.flag} == 'true'":
+                      iconUrl: "hidden"
+                """;
+        String vars = """
+                flag: "false"
+                """;
+        Path config = writeProfile(tmp, templates, vars);
+        Path manifest = tmp.resolve("m.yaml");
+        Files.writeString(manifest, """
+                kind: Model
+                name: models/public/m
+                template: T
+                spec: {}
+                """);
+
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger hits = new AtomicInteger();
+        server.createContext("/v1/admin/validate", x -> send(x, 200,
+                "{\"valid\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"valid\"}]}"));
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied\"}]}",
+                applyBody, hits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(applyBody.get().contains("\"keep\":\"yes\""), applyBody.get());
+        assertFalse(applyBody.get().contains("iconUrl"), applyBody.get());
+    }
+
+    @Test
     void applyForZeroElement(@TempDir Path tmp) throws Exception {
         String templates = """
                 T:
