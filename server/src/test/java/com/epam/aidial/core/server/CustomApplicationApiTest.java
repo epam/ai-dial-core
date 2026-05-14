@@ -1318,6 +1318,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      "max_retry_attempts" : 1,
                      "invalid" : true,
                      "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                     "viewer_url" : "https://mydial.somewhere.com/custom_application_schemas/viewer",
                      "routes" : { }
                 }
                 """);
@@ -1463,6 +1464,9 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 }
                 """);
         verify(response, 200);
+
+        response = send(HttpMethod.GET, "/openai/applications/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app");
+        verifyNotExact(response, 200, "\"mcp\":true");
 
         String mcpResponse = """
                 {

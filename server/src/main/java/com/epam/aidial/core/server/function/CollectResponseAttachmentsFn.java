@@ -26,7 +26,8 @@ public abstract class CollectResponseAttachmentsFn extends BaseResponseFunction 
 
     @Override
     public Future<JsonNode> apply(JsonNode tree) {
-        if (!tree.isObject()) {
+        String perRequestKey = context.getApiKeyData().getPerRequestKey();
+        if (perRequestKey == null || !tree.isObject()) {
             return Future.succeededFuture(tree);
         }
         ObjectNode objectNode = (ObjectNode) tree;
@@ -39,7 +40,6 @@ public abstract class CollectResponseAttachmentsFn extends BaseResponseFunction 
             if (permittedAttachments.isEmpty()) {
                 return Future.succeededFuture();
             }
-            String perRequestKey = context.getApiKeyData().getPerRequestKey();
             return proxy.getTaskExecutor().submit(() -> {
                 proxy.getApiKeyStore().updatePerRequestApiKey(perRequestKey, json -> updateAutoSharedAttachments(json, permittedAttachments, perRequestKey));
                 return tree;
