@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 
 /**
@@ -45,6 +46,8 @@ import javax.annotation.Nullable;
  */
 @Slf4j
 public final class ConfigPostProcessor {
+
+    private static final Pattern RESOURCE_KEY_PATTERN = Pattern.compile("^[A-Za-z0-9-_]+$");
 
     private ConfigPostProcessor() {
     }
@@ -251,6 +254,6 @@ public final class ConfigPostProcessor {
     }
 
     private static boolean isValidResourceKey(String resourceKey) {
-        return resourceKey.matches("^[A-Za-z0-9-_]+$");
+        return RESOURCE_KEY_PATTERN.matcher(resourceKey).matches();
     }
 }

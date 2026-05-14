@@ -14,6 +14,7 @@ import java.util.Base64;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class SecretFieldProcessor {
 
@@ -21,6 +22,9 @@ public class SecretFieldProcessor {
     public static final String ENC_SUFFIX = "]";
     public static final String SECRET_REF_PREFIX = "${SECRET:";
     public static final String MASK_SENTINEL = "***";
+
+    private static final ConcurrentHashMap<Class<?>, List<Field>> FIELDS_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Class<?>, Boolean> HAS_ENCRYPTED_FIELD_CACHE = new ConcurrentHashMap<>();
 
     private final CredentialEncryptionService encryptionService;
     private final BucketInfo platformBucketInfo;
@@ -167,7 +171,6 @@ public class SecretFieldProcessor {
         }
         Class<?> cls = entity.getClass();
         for (Field field : declaredFieldsIncludingInherited(cls)) {
-            field.setAccessible(true);
             try {
                 if (field.isAnnotationPresent(EncryptedField.class) && field.getType() == String.class) {
                     String value = (String) field.get(entity);
@@ -254,17 +257,27 @@ public class SecretFieldProcessor {
     }
 
     private static List<Field> declaredFieldsIncludingInherited(Class<?> cls) {
+        return FIELDS_CACHE.computeIfAbsent(cls, SecretFieldProcessor::collectFields);
+    }
+
+    private static List<Field> collectFields(Class<?> cls) {
         List<Field> result = new ArrayList<>();
         Class<?> c = cls;
         while (c != null && c != Object.class) {
             for (Field f : c.getDeclaredFields()) {
                 if (!f.isSynthetic()) {
+                    try {
+                        f.setAccessible(true);
+                    } catch (RuntimeException ignored) {
+                        // JPMS refuses setAccessible on java.lang.Enum.name etc; classHasEncryptedField
+                        // filters such types before walk would .get/.set their fields.
+                    }
                     result.add(f);
                 }
             }
             c = c.getSuperclass();
         }
-        return result;
+        return List.copyOf(result);
     }
 
     private static Class<?> elementClassWithEncryptedField(Field field) {
@@ -289,6 +302,10 @@ public class SecretFieldProcessor {
         if (cls == null || cls.isPrimitive() || cls.getName().startsWith("java.")) {
             return false;
         }
+        return HAS_ENCRYPTED_FIELD_CACHE.computeIfAbsent(cls, SecretFieldProcessor::computeHasEncryptedField);
+    }
+
+    private static boolean computeHasEncryptedField(Class<?> cls) {
         for (Field f : declaredFieldsIncludingInherited(cls)) {
             if (f.isAnnotationPresent(EncryptedField.class)) {
                 return true;
