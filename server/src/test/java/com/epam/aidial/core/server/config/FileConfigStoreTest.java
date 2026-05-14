@@ -78,16 +78,21 @@ public class FileConfigStoreTest {
         assertEquals(expectedToolSetNames, actualToolSetNames);
     }
 
-    @Test
-    public void testLoad_RejectsCanonicalShapedFileKey() {
+    @ParameterizedTest
+    @CsvSource({
+            "canonical-key.config.json, keys/platform/my-key",
+            "canonical-key-empty-bucket.config.json, keys//my-key",
+            "canonical-key-trailing-slash.config.json, keys/platform/"
+    })
+    public void testLoad_RejectsCanonicalShapedFileKey(String fixture, String expectedKey) {
         JsonObject settings = new JsonObject();
         settings.put("files", new JsonArray(List.of(
-                "com/epam/aidial/core/server/config/canonical-key.config.json")));
+                "com/epam/aidial/core/server/config/" + fixture)));
         settings.put("reload", 1000);
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> new FileConfigStore(vertx, settings, apiKeyStore, List.of()));
-        assertTrue(error.getMessage().contains("keys/platform/my-key"), error.getMessage());
+        assertTrue(error.getMessage().contains(expectedKey), error.getMessage());
         assertTrue(error.getMessage().contains("canonical-ID shape"), error.getMessage());
     }
 
