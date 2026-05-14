@@ -31,7 +31,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
 /**
@@ -85,8 +84,9 @@ public final class MergedConfigStore implements ConfigStore {
     private volatile Config config;
     private volatile Map<ResourceTypes, Map<String, InvalidEntityRecord>> invalidEntities = Map.of();
     private volatile boolean settingsFromApi;
-    private volatile boolean initialized;
-    private final AtomicLong pendingRebuildTimerId = new AtomicLong(NO_PENDING_TIMER);
+    private boolean initialized;
+    private long pendingRebuildTimerId = NO_PENDING_TIMER;
+    private final Map<ResourceTypes, Map<String, Counter>> skipCounters = new EnumMap<>(ResourceTypes.class);
 
     public MergedConfigStore(Vertx vertx, ResourceService resourceService,
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
@@ -121,6 +121,18 @@ public final class MergedConfigStore implements ConfigStore {
         Gauge.builder("dial_config_skipped_entities", this, MergedConfigStore::countInvalidEntities)
                 .description("Number of entities skipped from in-memory Config (design 02 §4.1)")
                 .register(Metrics.globalRegistry);
+
+        for (ResourceTypes type : MANAGED_TYPES) {
+            Map<String, Counter> perReason = new HashMap<>();
+            for (String reason : List.of(REASON_PARSE, REASON_VALIDATION, REASON_DECRYPTION)) {
+                perReason.put(reason, Counter.builder("dial_config_skip_events_total")
+                        .description("Total number of entity skip events since pod start")
+                        .tag("type", type.urlSegment())
+                        .tag("reason", reason)
+                        .register(Metrics.globalRegistry));
+            }
+            skipCounters.put(type, perReason);
+        }
     }
 
     /**
@@ -232,7 +244,9 @@ public final class MergedConfigStore implements ConfigStore {
         cancelPendingRebuildLocked();
         long timerId = vertx.setTimer(REBUILD_DEBOUNCE_MS, firingId -> {
             synchronized (this) {
-                pendingRebuildTimerId.compareAndSet(firingId, NO_PENDING_TIMER);
+                if (pendingRebuildTimerId == firingId) {
+                    pendingRebuildTimerId = NO_PENDING_TIMER;
+                }
             }
             vertx.<Config>executeBlocking(() -> {
                 synchronized (this) {
@@ -240,7 +254,7 @@ public final class MergedConfigStore implements ConfigStore {
                 }
             }, false).onFailure(error -> log.warn("Failed to rebuild merged config: {}", error.getMessage()));
         });
-        pendingRebuildTimerId.set(timerId);
+        pendingRebuildTimerId = timerId;
     }
 
     /**
@@ -261,7 +275,8 @@ public final class MergedConfigStore implements ConfigStore {
     }
 
     private void cancelPendingRebuildLocked() {
-        long previous = pendingRebuildTimerId.getAndSet(NO_PENDING_TIMER);
+        long previous = pendingRebuildTimerId;
+        pendingRebuildTimerId = NO_PENDING_TIMER;
         if (previous != NO_PENDING_TIMER) {
             vertx.cancelTimer(previous);
         }
@@ -443,12 +458,7 @@ public final class MergedConfigStore implements ConfigStore {
         InvalidEntityRecord record = new InvalidEntityRecord(simpleName, canonicalId, reason,
                 List.copyOf(warnings), source, payload);
         invalid.computeIfAbsent(type, k -> new HashMap<>()).put(canonicalId, record);
-        Counter.builder("dial_config_skip_events_total")
-                .description("Total number of entity skip events since pod start")
-                .tag("type", type.urlSegment())
-                .tag("reason", reasonClass)
-                .register(Metrics.globalRegistry)
-                .increment();
+        skipCounters.get(type).get(reasonClass).increment();
         log.warn("Skipped {} '{}' from merged Config: {}", type.urlSegment(), canonicalId, reason);
     }
 
@@ -469,37 +479,44 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> {
                 Model entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Model.class);
-                models.put(canonicalId, entity);
+                warnIfReplaced(type, canonicalId, models.put(canonicalId, entity));
                 return new AddedEntity(entity);
             }
             case INTERCEPTOR -> {
                 Interceptor entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Interceptor.class);
-                interceptors.put(canonicalId, entity);
+                warnIfReplaced(type, canonicalId, interceptors.put(canonicalId, entity));
                 return new AddedEntity(entity);
             }
             case ROLE -> {
                 Role entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Role.class);
-                roles.put(canonicalId, entity);
+                warnIfReplaced(type, canonicalId, roles.put(canonicalId, entity));
                 return new AddedEntity(entity);
             }
             case PROJECT_KEY -> {
                 Key entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Key.class);
-                keys.put(canonicalId, entity);
+                warnIfReplaced(type, canonicalId, keys.put(canonicalId, entity));
                 return new AddedEntity(entity);
             }
             case ROUTE -> {
                 Route entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Route.class);
-                routes.put(canonicalId, entity);
+                warnIfReplaced(type, canonicalId, routes.put(canonicalId, entity));
                 return new AddedEntity(entity);
             }
             case APP_TYPE_SCHEMA -> {
-                schemas.put(canonicalId, node.toString());
+                warnIfReplaced(type, canonicalId, schemas.put(canonicalId, node.toString()));
                 return null;
             }
             default -> {
                 /* GLOBAL_SETTINGS is a singleton — design 02 §4 leaves union-by-key out of scope. */
                 return null;
             }
+        }
+    }
+
+    private static void warnIfReplaced(ResourceTypes type, String canonicalId, Object previous) {
+        if (previous != null) {
+            log.warn("Duplicate canonical ID during merged Config rebuild: {} '{}' overwrote a prior entry",
+                    type.urlSegment(), canonicalId);
         }
     }
 
