@@ -74,6 +74,11 @@ public class ResourceAuthSettingsService {
                 resourceAuthSettings.setClientSecret(existingResourceAuthSettings.getClientSecret());
             }
 
+            // preserve tokenEndpointAuthMethod on updates that omit it
+            if (resourceAuthSettings.getTokenEndpointAuthMethod() == null) {
+                resourceAuthSettings.setTokenEndpointAuthMethod(existingResourceAuthSettings.getTokenEndpointAuthMethod());
+            }
+
             resolveCodeChallengeSettings(resourceAuthSettings, existingResourceAuthSettings);
         }
     }
@@ -128,6 +133,7 @@ public class ResourceAuthSettingsService {
         resourceAuthSettings.setTokenEndpoint(clientRegistration.getTokenEndpoint());
         resourceAuthSettings.setRedirectUri(clientRegistration.getRedirectUri());
         resourceAuthSettings.setScopesSupported(clientRegistration.getScopesSupported());
+        resourceAuthSettings.setTokenEndpointAuthMethod(clientRegistration.getTokenEndpointAuthMethod());
         setCodeChallengeProperties(resourceAuthSettings, clientRegistration.getCodeChallengeMethod());
     }
 

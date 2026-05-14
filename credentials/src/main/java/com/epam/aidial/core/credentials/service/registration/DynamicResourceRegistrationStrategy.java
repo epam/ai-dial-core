@@ -91,6 +91,7 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
                 .authorizationEndpoint(authServerMetadata.getAuthorizationEndpoint())
                 .tokenEndpoint(authServerMetadata.getTokenEndpoint())
                 .scopesSupported(supportedScopes)
+                .tokenEndpointAuthMethod(clientRegistrationResponse.getTokenEndpointAuthMethod())
                 .build();
 
         Optional<String> codeChallengeMethod = getCodeChallengeMethod(authServerMetadata);

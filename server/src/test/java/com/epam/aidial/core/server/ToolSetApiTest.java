@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ToolSetApiTest extends ResourceBaseTest {
@@ -1713,6 +1714,144 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     }
                     """, "authorization", "admin");
             verify(response, 200, "true");
+        }
+    }
+
+    @Test
+    void testOauthSignInWithClientSecretBasic() {
+        // Snowflake-managed MCP (and any RFC 6749 §2.3.1-strict authorization server) requires
+        // HTTP Basic auth at the token endpoint. DCR advertises this via
+        // token_endpoint_auth_method=client_secret_basic; DIAL must honor it on token exchange.
+        String tokenResponse = """
+                {
+                    "access_token": "test-access-token",
+                    "refresh_token": "test-refresh-token",
+                    "expires_in": 3600
+                }
+                """;
+        java.util.concurrent.atomic.AtomicReference<String> authHeaderRef = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<String> bodyRef = new java.util.concurrent.atomic.AtomicReference<>();
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+            server.map(HttpMethod.POST, "/token", request -> {
+                authHeaderRef.set(request.getHeader("Authorization"));
+                bodyRef.set(request.getBody().readUtf8());
+                String expected = "Basic " + java.util.Base64.getEncoder().encodeToString(
+                        "my-client-id:my-client-secret".getBytes(StandardCharsets.UTF_8));
+                if (expected.equals(authHeaderRef.get())) {
+                    return new MockResponse().setBody(tokenResponse).setHeader("Content-Type", "application/json");
+                }
+                return new MockResponse().setResponseCode(400)
+                        .setBody("{\"error\":\"invalid_client\"}")
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-basic@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "client_secret": "my-client-secret",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token",
+                            "token_endpoint_auth_method": "client_secret_basic"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset-basic@",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            String expectedHeader = "Basic " + java.util.Base64.getEncoder().encodeToString(
+                    "my-client-id:my-client-secret".getBytes(StandardCharsets.UTF_8));
+            assertEquals(expectedHeader, authHeaderRef.get(),
+                    "client_secret_basic must produce an Authorization: Basic header per RFC 6749 §2.3.1");
+            assertFalse(bodyRef.get().contains("client_id="),
+                    "client_id must not appear in body for client_secret_basic, got: " + bodyRef.get());
+            assertFalse(bodyRef.get().contains("client_secret="),
+                    "client_secret must not appear in body for client_secret_basic, got: " + bodyRef.get());
+
+            // Persisted setting is readable via GET (round-trip)
+            response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-basic@",
+                    null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            JsonNode authSettings = ProxyUtil.MAPPER.readTree(response.body()).get("auth_settings");
+            assertEquals("client_secret_basic", authSettings.get("token_endpoint_auth_method").asText());
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    void testOauthSignInWithoutTokenEndpointAuthMethod_backwardCompat() {
+        // Legacy toolsets (created before token_endpoint_auth_method was introduced) have the field
+        // unset on the persisted ResourceAuthSettings. They must continue to send credentials in the
+        // form body with NO Authorization header (the historical client_secret_post behavior).
+        String tokenResponse = """
+                {
+                    "access_token": "test-access-token",
+                    "refresh_token": "test-refresh-token",
+                    "expires_in": 3600
+                }
+                """;
+        java.util.concurrent.atomic.AtomicReference<String> authHeaderRef = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<String> bodyRef = new java.util.concurrent.atomic.AtomicReference<>();
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+            server.map(HttpMethod.POST, "/token", request -> {
+                authHeaderRef.set(request.getHeader("Authorization"));
+                bodyRef.set(request.getBody().readUtf8());
+                return new MockResponse().setBody(tokenResponse).setHeader("Content-Type", "application/json");
+            });
+
+            // No token_endpoint_auth_method in payload — simulates a pre-existing toolset.
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-legacy@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "client_secret": "my-client-secret",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset-legacy@",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            assertNull(authHeaderRef.get(),
+                    "Legacy toolsets without token_endpoint_auth_method must not send Authorization header");
+            assertTrue(bodyRef.get().contains("client_id=my-client-id"),
+                    "client_id must be in body for backward compat, got: " + bodyRef.get());
+            assertTrue(bodyRef.get().contains("client_secret=my-client-secret"),
+                    "client_secret must be in body for backward compat, got: " + bodyRef.get());
         }
     }
 
