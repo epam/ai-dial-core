@@ -462,6 +462,26 @@ class ApplyCommandTest {
     }
 
     @Test
+    void applyOverlayKindInBaseTreeIsRejectedWithOverlayDirHint(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path manifest = tmp.resolve("m.yaml");
+        Files.writeString(manifest, """
+                kind: ModelOverlay
+                target: models/public/m
+                patch: { spec: { endpoint: http://override } }
+                """);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("ModelOverlay"), r.err);
+        assertTrue(r.err.contains("--overlay"),
+                "expected hint pointing to --overlay <dir>, got: " + r.err);
+        assertFalse(r.err.toLowerCase().contains("templates, overlays"),
+                "stale 'templates, overlays' wording must not leak, got: " + r.err);
+    }
+
+    @Test
     void applyTemplateFieldUnknownTemplateExitsTwo(@TempDir Path tmp) throws Exception {
         // 4C.1: 'template:' is accepted but must reference a known template. When the profile
         // has no 'templates' block, an unknown template name surfaces as a TemplateException.

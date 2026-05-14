@@ -41,8 +41,9 @@ final class ManifestLoader {
             "Model", "Application", "ToolSet", "Schema", "Interceptor",
             "Role", "Key", "Route", "Settings");
 
-    private static final Set<String> DEFERRED_KINDS = Set.of(
-            "Bundle",
+    private static final Set<String> DEFERRED_KINDS = Set.of("Bundle");
+
+    private static final Set<String> OVERLAY_KINDS = Set.of(
             "ModelOverlay", "ApplicationOverlay", "ToolSetOverlay", "SchemaOverlay",
             "InterceptorOverlay", "RoleOverlay", "KeyOverlay", "RouteOverlay",
             "SettingsOverlay", "FileOverlay", "PromptOverlay", "ConversationOverlay");
@@ -176,9 +177,14 @@ final class ManifestLoader {
             throw new ManifestParseException(where + ": missing or empty 'kind'");
         }
         String kind = kindNode.asText();
+        if (OVERLAY_KINDS.contains(kind)) {
+            throw new ManifestParseException(where + ": kind '" + kind
+                    + "' — overlay manifests belong under `--overlay <dir>`, not in the base tree "
+                    + "(see 05-cli-design.md §5.2)");
+        }
         if (DEFERRED_KINDS.contains(kind)) {
             throw new ManifestParseException(where + ": kind '" + kind
-                    + "' is not supported in this MVP (templates, overlays, and bundles are deferred — "
+                    + "' is not supported in this MVP (bundles are deferred — "
                     + "see IMPLEMENTATION.md §1)");
         }
         if (!ALLOWED_KINDS.contains(kind)) {
