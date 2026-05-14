@@ -444,21 +444,20 @@ class ApplyCommandTest {
     }
 
     @Test
-    void applyBundleKindRejectedAtParse(@TempDir Path tmp) throws Exception {
+    void applyBundleMissingEntitiesRejectedAtParse(@TempDir Path tmp) throws Exception {
+        // Post-4C.3 Bundle is supported; the parser requires a non-empty `entities` array.
         Path config = writeProfileAndKey(tmp);
         Path manifest = tmp.resolve("m.yaml");
         Files.writeString(manifest, """
                 kind: Bundle
                 name: onboard-x
-                spec: {}
+                params: { k: v }
                 """);
 
         Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
 
         assertEquals(2, r.exitCode);
-        assertTrue(r.err.contains("Bundle"), r.err);
-        assertTrue(r.err.toLowerCase().contains("not supported") || r.err.toLowerCase().contains("deferred"),
-                "expected deferred-feature message, got: " + r.err);
+        assertTrue(r.err.contains("entities"), r.err);
     }
 
     @Test
@@ -1039,5 +1038,247 @@ class ApplyCommandTest {
 
         assertEquals(2, r.exitCode);
         assertTrue(r.err.contains("No manifests remain"), r.err);
+    }
+
+    // ---------- 4C.3 Bundle manifests ----------
+
+    @Test
+    void applyBundleSpecOnlyExpandsIntoEntries(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path manifest = tmp.resolve("bundle.yaml");
+        Files.writeString(manifest, """
+                kind: Bundle
+                name: onboard-x
+                params:
+                  region: us-east-1
+                entities:
+                  - kind: Model
+                    name: models/public/m
+                    spec: { type: chat, endpoint: "http://x.${params.region}" }
+                  - kind: Role
+                    name: roles/platform/basic
+                    spec: { limits: { m: { minute: "100" } } }
+                """);
+        AtomicReference<String> validateBody = new AtomicReference<>();
+        AtomicInteger validateHits = new AtomicInteger();
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger applyHits = new AtomicInteger();
+        recordPost("/v1/admin/validate", 200,
+                "{\"valid\":2,\"failed\":0,\"results\":["
+                        + "{\"entityId\":\"models/public/m\",\"status\":\"valid\"},"
+                        + "{\"entityId\":\"roles/platform/basic\",\"status\":\"valid\"}]}",
+                validateBody, validateHits);
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":2,\"failed\":0,\"results\":["
+                        + "{\"entityId\":\"models/public/m\",\"status\":\"applied\"},"
+                        + "{\"entityId\":\"roles/platform/basic\",\"status\":\"applied\"}]}",
+                applyBody, applyHits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertTrue(applyBody.get().contains("\"kind\":\"Model\""), applyBody.get());
+        assertTrue(applyBody.get().contains("\"kind\":\"Role\""), applyBody.get());
+        // Bundle param `region` resolves in the nested Model's spec.
+        assertTrue(applyBody.get().contains("\"endpoint\":\"http://x.us-east-1\""), applyBody.get());
+        // The Bundle wrapper itself is never sent — only the expanded entries.
+        assertFalse(applyBody.get().contains("\"kind\":\"Bundle\""), applyBody.get());
+    }
+
+    @Test
+    void applyBundlePatchEntryMergesWithCurrentTargetState(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path manifest = tmp.resolve("bundle.yaml");
+        Files.writeString(manifest, """
+                kind: Bundle
+                name: onboard-x
+                params:
+                  rate: "100000"
+                entities:
+                  - kind: Role
+                    name: roles/platform/basic
+                    patch:
+                      limits:
+                        new-model:
+                          minute: "${params.rate}"
+                """);
+        AtomicInteger getHits = new AtomicInteger();
+        server.createContext("/v1/roles/platform/basic", exchange -> {
+            getHits.incrementAndGet();
+            // Current target state has an existing limit for an unrelated model.
+            send(exchange, 200, "{\"name\":\"basic\",\"limits\":{\"old-model\":{\"minute\":\"50\"}}}");
+        });
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger applyHits = new AtomicInteger();
+        respond("/v1/admin/validate", 200,
+                "{\"valid\":1,\"failed\":0,\"results\":[{\"entityId\":\"roles/platform/basic\",\"status\":\"valid\"}]}");
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"roles/platform/basic\",\"status\":\"applied\"}]}",
+                applyBody, applyHits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals(1, getHits.get(), "must GET target entity once");
+        // Both the old (preserved) and new (patched) limits land in the apply spec.
+        assertTrue(applyBody.get().contains("\"old-model\""), applyBody.get());
+        assertTrue(applyBody.get().contains("\"new-model\""), applyBody.get());
+        assertTrue(applyBody.get().contains("\"minute\":\"100000\""), applyBody.get());
+    }
+
+    @Test
+    void applyBundlePatchEntry404FallsBackToEmptyBase(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path manifest = tmp.resolve("bundle.yaml");
+        Files.writeString(manifest, """
+                kind: Bundle
+                name: onboard-x
+                entities:
+                  - kind: Role
+                    name: roles/platform/fresh
+                    patch:
+                      limits:
+                        m: { minute: "10" }
+                """);
+        respond("/v1/roles/platform/fresh", 404, "{\"error\":\"not found\"}");
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger applyHits = new AtomicInteger();
+        respond("/v1/admin/validate", 200,
+                "{\"valid\":1,\"failed\":0,\"results\":[{\"entityId\":\"roles/platform/fresh\",\"status\":\"valid\"}]}");
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"roles/platform/fresh\",\"status\":\"applied\"}]}",
+                applyBody, applyHits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        // The empty-base fallback produces a spec containing only the patched fields.
+        assertTrue(applyBody.get().contains("\"limits\""), applyBody.get());
+        assertTrue(applyBody.get().contains("\"minute\":\"10\""), applyBody.get());
+    }
+
+    @Test
+    void applyBundleParamsOverrideEntityParamsForTemplateResolution(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path manifest = tmp.resolve("bundle.yaml");
+        Files.writeString(manifest, """
+                kind: Bundle
+                name: onboard-x
+                params:
+                  region: bundle-region
+                entities:
+                  - kind: Model
+                    name: models/public/m
+                    params:
+                      region: entity-region
+                    spec: { type: chat, endpoint: "http://x.${params.region}" }
+                """);
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger applyHits = new AtomicInteger();
+        respond("/v1/admin/validate", 200,
+                "{\"valid\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"valid\"}]}");
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied\"}]}",
+                applyBody, applyHits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        // Per design 05 §5.3: bundle params win on conflict.
+        assertTrue(applyBody.get().contains("\"endpoint\":\"http://x.bundle-region\""), applyBody.get());
+        assertFalse(applyBody.get().contains("entity-region"), applyBody.get());
+    }
+
+    @Test
+    void applyBundleEntityWithBothSpecAndPatchRejected(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path manifest = tmp.resolve("bundle.yaml");
+        Files.writeString(manifest, """
+                kind: Bundle
+                name: bad
+                entities:
+                  - kind: Model
+                    name: models/public/m
+                    spec: { type: chat, endpoint: http://x }
+                    patch: { endpoint: http://y }
+                """);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("exactly one of 'spec' or 'patch'"), r.err);
+    }
+
+    @Test
+    void applyBundleEntityWithNeitherSpecNorPatchRejected(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path manifest = tmp.resolve("bundle.yaml");
+        Files.writeString(manifest, """
+                kind: Bundle
+                name: bad
+                entities:
+                  - kind: Model
+                    name: models/public/m
+                """);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("exactly one of 'spec' or 'patch'"), r.err);
+    }
+
+    @Test
+    void applyBundleNestedBundleRejected(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path manifest = tmp.resolve("bundle.yaml");
+        Files.writeString(manifest, """
+                kind: Bundle
+                name: outer
+                entities:
+                  - kind: Bundle
+                    name: inner
+                    entities: []
+                """);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("nested Bundles"), r.err);
+    }
+
+    @Test
+    void applyBundleDryRunPrintsExpandedEnvelope(@TempDir Path tmp) throws Exception {
+        Path config = writeProfileAndKey(tmp);
+        Path manifest = tmp.resolve("bundle.yaml");
+        Files.writeString(manifest, """
+                kind: Bundle
+                name: onboard-x
+                entities:
+                  - kind: Model
+                    name: models/public/m
+                    spec: { type: chat, endpoint: http://x }
+                  - kind: Role
+                    name: roles/platform/basic
+                    patch:
+                      limits: { m: { minute: "1" } }
+                """);
+        AtomicInteger getHits = new AtomicInteger();
+        server.createContext("/v1/roles/platform/basic", exchange -> {
+            getHits.incrementAndGet();
+            send(exchange, 200, "{\"name\":\"basic\",\"limits\":{}}");
+        });
+        AtomicInteger applyHits = new AtomicInteger();
+        respond("/v1/admin/apply", 500, "should not be called");
+
+        Result r = run(config, apiKeyFile(tmp), "--dry-run", "apply", "-f", manifest.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        // Patch resolution still hits the GET (read-only) so dry-run shows the actual envelope.
+        assertEquals(1, getHits.get(), "dry-run still GETs target state for patch resolution");
+        assertEquals(0, applyHits.get(), "dry-run must not POST /v1/admin/apply");
+        // Envelope on stdout includes both expanded entries as `spec:`.
+        assertTrue(r.out.contains("\"kind\":\"Model\""), r.out);
+        assertTrue(r.out.contains("\"kind\":\"Role\""), r.out);
+        assertTrue(r.out.contains("\"minute\":\"1\""), r.out);
     }
 }

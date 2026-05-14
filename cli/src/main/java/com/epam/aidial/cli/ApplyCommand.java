@@ -90,6 +90,15 @@ public class ApplyCommand implements Callable<Integer> {
             return 2;
         }
 
+        // GETs for Bundle `patch:` entries hit the target env even on --dry-run so the
+        // printed envelope reflects the actual apply payload (the patch → merged-spec
+        // expansion is what the operator wants to preview). Created lazily so a bundle-free
+        // apply with no env reachable still works for dry-run.
+        CliHttpClient http = null;
+        if (anyPatch(manifests)) {
+            http = new CliHttpClient(resolved.apiUrl(), resolved.apiKey());
+        }
+
         ObjectNode envelope = JSON.createObjectNode();
         ArrayNode arr = envelope.putArray("manifests");
         for (ManifestLoader.Manifest m : manifests) {
@@ -103,7 +112,16 @@ public class ApplyCommand implements Callable<Integer> {
                 Map<String, Object> entityCtx = EntityWriter.entityContext(m.name(), m.kind());
                 TemplateContext tpl = new TemplateContext(m.templateName(), mergedParams,
                         resolved.vars(), entityCtx, resolved.templates());
-                resolvedSpec = TemplateResolver.resolve(m.spec(), tpl);
+                if (m.patch() != null) {
+                    JsonNode resolvedPatch = TemplateResolver.resolve(m.patch(), tpl);
+                    JsonNode currentSpec = fetchCurrentForPatch(http, m, err);
+                    if (currentSpec == null) {
+                        return 1;
+                    }
+                    resolvedSpec = JsonMergePatch.apply(currentSpec, resolvedPatch);
+                } else {
+                    resolvedSpec = TemplateResolver.resolve(m.spec(), tpl);
+                }
             } catch (TemplateException e) {
                 err.println(m.name() + ": " + e.getMessage());
                 return 2;
@@ -128,13 +146,53 @@ public class ApplyCommand implements Callable<Integer> {
             return 0;
         }
 
-        CliHttpClient http = new CliHttpClient(resolved.apiUrl(), resolved.apiKey());
+        if (http == null) {
+            http = new CliHttpClient(resolved.apiUrl(), resolved.apiKey());
+        }
 
         Integer validateExit = runValidate(http, body, err);
         if (validateExit != null) {
             return validateExit;
         }
         return runApply(http, body, out, err);
+    }
+
+    private static boolean anyPatch(List<ManifestLoader.Manifest> manifests) {
+        for (ManifestLoader.Manifest m : manifests) {
+            if (m.patch() != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Fetch the target entity's current spec for a Bundle `patch:` entry. Returns an empty
+    // ObjectNode on 404 (design 05 §5.3: patch on missing entity merges into `{}`). Returns
+    // null on hard failure — the caller surfaces a non-zero exit so the bundle apply aborts
+    // rather than silently using stale or partial state.
+    private JsonNode fetchCurrentForPatch(CliHttpClient http, ManifestLoader.Manifest m, PrintWriter err) {
+        String canonicalId = ManifestLoader.canonicalIdOf(m);
+        String path = "/v1/" + canonicalId;
+        CliHttpClient.Response resp;
+        try {
+            resp = http.get(path);
+        } catch (CliHttpClient.NetworkException e) {
+            err.println(m.name() + ": " + e.getMessage());
+            return null;
+        }
+        if (resp.status() == 404) {
+            return JSON.createObjectNode();
+        }
+        if (resp.status() != 200) {
+            err.println(m.name() + ": GET " + path + " returned HTTP " + resp.status() + " " + resp.body());
+            return null;
+        }
+        try {
+            return JSON.readTree(resp.body());
+        } catch (JsonProcessingException e) {
+            err.println(m.name() + ": failed to parse target state: " + e.getMessage());
+            return null;
+        }
     }
 
     private Integer runValidate(CliHttpClient http, String body, PrintWriter err) {

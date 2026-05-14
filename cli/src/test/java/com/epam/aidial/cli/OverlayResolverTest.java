@@ -326,7 +326,7 @@ class OverlayResolverTest {
 
         // sanity null-check seam: a synthetic Manifest with null source compiles + reads back null.
         ManifestLoader.Manifest synthetic = new ManifestLoader.Manifest(
-                "Model", "x", loaded.get(0).spec(), null, java.util.Map.of(), null);
+                "Model", "x", loaded.get(0).spec(), null, null, java.util.Map.of(), null);
         assertNull(synthetic.source());
     }
 }

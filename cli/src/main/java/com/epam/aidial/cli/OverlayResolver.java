@@ -57,7 +57,7 @@ final class OverlayResolver {
         Set<String> matchedDisableKeys = new HashSet<>();
 
         for (ManifestLoader.Manifest base : bases) {
-            String canonical = canonicalIdOf(base);
+            String canonical = ManifestLoader.canonicalIdOf(base);
             String baseRelDir = baseRelDir(base.source(), baseRoot);
             String baseStem = stripLastSuffix(base.source().getFileName().toString());
             String disableKey = disableKey(baseRelDir, baseStem);
@@ -82,7 +82,7 @@ final class OverlayResolver {
             if (overlay.params != null) {
                 mergedParams.putAll(overlay.params);
             }
-            out.add(new ManifestLoader.Manifest(base.kind(), base.name(), patchedSpec,
+            out.add(new ManifestLoader.Manifest(base.kind(), base.name(), patchedSpec, null,
                     base.templateName(), mergedParams, base.source()));
         }
 
@@ -249,11 +249,6 @@ final class OverlayResolver {
             // Rewrap into OverlayResolver's exception type; same contract message.
             throw new OverlayResolveException(e.getMessage());
         }
-    }
-
-    private static String canonicalIdOf(ManifestLoader.Manifest base) {
-        String prefix = ManifestLoader.KIND_CANONICAL_PREFIX.get(base.kind());
-        return prefix == null ? base.kind() + "/" + base.name() : prefix + base.name();
     }
 
     private static String baseRelDir(Path source, Path baseRoot) {
