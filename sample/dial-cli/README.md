@@ -29,12 +29,15 @@ sample/dial-cli/
 │   │       ├── 03-role.yaml          — kind: RoleOverlay, looser limits
 │   │       ├── 04-key.disable        — zero-byte marker, key not shipped
 │   │       └── 06-model.yaml         — kind: ModelOverlay, +pricing, 1 region
+│   ├── bundles/
+│   │   └── onboard-example.yaml      — kind: Bundle, shared params + spec:/patch:
 │   └── secrets-demo.yaml             — ${SECRET:*} + ${ENV_VAR} demo (opt-in)
-├── manifests-json/                   — same 9 entities in JSON + 1 array file
+├── manifests-json/                   — same 9 entities in JSON + array + bundle
 │   ├── 00-batch-array.json           — array-of-objects (JSON multi-doc)
 │   ├── 01-schema.json
 │   ├── … (02–09 mirror manifests/base/)
-│   └── 09-settings.json
+│   ├── 09-settings.json
+│   └── 10-bundle.json                — kind: Bundle in JSON form
 └── README.md                         — this file
 ```
 
@@ -155,10 +158,12 @@ dial-cli apply -f manifests/base/06-model.yaml --env staging --dry-run   # → f
 Full DSL surface (functions, `!if` / `!for` semantics, merge order, cycle
 detection) is in `05-cli-design.md §3` and `06-cli-user-guide.md §1.2`.
 
-> **`!if` quoting gotcha.** Write `!if ${vars.x} == 'true':` (expression
-> *unquoted*, embedded literals single-quoted). Wrapping the whole expression
-> in double quotes turns it into a single string literal and the comparison
-> stops working — placeholder substitution never runs.
+> **`!if` quoting.** Both `!if ${vars.x} == 'true':` (unquoted) and
+> `!if "${vars.x} == 'true'":` (whole-expression double-quoted, as in
+> `05-cli-design.md §3.3`) are accepted — the quoted form has its outer pair
+> stripped before evaluation (slice Cli.6). Embedded string literals still
+> use single quotes (`'true'`). `config.yaml` ships the unquoted form because
+> it reads cleanest in YAML.
 
 ## Environment overlays (4C.2)
 
@@ -182,6 +187,49 @@ region instead of two, and `pricing.prompt` is set.
 
 `.disable` marker matching is byte-equal stem + identical relative directory.
 Format and the four-row truth table are documented in `05-cli-design.md §5.2`.
+
+## Bundles (4C.3)
+
+Bundles group operationally-coherent entities under a shared `params` scope so
+"onboard model X" can be expressed as one manifest instead of a directory.
+`kind: Bundle` is CLI-only sugar — `ManifestLoader` expands the bundle into N
+apply entries before sending; the server returns `400` if it ever sees a raw
+`Bundle` kind on `POST /v1/admin/apply` (slice 4S.0).
+
+`manifests/bundles/onboard-example.yaml` ships a three-entity rollout:
+
+| Entry | Mode | Notes |
+|---|---|---|
+| `Model` `models/public/${params.model_name}` | `spec:` | New entity; goes through the `bedrock-chat` template (params re-exposed at entity level) |
+| `Role` `roles/platform/example-user` | `patch:` | RFC 7396 merge against the existing role — only bumps `limits[<new-model>]`; sibling limits unchanged |
+| `Key` `keys/platform/${params.model_name}-ci` | `spec:` | Fresh CI key bound to `example-user` |
+
+Apply:
+
+```shell
+dial-cli apply -f manifests/bundles/onboard-example.yaml --env local --dry-run
+dial-cli apply -f manifests/bundles/onboard-example.yaml --env local
+```
+
+The dry-run renders three fully-resolved apply entries. The `Role` entry shows
+the GET-then-merge result for the live `example-user` role — `pricing` /
+`costLimit` / sibling `limits.*` keys carry through untouched.
+
+`patch:` against a not-yet-present entity falls back to `{}` (404 → empty base
+per 05 §5.3) — the bundle then ships the patched-only fields as the entity's
+full spec on first apply. Use `spec:` instead of `patch:` for an entity that
+might be missing **and** has required fields, otherwise the apply will surface
+a validation FAILED row.
+
+JSON parity: `manifests-json/10-bundle.json` is the same bundle in JSON. It
+uses a different `model_name` (`example-rollout-model-json`) so the YAML and
+JSON bundles can be applied side-by-side without collisions.
+
+**Concurrency caveat.** Concurrent bundles `patch:`ing the same shared entity
+race silently with last-write-wins — `POST /v1/admin/apply` has no per-entity
+`If-Match`. Use `patch:` only for entities a single bundle owns; for anything
+shared across bundles or overlays write a full `spec:`. The hard contract is
+spelled out in `05-cli-design.md §5.3`.
 
 ## Secrets & env vars (4C.4)
 
@@ -218,8 +266,9 @@ and array-of-objects forms are supported:
 shapes mixed in the same tree:
 
 ```shell
-dial-cli apply -f manifests-json/                          # 11 entities (9 single + 2 from array)
+dial-cli apply -f manifests-json/                          # 14 entries (9 single + 2 from array + 3 from bundle)
 dial-cli apply -f manifests-json/01-schema.json --env local
+dial-cli apply -f manifests-json/10-bundle.json --env local --dry-run
 ```
 
 Overlay manifests in JSON form are supported by the same code path; the
@@ -326,9 +375,6 @@ dial-cli env check --env local                              # config-only valida
 - Secret fields (`upstreams[].key`, `Key.key`) in the base manifests are
   placeholders. The `secrets-demo.yaml` shows the env-var-driven pattern; in
   real workflows source secrets from env / vault per `06-cli-user-guide.md §2.1`.
-- **Bundles (`kind: Bundle`)** are not yet implemented (slice 4C.3 📋) and
-  rejected by `ManifestLoader`. Use the directory-apply pattern for multi-entity
-  batches.
 - **`promote --template <name|auto>`** is not yet implemented (slice 4C.5 📋).
   Only as-is promote works; for template-driven multi-env rollouts use the
   overlay pattern above.

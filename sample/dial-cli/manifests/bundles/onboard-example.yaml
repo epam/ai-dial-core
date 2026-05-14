@@ -1,0 +1,67 @@
+---
+# Bundle manifest — groups operationally-coherent entities under a shared
+# `params` scope. Pure CLI-side sugar: the CLI expands the bundle into
+# individual apply entries before sending to POST /v1/admin/apply (the server
+# rejects `kind: Bundle` per 4S.0, 03 §7).
+#
+# Demonstrates:
+#   * shared `params` scope visible to every nested entity (bundle params win
+#     over same-named entity params per 05 §5.3),
+#   * mixed `spec:` (full replacement) and `patch:` (GET → JSON Merge Patch →
+#     full spec) entries,
+#   * template reference inside a bundle entity (`bedrock-chat` from
+#     config.yaml resolves against the active env's vars + entity params),
+#   * `patch:` against an entity already present in the base tree
+#     (`roles/platform/example-user`) so the GET-then-merge step exercises
+#     the live state rather than the 404 → {} fallback.
+#
+# Apply:
+#   dial-cli apply -f manifests/bundles/onboard-example.yaml --env local --dry-run
+#   dial-cli apply -f manifests/bundles/onboard-example.yaml --env local
+#
+# Caveat — concurrent `patch:` on the shared role (`roles/platform/example-user`
+# is also touched by the staging RoleOverlay) is silently last-write-wins
+# (05 §5.3 "Race contract"). For entities shared across bundles or overlays,
+# prefer full `spec:` so collisions surface through per-entity apply results
+# rather than silent data loss.
+kind: Bundle
+name: onboard-rollout-model
+params:
+  model_name: example-rollout-model
+  regions: [us-east-1, us-west-2]
+  rate_limit_minute: "200000"
+  rate_limit_day: "20000000"
+
+entities:
+  # New model via the bedrock-chat template — endpoint / upstreams / features
+  # / type / forwardAuthToken come from the template; spec adds the human-
+  # facing bits and wires the existing example-user role.
+  - kind: Model
+    name: "models/public/${params.model_name}"
+    template: bedrock-chat
+    params:
+      regions: "${params.regions}"
+    spec:
+      displayName: "Example Rollout Model"
+      userRoles: ["example-user"]
+
+  # Bump the rate-limit on the shared example-user role for the new model
+  # only. RFC 7396 deep-merge — sibling `limits.*` entries (including the
+  # existing `models/public/example-chat-model` limit) carry through
+  # untouched.
+  - kind: Role
+    name: roles/platform/example-user
+    patch:
+      limits:
+        "models/public/${params.model_name}":
+          minute: "${params.rate_limit_minute}"
+          day: "${params.rate_limit_day}"
+
+  # Issue a dedicated CI key bound to the example-user role. Full `spec:`
+  # because the key is a fresh entity per rollout, not a shared one.
+  - kind: Key
+    name: "keys/platform/${params.model_name}-ci"
+    spec:
+      project: "ExampleRollout"
+      roles: ["example-user"]
+      secured: false

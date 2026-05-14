@@ -1,0 +1,45 @@
+{
+  "kind": "Bundle",
+  "name": "onboard-rollout-model",
+  "params": {
+    "model_name": "example-rollout-model-json",
+    "regions": ["us-east-1", "us-west-2"],
+    "rate_limit_minute": "200000",
+    "rate_limit_day": "20000000"
+  },
+  "entities": [
+    {
+      "kind": "Model",
+      "name": "models/public/${params.model_name}",
+      "template": "bedrock-chat",
+      "params": {
+        "regions": "${params.regions}"
+      },
+      "spec": {
+        "displayName": "Example Rollout Model (JSON)",
+        "userRoles": ["example-user"]
+      }
+    },
+    {
+      "kind": "Role",
+      "name": "roles/platform/example-user",
+      "patch": {
+        "limits": {
+          "models/public/${params.model_name}": {
+            "minute": "${params.rate_limit_minute}",
+            "day": "${params.rate_limit_day}"
+          }
+        }
+      }
+    },
+    {
+      "kind": "Key",
+      "name": "keys/platform/${params.model_name}-ci",
+      "spec": {
+        "project": "ExampleRollout",
+        "roles": ["example-user"],
+        "secured": false
+      }
+    }
+  ]
+}
