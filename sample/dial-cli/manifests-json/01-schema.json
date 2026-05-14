@@ -1,0 +1,21 @@
+{
+  "kind": "Schema",
+  "name": "schemas/public/example-app-type",
+  "spec": {
+    "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+    "$id": "https://example.com/schemas/example-app-type",
+    "dial:applicationTypeDisplayName": "Example App Type",
+    "dial:applicationTypeCompletionEndpoint": "http://localhost:4000/openai/v1/completion",
+    "properties": {
+      "description": {
+        "title": "Description",
+        "type": "string",
+        "dial:meta": {
+          "dial:propertyKind": "client",
+          "dial:propertyOrder": 1
+        }
+      }
+    },
+    "required": ["description"]
+  }
+}

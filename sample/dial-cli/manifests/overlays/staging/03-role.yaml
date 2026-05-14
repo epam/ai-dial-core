@@ -1,0 +1,11 @@
+---
+# Loosens the staging rate-limits on `example-user`. RFC 7396 deep-merges
+# `limits.models/public/example-chat-model` keys without clobbering siblings;
+# `costLimit` (if any) is preserved by virtue of not being mentioned here.
+kind: RoleOverlay
+target: roles/platform/example-user
+patch:
+  limits:
+    "models/public/example-chat-model":
+      minute: "500000"
+      day: "50000000"

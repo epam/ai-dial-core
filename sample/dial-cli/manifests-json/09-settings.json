@@ -1,0 +1,8 @@
+{
+  "kind": "Settings",
+  "name": "global",
+  "spec": {
+    "globalInterceptors": ["interceptors/platform/example-interceptor"],
+    "retriableErrorCodes": [502, 503]
+  }
+}

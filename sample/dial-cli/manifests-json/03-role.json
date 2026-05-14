@@ -1,0 +1,12 @@
+{
+  "kind": "Role",
+  "name": "roles/platform/example-user",
+  "spec": {
+    "limits": {
+      "models/public/example-chat-model": {
+        "minute": "100000",
+        "day": "10000000"
+      }
+    }
+  }
+}

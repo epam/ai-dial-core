@@ -1,0 +1,14 @@
+---
+# Patches the staging variant of `example-chat-model`:
+#   - shrink upstream regions to a single one (template param override)
+#   - add a `pricing` block via JSON Merge Patch (RFC 7396) on the resolved spec
+# The `displayName` / `userRoles` from base/06-model.yaml carry through unchanged.
+kind: ModelOverlay
+target: models/public/example-chat-model
+params:
+  regions: [us-east-1]
+patch:
+  pricing:
+    unit: token
+    prompt: 0.0000025
+    completion: 0.0000150

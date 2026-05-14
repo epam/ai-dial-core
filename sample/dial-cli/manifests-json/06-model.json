@@ -1,0 +1,25 @@
+{
+  "kind": "Model",
+  "name": "models/public/example-chat-model",
+  "spec": {
+    "type": "chat",
+    "displayName": "Example Chat Model",
+    "endpoint": "http://localhost:7001/openai/deployments/example-chat-model/chat/completions",
+    "upstreams": [
+      {
+        "endpoint": "http://localhost:7001/openai/deployments/example-chat-model/chat/completions",
+        "extraData": {"region": "us-east-1"}
+      },
+      {
+        "endpoint": "http://localhost:7001/openai/deployments/example-chat-model/chat/completions",
+        "extraData": {"region": "us-west-2"}
+      }
+    ],
+    "features": {
+      "systemPromptSupported": true,
+      "toolsSupported": true,
+      "streamingSupported": true
+    },
+    "userRoles": ["example-user"]
+  }
+}

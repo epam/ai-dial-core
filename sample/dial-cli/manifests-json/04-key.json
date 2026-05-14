@@ -1,0 +1,9 @@
+{
+  "kind": "Key",
+  "name": "keys/platform/example-ci-key",
+  "spec": {
+    "project": "ExampleCI",
+    "roles": ["example-user"],
+    "secured": false
+  }
+}

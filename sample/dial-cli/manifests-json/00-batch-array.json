@@ -1,0 +1,23 @@
+[
+  {
+    "kind": "Role",
+    "name": "roles/platform/example-batch-role",
+    "spec": {
+      "limits": {
+        "models/public/example-chat-model": {
+          "minute": "50000",
+          "day": "5000000"
+        }
+      }
+    }
+  },
+  {
+    "kind": "Key",
+    "name": "keys/platform/example-batch-key",
+    "spec": {
+      "project": "BatchDemo",
+      "roles": ["example-batch-role"],
+      "secured": false
+    }
+  }
+]
