@@ -19,7 +19,9 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -88,7 +90,39 @@ public final class FileConfigStore implements ConfigStore {
             }
         }
 
-        return jsonMapper.convertValue(tree, Config.class);
+        Config config = jsonMapper.convertValue(tree, Config.class);
+        rejectCanonicalShapedKeys(config);
+        return config;
+    }
+
+    // Canonical-ID shape "{typeSegment}/{bucket}/{name}" is reserved for API-managed entries
+    // in the merged config (MergedConfigStore.canonicalId). File map keys with this shape would
+    // collide with the API-origin discriminator used by listing/source projections, so reject
+    // them at load time rather than carry an ambiguous origin signal downstream.
+    private static final Pattern CANONICAL_ID_SHAPE = Pattern.compile("^[^/]+/[^/]+/.+$");
+
+    private static void rejectCanonicalShapedKeys(Config config) {
+        rejectShape("models", config.getModels());
+        rejectShape("interceptors", config.getInterceptors());
+        rejectShape("roles", config.getRoles());
+        rejectShape("keys", config.getKeys());
+        rejectShape("routes", config.getRoutes());
+    }
+
+    private static void rejectShape(String typeSegment, Map<String, ?> map) {
+        if (map == null || map.isEmpty()) {
+            return;
+        }
+        String prefix = typeSegment + "/";
+        for (String key : map.keySet()) {
+            if (key != null && key.startsWith(prefix) && CANONICAL_ID_SHAPE.matcher(key).matches()) {
+                throw new IllegalArgumentException(
+                        "File config '" + typeSegment + "' key '" + key + "' has the reserved "
+                                + "canonical-ID shape '" + typeSegment + "/<bucket>/<name>'. "
+                                + "Use a simple name for file-defined entries; canonical IDs are "
+                                + "reserved for API-managed entries via the Configuration API.");
+            }
+        }
     }
 
     @SneakyThrows

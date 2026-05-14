@@ -1,0 +1,11 @@
+{
+  "keys": {
+    "keys/platform/my-key": {
+      "project": "test",
+      "secured": false,
+      "roles": [
+        "admin"
+      ]
+    }
+  }
+}
