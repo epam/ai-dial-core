@@ -31,7 +31,6 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.modelcontextprotocol.client.McpClient;
@@ -161,8 +160,14 @@ public class ToolSetToolsController implements Controller {
                 .jsonSchemaValidator(NOOP_SCHEMA_VALIDATOR)
                 .build()) {
             client.initialize();
-            McpSchema.ListToolsResult result = client.listTools();
-            processToolsResult(result);
+            if (filterAllowed) {
+                // listTools() auto-paginates all pages via the SDK's expand() chain
+                processUserToolsResult(client.listTools().tools());
+            } else {
+                // listTools(cursor) fetches exactly one page; null = first page
+                String cursor = context.getRequest().getParam("nextCursor");
+                processAdminToolsResult(client.listTools(cursor));
+            }
         } catch (Exception e) {
             log.error("Failed to fetch tools from MCP server for toolset: {}", toolSetId, e);
             throw new HttpException(HttpStatus.BAD_GATEWAY, "Failed to fetch tools from MCP server");
@@ -193,23 +198,28 @@ public class ToolSetToolsController implements Controller {
         }
     }
 
-    private void processToolsResult(McpSchema.ListToolsResult result) {
+    private void processAdminToolsResult(McpSchema.ListToolsResult result) {
         ObjectNode responseBody = ProxyUtil.MAPPER.createObjectNode();
-        responseBody.put("jsonrpc", "2.0");
-        responseBody.put("id", 1);
-        ObjectNode resultNode = responseBody.putObject("result");
-        ArrayNode toolsArray = resultNode.putArray("tools");
-
-        List<String> allowedTools = filterAllowed ? getAllowedTools(context.getDeployment()) : List.of();
-
+        ArrayNode toolsArray = responseBody.putArray("tools");
         for (McpSchema.Tool tool : result.tools()) {
-            if (filterAllowed && !allowedTools.isEmpty() && !allowedTools.contains(tool.name())) {
-                continue;
-            }
-            JsonNode toolNode = ProxyUtil.MAPPER.valueToTree(tool);
-            toolsArray.add(toolNode);
+            toolsArray.add(ProxyUtil.MAPPER.valueToTree(tool));
         }
+        if (result.nextCursor() != null) {
+            responseBody.put("nextCursor", result.nextCursor());
+        }
+        finalizeRequest();
+        context.respond(HttpStatus.OK, responseBody);
+    }
 
+    private void processUserToolsResult(List<McpSchema.Tool> tools) {
+        List<String> allowedTools = getAllowedTools(context.getDeployment());
+        ObjectNode responseBody = ProxyUtil.MAPPER.createObjectNode();
+        ArrayNode toolsArray = responseBody.putArray("tools");
+        for (McpSchema.Tool tool : tools) {
+            if (allowedTools.isEmpty() || allowedTools.contains(tool.name())) {
+                toolsArray.add(ProxyUtil.MAPPER.valueToTree(tool));
+            }
+        }
         finalizeRequest();
         context.respond(HttpStatus.OK, responseBody);
     }
