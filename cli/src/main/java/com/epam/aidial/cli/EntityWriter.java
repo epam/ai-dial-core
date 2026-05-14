@@ -36,6 +36,8 @@ public final class EntityWriter {
      */
     private static final String[] PROJECTION_FIELDS = {"name", "status", "source", "validationWarnings"};
 
+    private static final String TEMPLATE_AUTO = "auto";
+
     private EntityWriter() {
     }
 
@@ -182,11 +184,17 @@ public final class EntityWriter {
 
     public static int promoteEntity(DialCli root, CommandSpec spec, String type, String kind,
                                     String canonicalId, String sourceEnv, String targetEnv) {
-        return promoteEntity(root, spec, type, kind, "public", canonicalId, sourceEnv, targetEnv);
+        return promoteEntity(root, spec, type, kind, "public", canonicalId, sourceEnv, targetEnv, null, null);
     }
 
     public static int promoteEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
                                     String canonicalId, String sourceEnv, String targetEnv) {
+        return promoteEntity(root, spec, type, kind, bucket, canonicalId, sourceEnv, targetEnv, null, null);
+    }
+
+    public static int promoteEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
+                                    String canonicalId, String sourceEnv, String targetEnv,
+                                    String templateName, List<String> paramFlags) {
         String simpleName;
         try {
             simpleName = requireCanonicalId(type, bucket, canonicalId);
@@ -202,6 +210,13 @@ public final class EntityWriter {
         if (target == null) {
             return 2;
         }
+        Map<String, Object> params;
+        try {
+            params = parseParams(paramFlags);
+        } catch (IllegalArgumentException e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 2;
+        }
         String path = "/v1/" + type + "/" + bucket + "/" + URLEncoder.encode(simpleName, StandardCharsets.UTF_8);
         CliHttpClient.Response getResp;
         try {
@@ -215,16 +230,50 @@ public final class EntityWriter {
                     + EntityReader.formatHttpError(getResp.status(), getResp.body(), path));
             return CliHttpClient.toExitCode(getResp.status());
         }
-        ObjectNode envelope = JSON.createObjectNode();
-        ObjectNode manifest = JSON.createObjectNode();
-        manifest.put("kind", kind);
-        manifest.put("name", simpleName);
+        JsonNode sourceSpec;
         try {
-            manifest.set("spec", JSON.readTree(getResp.body()));
+            sourceSpec = JSON.readTree(getResp.body());
         } catch (JsonProcessingException e) {
             spec.commandLine().getErr().println("Failed to parse source " + source.envName() + " response: " + e.getMessage());
             return 1;
         }
+        Map<String, Object> entityCtx = entityContext(simpleName, kind);
+        String effectiveTemplate = templateName;
+        if (TEMPLATE_AUTO.equals(templateName)) {
+            Map<String, Object> templates = source.templates();
+            if (templates == null || templates.isEmpty()) {
+                spec.commandLine().getErr().println(
+                        "No templates defined in profile; cannot use --template auto. Use --template <name> with an explicit name or omit --template for as-is copy.");
+                return 2;
+            }
+            List<String> matches = autoMatchTemplates(sourceSpec, source, params, entityCtx);
+            if (matches.isEmpty()) {
+                spec.commandLine().getErr().println(
+                        "No template matches the source entity. Available: " + String.join(", ", templates.keySet())
+                                + ". Use --template <name> explicitly.");
+                return 2;
+            }
+            if (matches.size() > 1) {
+                spec.commandLine().getErr().println(
+                        "Multiple templates match: " + String.join(", ", matches)
+                                + ". Use --template <name> explicitly.");
+                return 2;
+            }
+            effectiveTemplate = matches.get(0);
+        }
+        JsonNode mergedSpec;
+        try {
+            mergedSpec = applyPromoteTemplate(sourceSpec, effectiveTemplate, target, params, entityCtx);
+        } catch (TemplateException e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 2;
+        }
+        warnSourceHostnames(spec.commandLine().getErr(), canonicalId, mergedSpec, source);
+        ObjectNode envelope = JSON.createObjectNode();
+        ObjectNode manifest = JSON.createObjectNode();
+        manifest.put("kind", kind);
+        manifest.put("name", simpleName);
+        manifest.set("spec", mergedSpec);
         envelope.putArray("manifests").add(manifest);
         envelope.put("precheck", true);
         String body;
@@ -591,4 +640,112 @@ public final class EntityWriter {
         }
         return raw;
     }
+
+    /**
+     * Reverse-match the source entity against every template in the source env's catalog
+     * (design 05 §4 lines 308–318). Returns names of templates whose resolved fields all
+     * appear verbatim in {@code sourceSpec}. Templates that fail to resolve (e.g. unresolved
+     * {@code ${params.*}} the operator didn't supply) are silently skipped — auto is
+     * best-effort; operators with param-using templates pass {@code --template <name>}
+     * explicitly per the slice plan.
+     */
+    private static List<String> autoMatchTemplates(JsonNode sourceSpec, EntityReader.ResolvedEnv source,
+                                                   Map<String, Object> params, Map<String, Object> entityCtx) {
+        Map<String, Object> templates = source.templates();
+        if (templates == null || templates.isEmpty()) {
+            return List.of();
+        }
+        List<String> matches = new java.util.ArrayList<>();
+        for (String name : templates.keySet()) {
+            JsonNode resolvedFields;
+            try {
+                TemplateContext tpl = new TemplateContext(name, params, source.vars(), entityCtx, templates);
+                resolvedFields = TemplateResolver.resolveTemplate(tpl);
+            } catch (TemplateException e) {
+                continue;
+            }
+            // Template ⊆ spec iff merge-patching it onto spec is a no-op.
+            if (JsonMergePatch.apply(sourceSpec, resolvedFields).equals(sourceSpec)) {
+                matches.add(name);
+            }
+        }
+        return matches;
+    }
+
+    private static JsonNode applyPromoteTemplate(JsonNode sourceSpec, String templateName,
+                                                 EntityReader.ResolvedEnv target,
+                                                 Map<String, Object> params,
+                                                 Map<String, Object> entityCtx) {
+        if (templateName == null || templateName.isBlank()) {
+            return sourceSpec;
+        }
+        TemplateContext tpl = new TemplateContext(templateName, params,
+                target.vars(), entityCtx, target.templates());
+        JsonNode resolvedTemplate = TemplateResolver.resolveTemplate(tpl);
+        // Template-wins merge (design 05 §4 step 4) — inverse of TemplateResolver.resolve's spec-wins (§3.5).
+        return TemplateResolver.deepMerge(sourceSpec, resolvedTemplate);
+    }
+
+    /** Design 05 §4 step 5 — warns when source-env hostnames survive into the apply payload. */
+    private static void warnSourceHostnames(java.io.PrintWriter err, String canonicalId,
+                                            JsonNode spec, EntityReader.ResolvedEnv source) {
+        if (source.vars() == null || source.vars().isEmpty()) {
+            return;
+        }
+        Map<String, String> hostnameVars = new HashMap<>();
+        for (Map.Entry<String, Object> e : source.vars().entrySet()) {
+            Object v = e.getValue();
+            if (v instanceof String s && looksLikeHostname(s)) {
+                hostnameVars.put(e.getKey(), s);
+            }
+        }
+        if (hostnameVars.isEmpty()) {
+            return;
+        }
+        scanForHostnames(err, canonicalId, spec, "", hostnameVars, source.envName());
+    }
+
+    private static boolean looksLikeHostname(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        if (value.contains("://")) {
+            return true;
+        }
+        int dot = value.indexOf('.');
+        if (dot <= 0) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            if (Character.isLetter(value.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void scanForHostnames(java.io.PrintWriter err, String canonicalId, JsonNode node,
+                                         String path, Map<String, String> hostnameVars, String envName) {
+        if (node.isObject()) {
+            node.fields().forEachRemaining(entry -> {
+                String childPath = path.isEmpty() ? entry.getKey() : path + "." + entry.getKey();
+                scanForHostnames(err, canonicalId, entry.getValue(), childPath, hostnameVars, envName);
+            });
+        } else if (node.isArray()) {
+            for (int i = 0; i < node.size(); i++) {
+                scanForHostnames(err, canonicalId, node.get(i), path + "[" + i + "]", hostnameVars, envName);
+            }
+        } else if (node.isTextual()) {
+            String text = node.asText();
+            for (Map.Entry<String, String> e : hostnameVars.entrySet()) {
+                if (text.contains(e.getValue())) {
+                    err.println("WARN: Entity '" + canonicalId + "' field '" + path
+                            + "' contains hostname '" + e.getValue()
+                            + "' matching source environment '" + envName + "' (vars." + e.getKey() + "). "
+                            + "Consider using --template to transform env-specific fields.");
+                }
+            }
+        }
+    }
+
 }

@@ -154,10 +154,16 @@ public class ModelCommand {
         @Option(names = "--name", required = true,
                 description = "Canonical id (models/public/<name>).")
         String name;
+        @Option(names = "--template",
+                description = "Template name from CLI profile, or 'auto' to reverse-match against the source entity.")
+        String template;
+        @Option(names = "--param", description = "Template parameter 'key=value' (repeatable).")
+        java.util.List<String> params;
 
         @Override
         public Integer call() {
-            return EntityWriter.promoteEntity(model.parent, spec, "models", "Model", name, fromEnv, toEnv);
+            return EntityWriter.promoteEntity(model.parent, spec, "models", "Model", "public",
+                    name, fromEnv, toEnv, template, params);
         }
     }
 

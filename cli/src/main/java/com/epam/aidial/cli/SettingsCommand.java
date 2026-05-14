@@ -107,10 +107,16 @@ public class SettingsCommand {
         String fromEnv;
         @Option(names = "--to", required = true, description = "Target environment.")
         String toEnv;
+        @Option(names = "--template",
+                description = "Template name from CLI profile, or 'auto' to reverse-match against the source entity.")
+        String template;
+        @Option(names = "--param", description = "Template parameter 'key=value' (repeatable).")
+        java.util.List<String> params;
 
         @Override
         public Integer call() {
-            return EntityWriter.promoteEntity(cmd.parent, spec, TYPE, KIND, BUCKET, CANONICAL_ID, fromEnv, toEnv);
+            return EntityWriter.promoteEntity(cmd.parent, spec, TYPE, KIND, BUCKET, CANONICAL_ID,
+                    fromEnv, toEnv, template, params);
         }
     }
 

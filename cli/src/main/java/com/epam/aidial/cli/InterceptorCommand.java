@@ -155,10 +155,15 @@ public class InterceptorCommand {
         @Option(names = "--name", required = true,
                 description = "Canonical id (interceptors/platform/<name>).")
         String name;
+        @Option(names = "--template",
+                description = "Template name from CLI profile, or 'auto' to reverse-match against the source entity.")
+        String template;
+        @Option(names = "--param", description = "Template parameter 'key=value' (repeatable).")
+        java.util.List<String> params;
 
         @Override
         public Integer call() {
-            return EntityWriter.promoteEntity(cmd.parent, spec, TYPE, KIND, BUCKET, name, fromEnv, toEnv);
+            return EntityWriter.promoteEntity(cmd.parent, spec, TYPE, KIND, BUCKET, name, fromEnv, toEnv, template, params);
         }
     }
 

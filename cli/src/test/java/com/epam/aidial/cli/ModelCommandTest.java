@@ -1596,6 +1596,291 @@ class ModelCommandTest {
         assertTrue(r.err.contains("canonical id"), r.err);
     }
 
+    private Path writeTwoEnvProfileWithTemplates(Path tmp, String sourceUrl, String targetUrl,
+                                                 String extraYaml) throws Exception {
+        Path config = tmp.resolve("config.yaml");
+        Files.writeString(config, ("""
+                defaults: { env: dev }
+                environments:
+                  dev:
+                    api_url: "%s"
+                    auth: { type: api_key, key_env_var: NONEXISTENT_DIAL_TEST_KEY }
+                    vars:
+                      adapter_host: "http://dev-host:8080"
+                      region: "us-east-1"
+                  uat:
+                    api_url: "%s"
+                    auth: { type: api_key, key_env_var: NONEXISTENT_DIAL_TEST_KEY }
+                    vars:
+                      adapter_host: "http://uat-host:8080"
+                      region: "eu-west-1"
+                """ + extraYaml).formatted(sourceUrl, targetUrl));
+        return config;
+    }
+
+    @Test
+    void modelPromoteWithTemplateNameUsesTargetEnvVars(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            String templates = """
+                    templates:
+                      bedrock-chat:
+                        fields:
+                          endpoint: "${vars.adapter_host}/openai/deployments/${entity.name}/chat/completions"
+                    """;
+            Path config = writeTwoEnvProfileWithTemplates(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort(), templates);
+            respond("/v1/models/public/m", 200,
+                    "{\"name\":\"m\",\"type\":\"chat\",\"endpoint\":\"http://dev-host:8080/openai/deployments/m/chat/completions\"}");
+            java.util.concurrent.atomic.AtomicReference<String> applyBody = new java.util.concurrent.atomic.AtomicReference<>();
+            target.createContext("/v1/admin/apply", exchange -> {
+                applyBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                send(exchange, 200,
+                        "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied\"}]}");
+            });
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "promote", "--from", "dev", "--to", "uat",
+                    "--name", "models/public/m",
+                    "--template", "bedrock-chat");
+
+            assertEquals(0, r.exitCode, r.err);
+            assertTrue(applyBody.get().contains("http://uat-host:8080/openai/deployments/m/chat/completions"),
+                    "Expected target env vars resolved; got: " + applyBody.get());
+            assertTrue(!applyBody.get().contains("dev-host"),
+                    "Source-env hostname must be replaced by target's; got: " + applyBody.get());
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelPromoteWithTemplateAutoSinglematchPicksIt(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            String templates = """
+                    templates:
+                      bedrock-chat:
+                        fields:
+                          endpoint: "${vars.adapter_host}/openai/deployments/${entity.name}/chat/completions"
+                      other-template:
+                        fields:
+                          endpoint: "${vars.adapter_host}/different/path"
+                    """;
+            Path config = writeTwoEnvProfileWithTemplates(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort(), templates);
+            respond("/v1/models/public/m", 200,
+                    "{\"name\":\"m\",\"type\":\"chat\","
+                            + "\"endpoint\":\"http://dev-host:8080/openai/deployments/m/chat/completions\","
+                            + "\"displayName\":\"My Model\"}");
+            java.util.concurrent.atomic.AtomicReference<String> applyBody = new java.util.concurrent.atomic.AtomicReference<>();
+            target.createContext("/v1/admin/apply", exchange -> {
+                applyBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                send(exchange, 200,
+                        "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied\"}]}");
+            });
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "promote", "--from", "dev", "--to", "uat",
+                    "--name", "models/public/m",
+                    "--template", "auto");
+
+            assertEquals(0, r.exitCode, r.err);
+            assertTrue(applyBody.get().contains("http://uat-host:8080/openai/deployments/m/chat/completions"),
+                    "Auto must pick bedrock-chat and re-resolve against uat; got: " + applyBody.get());
+            assertTrue(applyBody.get().contains("\"displayName\":\"My Model\""),
+                    "Non-template fields must be preserved; got: " + applyBody.get());
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelPromoteWithTemplateAutoNoMatchExitsTwo(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            String templates = """
+                    templates:
+                      bedrock-chat:
+                        fields:
+                          endpoint: "${vars.adapter_host}/openai/deployments/${entity.name}/chat/completions"
+                    """;
+            Path config = writeTwoEnvProfileWithTemplates(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort(), templates);
+            respond("/v1/models/public/m", 200,
+                    "{\"name\":\"m\",\"type\":\"chat\",\"endpoint\":\"http://manual-edit/x\"}");
+            java.util.concurrent.atomic.AtomicBoolean targetHit = new java.util.concurrent.atomic.AtomicBoolean();
+            target.createContext("/v1/admin/apply", exchange -> {
+                targetHit.set(true);
+                send(exchange, 200, "{}");
+            });
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "promote", "--from", "dev", "--to", "uat",
+                    "--name", "models/public/m",
+                    "--template", "auto");
+
+            assertEquals(2, r.exitCode);
+            assertTrue(r.err.contains("No template matches"), r.err);
+            assertTrue(r.err.contains("bedrock-chat"), r.err);
+            assertTrue(!targetHit.get(), "Apply must not fire on auto-no-match");
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelPromoteWithTemplateAutoMultiMatchExitsTwo(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            String templates = """
+                    templates:
+                      template-a:
+                        fields:
+                          endpoint: "http://dev-host:8080/x"
+                      template-b:
+                        fields:
+                          endpoint: "http://dev-host:8080/x"
+                    """;
+            Path config = writeTwoEnvProfileWithTemplates(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort(), templates);
+            respond("/v1/models/public/m", 200,
+                    "{\"name\":\"m\",\"endpoint\":\"http://dev-host:8080/x\"}");
+            java.util.concurrent.atomic.AtomicBoolean targetHit = new java.util.concurrent.atomic.AtomicBoolean();
+            target.createContext("/v1/admin/apply", exchange -> {
+                targetHit.set(true);
+                send(exchange, 200, "{}");
+            });
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "promote", "--from", "dev", "--to", "uat",
+                    "--name", "models/public/m",
+                    "--template", "auto");
+
+            assertEquals(2, r.exitCode);
+            assertTrue(r.err.contains("Multiple templates match"), r.err);
+            assertTrue(r.err.contains("template-a"), r.err);
+            assertTrue(r.err.contains("template-b"), r.err);
+            assertTrue(!targetHit.get(), "Apply must not fire on auto-multi-match");
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelPromoteAsIsWarnsOnSourceHostname(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfileWithTemplates(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort(), "");
+            respond("/v1/models/public/m", 200,
+                    "{\"name\":\"m\",\"endpoint\":\"http://dev-host:8080/openai/x\"}");
+            target.createContext("/v1/admin/apply", exchange -> send(exchange, 200,
+                    "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied\"}]}"));
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "promote", "--from", "dev", "--to", "uat",
+                    "--name", "models/public/m");
+
+            assertEquals(0, r.exitCode, r.err);
+            assertTrue(r.err.contains("WARN"), r.err);
+            assertTrue(r.err.contains("hostname"), r.err);
+            assertTrue(r.err.contains("dev-host") || r.err.contains("adapter_host"), r.err);
+            assertTrue(r.err.contains("--template"), r.err);
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelPromoteWithTemplateNameSuppressesHostnameWarning(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            String templates = """
+                    templates:
+                      bedrock-chat:
+                        fields:
+                          endpoint: "${vars.adapter_host}/openai/x"
+                    """;
+            Path config = writeTwoEnvProfileWithTemplates(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort(), templates);
+            respond("/v1/models/public/m", 200,
+                    "{\"name\":\"m\",\"endpoint\":\"http://dev-host:8080/openai/x\"}");
+            target.createContext("/v1/admin/apply", exchange -> send(exchange, 200,
+                    "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied\"}]}"));
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "promote", "--from", "dev", "--to", "uat",
+                    "--name", "models/public/m",
+                    "--template", "bedrock-chat");
+
+            assertEquals(0, r.exitCode, r.err);
+            assertTrue(!r.err.contains("WARN"), "Template-resolved endpoint should suppress warning; err=" + r.err);
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelPromoteAutoWithNoTemplatesInProfileExitsTwo(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfileWithTemplates(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort(), "");
+            respond("/v1/models/public/m", 200, "{\"name\":\"m\"}");
+            java.util.concurrent.atomic.AtomicBoolean targetHit = new java.util.concurrent.atomic.AtomicBoolean();
+            target.createContext("/v1/admin/apply", exchange -> {
+                targetHit.set(true);
+                send(exchange, 200, "{}");
+            });
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "promote", "--from", "dev", "--to", "uat",
+                    "--name", "models/public/m",
+                    "--template", "auto");
+
+            assertEquals(2, r.exitCode);
+            assertTrue(r.err.contains("No templates defined in profile"), r.err);
+            assertTrue(!targetHit.get(), "Apply must not fire when profile has no templates");
+        } finally {
+            target.stop(0);
+        }
+    }
+
+    @Test
+    void modelPromoteUnknownTemplateExitsTwo(@TempDir Path tmp) throws Exception {
+        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        target.start();
+        try {
+            Path config = writeTwoEnvProfileWithTemplates(tmp, baseUrl,
+                    "http://localhost:" + target.getAddress().getPort(), "");
+            respond("/v1/models/public/m", 200, "{\"name\":\"m\"}");
+            java.util.concurrent.atomic.AtomicBoolean targetHit = new java.util.concurrent.atomic.AtomicBoolean();
+            target.createContext("/v1/admin/apply", exchange -> {
+                targetHit.set(true);
+                send(exchange, 200, "{}");
+            });
+
+            Result r = run(config, apiKeyFile(tmp),
+                    "model", "promote", "--from", "dev", "--to", "uat",
+                    "--name", "models/public/m",
+                    "--template", "ghost");
+
+            assertEquals(2, r.exitCode);
+            assertTrue(r.err.contains("ghost"), r.err);
+            assertTrue(!targetHit.get(), "Apply must not fire on unknown template");
+        } finally {
+            target.stop(0);
+        }
+    }
+
     private void respond(String path, int status, String body) {
         server.createContext(path, exchange -> send(exchange, status, body));
     }
