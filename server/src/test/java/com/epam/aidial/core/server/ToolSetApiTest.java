@@ -2082,8 +2082,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
             assertEquals(200, resp.status());
             var json = ProxyUtil.MAPPER.readTree(resp.body());
-            ArrayNode tools = Optional.ofNullable(json.get("result"))
-                    .map(res -> res.get("tools"))
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
                     .map(node -> (ArrayNode) node)
                     .orElse(ProxyUtil.MAPPER.createArrayNode());
             assertEquals(3, tools.size());
@@ -2123,8 +2122,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
             assertEquals(200, resp.status());
             var json = ProxyUtil.MAPPER.readTree(resp.body());
-            ArrayNode tools = Optional.ofNullable(json.get("result"))
-                    .map(res -> res.get("tools"))
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
                     .map(node -> (ArrayNode) node)
                     .orElse(ProxyUtil.MAPPER.createArrayNode());
             assertEquals(2, tools.size());
@@ -2147,8 +2145,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
             assertEquals(200, resp.status());
             var json = ProxyUtil.MAPPER.readTree(resp.body());
-            ArrayNode tools = Optional.ofNullable(json.get("result"))
-                    .map(res -> res.get("tools"))
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
                     .map(node -> (ArrayNode) node)
                     .orElse(ProxyUtil.MAPPER.createArrayNode());
             assertEquals(2, tools.size());
@@ -2178,8 +2175,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
             assertEquals(200, resp.status());
             var json = ProxyUtil.MAPPER.readTree(resp.body());
-            ArrayNode tools = Optional.ofNullable(json.get("result"))
-                    .map(res -> res.get("tools"))
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
                     .map(node -> (ArrayNode) node)
                     .orElse(ProxyUtil.MAPPER.createArrayNode());
             assertEquals(2, tools.size());
@@ -2225,8 +2221,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
             assertEquals(200, resp.status());
             var json = ProxyUtil.MAPPER.readTree(resp.body());
-            ArrayNode tools = Optional.ofNullable(json.get("result"))
-                    .map(res -> res.get("tools"))
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
                     .map(node -> (ArrayNode) node)
                     .orElse(ProxyUtil.MAPPER.createArrayNode());
             assertEquals(2, tools.size());
@@ -2237,13 +2232,145 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
             assertEquals(200, resp.status());
             json = ProxyUtil.MAPPER.readTree(resp.body());
-            tools = Optional.ofNullable(json.get("result"))
-                    .map(res -> res.get("tools"))
+            tools = Optional.ofNullable(json.get("tools"))
                     .map(node -> (ArrayNode) node)
                     .orElse(ProxyUtil.MAPPER.createArrayNode());
             assertEquals(1, tools.size());
             assertEquals("tool1", tools.get(0).get("name").asText());
         }
+    }
+
+    @Test
+    void testGetAllTools_Pagination() throws JsonProcessingException {
+        String page1Response = """
+                {
+                  "jsonrpc": "2.0",
+                  "id": 1,
+                  "result": {
+                    "tools": [
+                      {"name": "branch", "description": "Manage branches"},
+                      {"name": "tag", "description": "Manage tags"}
+                    ],
+                    "nextCursor": "page2"
+                  }
+                }
+                """;
+        String page2Response = """
+                {
+                  "jsonrpc": "2.0",
+                  "id": 1,
+                  "result": {
+                    "tools": [
+                      {"name": "remote", "description": "Manage remotes"}
+                    ]
+                  }
+                }
+                """;
+        try (TestWebServer ignore = new TestWebServer(9876, mcpPaginatedToolsHandler(page1Response, page2Response))) {
+            Response resp = send(HttpMethod.GET, "/v1/toolset/git/tools", null, null, "authorization", "admin");
+
+            assertEquals(200, resp.status());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            assertEquals(2, tools.size());
+            assertEquals("branch", tools.get(0).get("name").asText());
+            assertEquals("tag", tools.get(1).get("name").asText());
+            assertEquals("page2", json.get("nextCursor").asText());
+
+            resp = send(HttpMethod.GET, "/v1/toolset/git/tools?nextCursor=page2",
+                    null, null, "authorization", "admin");
+
+            assertEquals(200, resp.status());
+            json = ProxyUtil.MAPPER.readTree(resp.body());
+            tools = Optional.ofNullable(json.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            assertEquals(1, tools.size());
+            assertEquals("remote", tools.get(0).get("name").asText());
+            assertTrue(json.get("nextCursor") == null || json.get("nextCursor").isNull());
+        }
+    }
+
+    @Test
+    void testGetAllowedTools_AutoPagination() throws JsonProcessingException {
+        // git toolset has allowedTools: ["branch", "remote"]; page1 has branch+tag, page2 has remote
+        String page1Response = """
+                {
+                  "jsonrpc": "2.0",
+                  "id": 1,
+                  "result": {
+                    "tools": [
+                      {"name": "branch", "description": "Manage branches"},
+                      {"name": "tag", "description": "Manage tags"}
+                    ],
+                    "nextCursor": "page2"
+                  }
+                }
+                """;
+        String page2Response = """
+                {
+                  "jsonrpc": "2.0",
+                  "id": 1,
+                  "result": {
+                    "tools": [
+                      {"name": "remote", "description": "Manage remotes"}
+                    ]
+                  }
+                }
+                """;
+        try (TestWebServer ignore = new TestWebServer(9876, mcpPaginatedToolsHandler(page1Response, page2Response))) {
+            Response resp = send(HttpMethod.GET, "/v1/toolset/git/allowed-tools");
+
+            assertEquals(200, resp.status());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            // "tag" filtered out, "branch" and "remote" (from page 2) included
+            assertEquals(2, tools.size());
+            assertEquals("branch", tools.get(0).get("name").asText());
+            assertEquals("remote", tools.get(1).get("name").asText());
+            assertTrue(json.get("nextCursor") == null || json.get("nextCursor").isNull());
+        }
+    }
+
+    private static String extractCursor(String body) {
+        try {
+            JsonNode node = ProxyUtil.MAPPER.readTree(body);
+            JsonNode cursor = node.path("params").path("cursor");
+            return cursor.isMissingNode() || cursor.isNull() ? null : cursor.asText();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static TestWebServer.Handler mcpPaginatedToolsHandler(
+            String firstPageResponse, String subsequentPageResponse) {
+        return request -> {
+            String body = request.getBody().readString(StandardCharsets.UTF_8);
+            if ("GET".equals(request.getMethod())) {
+                return new MockResponse().setResponseCode(405);
+            }
+            if (body.contains("\"method\":\"initialize\"") || body.contains("\"method\": \"initialize\"")) {
+                String id = extractJsonRpcId(body);
+                String initResponse = """
+                        {"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":"test-server","version":"1.0"}}}
+                        """.formatted(id);
+                return new MockResponse().setBody(initResponse).setHeader("Content-Type", "application/json");
+            } else if (body.contains("\"method\":\"notifications/initialized\"")
+                    || body.contains("\"method\": \"notifications/initialized\"")) {
+                return new MockResponse().setResponseCode(202).setHeader("Content-Type", "application/json");
+            } else if (body.contains("\"method\":\"tools/list\"") || body.contains("\"method\": \"tools/list\"")) {
+                String cursor = extractCursor(body);
+                String id = extractJsonRpcId(body);
+                String template = cursor == null ? firstPageResponse : subsequentPageResponse;
+                String response = template.replaceFirst("\"id\"\\s*:\\s*\\d+", "\"id\":" + id);
+                return new MockResponse().setBody(response).setHeader("Content-Type", "application/json");
+            }
+            return new MockResponse().setResponseCode(400).setBody("Unknown method");
+        };
     }
 
     @Test
