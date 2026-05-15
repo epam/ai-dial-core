@@ -25,9 +25,11 @@ public final class EntityDiff {
             return 2;
         }
         String path;
+        String query;
         boolean isList;
         if (name == null || name.isBlank()) {
-            path = "/v1/" + type + "/" + bucket + "/?limit=100";
+            path = "/v1/" + type + "/" + bucket + "/";
+            query = "limit=100";
             isList = true;
         } else {
             if (!name.startsWith(canonicalPrefix) || name.length() == canonicalPrefix.length()
@@ -37,13 +39,14 @@ public final class EntityDiff {
                 return 2;
             }
             path = "/v1/" + name;
+            query = null;
             isList = false;
         }
-        JsonNode sourceTree = fetchOrAbsent(spec, source, path, isList);
+        JsonNode sourceTree = fetchOrAbsent(spec, source, path, query, isList);
         if (sourceTree == null) {
             return 1;
         }
-        JsonNode targetTree = fetchOrAbsent(spec, target, path, isList);
+        JsonNode targetTree = fetchOrAbsent(spec, target, path, query, isList);
         if (targetTree == null) {
             return 1;
         }
@@ -59,11 +62,11 @@ public final class EntityDiff {
         if (target == null) {
             return 2;
         }
-        JsonNode sourceTree = fetchOrAbsent(spec, source, singletonPath, false);
+        JsonNode sourceTree = fetchOrAbsent(spec, source, singletonPath, null, false);
         if (sourceTree == null) {
             return 1;
         }
-        JsonNode targetTree = fetchOrAbsent(spec, target, singletonPath, false);
+        JsonNode targetTree = fetchOrAbsent(spec, target, singletonPath, null, false);
         if (targetTree == null) {
             return 1;
         }
@@ -83,10 +86,10 @@ public final class EntityDiff {
     }
 
     private static JsonNode fetchOrAbsent(CommandSpec spec, EnvResolver.ResolvedEnv env, String path,
-                                          boolean isList) {
+                                          String query, boolean isList) {
         CliHttpClient.Response resp;
         try {
-            resp = new CliHttpClient(env.apiUrl(), env.apiKey()).get(path);
+            resp = new CliHttpClient(env.apiUrl(), env.apiKey()).get(path, query);
         } catch (CliHttpClient.NetworkException e) {
             spec.commandLine().getErr().println(env.envName() + ": " + e.getMessage());
             return null;

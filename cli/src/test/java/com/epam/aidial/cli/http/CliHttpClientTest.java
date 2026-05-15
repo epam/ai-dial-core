@@ -204,6 +204,45 @@ class CliHttpClientTest {
         assertEquals(null, ifMatch.get());
     }
 
+    @Test
+    void getEncodesSpecialCharsInPath() {
+        AtomicReference<String> requestPath = new AtomicReference<>();
+        server.createContext("/v1/models/public/gpt#4 plus", exchange -> {
+            requestPath.set(exchange.getRequestURI().getRawPath());
+            send(exchange, 200, "{}");
+        });
+
+        new CliHttpClient(baseUrl, "k").get("/v1/models/public/gpt#4 plus");
+
+        assertEquals("/v1/models/public/gpt%234%20plus", requestPath.get());
+    }
+
+    @Test
+    void getWithQueryAppendsQuerySeparately() {
+        AtomicReference<String> rawQuery = new AtomicReference<>();
+        server.createContext("/v1/models/public/", exchange -> {
+            rawQuery.set(exchange.getRequestURI().getRawQuery());
+            send(exchange, 200, "{\"items\":[]}");
+        });
+
+        new CliHttpClient(baseUrl, "k").get("/v1/models/public/", "limit=100");
+
+        assertEquals("limit=100", rawQuery.get());
+    }
+
+    @Test
+    void getEncodesSpacesInQueryValues() {
+        AtomicReference<String> rawQuery = new AtomicReference<>();
+        server.createContext("/v1/models/public/", exchange -> {
+            rawQuery.set(exchange.getRequestURI().getRawQuery());
+            send(exchange, 200, "{\"items\":[]}");
+        });
+
+        new CliHttpClient(baseUrl, "k").get("/v1/models/public/", "name=my model&limit=100");
+
+        assertEquals("name=my%20model&limit=100", rawQuery.get());
+    }
+
     private void respond(String path, int status, String body) {
         server.createContext(path, exchange -> send(exchange, status, body));
     }

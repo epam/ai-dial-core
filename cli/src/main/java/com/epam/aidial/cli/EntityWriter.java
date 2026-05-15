@@ -15,7 +15,6 @@ import picocli.CommandLine.Model.CommandSpec;
 
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -82,7 +81,7 @@ public final class EntityWriter {
             spec.commandLine().getOut().println(body);
             return 0;
         }
-        String path = "/v1/" + type + "/" + bucket + "/" + URLEncoder.encode(name, StandardCharsets.UTF_8);
+        String path = "/v1/" + type + "/" + bucket + "/" + name;
         CliHttpClient.Response resp;
         try {
             resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).post(path, body);
@@ -111,7 +110,7 @@ public final class EntityWriter {
         if (resolved == null) {
             return 2;
         }
-        String path = "/v1/" + type + "/" + bucket + "/" + URLEncoder.encode(name, StandardCharsets.UTF_8);
+        String path = "/v1/" + type + "/" + bucket + "/" + name;
         CliHttpClient http = new CliHttpClient(resolved.apiUrl(), resolved.apiKey());
         CliHttpClient.Response getResp;
         try {
@@ -193,7 +192,7 @@ public final class EntityWriter {
             spec.commandLine().getErr().println(e.getMessage());
             return 2;
         }
-        String path = "/v1/" + type + "/" + bucket + "/" + URLEncoder.encode(simpleName, StandardCharsets.UTF_8);
+        String path = "/v1/" + type + "/" + bucket + "/" + simpleName;
         CliHttpClient.Response getResp;
         try {
             getResp = new CliHttpClient(source.apiUrl(), source.apiKey()).get(path);
@@ -415,7 +414,7 @@ public final class EntityWriter {
         if (resolved == null) {
             return 2;
         }
-        String path = "/v1/" + type + "/" + bucket + "/" + URLEncoder.encode(name, StandardCharsets.UTF_8);
+        String path = "/v1/" + type + "/" + bucket + "/" + name;
         CliHttpClient.Response resp;
         try {
             resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).delete(path, ifMatch);

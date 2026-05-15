@@ -6,8 +6,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import picocli.CommandLine.Model.CommandSpec;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 public final class EntityReader {
@@ -43,7 +41,7 @@ public final class EntityReader {
             spec.commandLine().getErr().println(e.getMessage());
             return 2;
         }
-        return doGet(root, spec, resolved, path, false, type);
+        return doGet(root, spec, resolved, path, null, false, type);
     }
 
     public static int readSingleton(DialCli root, CommandSpec spec, String type) {
@@ -57,7 +55,7 @@ public final class EntityReader {
             return 2;
         }
         String path = "/v1/" + type + "/" + bucket + "/" + SETTINGS_SINGLETON_NAME;
-        return doGet(root, spec, resolved, path, false, type);
+        return doGet(root, spec, resolved, path, null, false, type);
     }
 
     public static int listEntities(DialCli root, CommandSpec spec, String type) {
@@ -70,14 +68,14 @@ public final class EntityReader {
             spec.commandLine().getErr().println("Unsupported entity type: " + type);
             return 2;
         }
-        String path = "/v1/" + type + "/" + bucket + "/?limit=100";
-        return doGet(root, spec, resolved, path, true, type);
+        String path = "/v1/" + type + "/" + bucket + "/";
+        return doGet(root, spec, resolved, path, "limit=100", true, type);
     }
 
-    private static int doGet(DialCli root, CommandSpec spec, EnvResolver.ResolvedEnv resolved, String path, boolean isList, String type) {
+    private static int doGet(DialCli root, CommandSpec spec, EnvResolver.ResolvedEnv resolved, String path, String query, boolean isList, String type) {
         CliHttpClient.Response resp;
         try {
-            resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).get(path);
+            resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).get(path, query);
         } catch (CliHttpClient.NetworkException e) {
             spec.commandLine().getErr().println(e.getMessage());
             return 1;
@@ -123,7 +121,7 @@ public final class EntityReader {
                     "Ambiguous identifier '" + identifier
                             + "'. Use a plain name or full canonical id '" + type + "/" + bucket + "/<name>'.");
         }
-        return "/v1/" + type + "/" + bucket + "/" + URLEncoder.encode(identifier, StandardCharsets.UTF_8);
+        return "/v1/" + type + "/" + bucket + "/" + identifier;
     }
 
 

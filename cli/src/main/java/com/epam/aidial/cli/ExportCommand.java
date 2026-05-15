@@ -36,7 +36,7 @@ public class ExportCommand implements Callable<Integer> {
         String accept = parent.output == OutputFormat.YAML ? "application/yaml" : "application/json";
         CliHttpClient.Response resp;
         try {
-            resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).get("/v1/admin/export", accept);
+            resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).get("/v1/admin/export", null, accept);
         } catch (CliHttpClient.NetworkException e) {
             spec.commandLine().getErr().println(e.getMessage());
             return 1;

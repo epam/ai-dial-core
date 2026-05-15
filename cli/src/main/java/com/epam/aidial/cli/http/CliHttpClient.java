@@ -2,6 +2,7 @@ package com.epam.aidial.cli.http;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -27,12 +28,16 @@ public class CliHttpClient {
         this.delegate = delegate;
     }
 
-    public Response get(String pathAndQuery) {
-        return get(pathAndQuery, "application/json");
+    public Response get(String path) {
+        return get(path, null, "application/json");
     }
 
-    public Response get(String pathAndQuery, String accept) {
-        URI uri = buildUri(pathAndQuery);
+    public Response get(String path, String query) {
+        return get(path, query, "application/json");
+    }
+
+    public Response get(String path, String query, String accept) {
+        URI uri = buildUri(path, query);
         HttpRequest req = HttpRequest.newBuilder(uri)
                 .header("Api-Key", apiKey)
                 .header("Accept", accept)
@@ -42,8 +47,12 @@ public class CliHttpClient {
         return sendForString(req);
     }
 
-    public Response post(String pathAndQuery, String body) {
-        URI uri = buildUri(pathAndQuery);
+    public Response post(String path, String body) {
+        return post(path, null, body);
+    }
+
+    public Response post(String path, String query, String body) {
+        URI uri = buildUri(path, query);
         HttpRequest req = HttpRequest.newBuilder(uri)
                 .header("Api-Key", apiKey)
                 .header("Accept", "application/json")
@@ -54,8 +63,12 @@ public class CliHttpClient {
         return sendForString(req);
     }
 
-    public Response put(String pathAndQuery, String body, String ifMatch) {
-        URI uri = buildUri(pathAndQuery);
+    public Response put(String path, String body, String ifMatch) {
+        return put(path, null, body, ifMatch);
+    }
+
+    public Response put(String path, String query, String body, String ifMatch) {
+        URI uri = buildUri(path, query);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .header("Api-Key", apiKey)
                 .header("Accept", "application/json")
@@ -68,8 +81,12 @@ public class CliHttpClient {
         return sendForString(builder.build());
     }
 
-    public Response delete(String pathAndQuery, String ifMatch) {
-        URI uri = buildUri(pathAndQuery);
+    public Response delete(String path, String ifMatch) {
+        return delete(path, null, ifMatch);
+    }
+
+    public Response delete(String path, String query, String ifMatch) {
+        URI uri = buildUri(path, query);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .header("Api-Key", apiKey)
                 .header("Accept", "application/json")
@@ -81,11 +98,12 @@ public class CliHttpClient {
         return sendForString(builder.build());
     }
 
-    private URI buildUri(String pathAndQuery) {
+    private URI buildUri(String path, String query) {
         try {
-            return URI.create(apiUrl + pathAndQuery);
-        } catch (IllegalArgumentException e) {
-            throw new NetworkException("Invalid URL " + apiUrl + pathAndQuery + ": " + e.getMessage(), e);
+            URI base = URI.create(apiUrl);
+            return new URI(base.getScheme(), base.getUserInfo(), base.getHost(), base.getPort(), path, query, null);
+        } catch (URISyntaxException e) {
+            throw new NetworkException("Invalid URL " + apiUrl + path + "?" + query + ": " + e.getMessage(), e);
         }
     }
 
