@@ -1856,6 +1856,59 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testOauthUpdate_PreservesTokenEndpointAuthMethodWhenOmitted() {
+        // A PATCH-style PUT that omits token_endpoint_auth_method must NOT silently downgrade a
+        // toolset previously configured for client_secret_basic — otherwise the Snowflake regression
+        // this PR fixes would reappear on the very next admin save.
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+
+            Response create = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-preserve@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "client_secret": "my-client-secret",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token",
+                            "token_endpoint_auth_method": "client_secret_basic"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, create.status());
+
+            Response update = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-preserve@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, update.status());
+
+            Response get = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-preserve@",
+                    null, null, "authorization", "admin");
+            assertEquals(200, get.status());
+            JsonNode authSettings = ProxyUtil.MAPPER.readTree(get.body()).get("auth_settings");
+            assertEquals("client_secret_basic", authSettings.get("token_endpoint_auth_method").asText(),
+                    "token_endpoint_auth_method must be preserved when omitted on update");
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
     void testStoredOauthToolsetSendsPlaintextClientSecretOnRefresh() {
         // Resource-stored toolsets persist authSettings.clientSecret encrypted at rest. The MCP
         // proxy controller used to forward toolset.getAuthSettings() to the credential refresh

@@ -1,6 +1,7 @@
 package com.epam.aidial.core.credentials.service.registration;
 
 import com.epam.aidial.core.config.ResourceAuthSettings;
+import com.epam.aidial.core.credentials.data.credentials.TokenEndpointAuthMethod;
 import com.epam.aidial.core.credentials.data.registration.AuthorizationServerMetadata;
 import com.epam.aidial.core.credentials.data.registration.AuthorizationServerProtectedResourceMetadata;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
@@ -83,6 +84,12 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
                 ContentType.APPLICATION_JSON.toString(),
                 ClientRegistrationResponse.class);
 
+        // Reject methods DIAL can't honor (e.g. private_key_jwt) at registration time so the
+        // operator gets a clear error before any end-user sign-in attempt; null response falls
+        // back to the DIAL default so the persisted value always reflects what DIAL will use.
+        String tokenEndpointAuthMethod = TokenEndpointAuthMethod.resolveOrDefault(
+                clientRegistrationResponse.getTokenEndpointAuthMethod()).value();
+
         ClientRegistration clientRegistration = ClientRegistration.builder()
                 .resourceId(clientRegistrationResponse.getClientName())
                 .clientId(clientRegistrationResponse.getClientId())
@@ -91,7 +98,7 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
                 .authorizationEndpoint(authServerMetadata.getAuthorizationEndpoint())
                 .tokenEndpoint(authServerMetadata.getTokenEndpoint())
                 .scopesSupported(supportedScopes)
-                .tokenEndpointAuthMethod(clientRegistrationResponse.getTokenEndpointAuthMethod())
+                .tokenEndpointAuthMethod(tokenEndpointAuthMethod)
                 .build();
 
         Optional<String> codeChallengeMethod = getCodeChallengeMethod(authServerMetadata);
