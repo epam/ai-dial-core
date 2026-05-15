@@ -3,6 +3,7 @@ package com.epam.aidial.core.credentials.validation;
 import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -132,8 +133,66 @@ class OauthAuthSettingsValidatorTest {
                                 .codeVerifier("verifier123")
                                 .build(),
                         ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT,
-                        "Field 'CODE_VERIFIER' is forbidden for OAUTH authentication.")
+                        "Field 'CODE_VERIFIER' is forbidden for OAUTH authentication."),
+
+                Arguments.of(ResourceAuthSettings.builder()
+                                .authenticationType(AuthenticationType.OAUTH)
+                                .clientId("client123")
+                                .clientSecret("secret123")
+                                .authorizationEndpoint("authorizationEndpoint")
+                                .tokenEndpoint("tokenEndpoint")
+                                .redirectUri("https://example.com/oauth")
+                                .tokenEndpointAuthMethod("private_key_jwt")
+                                .build(),
+                        ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT,
+                        "Unsupported token_endpoint_auth_method: private_key_jwt"),
+
+                Arguments.of(ResourceAuthSettings.builder()
+                                .authenticationType(AuthenticationType.OAUTH)
+                                .clientId("client123")
+                                .clientSecret("secret123")
+                                .authorizationEndpoint("authorizationEndpoint")
+                                .tokenEndpoint("tokenEndpoint")
+                                .redirectUri("https://example.com/oauth")
+                                .tokenEndpointAuthMethod("bogus")
+                                .build(),
+                        ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES,
+                        "Unsupported token_endpoint_auth_method: bogus")
         );
+    }
+
+    static Stream<Arguments> provideValidTokenEndpointAuthMethods() {
+        return Stream.of(
+                Arguments.of("client_secret_post"),
+                Arguments.of("client_secret_basic"),
+                Arguments.of("none"),
+                Arguments.of("CLIENT_SECRET_BASIC")
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideValidTokenEndpointAuthMethods")
+    void testValidate_AcceptsSupportedTokenEndpointAuthMethods(String tokenEndpointAuthMethod) {
+        ResourceAuthSettings settings = ResourceAuthSettings.builder()
+                .authenticationType(AuthenticationType.OAUTH)
+                .clientId("client123")
+                .clientSecret("secret123")
+                .authorizationEndpoint("authorizationEndpoint")
+                .tokenEndpoint("tokenEndpoint")
+                .redirectUri("https://example.com/oauth")
+                .tokenEndpointAuthMethod(tokenEndpointAuthMethod)
+                .build();
+        assertDoesNotThrow(() -> validator.validate(settings, ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT));
+    }
+
+    @Test
+    void testValidate_SkipsTokenEndpointAuthMethodCheckForDynamicRegistration() {
+        ResourceAuthSettings settings = ResourceAuthSettings.builder()
+                .authenticationType(AuthenticationType.OAUTH)
+                .redirectUri("https://example.com/oauth")
+                .tokenEndpointAuthMethod("private_key_jwt")
+                .build();
+        assertDoesNotThrow(() -> validator.validate(settings, ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT));
     }
 
     @ParameterizedTest

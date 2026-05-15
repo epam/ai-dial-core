@@ -114,12 +114,13 @@ class DynamicResourceRegistrationStrategyTest {
     }
 
     @Test
-    void testRegister_nullTokenEndpointAuthMethodInResponse_resolvesToDefault() {
+    void testRegister_nullTokenEndpointAuthMethodInResponse_resolvesToSpecDefault() {
         ClientRegistration result = runRegistrationWithResponseMethod(null);
 
-        // A fresh DCR response that omits the method is persisted as the resolved default, so
+        // A fresh DCR response that omits the method falls back to client_secret_basic per
+        // RFC 6749 §2.3.1 / RFC 7591 §3.2.1. The persisted value is the resolved default so
         // GETs return the concrete method DIAL will use instead of an ambiguous null.
-        assertEquals("client_secret_post", result.getTokenEndpointAuthMethod());
+        assertEquals("client_secret_basic", result.getTokenEndpointAuthMethod());
     }
 
     @Test

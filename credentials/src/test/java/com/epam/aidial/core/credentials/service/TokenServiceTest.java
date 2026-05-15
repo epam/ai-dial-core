@@ -56,7 +56,7 @@ class TokenServiceTest {
         ArgumentCaptor<String> formDataCaptor = ArgumentCaptor.forClass(String.class);
         verify(resourceAuthorizationClient).executePost(
                 eq("http://auth-server/token"), formDataCaptor.capture(),
-                eq("application/x-www-form-urlencoded"), eq(Map.of()), eq(TokenResponse.class));
+                eq("application/x-www-form-urlencoded"), any(), eq(TokenResponse.class));
 
         String formData = formDataCaptor.getValue();
         assertTrue(formData.contains("redirect_uri=http%3A%2F%2Fchat%2Fcallback"),
@@ -87,7 +87,7 @@ class TokenServiceTest {
         ArgumentCaptor<String> formDataCaptor = ArgumentCaptor.forClass(String.class);
         verify(resourceAuthorizationClient).executePost(
                 eq("http://auth-server/token"), formDataCaptor.capture(),
-                eq("application/x-www-form-urlencoded"), eq(Map.of()), eq(TokenResponse.class));
+                eq("application/x-www-form-urlencoded"), any(), eq(TokenResponse.class));
 
         String formData = formDataCaptor.getValue();
         assertTrue(formData.contains("redirect_uri=http%3A%2F%2Fadmin%2Fcallback"),
@@ -118,7 +118,7 @@ class TokenServiceTest {
         ArgumentCaptor<String> formDataCaptor = ArgumentCaptor.forClass(String.class);
         verify(resourceAuthorizationClient).executePost(
                 eq("http://auth-server/token"), formDataCaptor.capture(),
-                eq("application/x-www-form-urlencoded"), eq(Map.of()), eq(TokenResponse.class));
+                eq("application/x-www-form-urlencoded"), any(), eq(TokenResponse.class));
 
         String formData = formDataCaptor.getValue();
         assertTrue(formData.contains("redirect_uri=http%3A%2F%2Fadmin%2Fcallback"),
@@ -149,7 +149,7 @@ class TokenServiceTest {
         ArgumentCaptor<String> formDataCaptor = ArgumentCaptor.forClass(String.class);
         verify(resourceAuthorizationClient).executePost(
                 eq("http://auth-server/token"), formDataCaptor.capture(),
-                eq("application/x-www-form-urlencoded"), eq(Map.of()), eq(TokenResponse.class));
+                eq("application/x-www-form-urlencoded"), any(), eq(TokenResponse.class));
 
         String formData = formDataCaptor.getValue();
         assertTrue(formData.contains("redirect_uri=http%3A%2F%2Fadmin%2Fcallback"),
@@ -181,7 +181,7 @@ class TokenServiceTest {
     }
 
     @Test
-    void testGetToken_nullAuthMethod_putsCredentialsInBody_backwardCompat() {
+    void testGetToken_nullAuthMethod_defaultsToBasicPerSpec() {
         TokenService tokenService = new TokenService(resourceAuthorizationClient, List.of());
 
         ResourceAuthSettings authSettings = ResourceAuthSettings.builder()
@@ -189,7 +189,7 @@ class TokenServiceTest {
                 .clientSecret("client-secret")
                 .tokenEndpoint("http://auth-server/token")
                 .redirectUri("http://admin/callback")
-                // tokenEndpointAuthMethod = null (legacy toolsets stored before this field existed)
+                // tokenEndpointAuthMethod = null (legacy data or operator omitted the field)
                 .build();
 
         ResourceSignInRequest signInRequest = ResourceSignInRequest.builder()
@@ -202,13 +202,18 @@ class TokenServiceTest {
         tokenService.getToken("resource-1", authSettings, signInRequest);
 
         ArgumentCaptor<String> formDataCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Map<String, String>> headersCaptor = ArgumentCaptor.forClass(Map.class);
         verify(resourceAuthorizationClient).executePost(
                 eq("http://auth-server/token"), formDataCaptor.capture(),
-                eq("application/x-www-form-urlencoded"), eq(Map.of()), eq(TokenResponse.class));
+                eq("application/x-www-form-urlencoded"), headersCaptor.capture(), eq(TokenResponse.class));
+
+        // RFC 6749 §2.3.1 MUST-support BASIC; OAuth 2.1 deprecates POST. Default is BASIC.
+        String expected = "Basic " + Base64.getEncoder().encodeToString("client-id:client-secret".getBytes(StandardCharsets.UTF_8));
+        assertEquals(expected, headersCaptor.getValue().get("Authorization"));
 
         String formData = formDataCaptor.getValue();
-        assertTrue(formData.contains("client_id=client-id"));
-        assertTrue(formData.contains("client_secret=client-secret"));
+        assertFalse(formData.contains("client_id="), "client_id must not be in body: " + formData);
+        assertFalse(formData.contains("client_secret="), "client_secret must not be in body: " + formData);
     }
 
     @Test
@@ -272,7 +277,7 @@ class TokenServiceTest {
         ArgumentCaptor<String> formDataCaptor = ArgumentCaptor.forClass(String.class);
         verify(resourceAuthorizationClient).executePost(
                 eq("http://auth-server/token"), formDataCaptor.capture(),
-                eq("application/x-www-form-urlencoded"), eq(Map.of()), eq(TokenResponse.class));
+                eq("application/x-www-form-urlencoded"), any(), eq(TokenResponse.class));
 
         String formData = formDataCaptor.getValue();
         assertTrue(formData.contains("client_id=public-client"));
@@ -333,14 +338,14 @@ class TokenServiceTest {
     }
 
     @Test
-    void testGetToken_refresh_nullAuthMethod_putsCredentialsInBody_backwardCompat() {
+    void testGetToken_refresh_nullAuthMethod_defaultsToBasicPerSpec() {
         TokenService tokenService = new TokenService(resourceAuthorizationClient, List.of());
 
         ResourceAuthSettings authSettings = ResourceAuthSettings.builder()
                 .clientId("client-id")
                 .clientSecret("client-secret")
                 .tokenEndpoint("http://auth-server/token")
-                // legacy: no tokenEndpointAuthMethod
+                // null tokenEndpointAuthMethod (legacy data or operator omitted the field)
                 .build();
 
         when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
@@ -349,12 +354,16 @@ class TokenServiceTest {
         tokenService.getToken("resource-1", authSettings, "old-refresh-token");
 
         ArgumentCaptor<String> formDataCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Map<String, String>> headersCaptor = ArgumentCaptor.forClass(Map.class);
         verify(resourceAuthorizationClient).executePost(
                 eq("http://auth-server/token"), formDataCaptor.capture(),
-                eq("application/x-www-form-urlencoded"), eq(Map.of()), eq(TokenResponse.class));
+                eq("application/x-www-form-urlencoded"), headersCaptor.capture(), eq(TokenResponse.class));
+
+        String expected = "Basic " + Base64.getEncoder().encodeToString("client-id:client-secret".getBytes(StandardCharsets.UTF_8));
+        assertEquals(expected, headersCaptor.getValue().get("Authorization"));
 
         String formData = formDataCaptor.getValue();
-        assertTrue(formData.contains("client_id=client-id"));
-        assertTrue(formData.contains("client_secret=client-secret"));
+        assertFalse(formData.contains("client_id="), "client_id must not be in body: " + formData);
+        assertFalse(formData.contains("client_secret="), "client_secret must not be in body: " + formData);
     }
 }
