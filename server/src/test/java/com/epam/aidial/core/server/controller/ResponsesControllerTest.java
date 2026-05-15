@@ -47,17 +47,25 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import io.vertx.core.Handler;
+
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
 import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -573,6 +581,122 @@ public class ResponsesControllerTest {
         verify(response).end(bodyCaptor.capture());
         JsonNode sentJson = ProxyUtil.MAPPER.readTree(bodyCaptor.getValue().getBytes());
         assertEquals(expectedDialId, sentJson.path("id").asText());
+    }
+
+    @Test
+    public void testStreamingResponse(Vertx vertx, VertxTestContext textContext) throws Throwable {
+        Application deployment = new Application();
+        deployment.setName("test");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0, null);
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
+        String upstreamId = "upstream-resp-stream";
+        String expectedDialId = "resp_dial_fixed-uuid-1234";
+        String sseContent = "event: response.created\n"
+                + "data: {\"response\":{\"id\":\"" + upstreamId + "\"}}\n\n"
+                + "event: response.completed\n"
+                + "data: {\"response\":{\"id\":\"" + upstreamId + "\"}}\n\n";
+
+        AtomicReference<Handler<Buffer>> chunkHandlerRef = new AtomicReference<>();
+        AtomicReference<Handler<Void>> endHandlerRef = new AtomicReference<>();
+        List<Buffer> writtenChunks = new ArrayList<>();
+
+        when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"model\":\"test\",\"stream\":true}")));
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(upstreamRoute.next()).thenReturn(upstream);
+        when(upstreamRoute.get()).thenReturn(upstream);
+        when(context.getRequest()).thenReturn(request);
+        when(context.getResponse()).thenReturn(response);
+        when(context.getConfig()).thenReturn(new Config());
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+        when(proxyRequest.headers()).thenReturn(new HeadersMultiMap());
+        when(proxyRequest.send(any(Buffer.class))).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxyResponse.statusCode()).thenReturn(200);
+        when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("text/event-stream");
+        when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
+        when(proxyResponse.pause()).thenReturn(proxyResponse);
+        when(proxyResponse.exceptionHandler(any())).thenReturn(proxyResponse);
+        when(proxyResponse.handler(any())).thenAnswer(inv -> {
+            chunkHandlerRef.set(inv.getArgument(0));
+            return proxyResponse;
+        });
+        when(proxyResponse.endHandler(any())).thenAnswer(inv -> {
+            endHandlerRef.set(inv.getArgument(0));
+            return proxyResponse;
+        });
+        when(proxyResponse.fetch(anyLong())).thenAnswer(inv -> {
+            chunkHandlerRef.get().handle(Buffer.buffer(sseContent));
+            endHandlerRef.get().handle(null);
+            return proxyResponse;
+        });
+        when(response.setChunked(anyBoolean())).thenReturn(response);
+        when(response.setStatusCode(anyInt())).thenReturn(response);
+        when(response.putHeader(anyString(), anyString())).thenReturn(response);
+        when(response.headers()).thenReturn(new HeadersMultiMap());
+        doAnswer(inv -> {
+            writtenChunks.add(inv.getArgument(0));
+            return null;
+        }).when(response).write(any(Buffer.class), any());
+        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
+        when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
+        when(proxy.getRateLimiter().limit(context, deployment))
+                .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
+        when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
+                .thenReturn(deployment);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
+        when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
+        when(proxy.getTokenStatsTracker().getTokenStats(context))
+                .thenReturn(Future.succeededFuture(new TokenUsage()));
+        doAnswer(invocation -> {
+            textContext.completeNow();
+            return Future.succeededFuture(Boolean.TRUE);
+        }).when(apiKeyStore).invalidatePerRequestApiKey(any());
+        doCallRealMethod().when(context).setDeployment(any());
+        doCallRealMethod().when(context).getDeployment();
+        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).getRequestBody();
+        doCallRealMethod().when(context).setResponseBody(any());
+        doCallRealMethod().when(context).getResponseBody();
+        doCallRealMethod().when(context).setTokenUsage(any());
+        doCallRealMethod().when(context).getTokenUsage();
+        doCallRealMethod().when(context).setUpstreamRoute(any());
+        doCallRealMethod().when(context).getUpstreamRoute();
+        doCallRealMethod().when(context).setProxyResponse(any());
+        doCallRealMethod().when(context).setStreamingRequest(anyBoolean());
+        doCallRealMethod().when(context).isStreamingRequest();
+        doCallRealMethod().when(context).setBackground(anyBoolean());
+        doCallRealMethod().when(context).isBackground();
+
+        controller.handle();
+
+        await(textContext);
+
+        // Non-last SSE event (response.created) written with rewritten dial id
+        assertEquals(1, writtenChunks.size());
+        String createdEvent = writtenChunks.get(0).toString();
+        assertTrue(createdEvent.contains(expectedDialId));
+        assertFalse(createdEvent.contains(upstreamId));
+
+        // Last SSE event (response.completed) sent via end() also has rewritten dial id
+        ArgumentCaptor<Buffer> endCaptor = ArgumentCaptor.forClass(Buffer.class);
+        verify(response).end(endCaptor.capture());
+        String completedEvent = endCaptor.getValue().toString();
+        assertTrue(completedEvent.contains(expectedDialId));
+        assertFalse(completedEvent.contains(upstreamId));
     }
 
     private static Future<?> complete(VertxTestContext textContext) {

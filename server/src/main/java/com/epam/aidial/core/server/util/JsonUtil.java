@@ -1,23 +1,27 @@
 package com.epam.aidial.core.server.util;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.InvalidPathException;
 import com.jayway.jsonpath.Option;
 import com.jayway.jsonpath.PathNotFoundException;
 import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
+import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
+import javax.annotation.Nullable;
+import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Function;
-import javax.annotation.Nullable;
 
 @Slf4j
 @UtilityClass
@@ -121,5 +125,26 @@ public class JsonUtil {
             node = result;
         }
         return node;
+    }
+
+    public JsonNode tryParse(String data) {
+        try {
+            return ProxyUtil.MAPPER.readTree(data);
+        } catch (JsonProcessingException ignore) {
+            return MissingNode.getInstance();
+        }
+    }
+
+    public JsonNode tryParse(byte[] data) {
+        try {
+            return ProxyUtil.MAPPER.readTree(data);
+        } catch (IOException ignore) {
+            return MissingNode.getInstance();
+        }
+    }
+
+    @SneakyThrows
+    public byte[] serialize(JsonNode node) {
+        return ProxyUtil.MAPPER.writeValueAsBytes(node);
     }
 }

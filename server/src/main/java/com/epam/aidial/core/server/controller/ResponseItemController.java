@@ -5,8 +5,11 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResponseMapping;
+import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -16,9 +19,11 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.Strings;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -76,7 +81,14 @@ public class ResponseItemController implements Controller {
 
                     return request.send();
                 })
-                .compose(response -> collectAndForward(response, mapping.getUpstreamResponseId()));
+                .compose(response -> {
+                    String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
+                    if (operation == Operation.GET
+                            && Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM)) {
+                        return collectAndForwardStreaming(response, mapping.getUpstreamResponseId());
+                    }
+                    return collectAndForward(response, mapping.getUpstreamResponseId());
+                });
     }
 
     private Future<Void> collectAndForward(HttpClientResponse proxyResponse, String upstreamResponseId) {
@@ -108,22 +120,66 @@ public class ResponseItemController implements Controller {
             return Future.succeededFuture(body);
         }
         return proxy.getTaskExecutor().submit(() -> {
-            try {
-                JsonNode root = ProxyUtil.MAPPER.readTree(body.getBytes());
-                if (!root.isObject()) {
-                    return body;
-                }
-                ObjectNode object = (ObjectNode) root;
-                JsonNode idNode = object.get("id");
-                if (idNode != null && !idNode.isNull() && upstreamResponseId.equals(idNode.asText())) {
+            JsonNode tree = JsonUtil.tryParse(body.getBytes());
+            if (tree.isObject() && tree instanceof ObjectNode object) {
+                JsonNode idNode = object.path("id");
+                if (!idNode.isNull() && upstreamResponseId.equals(idNode.asText())) {
                     object.put("id", dialResponseId);
                 }
-                return Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(object));
-            } catch (Exception e) {
-                log.warn("Failed to rewrite id in response", e);
-                return body;
+                return Buffer.buffer(JsonUtil.serialize(object));
             }
+
+            return body;
         });
+    }
+
+    private Future<Void> collectAndForwardStreaming(HttpClientResponse proxyResponse, String upstreamResponseId) {
+        BufferingReadStream responseStream = new BufferingReadStream(
+                proxyResponse,
+                ProxyUtil.contentLength(proxyResponse, 1024),
+                new GetSseListener(upstreamResponseId));
+
+        HttpServerResponse response = context.getResponse();
+        ProxyUtil.handleChunkedResponse(response, proxyResponse);
+
+        return responseStream.pipe()
+                .endOnFailure(false)
+                .endOnSuccess(false)
+                .to(response)
+                .onSuccess(ignored -> responseStream.end(response))
+                .onFailure(error -> {
+                    response.reset();
+                    log.warn("Can't send streaming response to client. Error:", error);
+                })
+                .mapEmpty();
+    }
+
+    private class GetSseListener extends BufferingReadStream.BaseEventListener {
+
+        private final String upstreamResponseId;
+
+        GetSseListener(String upstreamResponseId) {
+            super(null);
+            this.upstreamResponseId = upstreamResponseId;
+        }
+
+        @Override
+        protected boolean isLastEvent(SseEvent event, JsonNode data) {
+            return "response.incomplete".equals(event.getEvent()) || "response.completed".equals(event.getEvent());
+        }
+
+        @Override
+        protected Future<JsonNode> transform(SseEvent event, JsonNode ignored) {
+            JsonNode tree = JsonUtil.tryParse(event.getData());
+            if (tree.isObject() && tree instanceof ObjectNode object
+                    && object.get("response") instanceof ObjectNode response) {
+                JsonNode idNode = response.path("id");
+                if (!idNode.isNull() && upstreamResponseId.equals(idNode.asText())) {
+                    response.put("id", dialResponseId);
+                }
+            }
+            return Future.succeededFuture(tree);
+        }
     }
 
     private static HttpException notFoundException() {

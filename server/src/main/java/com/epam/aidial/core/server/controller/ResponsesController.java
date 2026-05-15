@@ -23,12 +23,12 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -40,7 +40,6 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
-import org.jspecify.annotations.NonNull;
 
 import java.io.IOException;
 import java.util.List;
@@ -277,28 +276,19 @@ public class ResponsesController extends BaseDeploymentPostController {
         if (proxyResponse.statusCode() != 200) {
             return Future.succeededFuture(body);
         }
-        try {
-            ObjectNode json = (ObjectNode) ProxyUtil.MAPPER.readTree(body.getBytes());
-            JsonNode idNode = json.path("id");
-            if (idNode.isNull()) {
-                return Future.succeededFuture(body);
+        JsonNode tree = JsonUtil.tryParse(body.getBytes());
+        if (tree.isObject() && tree instanceof ObjectNode object) {
+            JsonNode idNode = object.path("id");
+            if (!idNode.isNull()) {
+                String upstreamId = idNode.asText();
+                String dialId = generateDialResponseId();
+                object.put("id", dialId);
+                return saveIdMappingForBackgroundRequest(proxy, context, dialId, upstreamId)
+                        .map(ignore -> Buffer.buffer(JsonUtil.serialize(object)));
             }
-            String upstreamId = idNode.asText();
-            String dialId = generateDialResponseId();
-            json.put("id", dialId);
-            return saveIdMappingForBackgroundRequest(proxy, context, dialId, upstreamId)
-                    .map(ignore -> {
-                        try {
-                            return Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(json));
-                        } catch (JsonProcessingException e) {
-                            log.warn("Failed to rewrite response id", e);
-                            throw new RuntimeException(e);
-                        }
-                    });
-        } catch (IOException e) {
-            log.warn("Can't parse JSON response body. Error:", e);
-            return Future.succeededFuture(body);
         }
+
+        return Future.succeededFuture(body);
     }
 
     private String generateDialResponseId() {
@@ -416,8 +406,8 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         @Override
         protected Future<JsonNode> transform(SseEvent event, JsonNode tree) {
-            if (tree instanceof ObjectNode node
-                    && node.get("response") instanceof ObjectNode response) {
+            if (tree instanceof ObjectNode object
+                    && object.get("response") instanceof ObjectNode response) {
                 JsonNode idNode = response.path("id");
                 if (!idNode.isNull()) {
                     String upstreamResponseId = idNode.asText();
@@ -425,7 +415,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                     if (upstreamId == null) {
                         upstreamId = upstreamResponseId;
                         return saveIdMappingForBackgroundRequest(proxy, context, dialId, upstreamId)
-                                .map(ignore -> node);
+                                .map(ignore -> object);
                     }
                 }
             }

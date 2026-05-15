@@ -12,6 +12,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
+import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
@@ -22,6 +23,7 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
+import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import io.vertx.core.json.JsonObject;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
@@ -32,17 +34,27 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.epam.aidial.core.server.controller.ResponseItemController.Operation.CANCEL;
 import static com.epam.aidial.core.server.controller.ResponseItemController.Operation.DELETE;
 import static com.epam.aidial.core.server.controller.ResponseItemController.Operation.GET;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -352,6 +364,93 @@ public class ResponseItemControllerTest {
         verify(response).end(bodyCaptor.capture());
         assertEquals(0, bodyCaptor.getValue().length());
         verify(proxy.getResponseMappingService(), never()).deleteMapping(any(), anyString());
+    }
+
+    @Test
+    public void testGetStreamingForwardsSSEWithRewrittenId(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        ResponseMapping mapping = ResponseMapping.builder()
+                .upstreamResponseId("upstream-id-stream")
+                .upstreamKey("endpoint")
+                .deploymentName("test-deployment")
+                .build();
+        Model deployment = new Model();
+        deployment.setName("test-deployment");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, 0, 0, null);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+
+        String upstreamId = "upstream-id-stream";
+        String sseContent = "event: response.created\n"
+                + "data: {\"response\":{\"id\":\"" + upstreamId + "\"}}\n\n"
+                + "event: response.completed\n"
+                + "data: {\"response\":{\"id\":\"" + upstreamId + "\"}}\n\n";
+
+        AtomicReference<Handler<Buffer>> chunkHandlerRef = new AtomicReference<>();
+        AtomicReference<Handler<Void>> endHandlerRef = new AtomicReference<>();
+        List<Buffer> writtenChunks = new ArrayList<>();
+        AtomicReference<Buffer> endChunkRef = new AtomicReference<>();
+
+        when(proxy.getResponseMappingService().getMapping(context, "resp_dial_stream")).thenReturn(mapping);
+        when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
+        when(upstreamRoute.get("endpoint")).thenReturn(upstream);
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
+        when(proxyRequest.send()).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxyResponse.statusCode()).thenReturn(200);
+        when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("text/event-stream");
+        when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
+        when(proxyResponse.pause()).thenReturn(proxyResponse);
+        when(proxyResponse.exceptionHandler(any())).thenReturn(proxyResponse);
+        when(proxyResponse.handler(any())).thenAnswer(inv -> {
+            chunkHandlerRef.set(inv.getArgument(0));
+            return proxyResponse;
+        });
+        when(proxyResponse.endHandler(any())).thenAnswer(inv -> {
+            endHandlerRef.set(inv.getArgument(0));
+            return proxyResponse;
+        });
+        when(proxyResponse.fetch(anyLong())).thenAnswer(inv -> {
+            chunkHandlerRef.get().handle(Buffer.buffer(sseContent));
+            endHandlerRef.get().handle(null);
+            return proxyResponse;
+        });
+
+        when(context.getResponse()).thenReturn(response);
+        when(response.setChunked(anyBoolean())).thenReturn(response);
+        when(response.setStatusCode(anyInt())).thenReturn(response);
+        when(response.putHeader(anyString(), anyString())).thenReturn(response);
+        when(response.headers()).thenReturn(new HeadersMultiMap());
+        doAnswer(inv -> {
+            writtenChunks.add(inv.getArgument(0));
+            return response;
+        }).when(response).write(any(Buffer.class), any());
+        doAnswer(inv -> {
+            endChunkRef.set(inv.getArgument(0));
+            testContext.completeNow();
+            return Future.succeededFuture();
+        }).when(response).end(any(Buffer.class));
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+
+        controller("resp_dial_stream", GET).handle();
+
+        await(testContext);
+
+        // First event (response.created) forwarded as a regular chunk with rewritten id
+        assertEquals(1, writtenChunks.size());
+        String firstEvent = writtenChunks.get(0).toString();
+        assertTrue(firstEvent.contains("resp_dial_stream"));
+        assertFalse(firstEvent.contains(upstreamId));
+
+        // Last event (response.completed) sent via end() with rewritten id
+        assertNotNull(endChunkRef.get());
+        String lastEvent = endChunkRef.get().toString();
+        assertTrue(lastEvent.contains("resp_dial_stream"));
+        assertFalse(lastEvent.contains(upstreamId));
     }
 
     private static Future<?> complete(VertxTestContext testContext) {
