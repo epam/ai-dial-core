@@ -1,28 +1,18 @@
 package com.epam.aidial.cli;
 
-import com.epam.aidial.cli.auth.ApiKeyResolver;
-import com.epam.aidial.cli.auth.CliAuthException;
-import com.epam.aidial.cli.config.CliConfigException;
-import com.epam.aidial.cli.config.CliProfile;
-import com.epam.aidial.cli.config.Environment;
-import com.epam.aidial.cli.config.ProfileLoader;
 import com.epam.aidial.cli.http.CliHttpClient;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import picocli.CommandLine.Model.CommandSpec;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 public final class EntityReader {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final YAMLMapper YAML = new YAMLMapper();
 
     private static final Map<String, String> TYPE_DEFAULT_BUCKET = Map.ofEntries(
             Map.entry("models", "public"),
@@ -34,16 +24,6 @@ public final class EntityReader {
             Map.entry("routes", "platform"),
             Map.entry("schemas", "public"),
             Map.entry("settings", "platform")
-    );
-
-    private static final TableShape DEFAULT_SHAPE = new TableShape(
-            new String[]{"NAME", "SOURCE", "STATUS"},
-            new String[]{"name", "source", "status"});
-
-    private static final Map<String, TableShape> TYPE_TABLE_SHAPE = Map.of(
-            "models", new TableShape(
-                    new String[]{"NAME", "SOURCE", "STATUS", "ENDPOINT"},
-                    new String[]{"name", "source", "status", "endpoint"})
     );
 
     private static final String SETTINGS_SINGLETON_NAME = "global";
@@ -108,6 +88,7 @@ public final class EntityReader {
         }
         try {
             JsonNode node = JSON.readTree(resp.body());
+            EntityRenderer renderer = EntityRenderer.of(root.output);
             if (isList) {
                 JsonNode items = node.get("items");
                 if (items == null || !items.isArray()) {
@@ -118,88 +99,15 @@ public final class EntityReader {
                 if (hasMore != null && hasMore.asBoolean()) {
                     spec.commandLine().getErr().println("[warn] Result truncated at 100 items.");
                 }
-                spec.commandLine().getOut().println(renderList(items, root.output, type));
+                spec.commandLine().getOut().println(renderer.renderList(items, type));
             } else {
-                spec.commandLine().getOut().println(renderSingle(node, root.output, type));
+                spec.commandLine().getOut().println(renderer.renderSingle(node, type));
             }
         } catch (JsonProcessingException e) {
             spec.commandLine().getErr().println("Failed to parse response: " + e.getMessage());
             return 1;
         }
         return 0;
-    }
-
-    static String renderSingle(JsonNode node, String fmt, String type) throws JsonProcessingException {
-        return switch (fmt) {
-            case "json" -> JSON.writerWithDefaultPrettyPrinter().writeValueAsString(node);
-            case "yaml" -> YAML.writeValueAsString(node).stripTrailing();
-            case "table" -> renderTable(List.of(node), type);
-            default -> JSON.writerWithDefaultPrettyPrinter().writeValueAsString(node);
-        };
-    }
-
-    static String renderList(JsonNode items, String fmt, String type) throws JsonProcessingException {
-        return switch (fmt) {
-            case "json" -> JSON.writerWithDefaultPrettyPrinter().writeValueAsString(items);
-            case "yaml" -> YAML.writeValueAsString(items).stripTrailing();
-            case "table" -> {
-                List<JsonNode> rows = new ArrayList<>();
-                items.forEach(rows::add);
-                yield renderTable(rows, type);
-            }
-            default -> JSON.writerWithDefaultPrettyPrinter().writeValueAsString(items);
-        };
-    }
-
-    static String renderTable(List<JsonNode> rows, String type) {
-        TableShape shape = TYPE_TABLE_SHAPE.getOrDefault(type, DEFAULT_SHAPE);
-        String[] headers = shape.headers();
-        String[] fields = shape.fields();
-        int[] widths = new int[headers.length];
-        for (int i = 0; i < headers.length; i++) {
-            widths[i] = headers[i].length();
-        }
-        List<String[]> values = new ArrayList<>();
-        for (JsonNode r : rows) {
-            String[] row = new String[fields.length];
-            for (int i = 0; i < fields.length; i++) {
-                row[i] = textOrEmpty(r, fields[i]);
-            }
-            values.add(row);
-            for (int i = 0; i < row.length; i++) {
-                if (row[i].length() > widths[i]) {
-                    widths[i] = row[i].length();
-                }
-            }
-        }
-        StringBuilder out = new StringBuilder();
-        appendRow(out, headers, widths);
-        for (String[] row : values) {
-            appendRow(out, row, widths);
-        }
-        if (out.length() > 0 && out.charAt(out.length() - 1) == '\n') {
-            out.setLength(out.length() - 1);
-        }
-        return out.toString();
-    }
-
-    private static void appendRow(StringBuilder out, String[] cells, int[] widths) {
-        for (int i = 0; i < cells.length; i++) {
-            if (i > 0) {
-                out.append("  ");
-            }
-            if (i < cells.length - 1) {
-                out.append(String.format("%-" + widths[i] + "s", cells[i]));
-            } else {
-                out.append(cells[i]);
-            }
-        }
-        out.append('\n');
-    }
-
-    private static String textOrEmpty(JsonNode node, String field) {
-        JsonNode v = node.get(field);
-        return (v == null || v.isNull()) ? "" : v.asText();
     }
 
     private static String identifierToPath(String type, String identifier) {
@@ -250,5 +158,4 @@ public final class EntityReader {
         return stripped.isBlank() ? "(unknown)" : stripped;
     }
 
-    private record TableShape(String[] headers, String[] fields) { }
 }

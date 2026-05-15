@@ -52,8 +52,8 @@ public class DialCli {
     Path apiKeyFile;
 
     @Option(names = {"-o", "--output"}, scope = ScopeType.INHERIT, defaultValue = "table",
-            description = "Output format: table (default), json, yaml.")
-    String output;
+            description = "Output format: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).")
+    OutputFormat output;
 
     @Option(names = {"-v", "--verbose"}, scope = ScopeType.INHERIT, description = "Verbose output.")
     boolean verbose;

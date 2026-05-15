@@ -33,7 +33,7 @@ public class ExportCommand implements Callable<Integer> {
         if (resolved == null) {
             return 2;
         }
-        String accept = "yaml".equals(parent.output) ? "application/yaml" : "application/json";
+        String accept = parent.output == OutputFormat.YAML ? "application/yaml" : "application/json";
         CliHttpClient.Response resp;
         try {
             resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).get("/v1/admin/export", accept);
