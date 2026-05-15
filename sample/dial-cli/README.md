@@ -248,6 +248,66 @@ dial-cli apply -f manifests/secrets-demo.yaml --env local --dry-run
 Vault / OS-keychain extension stays deferred (OQ-19); env-var resolution is the
 MVP path. See `05-cli-design.md §3.1` and `06-cli-user-guide.md §2.1`.
 
+## Promote between environments (4C.5)
+
+`promote` takes a single entity from one env and applies it to another via the
+canonical `POST /v1/admin/apply` upsert path. Three modes for `--template`:
+
+| Mode | Behavior | Use case |
+|---|---|---|
+| *(omitted)* | As-is copy; warns when source-env hostnames leak into the spec | Roles, keys, schemas — entities with no env-specific fields |
+| `--template <name>` | Re-resolves the template against the target env's `vars` + `--param`s; non-template fields carry through from source | Standard model promote where the operator knows the template |
+| `--template auto` | Reverse-matches every template in the profile against the source entity; uses the unique match or errors with suggestions | Convenience — best-effort detection for template-stamped entities |
+
+`example-chat-model` was stamped from `bedrock-chat` against the `local` env in
+the Quickstart. Promote it to `staging` in each mode (apply the Quickstart
+sweep first so the entity exists on `local`):
+
+```shell
+# Mode 1 — as-is. The hostname warning fires because the source spec contains
+# `local` vars values (adapter_host); the entity is still promoted (exit 0).
+dial-cli model promote --from local --to staging \
+  --name models/public/example-chat-model --dry-run
+
+# Mode 2 — explicit template. Re-resolves endpoint / iconUrl / upstreams /
+# forwardAuthToken against staging's vars (icon_base_url is set, forward_auth
+# flips to true). --param narrows regions for staging only.
+dial-cli model promote --from local --to staging \
+  --name models/public/example-chat-model \
+  --template bedrock-chat --param 'regions=[us-east-1]' --dry-run
+
+# Mode 3 — auto. Reverse-matches the source spec against every template in
+# config.yaml; bedrock-chat is the unique match for example-chat-model.
+dial-cli model promote --from local --to staging \
+  --name models/public/example-chat-model --template auto --dry-run
+```
+
+The hostname warning is a stderr line like:
+
+```
+WARN: Entity 'models/public/example-chat-model' field 'endpoint' contains
+      hostname 'http://localhost:7001' matching source environment 'local' vars.
+      Consider --template to transform env-specific fields. Proceeding with as-is copy.
+```
+
+`--template` suppresses the warning because the template re-resolves all
+env-specific fields against the target env's `vars`. As-is promote is safe for
+entities with no hostname-shaped fields (roles, keys, schemas).
+
+Auto-match fails loudly when zero or multiple templates match — operator picks
+one explicitly:
+
+```
+ERROR: No template matches entity 'models/public/example-chat-model' against
+       source env 'local'. Use --template <name> explicitly.
+       Available: bedrock-chat, chat-base, forward-auth-when-enabled.
+```
+
+All 9 per-type commands (`model`, `application`, `toolset`, `interceptor`,
+`role`, `key`, `route`, `schema`, `settings`) accept `--template` + `--param`.
+The full reverse-match algorithm and template-wins-deep-merge order are in
+`05-cli-design.md §4`.
+
 ## JSON manifests
 
 `manifests-json/` is a 1:1 mirror of `manifests/base/` in JSON form. The model
@@ -346,10 +406,22 @@ dial-cli diff --source local --target staging
 dial-cli model diff --source local --target staging \
   --name models/public/example-chat-model
 
-# As-is promote — copies the entity verbatim
+# As-is promote — single-entity verbatim copy.
 dial-cli model promote --from local --to staging \
   --name models/public/example-chat-model
+
+# Template-driven promote — re-resolves env-specific fields against `staging`.
+dial-cli model promote --from local --to staging \
+  --name models/public/example-chat-model \
+  --template bedrock-chat --param 'regions=[us-east-1]'
+
+# Auto-detect — reverse-matches the source spec against config.yaml templates.
+dial-cli model promote --from local --to staging \
+  --name models/public/example-chat-model --template auto
 ```
+
+Full walkthrough of the three modes + hostname warning is in
+[Promote between environments (4C.5)](#promote-between-environments-4c5) above.
 
 ### Environment management
 
@@ -375,9 +447,6 @@ dial-cli env check --env local                              # config-only valida
 - Secret fields (`upstreams[].key`, `Key.key`) in the base manifests are
   placeholders. The `secrets-demo.yaml` shows the env-var-driven pattern; in
   real workflows source secrets from env / vault per `06-cli-user-guide.md §2.1`.
-- **`promote --template <name|auto>`** is not yet implemented (slice 4C.5 📋).
-  Only as-is promote works; for template-driven multi-env rollouts use the
-  overlay pattern above.
 - The docker alias mounts `$PWD` **read-only**, so `dial-cli env use` won't
   persist back to `config.yaml` from inside the container. Drop the `:ro` if
   you want to test that path; safer to leave it on for alpha CI.
