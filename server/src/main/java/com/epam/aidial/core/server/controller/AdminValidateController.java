@@ -2,12 +2,12 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
-import com.epam.aidial.core.config.Settings;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
@@ -210,7 +210,7 @@ public class AdminValidateController implements Controller {
             case "Role" -> Role.class;
             case "Route" -> Route.class;
             case "Key" -> Key.class;
-            case "Settings" -> Settings.class;
+            case "Settings" -> GlobalSettings.class;
             // Schema spec is a free-form JsonNode; unknown kinds have no typed class.
             default -> null;
         };

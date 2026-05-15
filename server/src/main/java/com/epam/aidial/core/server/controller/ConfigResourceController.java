@@ -1,12 +1,12 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
-import com.epam.aidial.core.config.Settings;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
@@ -344,9 +344,9 @@ public class ConfigResourceController implements Controller {
             if (!requestNode.isObject()) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "Request body must be a JSON object");
             }
-            // Deserialize through the typed Settings POJO so unknown fields are dropped and types
+            // Deserialize through the typed GlobalSettings POJO so unknown fields are dropped and types
             // are validated; re-serialize so the blob is canonical (locked field set, no extras).
-            Settings settings = treeToEntity(requestNode, Settings.class);
+            GlobalSettings settings = treeToEntity(requestNode, GlobalSettings.class);
             String blobBody = serializeForBlob(settings);
             return taskExecutor.submit(() -> {
                 ResourceItemMetadata meta = resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
