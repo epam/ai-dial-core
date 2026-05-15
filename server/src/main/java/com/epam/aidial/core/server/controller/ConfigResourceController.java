@@ -387,6 +387,7 @@ public class ConfigResourceController implements Controller {
         }
         ResourceDescriptor descriptor = spec.descriptor();
         String name = path;
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
 
         context.getRequest().body().compose(body -> {
             JsonNode requestNode = parseJsonBody(body);
@@ -422,7 +423,12 @@ public class ConfigResourceController implements Controller {
                     blobBody = serializeForBlob(entity);
                 }
                 try (LockService.Lock ignored = resourceService.lockResource(descriptor)) {
-                    if (resourceService.getResourceMetadata(descriptor) != null) {
+                    ResourceItemMetadata existing = resourceService.getResourceMetadata(descriptor);
+                    // Honor client-supplied conditional headers (If-Match / If-None-Match: *) before
+                    // the implicit create-only 409: this yields RFC-compliant 412 PRECONDITION_FAILED
+                    // when a client opts in via etag. Headerless POST falls through to 409.
+                    etag.validate(existing == null ? null : existing.getEtag());
+                    if (existing != null) {
                         throw new HttpException(HttpStatus.CONFLICT,
                                 "Resource already exists: " + descriptor.getUrl());
                     }
