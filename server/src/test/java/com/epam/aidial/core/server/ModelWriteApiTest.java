@@ -93,6 +93,15 @@ public class ModelWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testPost412OnIfNoneMatchStarConflict() {
+        verify(send(HttpMethod.POST, "/v1/models/public/test-model-inm", null, MODEL_BODY_NO_SECRET,
+                "authorization", "admin"), 201);
+        Response again = send(HttpMethod.POST, "/v1/models/public/test-model-inm", null,
+                MODEL_BODY_NO_SECRET, "authorization", "admin", "If-None-Match", "*");
+        verify(again, 412);
+    }
+
+    @Test
     void testPost400OnSentinelInUpstreamKey() {
         Response post = send(HttpMethod.POST, "/v1/models/public/test-model-sentinel", null,
                 MODEL_BODY_WITH_SENTINEL_KEY, "authorization", "admin");

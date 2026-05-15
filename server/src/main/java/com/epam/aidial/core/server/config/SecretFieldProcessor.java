@@ -176,6 +176,10 @@ public class SecretFieldProcessor {
                     String value = (String) field.get(entity);
                     String transformed = encrypt ? encryptValue(value, aad, field.getName())
                             : decryptValue(value, aad, field.getName());
+                    // Reference identity, not Objects.equals: encrypt/decrypt return the *input*
+                    // reference unchanged on no-op paths (null/empty, already enveloped,
+                    // ${secret:...} placeholders). Skipping field.set in those cases avoids a
+                    // redundant reflective write.
                     if (transformed != value) {
                         field.set(entity, transformed);
                     }
