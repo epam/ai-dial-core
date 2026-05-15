@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -1796,10 +1797,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testOauthSignInWithoutTokenEndpointAuthMethod_backwardCompat() {
-        // Legacy toolsets (created before token_endpoint_auth_method was introduced) have the field
-        // unset on the persisted ResourceAuthSettings. They must continue to send credentials in the
-        // form body with NO Authorization header (the historical client_secret_post behavior).
+    void testOauthSignInWithoutTokenEndpointAuthMethod_defaultsToBasicPerSpec() {
+        // Toolsets with token_endpoint_auth_method unset (legacy data or operator omitted the
+        // field) default to client_secret_basic per RFC 6749 §2.3.1 — BASIC is MUST-support for
+        // compliant authorization servers; POST is NOT RECOMMENDED. OAuth 2.1 deprecates POST.
         String tokenResponse = """
                 {
                     "access_token": "test-access-token",
@@ -1846,12 +1847,14 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     """, "authorization", "admin");
             verify(response, 200, "true");
 
-            assertNull(authHeaderRef.get(),
-                    "Legacy toolsets without token_endpoint_auth_method must not send Authorization header");
-            assertTrue(bodyRef.get().contains("client_id=my-client-id"),
-                    "client_id must be in body for backward compat, got: " + bodyRef.get());
-            assertTrue(bodyRef.get().contains("client_secret=my-client-secret"),
-                    "client_secret must be in body for backward compat, got: " + bodyRef.get());
+            String expectedAuth = "Basic " + Base64.getEncoder().encodeToString(
+                    "my-client-id:my-client-secret".getBytes(StandardCharsets.UTF_8));
+            assertEquals(expectedAuth, authHeaderRef.get(),
+                    "null token_endpoint_auth_method must default to client_secret_basic");
+            assertFalse(bodyRef.get().contains("client_id="),
+                    "client_id must not be in body when defaulting to basic, got: " + bodyRef.get());
+            assertFalse(bodyRef.get().contains("client_secret="),
+                    "client_secret must not be in body when defaulting to basic, got: " + bodyRef.get());
         }
     }
 
@@ -1957,6 +1960,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                             .setBody(MCP_TOOL_CALL_RESPONSE)
                             .setHeader("Content-Type", "application/json"));
 
+            // Explicit POST so refresh sends client_secret in the body — this test verifies the
+            // stored secret is decrypted before being forwarded, not the default auth method.
             Response response = send(HttpMethod.PUT,
                     "/v1/toolsets/4X25dj1mja51jykqxsXnCH/notion-toolset@", null, """
                             {
@@ -1969,7 +1974,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                                     "client_secret": "%s",
                                     "redirect_uri": "http://admin/callback",
                                     "authorization_endpoint": "http://localhost:9876/authorize",
-                                    "token_endpoint": "http://localhost:9876/token"
+                                    "token_endpoint": "http://localhost:9876/token",
+                                    "token_endpoint_auth_method": "client_secret_post"
                                 }
                             }
                             """.formatted(plaintextClientSecret), "authorization", "admin");
