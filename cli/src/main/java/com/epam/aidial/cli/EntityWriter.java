@@ -14,6 +14,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import picocli.CommandLine.Model.CommandSpec;
 
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -39,16 +40,6 @@ public final class EntityWriter {
     private static final String TEMPLATE_AUTO = "auto";
 
     private EntityWriter() {
-    }
-
-    public static int addEntity(DialCli root, CommandSpec spec, String type, String kind,
-                                String canonicalId, Path fromFile) {
-        return addEntity(root, spec, type, kind, "public", canonicalId, fromFile, null, null);
-    }
-
-    public static int addEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
-                                String canonicalId, Path fromFile) {
-        return addEntity(root, spec, type, kind, bucket, canonicalId, fromFile, null, null);
     }
 
     public static int addEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
@@ -105,11 +96,6 @@ public final class EntityWriter {
         }
         spec.commandLine().getOut().println("Created " + canonicalId);
         return 0;
-    }
-
-    public static int updateEntity(DialCli root, CommandSpec spec, String type, String canonicalId,
-                                   List<String> sets, String ifMatch) {
-        return updateEntity(root, spec, type, "public", canonicalId, sets, ifMatch);
     }
 
     public static int updateEntity(DialCli root, CommandSpec spec, String type, String bucket,
@@ -180,16 +166,6 @@ public final class EntityWriter {
         }
         spec.commandLine().getOut().println("Updated " + canonicalId);
         return 0;
-    }
-
-    public static int promoteEntity(DialCli root, CommandSpec spec, String type, String kind,
-                                    String canonicalId, String sourceEnv, String targetEnv) {
-        return promoteEntity(root, spec, type, kind, "public", canonicalId, sourceEnv, targetEnv, null, null);
-    }
-
-    public static int promoteEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
-                                    String canonicalId, String sourceEnv, String targetEnv) {
-        return promoteEntity(root, spec, type, kind, bucket, canonicalId, sourceEnv, targetEnv, null, null);
     }
 
     public static int promoteEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
@@ -330,16 +306,6 @@ public final class EntityWriter {
         }
     }
 
-    public static int validateEntity(DialCli root, CommandSpec spec, String type, String kind,
-                                     String canonicalId, Path fromFile) {
-        return validateEntity(root, spec, type, kind, "public", canonicalId, fromFile, null, null);
-    }
-
-    public static int validateEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
-                                     String canonicalId, Path fromFile) {
-        return validateEntity(root, spec, type, kind, bucket, canonicalId, fromFile, null, null);
-    }
-
     public static int validateEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
                                      String canonicalId, Path fromFile, String templateName, List<String> paramFlags) {
         String simpleName;
@@ -432,10 +398,6 @@ public final class EntityWriter {
         }
     }
 
-    public static int deleteEntity(DialCli root, CommandSpec spec, String type, String canonicalId, String ifMatch) {
-        return deleteEntity(root, spec, type, "public", canonicalId, ifMatch);
-    }
-
     public static int deleteEntity(DialCli root, CommandSpec spec, String type, String bucket,
                                    String canonicalId, String ifMatch) {
         String name;
@@ -469,7 +431,7 @@ public final class EntityWriter {
         return 0;
     }
 
-    static void applySets(ObjectNode target, List<String> sets) {
+    private static void applySets(ObjectNode target, List<String> sets) {
         if (sets == null) {
             return;
         }
@@ -537,8 +499,8 @@ public final class EntityWriter {
      * — extends/includes are merged, {@code !if}/{@code !for} are expanded, and
      * {@code ${...}} placeholders are substituted.
      */
-    static String loadSpecOrFail(Path file, String expectedKind, String canonicalId,
-                                 java.io.PrintWriter err, TemplateContext tpl) throws IOException {
+    private static String loadSpecOrFail(Path file, String expectedKind, String canonicalId,
+                                         PrintWriter err, TemplateContext tpl) throws IOException {
         String filename = file.getFileName().toString().toLowerCase();
         boolean yaml = filename.endsWith(".yaml") || filename.endsWith(".yml");
         String raw = Files.readString(file, StandardCharsets.UTF_8);
