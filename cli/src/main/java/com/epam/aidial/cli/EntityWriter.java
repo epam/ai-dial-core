@@ -60,7 +60,7 @@ public final class EntityWriter {
             spec.commandLine().getErr().println(e.getMessage());
             return 2;
         }
-        EntityReader.ResolvedEnv resolved = EntityReader.resolveEnv(root, spec);
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
         if (resolved == null) {
             return 2;
         }
@@ -121,7 +121,7 @@ public final class EntityWriter {
             spec.commandLine().getErr().println(e.getMessage());
             return 2;
         }
-        EntityReader.ResolvedEnv resolved = EntityReader.resolveEnv(root, spec);
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
         if (resolved == null) {
             return 2;
         }
@@ -202,11 +202,11 @@ public final class EntityWriter {
             spec.commandLine().getErr().println(e.getMessage());
             return 2;
         }
-        EntityReader.ResolvedEnv source = EntityReader.resolveEnv(root, spec, sourceEnv);
+        EnvResolver.ResolvedEnv source = EnvResolver.resolveEnv(root, spec, sourceEnv);
         if (source == null) {
             return 2;
         }
-        EntityReader.ResolvedEnv target = EntityReader.resolveEnv(root, spec, targetEnv);
+        EnvResolver.ResolvedEnv target = EnvResolver.resolveEnv(root, spec, targetEnv);
         if (target == null) {
             return 2;
         }
@@ -349,7 +349,7 @@ public final class EntityWriter {
             spec.commandLine().getErr().println(e.getMessage());
             return 2;
         }
-        EntityReader.ResolvedEnv resolved = EntityReader.resolveEnv(root, spec);
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
         if (resolved == null) {
             return 2;
         }
@@ -449,7 +449,7 @@ public final class EntityWriter {
             spec.commandLine().getOut().println("Would delete " + canonicalId);
             return 0;
         }
-        EntityReader.ResolvedEnv resolved = EntityReader.resolveEnv(root, spec);
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
         if (resolved == null) {
             return 2;
         }
@@ -649,7 +649,7 @@ public final class EntityWriter {
      * best-effort; operators with param-using templates pass {@code --template <name>}
      * explicitly per the slice plan.
      */
-    private static List<String> autoMatchTemplates(JsonNode sourceSpec, EntityReader.ResolvedEnv source,
+    private static List<String> autoMatchTemplates(JsonNode sourceSpec, EnvResolver.ResolvedEnv source,
                                                    Map<String, Object> params, Map<String, Object> entityCtx) {
         Map<String, Object> templates = source.templates();
         if (templates == null || templates.isEmpty()) {
@@ -673,7 +673,7 @@ public final class EntityWriter {
     }
 
     private static JsonNode applyPromoteTemplate(JsonNode sourceSpec, String templateName,
-                                                 EntityReader.ResolvedEnv target,
+                                                 EnvResolver.ResolvedEnv target,
                                                  Map<String, Object> params,
                                                  Map<String, Object> entityCtx) {
         if (templateName == null || templateName.isBlank()) {
@@ -688,7 +688,7 @@ public final class EntityWriter {
 
     /** Design 05 §4 step 5 — warns when source-env hostnames survive into the apply payload. */
     private static void warnSourceHostnames(java.io.PrintWriter err, String canonicalId,
-                                            JsonNode spec, EntityReader.ResolvedEnv source) {
+                                            JsonNode spec, EnvResolver.ResolvedEnv source) {
         if (source.vars() == null || source.vars().isEmpty()) {
             return;
         }

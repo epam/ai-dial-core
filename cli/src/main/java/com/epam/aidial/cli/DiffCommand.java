@@ -34,11 +34,11 @@ public class DiffCommand implements Callable<Integer> {
 
     @Override
     public Integer call() {
-        EntityReader.ResolvedEnv source = EntityReader.resolveEnv(parent, spec, sourceEnv);
+        EnvResolver.ResolvedEnv source = EnvResolver.resolveEnv(parent, spec, sourceEnv);
         if (source == null) {
             return 2;
         }
-        EntityReader.ResolvedEnv target = EntityReader.resolveEnv(parent, spec, targetEnv);
+        EnvResolver.ResolvedEnv target = EnvResolver.resolveEnv(parent, spec, targetEnv);
         if (target == null) {
             return 2;
         }
@@ -63,7 +63,7 @@ public class DiffCommand implements Callable<Integer> {
         return 0;
     }
 
-    private Fetched fetchExport(EntityReader.ResolvedEnv env) {
+    private Fetched fetchExport(EnvResolver.ResolvedEnv env) {
         CliHttpClient.Response resp;
         try {
             resp = new CliHttpClient(env.apiUrl(), env.apiKey()).get("/v1/admin/export");

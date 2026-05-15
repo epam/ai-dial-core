@@ -185,11 +185,11 @@ public class ModelCommand {
 
         @Override
         public Integer call() {
-            EntityReader.ResolvedEnv source = EntityReader.resolveEnv(model.parent, spec, sourceEnv);
+            EnvResolver.ResolvedEnv source = EnvResolver.resolveEnv(model.parent, spec, sourceEnv);
             if (source == null) {
                 return 2;
             }
-            EntityReader.ResolvedEnv target = EntityReader.resolveEnv(model.parent, spec, targetEnv);
+            EnvResolver.ResolvedEnv target = EnvResolver.resolveEnv(model.parent, spec, targetEnv);
             if (target == null) {
                 return 2;
             }
@@ -227,7 +227,7 @@ public class ModelCommand {
             return 0;
         }
 
-        private JsonNode fetchOrAbsent(EntityReader.ResolvedEnv env, String path, boolean isList) {
+        private JsonNode fetchOrAbsent(EnvResolver.ResolvedEnv env, String path, boolean isList) {
             CliHttpClient.Response resp;
             try {
                 resp = new CliHttpClient(env.apiUrl(), env.apiKey()).get(path);

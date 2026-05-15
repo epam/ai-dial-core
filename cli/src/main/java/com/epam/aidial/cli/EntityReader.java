@@ -52,7 +52,7 @@ public final class EntityReader {
     }
 
     public static int readEntity(DialCli root, CommandSpec spec, String type, String identifier) {
-        ResolvedEnv resolved = resolveEnv(root, spec);
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
         if (resolved == null) {
             return 2;
         }
@@ -67,7 +67,7 @@ public final class EntityReader {
     }
 
     public static int readSingleton(DialCli root, CommandSpec spec, String type) {
-        ResolvedEnv resolved = resolveEnv(root, spec);
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
         if (resolved == null) {
             return 2;
         }
@@ -81,7 +81,7 @@ public final class EntityReader {
     }
 
     public static int listEntities(DialCli root, CommandSpec spec, String type) {
-        ResolvedEnv resolved = resolveEnv(root, spec);
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
         if (resolved == null) {
             return 2;
         }
@@ -94,7 +94,7 @@ public final class EntityReader {
         return doGet(root, spec, resolved, path, true, type);
     }
 
-    private static int doGet(DialCli root, CommandSpec spec, ResolvedEnv resolved, String path, boolean isList, String type) {
+    private static int doGet(DialCli root, CommandSpec spec, EnvResolver.ResolvedEnv resolved, String path, boolean isList, String type) {
         CliHttpClient.Response resp;
         try {
             resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).get(path);
@@ -218,53 +218,6 @@ public final class EntityReader {
         return "/v1/" + type + "/" + bucket + "/" + URLEncoder.encode(identifier, StandardCharsets.UTF_8);
     }
 
-    static ResolvedEnv resolveEnv(DialCli root, CommandSpec spec) {
-        return resolveEnv(root, spec, null);
-    }
-
-    static ResolvedEnv resolveEnv(DialCli root, CommandSpec spec, String explicitEnv) {
-        CliProfile profile;
-        try {
-            profile = ProfileLoader.load(root.configPath);
-        } catch (CliConfigException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return null;
-        }
-        String envName = (explicitEnv != null && !explicitEnv.isBlank()) ? explicitEnv : root.env;
-        if (envName == null || envName.isBlank()) {
-            envName = (profile.getDefaults() != null) ? profile.getDefaults().getEnv() : null;
-        }
-        if (envName == null || envName.isBlank()) {
-            spec.commandLine().getErr().println(
-                    "No environment selected. Pass --env or set defaults.env via 'dial-cli env use'.");
-            return null;
-        }
-        Map<String, Environment> envs = profile.getEnvironments();
-        Environment env = (envs != null) ? envs.get(envName) : null;
-        if (env == null) {
-            spec.commandLine().getErr().println("Environment '" + envName + "' not found in profile.");
-            return null;
-        }
-        boolean useApiUrlOverride = explicitEnv == null && root.apiUrl != null && !root.apiUrl.isBlank();
-        String apiUrl = useApiUrlOverride ? root.apiUrl : env.getApiUrl();
-        if (apiUrl == null || apiUrl.isBlank()) {
-            spec.commandLine().getErr().println(
-                    "Environment '" + envName + "' has no api_url and no --api-url override.");
-            return null;
-        }
-        if (apiUrl.endsWith("/")) {
-            apiUrl = apiUrl.substring(0, apiUrl.length() - 1);
-        }
-        try {
-            String apiKey = new ApiKeyResolver().resolve(envName, env, root.apiKeyFile);
-            Map<String, Object> vars = (env.getVars() != null) ? env.getVars() : Map.of();
-            Map<String, Object> templates = (profile.getTemplates() != null) ? profile.getTemplates() : Map.of();
-            return new ResolvedEnv(envName, apiUrl, apiKey, vars, templates);
-        } catch (CliAuthException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return null;
-        }
-    }
 
     /**
      * Translate a non-2xx HTTP status into an operator-friendly stderr line. Wraps the four
@@ -298,7 +251,4 @@ public final class EntityReader {
     }
 
     private record TableShape(String[] headers, String[] fields) { }
-
-    record ResolvedEnv(String envName, String apiUrl, String apiKey,
-                       Map<String, Object> vars, Map<String, Object> templates) { }
 }

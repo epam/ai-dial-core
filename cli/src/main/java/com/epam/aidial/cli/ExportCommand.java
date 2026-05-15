@@ -29,7 +29,7 @@ public class ExportCommand implements Callable<Integer> {
 
     @Override
     public Integer call() {
-        EntityReader.ResolvedEnv resolved = EntityReader.resolveEnv(parent, spec);
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(parent, spec);
         if (resolved == null) {
             return 2;
         }
