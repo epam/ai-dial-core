@@ -13,6 +13,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpHeaders;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -61,10 +62,24 @@ public class AdminExportController implements Controller {
         String json = ProxyUtil.MAPPER.writeValueAsString(config);
         ObjectNode body = (ObjectNode) ProxyUtil.MAPPER.readTree(json);
         // Config.keys is @JsonProperty(WRITE_ONLY); re-attach explicitly. Per-key masking is
-        // handled by the @EncryptedField modifier on ProxyUtil.MAPPER.
+        // handled by the @EncryptedField modifier on ProxyUtil.MAPPER. For file-mode entries the
+        // map key IS the plaintext secret (pre-existing file convention), which Jackson would
+        // emit verbatim as the JSON property name — bypassing the value-level mask. Project
+        // those under a synthetic name keyed by project so the export doesn't leak.
         ObjectNode keys = body.putObject("keys");
+        Map<String, Integer> fileNameDedup = new HashMap<>();
         for (Map.Entry<String, Key> entry : config.getKeys().entrySet()) {
-            keys.set(entry.getKey(), ProxyUtil.MAPPER.valueToTree(entry.getValue()));
+            String mapKey = entry.getKey();
+            Key value = entry.getValue();
+            String propertyName;
+            if (mapKey.startsWith("keys/")) {
+                propertyName = mapKey;
+            } else {
+                String base = "keys/file/" + (value.getProject() == null ? "unknown" : value.getProject());
+                int idx = fileNameDedup.merge(base, 0, (prev, ignored) -> prev + 1);
+                propertyName = idx == 0 ? base : base + "-" + idx;
+            }
+            keys.set(propertyName, ProxyUtil.MAPPER.valueToTree(value));
         }
         return body;
     }

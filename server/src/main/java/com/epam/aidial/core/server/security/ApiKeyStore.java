@@ -186,6 +186,15 @@ public class ApiKeyStore {
             Key value = entry.getValue();
             validateProjectKey(value);
             if (StringUtils.isBlank(value.getKey())) {
+                // Fail closed for API-sourced entries — under MergedConfigStore the map key for
+                // API entries is the canonical id (e.g. "keys/platform/foo"), never the secret.
+                // The substitution below is only legitimate for file-mode entries where the map
+                // key IS the plaintext secret (pre-existing file convention).
+                if (apiKey.contains("/")) {
+                    log.warn("Skipping API-sourced project key '{}': Key.key is blank after decrypt; "
+                            + "refusing to use canonical id as auth bearer", apiKey);
+                    continue;
+                }
                 value.setKey(apiKey);
             }
             ApiKeyData apiKeyData = new ApiKeyData();

@@ -31,6 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
 /**
@@ -84,8 +85,8 @@ public final class MergedConfigStore implements ConfigStore {
     private volatile Config config;
     private volatile Map<ResourceTypes, Map<String, InvalidEntityRecord>> invalidEntities = Map.of();
     private volatile boolean settingsFromApi;
-    private boolean initialized;
-    private long pendingRebuildTimerId = NO_PENDING_TIMER;
+    private volatile boolean initialized;
+    private final AtomicLong pendingRebuildTimerId = new AtomicLong(NO_PENDING_TIMER);
     private final Map<ResourceTypes, Map<String, Counter>> skipCounters = new EnumMap<>(ResourceTypes.class);
 
     public MergedConfigStore(Vertx vertx, ResourceService resourceService,
@@ -186,7 +187,7 @@ public final class MergedConfigStore implements ConfigStore {
         // fileConfigStore.reload() fires onReloadCallbacks → requestRebuild(), which schedules a
         // 500ms debounce timer. Cancel it: the rebuild() below produces the authoritative merged
         // config and a debounced rerun would be a redundant addProjectKeys + listResources sweep.
-        cancelPendingRebuildLocked();
+        cancelPendingRebuild();
         return rebuild();
     }
 
@@ -236,25 +237,35 @@ public final class MergedConfigStore implements ConfigStore {
      * Non-blocking, 500 ms trailing-edge debounced rebuild trigger. No-op until
      * {@link #init} has completed — pre-init triggers are subsumed by the
      * explicit initial rebuild that {@code init} performs.
+     *
+     * <p>Runs on the Vert.x event loop (topic event handler and the file-store reload callback
+     * both fire there); must remain non-blocking. {@link #rebuildNow} on a worker thread holds the
+     * intrinsic monitor for the full rebuild duration (tens to hundreds of ms), so this path uses
+     * an {@link AtomicLong} CAS on {@link #pendingRebuildTimerId} instead of {@code synchronized}
+     * — only the inner {@code executeBlocking} body acquires the monitor, on a worker thread.
      */
-    public synchronized void requestRebuild() {
+    public void requestRebuild() {
         if (!initialized) {
             return;
         }
-        cancelPendingRebuildLocked();
-        long timerId = vertx.setTimer(REBUILD_DEBOUNCE_MS, firingId -> {
+        long newTimerId = vertx.setTimer(REBUILD_DEBOUNCE_MS, this::onRebuildTimerFire);
+        long previous = pendingRebuildTimerId.getAndSet(newTimerId);
+        if (previous != NO_PENDING_TIMER) {
+            vertx.cancelTimer(previous);
+        }
+    }
+
+    private void onRebuildTimerFire(long firingId) {
+        // Bail out if we were superseded between scheduling and firing — the replacement timer
+        // will run (or already has). Belt-and-suspenders against Vert.x's best-effort cancelTimer.
+        if (!pendingRebuildTimerId.compareAndSet(firingId, NO_PENDING_TIMER)) {
+            return;
+        }
+        vertx.<Config>executeBlocking(() -> {
             synchronized (this) {
-                if (pendingRebuildTimerId == firingId) {
-                    pendingRebuildTimerId = NO_PENDING_TIMER;
-                }
+                return rebuild();
             }
-            vertx.<Config>executeBlocking(() -> {
-                synchronized (this) {
-                    return rebuild();
-                }
-            }, false).onFailure(error -> log.warn("Failed to rebuild merged config: {}", error.getMessage()));
-        });
-        pendingRebuildTimerId = timerId;
+        }, false).onFailure(error -> log.warn("Failed to rebuild merged config", error));
     }
 
     /**
@@ -270,13 +281,12 @@ public final class MergedConfigStore implements ConfigStore {
      * the new {@link Config} becomes visible.
      */
     public synchronized Config rebuildNow() {
-        cancelPendingRebuildLocked();
+        cancelPendingRebuild();
         return rebuild();
     }
 
-    private void cancelPendingRebuildLocked() {
-        long previous = pendingRebuildTimerId;
-        pendingRebuildTimerId = NO_PENDING_TIMER;
+    private void cancelPendingRebuild() {
+        long previous = pendingRebuildTimerId.getAndSet(NO_PENDING_TIMER);
         if (previous != NO_PENDING_TIMER) {
             vertx.cancelTimer(previous);
         }

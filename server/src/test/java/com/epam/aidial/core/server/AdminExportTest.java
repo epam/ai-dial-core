@@ -9,6 +9,7 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -34,10 +35,15 @@ public class AdminExportTest extends ResourceBaseTest {
         assertTrue(body.has("applications"));
         assertTrue(body.has("toolsets"));
         // Keys field is masked at the secret level — present in admin export but never plaintext.
+        // File-mode map keys (which are the plaintext secret in pre-existing file convention) are
+        // projected under synthetic names so they don't leak as JSON property names.
         JsonNode keys = body.get("keys");
         assertNotNull(keys, () -> "Keys must be re-attached in admin export: " + response.body());
-        assertTrue(keys.has("proxyKey1"));
-        assertEquals("***", keys.get("proxyKey1").get("key").asText(),
+        assertFalse(response.body().contains("proxyKey1"),
+                () -> "File-mode plaintext secret must not appear as a property name: " + response.body());
+        JsonNode rtcGptKey = keys.get("keys/file/EPM-RTC-GPT");
+        assertNotNull(rtcGptKey, () -> "Synthetic file-mode key not found: " + response.body());
+        assertEquals("***", rtcGptKey.get("key").asText(),
                 () -> "Secret must be masked in export: " + response.body());
     }
 
@@ -51,7 +57,7 @@ public class AdminExportTest extends ResourceBaseTest {
         JsonNode body = YAML_MAPPER.readTree(response.body());
         assertTrue(body.has("models"));
         assertTrue(body.has("keys"));
-        assertEquals("***", body.get("keys").get("proxyKey1").get("key").asText());
+        assertEquals("***", body.get("keys").get("keys/file/EPM-RTC-GPT").get("key").asText());
     }
 
     @Test
