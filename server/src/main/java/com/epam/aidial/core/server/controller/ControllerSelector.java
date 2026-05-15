@@ -84,7 +84,7 @@ public class ControllerSelector {
         get(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
         get(RouteTemplate.CONFIG_EXPORT, (proxy, context, pathMatcher) -> {
             ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
-            AdminExportController controller = new AdminExportController(context, authService);
+            AdminExportController controller = new AdminExportController(context, authService, proxy.getTaskExecutor());
             return controller::handle;
         });
         get(RouteTemplate.CONFIG_HEALTH, (proxy, context, pathMatcher) -> {

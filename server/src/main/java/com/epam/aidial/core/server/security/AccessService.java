@@ -386,11 +386,6 @@ public class AccessService {
                 && RuleMatcher.match(context, securityAdminRules);
     }
 
-    /** Returns {@code true} when the caller resolved an authenticated identity (JWT or API key). */
-    public boolean isAuthenticated(ProxyContext context) {
-        return context.getUserRoles() != null;
-    }
-
     /**
      * Returns {@code true} when {@code bucket} equals the caller's encrypted initiator bucket.
      * Returns {@code false} (does not throw) when no initiator can be resolved — that case is

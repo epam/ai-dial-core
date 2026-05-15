@@ -24,6 +24,7 @@ import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -123,7 +124,12 @@ public final class MergedConfigStore implements ConfigStore {
                 .description("Number of entities skipped from in-memory Config (design 02 §4.1)")
                 .register(Metrics.globalRegistry);
 
-        for (ResourceTypes type : MANAGED_TYPES) {
+        // GLOBAL_SETTINGS is not in MANAGED_TYPES (it's a singleton overlay, not a union-by-key),
+        // but its parse failures still surface through recordInvalid → skipCounters and the
+        // invalidEntities sibling store, so its counter slot must be pre-registered too.
+        List<ResourceTypes> typesForCounters = new ArrayList<>(MANAGED_TYPES);
+        typesForCounters.add(ResourceTypes.GLOBAL_SETTINGS);
+        for (ResourceTypes type : typesForCounters) {
             Map<String, Counter> perReason = new HashMap<>();
             for (String reason : List.of(REASON_PARSE, REASON_VALIDATION, REASON_DECRYPTION)) {
                 perReason.put(reason, Counter.builder("dial_config_skip_events_total")
@@ -417,9 +423,9 @@ public final class MergedConfigStore implements ConfigStore {
         // role-limit lookups for API-managed deployments. The new admin Configuration API listing
         // controller projects simpleName(mapKey) independently per design 03 §4.
 
+        boolean overlayFromApi = applySettingsOverlay(merged, pendingInvalid);
         Map<ResourceTypes, Map<String, InvalidEntityRecord>> finalInvalid =
                 pendingInvalid.isEmpty() ? Map.of() : Collections.unmodifiableMap(pendingInvalid);
-        boolean overlayFromApi = applySettingsOverlay(merged);
         this.config = merged;
         this.invalidEntities = finalInvalid;
         this.settingsFromApi = overlayFromApi;
@@ -431,9 +437,13 @@ public final class MergedConfigStore implements ConfigStore {
      * {@code platform/settings/global}, its fields replace the file-derived
      * {@code globalInterceptors} / {@code retriableErrorCodes} on the merged {@link Config}.
      * GlobalSettings is intentionally NOT in {@link #MANAGED_TYPES} — it is a singleton overlay,
-     * not a union-by-key like other types. Returns {@code true} iff the blob is present.
+     * not a union-by-key like other types. Returns {@code true} iff the blob is present and
+     * parses; on parse failure records an {@link InvalidEntityRecord} under {@code GLOBAL_SETTINGS}
+     * (the singleton's canonical ID is {@code settings/platform/global}) so the broken blob is
+     * visible via {@link #getInvalidEntities()} instead of silently disappearing from runtime.
      */
-    private boolean applySettingsOverlay(Config merged) {
+    private boolean applySettingsOverlay(Config merged,
+                                         Map<ResourceTypes, Map<String, InvalidEntityRecord>> pendingInvalid) {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.GLOBAL_SETTINGS, ResourceDescriptor.PLATFORM_BUCKET,
                 ResourceDescriptor.PLATFORM_LOCATION, "global");
@@ -441,15 +451,31 @@ public final class MergedConfigStore implements ConfigStore {
         if (body == null) {
             return false;
         }
+        String canonicalId = canonicalId(ResourceTypes.GLOBAL_SETTINGS, ResourceDescriptor.PLATFORM_BUCKET, "global");
+        JsonNode payload;
         try {
-            GlobalSettings settings = ProxyUtil.BLOB_MAPPER.readValue(body, GlobalSettings.class);
+            payload = ProxyUtil.BLOB_MAPPER.readTree(body);
+        } catch (Exception parseError) {
+            log.warn("Failed to parse settings singleton blob as JSON", parseError);
+            recordInvalid(pendingInvalid, ResourceTypes.GLOBAL_SETTINGS, canonicalId, "global",
+                    "JSON parse failure: " + parseError.getMessage(),
+                    List.of(new ValidationWarning("body", parseError.getMessage())),
+                    null, REASON_PARSE, "api");
+            return false;
+        }
+        try {
+            GlobalSettings settings = ProxyUtil.BLOB_MAPPER.treeToValue(payload, GlobalSettings.class);
             merged.setGlobalInterceptors(
                     settings.getGlobalInterceptors() == null ? List.of() : settings.getGlobalInterceptors());
             merged.setRetriableErrorCodes(
                     settings.getRetriableErrorCodes() == null ? Set.of() : settings.getRetriableErrorCodes());
             return true;
         } catch (Exception parseError) {
-            log.warn("Failed to parse settings singleton blob", parseError);
+            log.warn("Failed to bind settings singleton blob to GlobalSettings", parseError);
+            recordInvalid(pendingInvalid, ResourceTypes.GLOBAL_SETTINGS, canonicalId, "global",
+                    "JSON parse failure: " + parseError.getMessage(),
+                    List.of(new ValidationWarning("body", parseError.getMessage())),
+                    payload, REASON_PARSE, "api");
             return false;
         }
     }
@@ -469,7 +495,18 @@ public final class MergedConfigStore implements ConfigStore {
         InvalidEntityRecord record = new InvalidEntityRecord(simpleName, canonicalId, reason,
                 List.copyOf(warnings), source, payload);
         invalid.computeIfAbsent(type, k -> new HashMap<>()).put(canonicalId, record);
-        skipCounters.get(type).get(reasonClass).increment();
+        // Counter is pre-registered for the closed set {REASON_PARSE, REASON_VALIDATION,
+        // REASON_DECRYPTION} × {MANAGED_TYPES + GLOBAL_SETTINGS}. Guard so an unforeseen
+        // (type, reason) pair logs a warning and skips the metric instead of NPE'ing the
+        // rebuild, which would leave this.config at a stale value with no observable cause.
+        Map<String, Counter> perReason = skipCounters.get(type);
+        Counter counter = perReason == null ? null : perReason.get(reasonClass);
+        if (counter != null) {
+            counter.increment();
+        } else {
+            log.warn("No skip counter registered for type '{}' / reason '{}' — metric skipped",
+                    type.urlSegment(), reasonClass);
+        }
         log.warn("Skipped {} '{}' from merged Config: {}", type.urlSegment(), canonicalId, reason);
     }
 
