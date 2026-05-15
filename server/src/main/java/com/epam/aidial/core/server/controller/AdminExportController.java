@@ -2,9 +2,12 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,6 +35,11 @@ import java.util.Map;
  * as the {@code "***"} sentinel automatically. The round-trip via {@code writeValueAsString} is
  * retained because {@code applicationTypeSchemas} uses a custom serializer that calls
  * {@code writeRaw}, which {@code TokenBuffer} (used by {@code valueToTree}) does not support.
+ *
+ * <p>The serialization round-trip + optional YAML re-emit is dispatched via the shared
+ * {@link AsyncTaskExecutor} so a config with hundreds of models/keys does not block the
+ * Vert.x event loop — matches the pattern used by {@code AdminApplyController} and
+ * {@code AdminValidateController}.
  */
 public class AdminExportController implements Controller {
 
@@ -40,30 +48,54 @@ public class AdminExportController implements Controller {
 
     private final ProxyContext context;
     private final ConfigAuthorizationService authorizationService;
+    private final AsyncTaskExecutor taskExecutor;
 
-    public AdminExportController(ProxyContext context, ConfigAuthorizationService authorizationService) {
+    public AdminExportController(ProxyContext context,
+                                 ConfigAuthorizationService authorizationService,
+                                 AsyncTaskExecutor taskExecutor) {
         this.context = context;
         this.authorizationService = authorizationService;
+        this.taskExecutor = taskExecutor;
     }
 
     @Override
-    public Future<?> handle() throws Exception {
+    public Future<?> handle() {
         if (!authorizationService.isAdmin(context)) {
             context.respond(HttpStatus.FORBIDDEN, "Forbidden");
             return Future.succeededFuture();
         }
-        ObjectNode body = buildExport(context.getConfig());
-        if (isYamlRequested()) {
-            String yaml = YAML_MAPPER.writeValueAsString(body);
-            context.putHeader(HttpHeaders.CONTENT_TYPE, YAML_CONTENT_TYPE)
-                    .respond(HttpStatus.OK, yaml);
-        } else {
-            context.respond(HttpStatus.OK, body);
-        }
+        Config snapshot = context.getConfig();
+        boolean yaml = isYamlRequested();
+        taskExecutor.submit(() -> render(snapshot, yaml))
+                .onSuccess(result -> {
+                    context.putHeader(HttpHeaders.CONTENT_TYPE,
+                            result.yaml() ? YAML_CONTENT_TYPE : Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+                    context.respond(HttpStatus.OK, result.body());
+                })
+                .onFailure(error -> {
+                    if (error instanceof HttpException ex) {
+                        context.respond(ex);
+                    } else {
+                        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+                    }
+                });
         return Future.succeededFuture();
     }
 
-    private ObjectNode buildExport(Config config) throws JsonProcessingException {
+    /**
+     * Returns the fully-serialized response body so the event loop only does a buffer write —
+     * `ProxyContext.respond(HttpStatus, Object)` would otherwise re-invoke
+     * {@code ProxyUtil.MAPPER.writeValueAsString} on the event loop and undo the offload.
+     */
+    private static Rendered render(Config config, boolean yaml) throws JsonProcessingException {
+        ObjectNode body = buildExport(config);
+        if (yaml) {
+            return new Rendered(true, YAML_MAPPER.writeValueAsString(body));
+        }
+        return new Rendered(false, ProxyUtil.MAPPER.writeValueAsString(body));
+    }
+
+    private static ObjectNode buildExport(Config config) throws JsonProcessingException {
         // Round-trip via JSON string — applicationTypeSchemas uses a custom serializer that calls
         // writeRaw, which TokenBuffer (used by valueToTree) does not support.
         String json = ProxyUtil.MAPPER.writeValueAsString(config);
@@ -123,5 +155,8 @@ public class AdminExportController implements Controller {
         }
         String accept = context.getRequest().getHeader(HttpHeaders.ACCEPT);
         return accept != null && accept.toLowerCase().contains("yaml");
+    }
+
+    private record Rendered(boolean yaml, String body) {
     }
 }

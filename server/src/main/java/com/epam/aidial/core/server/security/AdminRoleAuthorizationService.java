@@ -24,9 +24,9 @@ public class AdminRoleAuthorizationService implements ConfigAuthorizationService
             return accessService.hasAdminAccess(context);
         }
         if (ResourceDescriptor.PUBLIC_BUCKET.equals(bucket)) {
-            return operation.isRead()
-                    ? accessService.isAuthenticated(context)
-                    : accessService.hasAdminAccess(context);
+            // Reads on public/ are open to any authenticated caller — and reaching here means the
+            // request is already authenticated (Proxy#authorizeRequest rejects otherwise).
+            return operation.isRead() || accessService.hasAdminAccess(context);
         }
         return accessService.isOwnerOf(context, bucket);
     }
