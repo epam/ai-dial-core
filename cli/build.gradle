@@ -14,10 +14,10 @@ dependencies {
     // Reuse DIAL Core data classes (Config, Model, Application, …) — design 05 §6.
     implementation project(':config')
 
-    testImplementation "org.junit.jupiter:junit-jupiter:${junit_version}"
-    testImplementation "org.mockito:mockito-core:${mockito_version}"
-    testImplementation "org.mockito:mockito-junit-jupiter:${mockito_version}"
-    testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:${junit_version}"
+    testImplementation "org.junit.jupiter:junit-jupiter"
+    testImplementation "org.mockito:mockito-core"
+    testImplementation "org.mockito:mockito-junit-jupiter"
+    testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine"
 }
 
 application {

@@ -3,7 +3,9 @@ package com.epam.aidial.cli.config;
 import com.epam.aidial.cli.template.ControlFlowExpander;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.cfg.EnumFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 
@@ -27,6 +29,8 @@ public final class ProfileLoader {
             .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
             .serializationInclusion(JsonInclude.Include.NON_NULL)
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
+            .enable(EnumFeature.WRITE_ENUMS_TO_LOWERCASE)
             .build();
 
     private ProfileLoader() {

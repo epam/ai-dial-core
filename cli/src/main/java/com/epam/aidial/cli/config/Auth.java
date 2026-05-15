@@ -4,6 +4,6 @@ import lombok.Data;
 
 @Data
 public class Auth {
-    private String type;
+    private AuthType type;
     private String keyEnvVar;
 }

@@ -48,7 +48,7 @@ class ProfileLoaderTest {
 
         Environment dev = profile.getEnvironments().get("dev");
         assertEquals("https://dial-core.dev.example", dev.getApiUrl());
-        assertEquals("api_key", dev.getAuth().getType());
+        assertEquals(AuthType.API_KEY, dev.getAuth().getType());
         assertEquals("DIAL_DEV_API_KEY", dev.getAuth().getKeyEnvVar());
         assertEquals("http://dial-bedrock", dev.getVars().get("adapter_host_bedrock"));
 

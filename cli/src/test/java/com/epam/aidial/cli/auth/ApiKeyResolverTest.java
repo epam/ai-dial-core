@@ -1,6 +1,7 @@
 package com.epam.aidial.cli.auth;
 
 import com.epam.aidial.cli.config.Auth;
+import com.epam.aidial.cli.config.AuthType;
 import com.epam.aidial.cli.config.Environment;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -18,7 +19,7 @@ class ApiKeyResolverTest {
 
     private static Environment envWithKeyVar(String varName) {
         Auth auth = new Auth();
-        auth.setType("api_key");
+        auth.setType(AuthType.API_KEY);
         auth.setKeyEnvVar(varName);
         Environment env = new Environment();
         env.setAuth(auth);
