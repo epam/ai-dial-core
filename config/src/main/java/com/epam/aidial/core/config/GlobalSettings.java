@@ -8,7 +8,7 @@ import java.util.Set;
 
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class Settings {
+public class GlobalSettings {
     private List<String> globalInterceptors = List.of();
     private Set<Integer> retriableErrorCodes = Set.of();
 }

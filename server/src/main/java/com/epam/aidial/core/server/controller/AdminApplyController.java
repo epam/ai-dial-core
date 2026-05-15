@@ -2,12 +2,12 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
-import com.epam.aidial.core.config.Settings;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
@@ -260,7 +260,7 @@ public class AdminApplyController {
                     if (!SETTINGS_SINGLETON_NAME.equals(entry.name())) {
                         return new EntityResult(id, "FAILED", "Settings name must be 'global'");
                     }
-                    ConfigResourceController.treeToEntity(entry.spec(), Settings.class);
+                    ConfigResourceController.treeToEntity(entry.spec(), GlobalSettings.class);
                 }
                 case "Model" -> {
                     Model model = ConfigResourceController.treeToEntity(entry.spec(), Model.class);
@@ -342,7 +342,7 @@ public class AdminApplyController {
         if (!SETTINGS_SINGLETON_NAME.equals(entry.name())) {
             return new EntityResult(id, "FAILED", "Settings name must be 'global'");
         }
-        Settings settings = ConfigResourceController.treeToEntity(entry.spec(), Settings.class);
+        GlobalSettings settings = ConfigResourceController.treeToEntity(entry.spec(), GlobalSettings.class);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.GLOBAL_SETTINGS, ResourceDescriptor.PLATFORM_BUCKET,
                 ResourceDescriptor.PLATFORM_LOCATION, SETTINGS_SINGLETON_NAME);
@@ -445,7 +445,7 @@ public class AdminApplyController {
         try {
             switch (entry.kind()) {
                 case "Settings" -> {
-                    Settings settings = ConfigResourceController.treeToEntity(entry.spec(), Settings.class);
+                    GlobalSettings settings = ConfigResourceController.treeToEntity(entry.spec(), GlobalSettings.class);
                     scratch.setGlobalInterceptors(settings.getGlobalInterceptors());
                     scratch.setRetriableErrorCodes(settings.getRetriableErrorCodes());
                 }

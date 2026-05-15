@@ -1,12 +1,12 @@
 package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
-import com.epam.aidial.core.config.Settings;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -166,7 +166,8 @@ public final class MergedConfigStore implements ConfigStore {
         ResourceDescriptor descriptor;
         try {
             descriptor = ResourceDescriptorFactory.fromAnyUrl(event.getUrl(), null);
-        } catch (Exception ignored) {
+        } catch (Exception parseError) {
+            log.debug("Ignoring resource event with unparseable URL: {}", event.getUrl(), parseError);
             return;
         }
         if (!MANAGED_TYPES.contains(descriptor.getType())
@@ -429,7 +430,7 @@ public final class MergedConfigStore implements ConfigStore {
      * Singleton overlay (design 02 §4): when the API-managed settings blob exists at
      * {@code platform/settings/global}, its fields replace the file-derived
      * {@code globalInterceptors} / {@code retriableErrorCodes} on the merged {@link Config}.
-     * Settings is intentionally NOT in {@link #MANAGED_TYPES} — it is a singleton overlay,
+     * GlobalSettings is intentionally NOT in {@link #MANAGED_TYPES} — it is a singleton overlay,
      * not a union-by-key like other types. Returns {@code true} iff the blob is present.
      */
     private boolean applySettingsOverlay(Config merged) {
@@ -441,14 +442,14 @@ public final class MergedConfigStore implements ConfigStore {
             return false;
         }
         try {
-            Settings settings = ProxyUtil.BLOB_MAPPER.readValue(body, Settings.class);
+            GlobalSettings settings = ProxyUtil.BLOB_MAPPER.readValue(body, GlobalSettings.class);
             merged.setGlobalInterceptors(
                     settings.getGlobalInterceptors() == null ? List.of() : settings.getGlobalInterceptors());
             merged.setRetriableErrorCodes(
                     settings.getRetriableErrorCodes() == null ? Set.of() : settings.getRetriableErrorCodes());
             return true;
         } catch (Exception parseError) {
-            log.warn("Failed to parse settings singleton blob: {}", parseError.getMessage());
+            log.warn("Failed to parse settings singleton blob", parseError);
             return false;
         }
     }
