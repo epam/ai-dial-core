@@ -544,7 +544,25 @@ public class ConfigResourceController implements Controller {
                             secretFieldProcessor.decryptFields(key, descriptor);
                             deletedSecret = key.getKey();
                         } catch (Exception e) {
-                            log.warn("Could not extract key secret before delete: {}", e.getMessage());
+                            // Corrupt blob or decrypt failure. Fall back to the in-memory snapshot
+                            // so the DELETE ordering invariant (apiKeyStore.removeKey BEFORE the
+                            // new merged Config becomes visible) is preserved — otherwise the live
+                            // secret remains authenticatable until the next full rebuild.
+                            log.warn("Could not extract key secret from blob, falling back to "
+                                    + "in-memory snapshot: {}", e.getMessage());
+                            String canonicalId = "keys/" + descriptor.getBucketName() + "/" + descriptor.getName();
+                            Config snapshot = mergedConfigStore.get();
+                            if (snapshot != null) {
+                                Key inMemory = snapshot.getKeys().get(canonicalId);
+                                if (inMemory != null && StringUtils.isNotBlank(inMemory.getKey())) {
+                                    deletedSecret = inMemory.getKey();
+                                }
+                            }
+                            if (deletedSecret == null) {
+                                throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                        "Stored key entity is unreadable and no in-memory snapshot is available; "
+                                                + "delete aborted to preserve auth-store ordering");
+                            }
                         }
                     }
                 }

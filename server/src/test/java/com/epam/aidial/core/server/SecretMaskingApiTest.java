@@ -33,6 +33,10 @@ public class SecretMaskingApiTest extends ResourceBaseTest {
         JsonNode keys = body.get("keys");
         assertTrue(keys != null && keys.isObject() && !keys.isEmpty(),
                 () -> "expected non-empty keys map: " + resp.body());
+        keys.fieldNames().forEachRemaining(propertyName ->
+                assertTrue(propertyName.startsWith("keys/"),
+                        () -> "File-mode plaintext secrets must not appear as JSON property names; "
+                                + "found '" + propertyName + "' in: " + resp.body()));
         keys.forEach(keyNode -> {
             if (keyNode.has("key")) {
                 assertEquals("***", keyNode.get("key").asText(),

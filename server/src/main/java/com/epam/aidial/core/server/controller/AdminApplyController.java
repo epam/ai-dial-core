@@ -120,7 +120,9 @@ public class AdminApplyController {
             String text = body.toString(StandardCharsets.UTF_8);
             envelope = ProxyUtil.MAPPER.readTree(text.isEmpty() ? "{}" : text);
         } catch (JsonProcessingException e) {
-            context.respond(HttpStatus.BAD_REQUEST, "Invalid JSON: " + e.getOriginalMessage());
+            // getOriginalMessage() echoes the offending token verbatim, which can leak submitted
+            // secrets back into responses and logs — surface only the parse location.
+            context.respond(HttpStatus.BAD_REQUEST, "Invalid JSON at " + locationOf(e));
             return;
         }
         if (!envelope.isObject()) {
@@ -360,7 +362,9 @@ public class AdminApplyController {
         try {
             blobBody = ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec());
         } catch (JsonProcessingException e) {
-            return new EntityResult(id, "FAILED", "Failed to serialize schema: " + e.getOriginalMessage());
+            // Drop e.getOriginalMessage() — it can echo verbatim schema content (potentially
+            // submitted secrets). Surface a generic failure tied to the entity id.
+            return new EntityResult(id, "FAILED", "Failed to serialize schema for " + id);
         }
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
         return new EntityResult(id, "applied", null);
@@ -504,6 +508,12 @@ public class AdminApplyController {
                 || "toolsets".equals(segment) || "schemas".equals(segment)
                 ? ResourceDescriptor.PUBLIC_BUCKET : ResourceDescriptor.PLATFORM_BUCKET;
         return segment + "/" + bucket + "/" + name;
+    }
+
+    private static String locationOf(JsonProcessingException e) {
+        return e.getLocation() == null
+                ? "unknown location"
+                : "line " + e.getLocation().getLineNr() + ", column " + e.getLocation().getColumnNr();
     }
 
     private static String joinWarnings(List<ValidationWarning> warnings) {
