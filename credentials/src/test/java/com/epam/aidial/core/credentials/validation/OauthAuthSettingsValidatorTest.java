@@ -157,7 +157,34 @@ class OauthAuthSettingsValidatorTest {
                                 .tokenEndpointAuthMethod("bogus")
                                 .build(),
                         ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES,
-                        "Unsupported token_endpoint_auth_method: bogus")
+                        "Unsupported token_endpoint_auth_method: bogus"),
+
+                // Empty/whitespace is treated as malformed input (rejected), not as a "field
+                // omitted" signal. Clients that mean "preserve existing" must omit the field
+                // or send null — the preserve-on-update path then keeps the prior value.
+                Arguments.of(ResourceAuthSettings.builder()
+                                .authenticationType(AuthenticationType.OAUTH)
+                                .clientId("client123")
+                                .clientSecret("secret123")
+                                .authorizationEndpoint("authorizationEndpoint")
+                                .tokenEndpoint("tokenEndpoint")
+                                .redirectUri("https://example.com/oauth")
+                                .tokenEndpointAuthMethod("")
+                                .build(),
+                        ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES,
+                        "Unsupported token_endpoint_auth_method: "),
+
+                Arguments.of(ResourceAuthSettings.builder()
+                                .authenticationType(AuthenticationType.OAUTH)
+                                .clientId("client123")
+                                .clientSecret("secret123")
+                                .authorizationEndpoint("authorizationEndpoint")
+                                .tokenEndpoint("tokenEndpoint")
+                                .redirectUri("https://example.com/oauth")
+                                .tokenEndpointAuthMethod("   ")
+                                .build(),
+                        ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES,
+                        "Unsupported token_endpoint_auth_method:    ")
         );
     }
 
