@@ -53,13 +53,18 @@ public final class ProfileLoader {
         }
     }
 
-    public static void save(Path path, CliProfile profile) {
+    // We patch defaults.env directly in the raw YAML rather than loading the profile,
+    // mutating it, and re-serializing: full Jackson serialization strips comments,
+    // blank lines, and !if/!for custom tags from the templates section.
+    public static void saveDefaultEnv(Path path, String envName) {
         Path resolved = resolvePath(path);
-        Path parent = resolved.toAbsolutePath().getParent();
         try {
+            String raw = Files.exists(resolved) ? Files.readString(resolved, StandardCharsets.UTF_8) : "";
+            String patched = YamlPatcher.patch(raw, "defaults.env", "\"" + envName + "\"");
+            Path parent = resolved.toAbsolutePath().getParent();
             Files.createDirectories(parent);
             Path tmp = Files.createTempFile(parent, ".dial-cli-", ".yaml.tmp");
-            MAPPER.writeValue(tmp.toFile(), profile);
+            Files.writeString(tmp, patched, StandardCharsets.UTF_8);
             Files.move(tmp, resolved, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             throw new CliConfigException("Failed to write CLI profile at " + resolved, e);

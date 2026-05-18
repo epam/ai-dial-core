@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -246,6 +247,53 @@ class EnvCommandTest {
 
         assertEquals(2, r.exitCode);
         assertTrue(r.err.contains("no api_url"), r.err);
+    }
+
+    @Test
+    void usePreservesCommentsBlankLinesAndCustomTags(@TempDir Path tmp) throws Exception {
+        String yaml = """
+                # dial-cli config
+                defaults:
+                  env: dev
+
+                # environments
+                environments:
+                  dev:
+                    api_url: "https://dial-core.dev.example"
+                    auth: { type: api_key, key_env_var: DIAL_DEV_API_KEY }
+                  prod:
+                    api_url: "https://dial-core.prod.example"
+                    auth: { type: api_key, key_env_var: DIAL_PROD_API_KEY }
+                templates:
+                  t:
+                    fields:
+                      !if ${vars.x} == 'true':
+                        y: true
+                """;
+        Path file = writeProfile(tmp, yaml);
+
+        Result r = run(file, "env", "use", "prod");
+
+        assertEquals(0, r.exitCode);
+        assertThat(Files.readString(file)).isEqualTo("""
+                # dial-cli config
+                defaults:
+                  env: "prod"
+
+                # environments
+                environments:
+                  dev:
+                    api_url: "https://dial-core.dev.example"
+                    auth: { type: api_key, key_env_var: DIAL_DEV_API_KEY }
+                  prod:
+                    api_url: "https://dial-core.prod.example"
+                    auth: { type: api_key, key_env_var: DIAL_PROD_API_KEY }
+                templates:
+                  t:
+                    fields:
+                      !if ${vars.x} == 'true':
+                        y: true
+                """);
     }
 
     private static void injectResolver(CommandLine cli, Map<String, String> envs) {

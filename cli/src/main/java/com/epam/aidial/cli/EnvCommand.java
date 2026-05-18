@@ -103,14 +103,8 @@ public class EnvCommand {
                 }
                 return 2;
             }
-            Defaults defaults = profile.getDefaults();
-            if (defaults == null) {
-                defaults = new Defaults();
-                profile.setDefaults(defaults);
-            }
-            defaults.setEnv(name);
             try {
-                ProfileLoader.save(root.configPath, profile);
+                ProfileLoader.saveDefaultEnv(root.configPath, name);
             } catch (CliConfigException e) {
                 spec.commandLine().getErr().println(e.getMessage());
                 return 2;
