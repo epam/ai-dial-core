@@ -43,7 +43,7 @@ The proposal deliberately reuses existing DIAL Core infrastructure:
 | — | `Configuration API` HTTP routes |
 | — | `dial-cli` |
 
-If a green column says "already there", the proposal does not redesign it.
+Anything listed in the **Already in DIAL Core** column the proposal does not redesign.
 
 ## `MergedConfigStore` — the union model
 
@@ -81,6 +81,8 @@ platform/roles/power-user  →  resource URL  roles/platform/power-user
 ```
 
 DIAL Core uses two path formats for the same resource: blob layout is bucket-first (`public/models/gpt-4`), API/canonical identifiers are type-first (`models/public/gpt-4`). The proposal does not change this convention — it inherits it from the existing Resource API.
+
+**Names are single-segment.** Each new admin-config entity uses a single name segment (`^[A-Za-z0-9._-]+$`). Nested paths / subfolders are **out of scope** until the multi-tenant scopes (`tenants/{id}`, `teams/{id}`, `channels/{id}`) land via `EntityLocationStrategy`. The existing user-data types (files / conversations / prompts) keep their arbitrary-depth paths through unchanged controllers.
 
 ## Storage decision: ResourceService, no new infrastructure
 

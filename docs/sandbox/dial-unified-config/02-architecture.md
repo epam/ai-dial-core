@@ -120,6 +120,8 @@ Entity locations are resolved through an `EntityLocationStrategy` interface, not
 
 The `entityType` parameter is the existing `ResourceTypes` enum (`storage/.../resource/ResourceTypes.java`, extended in Phase 2 with `MODEL`, `APP_TYPE_SCHEMA`, `INTERCEPTOR`, `ROLE`, `PROJECT_KEY`, `ROUTE`, `GLOBAL_SETTINGS` per §5.3). Using the typed enum gives compile-time safety, IDE autocomplete, and prevents the interface from accepting an arbitrary string. The `scope` parameter stays as `String` because future MT scopes are *parameterized* (`tenants/{id}`, `teams/{id}`, `channels/{id}`) — an enum is the wrong shape for an open, id-bearing set. The `PLATFORM_SCOPE` constant on the interface documents the only scope currently in use; its value matches the bucket name.
 
+**Names are single-segment in Phase 1–4.** The new admin-config entity types (`models`, `interceptors`, `roles`, `keys`, `routes`, `schemas`, `settings`) use a single name segment matching `^[A-Za-z0-9._-]+$`. Multi-segment hierarchical paths for these types are deferred to the multi-tenant scopes (`tenants/{id}`, `teams/{id}`, `channels/{id}`) introduced via `EntityLocationStrategy`. Existing user-data types (`files`, `conversations`, `prompts`) keep their arbitrary-depth paths through their unchanged controllers — this constraint applies only to types newly introduced by this proposal.
+
 ```java
 public interface EntityLocationStrategy {
     /** Default scope in single-tenant deployments. Value matches the bucket name.

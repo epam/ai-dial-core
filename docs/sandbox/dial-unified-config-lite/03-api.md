@@ -9,7 +9,7 @@ Per-entity CRUD              /v1/{type}/{bucket}/{name}
 Cross-entity operator ops    /v1/admin/{apply | validate | export | schema | audit | health/config}
 ```
 
-Per-entity CRUD is uniform with the existing Resource API: a full resource identifier in the URL, type-first. Operator endpoints live under `/v1/admin/*` and are always admin-role-gated; non-admin callers get `403`.
+Per-entity CRUD is uniform with the existing Resource API: a full resource identifier in the URL, type-first. Operator endpoints live under `/v1/admin/*` and are always admin-role-gated; non-admin callers get `403`. These are sibling routes to the existing `/v1/metadata/{type}/{bucket}/...` listings for files, conversations, prompts, applications, and toolsets — those existing paths are deliberately left unchanged.
 
 ## Per-entity CRUD
 
@@ -69,7 +69,7 @@ CI pipelines and concurrency-sensitive callers should always pass `If-Match`; ad
 
 ### Secret fields on `PUT` — preserve-on-omit
 
-`PUT` is full-replace by default — absent fields revert to defaults. **Secret fields are the explicit exception**: an absent / `null` / `"***"` secret on `PUT` preserves the value already stored. This applies to `Key.key`, `Upstream.key`, `Upstream.extraData`. All other fields follow standard full-replace; clients that want to keep a non-secret value must include it in the body.
+`PUT` is full-replace by default — absent fields revert to defaults. **Secret fields are the explicit exception**: an absent / `null` / `"***"` secret on `PUT` preserves the value already stored. This applies to `Key.key`, `Upstream.key`, `Upstream.extraData`, plus toolset OAuth credentials (`ResourceAuthSettings.clientSecret` and `codeVerifier`) — those use the existing toolset-encryption path but follow the same preserve-on-omit semantics. All other fields follow standard full-replace; clients that want to keep a non-secret value must include it in the body.
 
 `POST` does **not** participate — a `"***"` sentinel at create time is rejected as `400`.
 
@@ -90,7 +90,7 @@ The full authorization spec is in [`04-security.md`](04-security.md).
 
 ## Listing & pagination
 
-`GET /v1/{type}/{bucket}/` returns items in a paginated envelope:
+`GET /v1/{type}/{bucket}/?limit=N&cursor=…` returns items in a paginated envelope (both query parameters optional; `limit` defaults to 100, max 500 — values above the cap are clamped to 500):
 
 ```json
 {
@@ -102,7 +102,7 @@ The full authorization spec is in [`04-security.md`](04-security.md).
 }
 ```
 
-`limit` defaults to 100, capped at 500. `nextCursor` is opaque. `hasMore` is always present. Owner callers (admin or bucket-owner) also see `source` (`"file"` / `"api"` / `"default"`) and `validationWarnings` per item; Public callers see the body + `status` only.
+`nextCursor` is opaque. `hasMore` is always present. Owner callers (admin or bucket-owner) also see `source` (`"file"` / `"api"` / `"default"`) and `validationWarnings` per item; Public callers see the body + `status` only.
 
 File-sourced and API-managed entries appear as distinct rows: a file entry keyed `gpt-4` and an API entry keyed `models/public/gpt-4` are two rows, distinguished by `name` (simple vs canonical) and the Owner-only `source` field.
 
