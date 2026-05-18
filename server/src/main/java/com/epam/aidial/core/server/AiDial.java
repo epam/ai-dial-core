@@ -210,7 +210,7 @@ public class AiDial {
             boolean softValidation = settings("config").getJsonObject("write", new JsonObject())
                     .getBoolean("softValidation", false);
             MergedConfigStore mergedConfigStore = new MergedConfigStore(
-                    vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                    vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
                     secretFieldProcessor, onInvalidEntity, softValidation, podId);
             FileConfigStore fileConfigStore = new FileConfigStore(
                     vertx, settings("config"), null,
