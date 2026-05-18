@@ -153,24 +153,24 @@ public class ConfigResourceController implements Controller {
         }
         // Bucket-aware authz already gated non-admin readers off platform/, so source is always emitted
         // for platform/ types. For public/ types, source is Owner-only.
-        return switch (entityType) {
-            case "models" -> handleSingleOrList(
+        return switch (resourceType()) {
+            case MODEL -> handleSingleOrList(
                     config.getModels(), ResourceTypes.MODEL,
                     (key, model) -> projectItem(model, displayName(key), fromApi(key), admin, revealSecrets));
-            case "interceptors" -> handleSingleOrList(
+            case INTERCEPTOR -> handleSingleOrList(
                     config.getInterceptors(), ResourceTypes.INTERCEPTOR,
                     (key, interceptor) -> projectItem(interceptor, displayName(key), fromApi(key), true, revealSecrets));
-            case "roles" -> handleSingleOrList(
+            case ROLE -> handleSingleOrList(
                     config.getRoles(), ResourceTypes.ROLE,
                     (key, role) -> projectItem(role, displayName(key), fromApi(key), true, revealSecrets));
-            case "keys" -> handleSingleOrList(
+            case PROJECT_KEY -> handleSingleOrList(
                     config.getKeys(), ResourceTypes.PROJECT_KEY,
                     (key, value) -> projectItem(value, displayName(key), fromApi(key), true, revealSecrets));
-            case "routes" -> handleSingleOrList(
+            case ROUTE -> handleSingleOrList(
                     config.getRoutes(), ResourceTypes.ROUTE,
                     (key, route) -> projectItem(route, displayName(key), fromApi(key), true, revealSecrets));
-            case "schemas" -> handleSchemaGet(config, admin);
-            case SETTINGS_TYPE -> handleSettingsGet(config);
+            case APP_TYPE_SCHEMA -> handleSchemaGet(config, admin);
+            case GLOBAL_SETTINGS -> handleSettingsGet(config);
             default -> respondMethodNotAllowed();
         };
     }
@@ -607,28 +607,28 @@ public class ConfigResourceController implements Controller {
             context.respond(HttpStatus.BAD_REQUEST, "Resource name must not be empty or a folder");
             return null;
         }
-        return switch (entityType) {
-            case "models" -> new WriteSpec(
+        return switch (resourceType()) {
+            case MODEL -> new WriteSpec(
                     ResourceDescriptorFactory.fromDecoded(ResourceTypes.MODEL,
                             ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path),
                     Model.class, true, false);
-            case "interceptors" -> new WriteSpec(
+            case INTERCEPTOR -> new WriteSpec(
                     ResourceDescriptorFactory.fromDecoded(ResourceTypes.INTERCEPTOR,
                             ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path),
                     Interceptor.class, false, false);
-            case "roles" -> new WriteSpec(
+            case ROLE -> new WriteSpec(
                     ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROLE,
                             ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path),
                     Role.class, false, false);
-            case "keys" -> new WriteSpec(
+            case PROJECT_KEY -> new WriteSpec(
                     ResourceDescriptorFactory.fromDecoded(ResourceTypes.PROJECT_KEY,
                             ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path),
                     Key.class, true, true);
-            case "routes" -> new WriteSpec(
+            case ROUTE -> new WriteSpec(
                     ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROUTE,
                             ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path),
                     Route.class, true, false);
-            case "schemas" -> new WriteSpec(
+            case APP_TYPE_SCHEMA -> new WriteSpec(
                     ResourceDescriptorFactory.fromDecoded(ResourceTypes.APP_TYPE_SCHEMA,
                             ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path),
                     null, false, false);
@@ -801,14 +801,18 @@ public class ConfigResourceController implements Controller {
     }
 
     private static Class<?> entityClassFor(String entityType) {
-        return switch (entityType) {
-            case "models" -> Model.class;
-            case "interceptors" -> Interceptor.class;
-            case "roles" -> Role.class;
-            case "keys" -> Key.class;
-            case "routes" -> Route.class;
+        return switch (ResourceTypes.of(entityType)) {
+            case MODEL -> Model.class;
+            case INTERCEPTOR -> Interceptor.class;
+            case ROLE -> Role.class;
+            case PROJECT_KEY -> Key.class;
+            case ROUTE -> Route.class;
             default -> null;
         };
+    }
+
+    private ResourceTypes resourceType() {
+        return ResourceTypes.of(entityType);
     }
 
     private Future<?> respondMethodNotAllowed() {

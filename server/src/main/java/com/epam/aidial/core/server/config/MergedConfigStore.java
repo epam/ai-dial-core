@@ -10,6 +10,7 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -33,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 
 /**
@@ -74,6 +76,7 @@ public final class MergedConfigStore implements ConfigStore {
             ResourceTypes.ROUTE);
 
     private final Vertx vertx;
+    private final AsyncTaskExecutor taskExecutor;
     private final ResourceService resourceService;
     private final ApiKeyStore apiKeyStore;
     private final EntityLocationStrategy locationStrategy;
@@ -89,29 +92,36 @@ public final class MergedConfigStore implements ConfigStore {
     private volatile boolean initialized;
     private final AtomicLong pendingRebuildTimerId = new AtomicLong(NO_PENDING_TIMER);
     private final Map<ResourceTypes, Map<String, Counter>> skipCounters = new EnumMap<>(ResourceTypes.class);
+    // Serializes rebuild() across init/reload/rebuildNow/timer-fire callsites. ReentrantLock
+    // (vs. synchronized) lets virtual threads park instead of pin their carrier while waiting —
+    // rebuild() does blob-storage IO that can take tens to hundreds of ms.
+    private final ReentrantLock rebuildLock = new ReentrantLock();
 
-    public MergedConfigStore(Vertx vertx, ResourceService resourceService,
+    public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
                              SecretFieldProcessor secretFieldProcessor,
                              String onInvalidEntity) {
-        this(vertx, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor, onInvalidEntity, false, "");
+        this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
+                onInvalidEntity, false, "");
     }
 
-    public MergedConfigStore(Vertx vertx, ResourceService resourceService,
+    public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
                              SecretFieldProcessor secretFieldProcessor,
                              String onInvalidEntity,
                              boolean softValidation) {
-        this(vertx, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor, onInvalidEntity, softValidation, "");
+        this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
+                onInvalidEntity, softValidation, "");
     }
 
-    public MergedConfigStore(Vertx vertx, ResourceService resourceService,
+    public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
                              SecretFieldProcessor secretFieldProcessor,
                              String onInvalidEntity,
                              boolean softValidation,
                              String thisPodId) {
         this.vertx = vertx;
+        this.taskExecutor = taskExecutor;
         this.resourceService = resourceService;
         this.apiKeyStore = apiKeyStore;
         this.locationStrategy = locationStrategy;
@@ -149,11 +159,16 @@ public final class MergedConfigStore implements ConfigStore {
      * here; subsequent reloads flow through {@link #requestRebuild} via the
      * file store's {@code onReloadCallbacks} hook.
      */
-    public synchronized void init(FileConfigStore fileConfigStore) {
-        this.fileConfigStore = fileConfigStore;
-        rebuild();
-        initialized = true;
-        resourceService.subscribeAllResources(this::onResourceEvent);
+    public void init(FileConfigStore fileConfigStore) {
+        rebuildLock.lock();
+        try {
+            this.fileConfigStore = fileConfigStore;
+            rebuild();
+            initialized = true;
+            resourceService.subscribeAllResources(this::onResourceEvent);
+        } finally {
+            rebuildLock.unlock();
+        }
     }
 
     /**
@@ -189,13 +204,18 @@ public final class MergedConfigStore implements ConfigStore {
     }
 
     @Override
-    public synchronized Config reload() {
-        fileConfigStore.reload();
-        // fileConfigStore.reload() fires onReloadCallbacks → requestRebuild(), which schedules a
-        // 500ms debounce timer. Cancel it: the rebuild() below produces the authoritative merged
-        // config and a debounced rerun would be a redundant addProjectKeys + listResources sweep.
-        cancelPendingRebuild();
-        return rebuild();
+    public Config reload() {
+        rebuildLock.lock();
+        try {
+            fileConfigStore.reload();
+            // fileConfigStore.reload() fires onReloadCallbacks → requestRebuild(), which schedules a
+            // 500ms debounce timer. Cancel it: the rebuild() below produces the authoritative merged
+            // config and a debounced rerun would be a redundant addProjectKeys + listResources sweep.
+            cancelPendingRebuild();
+            return rebuild();
+        } finally {
+            rebuildLock.unlock();
+        }
     }
 
     /**
@@ -246,10 +266,9 @@ public final class MergedConfigStore implements ConfigStore {
      * explicit initial rebuild that {@code init} performs.
      *
      * <p>Runs on the Vert.x event loop (topic event handler and the file-store reload callback
-     * both fire there); must remain non-blocking. {@link #rebuildNow} on a worker thread holds the
-     * intrinsic monitor for the full rebuild duration (tens to hundreds of ms), so this path uses
-     * an {@link AtomicLong} CAS on {@link #pendingRebuildTimerId} instead of {@code synchronized}
-     * — only the inner {@code executeBlocking} body acquires the monitor, on a worker thread.
+     * both fire there); must remain non-blocking. The actual rebuild is dispatched onto
+     * {@link AsyncTaskExecutor} (virtual threads) and serialized via {@link #rebuildLock},
+     * so this method only does an {@link AtomicLong} CAS on {@link #pendingRebuildTimerId}.
      */
     public void requestRebuild() {
         if (!initialized) {
@@ -268,11 +287,14 @@ public final class MergedConfigStore implements ConfigStore {
         if (!pendingRebuildTimerId.compareAndSet(firingId, NO_PENDING_TIMER)) {
             return;
         }
-        vertx.<Config>executeBlocking(() -> {
-            synchronized (this) {
+        taskExecutor.submit(() -> {
+            rebuildLock.lock();
+            try {
                 return rebuild();
+            } finally {
+                rebuildLock.unlock();
             }
-        }, false).onFailure(error -> log.warn("Failed to rebuild merged config", error));
+        }).onFailure(error -> log.warn("Failed to rebuild merged config", error));
     }
 
     /**
@@ -287,9 +309,14 @@ public final class MergedConfigStore implements ConfigStore {
      * the key is absent from {@link com.epam.aidial.core.server.security.ApiKeyStore} before
      * the new {@link Config} becomes visible.
      */
-    public synchronized Config rebuildNow() {
-        cancelPendingRebuild();
-        return rebuild();
+    public Config rebuildNow() {
+        rebuildLock.lock();
+        try {
+            cancelPendingRebuild();
+            return rebuild();
+        } finally {
+            rebuildLock.unlock();
+        }
     }
 
     private void cancelPendingRebuild() {

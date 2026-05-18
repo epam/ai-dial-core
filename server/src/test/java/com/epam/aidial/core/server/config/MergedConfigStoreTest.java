@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.Vertx;
@@ -27,6 +28,8 @@ public class MergedConfigStoreTest {
     @Mock
     private Vertx vertx;
     @Mock
+    private AsyncTaskExecutor taskExecutor;
+    @Mock
     private ResourceService resourceService;
     @Mock
     private ApiKeyStore apiKeyStore;
@@ -38,7 +41,7 @@ public class MergedConfigStoreTest {
     @Test
     public void testRequestRebuildIsNoOpBeforeInit() {
         MergedConfigStore store = new MergedConfigStore(
-                vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
                 secretFieldProcessor, MergedConfigStore.MODE_ABORT);
 
         store.requestRebuild();
@@ -55,7 +58,7 @@ public class MergedConfigStoreTest {
         when(fileConfigStore.get()).thenReturn(new Config());
 
         MergedConfigStore store = new MergedConfigStore(
-                vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
                 secretFieldProcessor, MergedConfigStore.MODE_ABORT);
         store.init(fileConfigStore);
 
@@ -135,7 +138,7 @@ public class MergedConfigStoreTest {
     @SuppressWarnings("unchecked")
     private Consumer<ResourceEvent> registerAndCaptureListener(String thisPodId) {
         MergedConfigStore store = new MergedConfigStore(
-                vertx, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
                 secretFieldProcessor, MergedConfigStore.MODE_ABORT, false, thisPodId);
         store.init(fileConfigStore);
 
