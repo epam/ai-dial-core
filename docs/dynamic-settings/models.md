@@ -226,6 +226,7 @@ Upstreams configurations. Use to configure [load balancing](https://docs.dialx.a
 
 * `endpoint`: The upstream backend URL for the chat completions API. Passed to the model adapter in the `X-UPSTREAM-ENDPOINT` header.
 * `responsesEndpoint`: The upstream backend URL for the Responses API. Passed to the model adapter in the `X-UPSTREAM-ENDPOINT` header when routing Responses API requests.
+* `stickyKey`: A stable identifier for this upstream, used to route Responses API follow-up requests (retrieve, cancel, delete) back to the same upstream that handled the initial request. Required when multiple upstreams share the same `responsesEndpoint` URL — without an explicit key they would be indistinguishable. If omitted, `responsesEndpoint` is used as the sticky key. Only effective when `responsesEndpoint` is configured.
 * `key`: API key, token, or credential passed to the upstream.
 * `weight`: Weight for upstream endpoint; positive number represents an endpoint capacity, zero or negative disables this endpoint from routing. Higher = more traffic share. Default value: 1.
 * `tier`: Specifies tier group for the endpoint. Only positive numbers allowed. All requests will be routed to the endpoints with the highest tier (the lowest tier value), other endpoints (with lower tier/higher tier value) may be used only if the highest tier endpoints are unavailable. Default value: 0 - highest tier. Refer to [load balancing](https://docs.dialx.ai/platform/core/load-balancer) to learn more.
