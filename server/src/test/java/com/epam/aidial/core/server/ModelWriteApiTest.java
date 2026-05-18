@@ -281,6 +281,27 @@ public class ModelWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testPostGetWithUrlEncodedName() {
+        // The {name} segment may carry percent-encoded characters; the controller must decode at
+        // the route boundary so the stored entity name and canonical id are the decoded form.
+        // Repro from PR #1529 / thread r3249802671 — name with spaces and assorted ASCII punctuation.
+        String decoded = "new model super !@#$%^&*()_+1234567890-=[]\\|,.<>~`;:'__1.0.0";
+        // Percent-encoded for use in the request line — matches what a sane HTTP client would send.
+        String encoded = "new%20model%20super%20%21%40%23%24%25%5E%26%2A%28%29_%2B1234567890-%3D%5B%5D%5C%7C%2C.%3C%3E~%60%3B%3A%27__1.0.0";
+
+        verify(send(HttpMethod.POST, "/v1/models/public/" + encoded, null, MODEL_BODY_NO_SECRET,
+                "authorization", "admin"), 201);
+
+        Response get = send(HttpMethod.GET, "/v1/models/public/" + encoded, null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        // Backslashes and quotes in the decoded name appear escaped in the JSON body.
+        String jsonEscaped = decoded.replace("\\", "\\\\").replace("\"", "\\\"");
+        assertTrue(get.body().contains("\"name\":\"models/public/" + jsonEscaped + "\""),
+                () -> "Expected decoded canonical name in body: " + get.body());
+    }
+
+    @Test
     void testDeleteImmediatelyVisibleOnGet() {
         verify(send(HttpMethod.POST, "/v1/models/public/test-model-immediate-delete", null,
                 MODEL_BODY_NO_SECRET, "authorization", "admin"), 201);

@@ -446,7 +446,12 @@ public class ControllerSelector {
     private static Controller configResourceController(Proxy proxy, ProxyContext context, Matcher pathMatcher) {
         String entityType = pathMatcher.group(1);
         String bucket = pathMatcher.group("bucket");
-        String path = pathMatcher.group("path");
+        // The {name} segment carries the entity's human-readable name and is percent-encoded by
+        // clients (e.g. "new model" → "new%20model"). Decode at the route boundary so the canonical
+        // ID and stored entity name match the caller's intent — matches the convention used by the
+        // FILES/RESOURCE routes (see ResourceDescriptorFactory.fromAnyUrl) and the {@code path}
+        // contract on ResourceDescriptorFactory.fromDecoded ("url decoded relative path").
+        String path = UrlUtil.decodePath(pathMatcher.group("path"));
         ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
         MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
         return new ConfigResourceController(context, authService, mergedConfigStore,
