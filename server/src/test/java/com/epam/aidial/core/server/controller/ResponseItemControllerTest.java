@@ -367,7 +367,7 @@ public class ResponseItemControllerTest {
     }
 
     @Test
-    public void testGetStreamingForwardsSSEWithRewrittenId(Vertx vertx, VertxTestContext testContext) throws Throwable {
+    public void testGetStreamingForwardsSseWithRewrittenId(Vertx vertx, VertxTestContext testContext) throws Throwable {
         ResponseMapping mapping = ResponseMapping.builder()
                 .upstreamResponseId("upstream-id-stream")
                 .upstreamKey("endpoint")
