@@ -410,6 +410,40 @@ public class ApplicationSchemaService {
         }
     }
 
+    public List<ResourceDescriptor> getPrompts(Application application) {
+        return getPrompts(application, ListCollector.ResourceCollectorType.ALL_RESOURCES, false);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<ResourceDescriptor> getPrompts(Application application, ListCollector.ResourceCollectorType collectorName, boolean forceReload) {
+        try {
+            ListCollector<String> propsCollector = (ListCollector<String>) getCollector(application, collectorName.getValue(), forceReload);
+            if (propsCollector == null) {
+                return Collections.emptyList();
+            }
+            List<ResourceDescriptor> result = new ArrayList<>();
+            for (String item : propsCollector.collect()) {
+                try {
+                    ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(item, encryptionService);
+                    if (descriptor.getType() != ResourceTypes.PROMPT) {
+                        continue;
+                    }
+                    if (descriptor.isFolder() || !resourceService.hasResource(descriptor)) {
+                        throw new ApplicationTypeResourceException("Prompt listed as dependent to the application is not found or inaccessible", item);
+                    }
+                    result.add(descriptor);
+                } catch (IllegalArgumentException e) {
+                    // ignore resource to be defined in DIAL config
+                }
+            }
+            return result;
+        } catch (ApplicationTypeSchemaValidationException | ApplicationTypeResourceException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ApplicationTypeSchemaProcessingException("Failed to obtain list of prompts attached to the custom app", e);
+        }
+    }
+
     @SuppressWarnings("unchecked")
     public List<ResourceDescriptor> getDeployments(Application application) {
         try {
