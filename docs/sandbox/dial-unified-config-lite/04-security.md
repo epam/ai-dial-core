@@ -38,7 +38,7 @@ API-managed entities store secret fields encrypted via the existing `CredentialE
 
 - **AES-256-GCM, envelope encryption.** A platform-scoped Content Encryption Key wraps each ciphertext; the CEK is itself wrapped by a KMS provider (AWS KMS / Azure Key Vault / GCP KMS in production; `SimpleKeyManagementService` no-op pass-through in dev with a startup warning).
 - **No new infrastructure.** This reuses crypto DIAL Core already runs for `clientSecret`, `codeVerifier`, and other operationally-sensitive fields today.
-- **Field-level, not document-level.** Fields are tagged with `@EncryptedField` (`Key.key`, `Upstream.key`, `Upstream.extraData`, etc.). The annotation is the gate; a field without it is never encrypted.
+- **Field-level, not document-level.** Fields are tagged with `@EncryptedField` (`Key.key`, `Upstream.key`, `Upstream.extraData`). The annotation is the gate; a field without it is never encrypted. Toolset OAuth credentials (`ResourceAuthSettings.clientSecret` and `codeVerifier`) are encrypted through the existing bespoke `ResourceAuthSettingsEncryptionService` path and follow the same masking and preserve-on-omit contract.
 
 **API write-only by default:**
 
