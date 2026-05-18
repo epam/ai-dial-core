@@ -21,6 +21,7 @@ import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
@@ -71,6 +72,9 @@ public class ResponseItemControllerTest {
 
     @Mock
     private HttpServerResponse response;
+
+    @Mock
+    private HttpServerRequest serverRequest;
 
     private ResponseItemController controller(String dialId, ResponseItemController.Operation op) {
         return new ResponseItemController(proxy, context, dialId, op);
@@ -125,6 +129,7 @@ public class ResponseItemControllerTest {
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
         when(context.getResponse()).thenReturn(response);
+        when(context.getRequest()).thenReturn(serverRequest);
         when(response.setStatusCode(200)).thenReturn(response);
         when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
@@ -177,6 +182,7 @@ public class ResponseItemControllerTest {
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
         when(context.getResponse()).thenReturn(response);
+        when(context.getRequest()).thenReturn(serverRequest);
         when(response.setStatusCode(200)).thenReturn(response);
         when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
@@ -221,6 +227,7 @@ public class ResponseItemControllerTest {
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(null);
         when(context.getResponse()).thenReturn(response);
+        when(context.getRequest()).thenReturn(serverRequest);
         when(response.setStatusCode(200)).thenReturn(response);
         when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
@@ -261,6 +268,7 @@ public class ResponseItemControllerTest {
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"id\":\"upstream-id-del\"}")));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
         when(context.getResponse()).thenReturn(response);
+        when(context.getRequest()).thenReturn(serverRequest);
         when(response.setStatusCode(400)).thenReturn(response);
         when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
@@ -351,6 +359,7 @@ public class ResponseItemControllerTest {
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(null);
         when(context.getResponse()).thenReturn(response);
+        when(context.getRequest()).thenReturn(serverRequest);
         when(response.setStatusCode(200)).thenReturn(response);
         when(response.putHeader(any(CharSequence.class), anyString())).thenReturn(response);
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
@@ -399,6 +408,8 @@ public class ResponseItemControllerTest {
         when(upstreamRoute.get("endpoint")).thenReturn(upstream);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(context.getRequest()).thenReturn(serverRequest);
+        when(serverRequest.query()).thenReturn("stream=true");
         when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
         when(proxyRequest.send()).thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
@@ -439,6 +450,10 @@ public class ResponseItemControllerTest {
         controller("resp_dial_stream", GET).handle();
 
         await(testContext);
+
+        ArgumentCaptor<RequestOptions> optsCaptor = ArgumentCaptor.forClass(RequestOptions.class);
+        verify(httpClient).request(optsCaptor.capture());
+        assertEquals("/responses/upstream-id-stream?stream=true", optsCaptor.getValue().getURI());
 
         // First event (response.created) forwarded as a regular chunk with rewritten id
         assertEquals(1, writtenChunks.size());

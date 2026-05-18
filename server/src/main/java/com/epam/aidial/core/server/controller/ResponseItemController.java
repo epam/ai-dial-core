@@ -66,7 +66,9 @@ public class ResponseItemController implements Controller {
                     .mapEmpty();
         }
 
-        String targetUrl = deployment.getResponsesEndpoint() + "/" + mapping.getUpstreamResponseId() + operation.suffix;
+        String query = context.getRequest().query();
+        String targetUrl = deployment.getResponsesEndpoint() + "/" + mapping.getUpstreamResponseId() + operation.suffix
+                + (query != null ? "?" + query : "");
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(targetUrl)
                 .setMethod(operation.method)
