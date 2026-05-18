@@ -60,7 +60,7 @@ Cross-replica freshness is delivered in two layers:
 - **Phase 1**: every replica's existing 60 s `FileConfigStore` poll triggers a `MergedConfigStore` rebuild. A safety-net poll on `ResourceService` covers cross-replica drift.
 - **Phase 1.5**: a listener on the existing `ResourceTopic` collapses the lag to "≤ debounce window" when pub/sub delivery succeeds. Polling remains the correctness SLA — pub/sub is a latency optimization, not a delivery guarantee.
 
-Per-entity validation runs on each rebuild. The default is **strict abort** (matching today's `FileConfigStore` reload semantics); an opt-in `config.reload.onInvalidEntity: skip` switches to per-entity skip-with-visibility, so a single corrupt blob doesn't block scale-up.
+Per-entity validation runs on each rebuild. The default is **strict abort** (matching today's `FileConfigStore` reload semantics); an opt-in `config.reload.onInvalidEntity: skip` switches to per-entity skip-with-visibility, so a single corrupt blob doesn't block scale-up. The same posture applies to writes: cross-references that don't resolve **block the write with `422`** by default; an opt-in `config.write.softValidation: true` accepts dangling references and surfaces them via `status: "invalid"` for gradual file→API migration. "No broken entities accepted" is the headline contract across both paths.
 
 ## Bucket strategy: `public/` vs `platform/`
 
@@ -97,7 +97,7 @@ The locked decision is **reuse `ResourceService`** — Redis cache + Blob storag
 Not every admin-managed entity goes through `MergedConfigStore`. The split:
 
 - **Through `MergedConfigStore`** (small set, in-memory in `Config`): models, interceptors, roles, project keys, routes, app-type schemas, global settings.
-- **Direct `ResourceService`** (potentially large, lazy-loaded): applications, toolsets. These were already blob-native; they're enumerated lazily on demand, not pre-loaded into `Config`.
+- **Direct `ResourceService`** (potentially large, lazy-loaded): applications, toolsets, plus admin-managed `public/` instances of `files`, `prompts`, and `conversations` (user-owned instances stay on the existing Resource API path). These were already blob-native; they're enumerated lazily on demand, not pre-loaded into `Config`.
 
 This keeps `Config` small while giving every admin-managed type the same uniform API shape.
 
