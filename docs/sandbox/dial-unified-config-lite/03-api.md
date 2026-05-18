@@ -41,7 +41,7 @@ The bucket is always explicit. `public/` for user-facing types (models, applicat
 
 A typo in an entity name therefore surfaces as a clean `404` / `409` instead of a silent stub creation. Bulk upsert lives only on `POST /v1/admin/apply` — that is the canonical declarative path.
 
-The only exception is the singleton `PUT /v1/settings/platform/global`, which is upsert by design (the projection always has a value — blob, file, or default). `DELETE` on that URL clears the API blob and reverts to the file-sourced or default projection.
+The only exception is the singleton `PUT /v1/settings/platform/global`, which is upsert by design (the projection always has a value — blob, file, or default). `POST` on that URL returns `405 Method Not Allowed` (with `Allow: GET, PUT, DELETE`); `DELETE` clears the API blob and reverts to the file-sourced or default projection.
 
 ## Operator endpoints (`/v1/admin/*`)
 
@@ -111,8 +111,9 @@ File-sourced and API-managed entries appear as distinct rows: a file entry keyed
 `POST /v1/admin/apply` is the declarative path. The contract:
 
 - **Validate first.** The CLI runs validation locally before submitting; the server re-validates server-side.
-- **Sequential application** — the server processes entities in submission order.
-- **Continue on per-entity failure** — one failed entity does not roll back successful ones. The response carries a per-entity result list (`created` / `updated` / `unchanged` / `failed`, with error details for failures).
+- **Dependency-ordered application** — the server applies entities in a fixed order (`settings → schemas → interceptors → roles → keys → routes → models → toolsets → applications`), not submission order.
+- **Two orthogonal flags govern behaviour.** `precheck: true` (per-call, default) pre-validates the whole batch and aborts on any error — fail-fast batch atomicity. `precheck: false` validates at each entity's write step and continues on per-entity failure. The server-wide `config.write.softValidation` (see Validation) composes orthogonally — `precheck` controls atomicity, `softValidation` controls whether broken entities are admitted at all.
+- **Continue on per-entity failure** (under `precheck: false`) — one failed entity does not roll back successful ones. The response carries a per-entity result list (`created` / `updated` / `unchanged` / `failed`, with error details for failures).
 
 This is the locked failure-semantics decision: a partial-success report is more useful operationally than an all-or-nothing transaction across heterogeneous entity types.
 
