@@ -247,11 +247,9 @@ class TokenServiceTest {
         assertFalse(formData.contains("client_id="), "client_id must not be in body: " + formData);
         assertFalse(formData.contains("client_secret="), "client_secret must not be in body: " + formData);
 
-        // Plain RFC 7617 Basic: client_id and client_secret are concatenated as-is and base64'd
-        // without URL-encoding. This is what Snowflake and most real-world authorization servers
-        // expect (see comment in TokenService#buildBasicAuthHeader).
+        // RFC 6749 §2.3.1: client_id and client_secret are application/x-www-form-urlencoded before base64
         String expected = "Basic " + Base64.getEncoder().encodeToString(
-                "client id:s3cret/with+special:chars".getBytes(StandardCharsets.UTF_8));
+                ("client+id:s3cret%2Fwith%2Bspecial%3Achars").getBytes(StandardCharsets.UTF_8));
         assertEquals(expected, headersCaptor.getValue().get("Authorization"));
     }
 
