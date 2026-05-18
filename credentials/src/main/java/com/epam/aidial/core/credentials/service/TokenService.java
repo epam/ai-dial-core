@@ -3,13 +3,19 @@ package com.epam.aidial.core.credentials.service;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.credentials.RefreshTokenRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
+import com.epam.aidial.core.credentials.data.credentials.TokenEndpointAuthMethod;
 import com.epam.aidial.core.credentials.data.credentials.TokenRequest;
 import com.epam.aidial.core.credentials.data.credentials.TokenResponse;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
 
 @AllArgsConstructor
 @Slf4j
@@ -23,17 +29,20 @@ public class TokenService {
                                   ResourceSignInRequest resourceSignInRequest) {
         log.debug("Start Resource {} token retrieval", resourceId);
         String redirectUri = resolveRedirectUri(resourceAuthSettings, resourceSignInRequest);
-        TokenRequest tokenRequest = TokenRequest.builder()
-                .clientId(resourceAuthSettings.getClientId())
-                .clientSecret(resourceAuthSettings.getClientSecret())
+        TokenEndpointAuthMethod authMethod = TokenEndpointAuthMethod.resolveOrDefault(resourceAuthSettings.getTokenEndpointAuthMethod());
+
+        TokenRequest.TokenRequestBuilder builder = TokenRequest.builder()
                 .code(resourceSignInRequest.getCode())
                 // TODO: do we need to support different?
                 .grantType("authorization_code")
                 .codeVerifier(resourceAuthSettings.getCodeVerifier())
-                .redirectUri(redirectUri)
-                .build();
+                .redirectUri(redirectUri);
+        Map<String, String> headers = applyClientAuthentication(authMethod,
+                resourceAuthSettings.getClientId(), resourceAuthSettings.getClientSecret(),
+                builder::clientId, builder::clientSecret);
+        TokenRequest tokenRequest = builder.build();
 
-        TokenResponse tokenResponse = doTokenCall(resourceAuthSettings.getTokenEndpoint(), tokenRequest.buildFormData());
+        TokenResponse tokenResponse = doTokenCall(resourceAuthSettings.getTokenEndpoint(), tokenRequest.buildFormData(), headers);
         log.debug("Finished Resource {} token retrieval", resourceId);
         return tokenResponse;
     }
@@ -42,14 +51,17 @@ public class TokenService {
                                   ResourceAuthSettings resourceAuthSettings,
                                   String refreshToken) {
         log.debug("Start Resource {} refresh token retrieval", resourceId);
-        RefreshTokenRequest tokenRequest = RefreshTokenRequest.builder()
-                .clientId(resourceAuthSettings.getClientId())
-                .clientSecret(resourceAuthSettings.getClientSecret())
-                .grantType("refresh_token")
-                .refreshToken(refreshToken)
-                .build();
+        TokenEndpointAuthMethod authMethod = TokenEndpointAuthMethod.resolveOrDefault(resourceAuthSettings.getTokenEndpointAuthMethod());
 
-        TokenResponse tokenResponse = doTokenCall(resourceAuthSettings.getTokenEndpoint(), tokenRequest.buildFormData());
+        RefreshTokenRequest.RefreshTokenRequestBuilder builder = RefreshTokenRequest.builder()
+                .grantType("refresh_token")
+                .refreshToken(refreshToken);
+        Map<String, String> headers = applyClientAuthentication(authMethod,
+                resourceAuthSettings.getClientId(), resourceAuthSettings.getClientSecret(),
+                builder::clientId, builder::clientSecret);
+        RefreshTokenRequest tokenRequest = builder.build();
+
+        TokenResponse tokenResponse = doTokenCall(resourceAuthSettings.getTokenEndpoint(), tokenRequest.buildFormData(), headers);
         log.debug("Finished Resource {} refresh token retrieval", resourceId);
         return tokenResponse;
     }
@@ -75,10 +87,39 @@ public class TokenService {
                 || uri.equals(resourceAuthSettings.getRedirectUri());
     }
 
-    private TokenResponse doTokenCall(String tokenEndpoint, String tokenRequest) {
+    private TokenResponse doTokenCall(String tokenEndpoint, String tokenRequest, Map<String, String> extraHeaders) {
         return resourceAuthorizationClient.executePost(
                 tokenEndpoint, tokenRequest,
                 "application/x-www-form-urlencoded",
+                extraHeaders,
                 TokenResponse.class);
+    }
+
+    private static Map<String, String> applyClientAuthentication(TokenEndpointAuthMethod authMethod,
+                                                                 String clientId,
+                                                                 String clientSecret,
+                                                                 Consumer<String> setClientId,
+                                                                 Consumer<String> setClientSecret) {
+        return switch (authMethod) {
+            case CLIENT_SECRET_BASIC -> Map.of("Authorization", buildBasicAuthHeader(clientId, clientSecret));
+            case NONE -> {
+                setClientId.accept(clientId);
+                yield Map.of();
+            }
+            case CLIENT_SECRET_POST -> {
+                setClientId.accept(clientId);
+                setClientSecret.accept(clientSecret);
+                yield Map.of();
+            }
+        };
+    }
+
+    // RFC 6749 §2.3.1: client_id and client_secret are application/x-www-form-urlencoded
+    // before being concatenated with ":" and base64-encoded.
+    private static String buildBasicAuthHeader(String clientId, String clientSecret) {
+        String encId = URLEncoder.encode(StringUtils.defaultString(clientId), StandardCharsets.UTF_8);
+        String encSecret = URLEncoder.encode(StringUtils.defaultString(clientSecret), StandardCharsets.UTF_8);
+        String credentials = encId + ":" + encSecret;
+        return "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
     }
 }
