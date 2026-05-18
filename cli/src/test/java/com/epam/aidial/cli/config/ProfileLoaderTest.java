@@ -1,5 +1,6 @@
 package com.epam.aidial.cli.config;
 
+import com.epam.aidial.cli.OutputFormat;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -44,7 +45,7 @@ class ProfileLoaderTest {
 
         assertNotNull(profile.getDefaults());
         assertEquals("dev", profile.getDefaults().getEnv());
-        assertEquals("table", profile.getDefaults().getOutput());
+        assertEquals(OutputFormat.TABLE, profile.getDefaults().getOutput());
 
         Environment dev = profile.getEnvironments().get("dev");
         assertEquals("https://dial-core.dev.example", dev.getApiUrl());

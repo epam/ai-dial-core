@@ -2,7 +2,7 @@ package com.epam.aidial.cli;
 
 import com.fasterxml.jackson.annotation.JsonValue;
 
-enum OutputFormat {
+public enum OutputFormat {
     JSON, YAML, TABLE;
 
     @JsonValue

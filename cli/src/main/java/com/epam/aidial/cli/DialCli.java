@@ -51,8 +51,8 @@ public class DialCli {
             description = "Read API key from file (CI secret mounts, SOPS-decrypted files).")
     Path apiKeyFile;
 
-    @Option(names = {"-o", "--output"}, scope = ScopeType.INHERIT, defaultValue = "table",
-            description = "Output format: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).")
+    @Option(names = {"-o", "--output"}, scope = ScopeType.INHERIT,
+            description = "Output format: ${COMPLETION-CANDIDATES} (default: table).")
     OutputFormat output;
 
     @Option(names = {"-v", "--verbose"}, scope = ScopeType.INHERIT, description = "Verbose output.")

@@ -86,7 +86,7 @@ public final class EntityReader {
         }
         try {
             JsonNode node = JSON.readTree(resp.body());
-            EntityRenderer renderer = EntityRenderer.of(root.output);
+            EntityRenderer renderer = EntityRenderer.of(OutputFormatResolver.resolve(root));
             if (isList) {
                 JsonNode items = node.get("items");
                 if (items == null || !items.isArray()) {
