@@ -233,7 +233,7 @@ class ModelCommandTest {
         Result r = run(config, apiKeyFile(tmp), "get");
 
         assertEquals(2, r.exitCode);
-        assertTrue(r.err.contains("Resource type required"), r.err);
+        assertTrue(r.err.contains("Missing required parameter"), r.err);
     }
 
     @Test
