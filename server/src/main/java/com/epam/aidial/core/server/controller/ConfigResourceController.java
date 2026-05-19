@@ -352,9 +352,11 @@ public class ConfigResourceController implements Controller {
             // are validated; re-serialize so the blob is canonical (locked field set, no extras).
             GlobalSettings settings = treeToEntity(requestNode, GlobalSettings.class);
             String blobBody = serializeForBlob(settings);
+            String author = context.getUserDisplayName();
             return taskExecutor.submit(() -> {
                 try (LockService.Lock ignored = adminWriteLockService.acquire()) {
-                    ResourceItemMetadata meta = resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+                    ResourceItemMetadata meta = resourceService.putResource(
+                            descriptor, blobBody, EtagHeader.ANY, author, false);
                     mergedConfigStore.applySettingsWrite(settings);
                     return meta;
                 }
@@ -379,7 +381,7 @@ public class ConfigResourceController implements Controller {
             // Idempotent — deleteResource returns false when the blob is absent; both outcomes
             // collapse to 204 since the post-state (no API blob) is identical.
             try (LockService.Lock ignored = adminWriteLockService.acquire()) {
-                resourceService.deleteResource(descriptor, EtagHeader.ANY);
+                resourceService.deleteResource(descriptor, EtagHeader.ANY, false);
                 mergedConfigStore.applySettingsDelete();
                 return true;
             }
@@ -396,6 +398,7 @@ public class ConfigResourceController implements Controller {
         ResourceDescriptor descriptor = spec.descriptor();
         String name = path;
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
+        String author = context.getUserDisplayName();
 
         context.getRequest().body().compose(body -> {
             JsonNode requestNode = parseJsonBody(body);
@@ -430,9 +433,10 @@ public class ConfigResourceController implements Controller {
                     }
                     blobBody = serializeForBlob(entity);
                 }
-                // Lock-ordering invariant: admin-write lock first, then per-resource lock.
-                try (LockService.Lock ignored1 = adminWriteLockService.acquire();
-                     LockService.Lock ignored2 = resourceService.lockResource(descriptor)) {
+                // The admin-write lock alone serializes all writes to admin-only types
+                // cluster-wide (these types are never written by non-admin paths), so the
+                // per-resource lock is redundant here. See 02-architecture.md §4.4.
+                try (LockService.Lock ignored = adminWriteLockService.acquire()) {
                     ResourceItemMetadata existing = resourceService.getResourceMetadata(descriptor);
                     // Honor client-supplied conditional headers (If-Match / If-None-Match: *) before
                     // the implicit create-only 409: this yields RFC-compliant 412 PRECONDITION_FAILED
@@ -443,7 +447,7 @@ public class ConfigResourceController implements Controller {
                                 "Resource already exists: " + descriptor.getUrl());
                     }
                     ResourceItemMetadata meta = resourceService.putResource(
-                            descriptor, blobBody, EtagHeader.ANY, null, false);
+                            descriptor, blobBody, EtagHeader.ANY, author, false);
                     if (keySecret != null) {
                         apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
                     }
@@ -474,12 +478,14 @@ public class ConfigResourceController implements Controller {
         ResourceDescriptor descriptor = spec.descriptor();
         String name = path;
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
+        String author = context.getUserDisplayName();
 
         context.getRequest().body().compose(body -> {
             JsonNode requestNode = parseJsonBody(body);
             return taskExecutor.submit(() -> {
-                try (LockService.Lock ignored1 = adminWriteLockService.acquire();
-                     LockService.Lock ignored2 = resourceService.lockResource(descriptor)) {
+                // Per-resource lock dropped — admin-write lock alone serializes all writes
+                // to admin-only types cluster-wide. See 02-architecture.md §4.4.
+                try (LockService.Lock ignored = adminWriteLockService.acquire()) {
                     String existingBody = resourceService.getResource(descriptor, EtagHeader.ANY, false);
                     if (existingBody == null) {
                         throw new HttpException(HttpStatus.NOT_FOUND,
@@ -528,7 +534,7 @@ public class ConfigResourceController implements Controller {
                         blobBody = serializeForBlob(entity);
                     }
                     ResourceItemMetadata meta = resourceService.putResource(
-                            descriptor, blobBody, etag, null, false);
+                            descriptor, blobBody, etag, author, false);
                     if (keySecret != null) {
                         apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
                     }
@@ -563,9 +569,10 @@ public class ConfigResourceController implements Controller {
         taskExecutor.submit(() -> {
             // Pre-read + delete must run under the same lock so the secret extracted for
             // apiKeyStore.removeKey matches the secret in the blob being deleted (no race
-            // with a concurrent PUT swapping the key).
-            try (LockService.Lock ignored1 = adminWriteLockService.acquire();
-                 LockService.Lock ignored2 = resourceService.lockResource(descriptor)) {
+            // with a concurrent PUT swapping the key). The admin-write lock alone provides
+            // this — admin-only types are never written by non-admin paths, and all admin
+            // writes serialize cluster-wide on this lock. See 02-architecture.md §4.4.
+            try (LockService.Lock ignored = adminWriteLockService.acquire()) {
                 String deletedSecret = null;
                 if (spec.isKey()) {
                     String existing = resourceService.getResource(descriptor, EtagHeader.ANY, false);
