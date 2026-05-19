@@ -53,9 +53,6 @@ public class DialCli {
             description = "Output format: ${COMPLETION-CANDIDATES} (default: table).")
     OutputFormat output;
 
-    @Option(names = {"-v", "--verbose"}, scope = ScopeType.INHERIT, description = "Verbose output.")
-    boolean verbose;
-
     @Option(names = "--dry-run", scope = ScopeType.INHERIT,
             description = "Preview changes without applying.")
     boolean dryRun;
