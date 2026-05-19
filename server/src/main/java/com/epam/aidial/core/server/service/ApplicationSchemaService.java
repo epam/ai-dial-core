@@ -373,82 +373,31 @@ public class ApplicationSchemaService {
     }
 
     public List<ResourceDescriptor> getServerFiles(Application application) {
-        return getFiles(application, ListCollector.ResourceCollectorType.ONLY_SERVER_RESOURCES, false);
+        return getApplicationResources(application, Set.of(ResourceTypes.FILE),
+                ListCollector.ResourceCollectorType.ONLY_SERVER_RESOURCES, false);
     }
 
     public List<ResourceDescriptor> getFiles(Application application) {
-        return getFiles(application, ListCollector.ResourceCollectorType.ALL_RESOURCES, false);
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<ResourceDescriptor> getFiles(Application application, ListCollector.ResourceCollectorType collectorName, boolean forceReload) {
-        try {
-            ListCollector<String> propsCollector = (ListCollector<String>) getCollector(application, collectorName.getValue(), forceReload);
-            if (propsCollector == null) {
-                return Collections.emptyList();
-            }
-            List<ResourceDescriptor> result = new ArrayList<>();
-            for (String item : propsCollector.collect()) {
-                try {
-                    ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(item, encryptionService);
-                    if (descriptor.getType() != ResourceTypes.FILE) {
-                        continue;
-                    }
-                    if (!descriptor.isFolder() && !resourceService.hasResource(descriptor)) {
-                        throw new ApplicationTypeResourceException("Resource listed as dependent to the application not found or inaccessible", item);
-                    }
-                    result.add(descriptor);
-                } catch (IllegalArgumentException e) {
-                    // ignore resource to be defined in DIAL config
-                }
-            }
-            return result;
-        } catch (ApplicationTypeSchemaValidationException | ApplicationTypeResourceException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new ApplicationTypeSchemaProcessingException("Failed to obtain list of files attached to the custom app", e);
-        }
+        return getApplicationResources(application, Set.of(ResourceTypes.FILE),
+                ListCollector.ResourceCollectorType.ALL_RESOURCES, false);
     }
 
     public List<ResourceDescriptor> getPrompts(Application application) {
-        return getPrompts(application, ListCollector.ResourceCollectorType.ALL_RESOURCES, false);
+        return getApplicationResources(application, Set.of(ResourceTypes.PROMPT),
+                ListCollector.ResourceCollectorType.ALL_RESOURCES, false);
     }
 
-    @SuppressWarnings("unchecked")
-    private List<ResourceDescriptor> getPrompts(Application application, ListCollector.ResourceCollectorType collectorName, boolean forceReload) {
-        try {
-            ListCollector<String> propsCollector = (ListCollector<String>) getCollector(application, collectorName.getValue(), forceReload);
-            if (propsCollector == null) {
-                return Collections.emptyList();
-            }
-            List<ResourceDescriptor> result = new ArrayList<>();
-            for (String item : propsCollector.collect()) {
-                try {
-                    ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(item, encryptionService);
-                    if (descriptor.getType() != ResourceTypes.PROMPT) {
-                        continue;
-                    }
-                    if (descriptor.isFolder() || !resourceService.hasResource(descriptor)) {
-                        throw new ApplicationTypeResourceException("Prompt listed as dependent to the application is not found or inaccessible", item);
-                    }
-                    result.add(descriptor);
-                } catch (IllegalArgumentException e) {
-                    // ignore resource to be defined in DIAL config
-                }
-            }
-            return result;
-        } catch (ApplicationTypeSchemaValidationException | ApplicationTypeResourceException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new ApplicationTypeSchemaProcessingException("Failed to obtain list of prompts attached to the custom app", e);
-        }
-    }
-
-    @SuppressWarnings("unchecked")
     public List<ResourceDescriptor> getDeployments(Application application) {
+        return getApplicationResources(application, Set.of(ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET),
+                ListCollector.ResourceCollectorType.ALL_RESOURCES, false);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<ResourceDescriptor> getApplicationResources(Application application, Set<ResourceTypes> resourceTypes,
+                                                             ListCollector.ResourceCollectorType collectorName, boolean forceReload) {
         try {
             ListCollector<String> propsCollector = (ListCollector<String>) getCollector(application,
-                    ListCollector.ResourceCollectorType.ALL_RESOURCES.getValue(), false);
+                    collectorName.getValue(), forceReload);
             if (propsCollector == null) {
                 return Collections.emptyList();
             }
@@ -457,9 +406,9 @@ public class ApplicationSchemaService {
                 try {
                     ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(item, encryptionService);
                     ResourceType type = descriptor.getType();
-                    if (type == ResourceTypes.TOOL_SET || type == ResourceTypes.APPLICATION) {
-                        if (descriptor.isFolder() || !resourceService.hasResource(descriptor)) {
-                            throw new ApplicationTypeResourceException("Deployment listed as dependent to the application is not found or inaccessible", item);
+                    if (resourceTypes.contains(type)) {
+                        if (!descriptor.isFolder() && !resourceService.hasResource(descriptor)) {
+                            throw new ApplicationTypeResourceException("Resource listed as dependent to the application is not found", item);
                         }
                         result.add(descriptor);
                     }
@@ -471,7 +420,7 @@ public class ApplicationSchemaService {
         } catch (ApplicationTypeSchemaValidationException | ApplicationTypeResourceException e) {
             throw e;
         } catch (Exception e) {
-            throw new ApplicationTypeSchemaProcessingException("Failed to obtain list of toolsets attached to the custom app", e);
+            throw new ApplicationTypeSchemaProcessingException("Failed to obtain list of resources attached to the custom app", e);
         }
     }
 

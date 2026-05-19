@@ -687,11 +687,11 @@ public class ApplicationSchemaServiceTest {
         List<ResourceDescriptor> result = service.getPrompts(application);
 
         Assertions.assertEquals(1, result.size());
-        Assertions.assertEquals("my-prompt", result.get(0).getName());
+        Assertions.assertEquals("my-prompt", result.getFirst().getName());
     }
 
     @Test
-    public void getPrompts_throws_whenPromptUrlIsFolder() {
+    public void getPrompts_whenPromptUrlIsFolder() {
         customProperties.put("toolset", Map.of("name", "my-prompt", "dial_id", "prompts/bucket/my-folder/"));
         when(configStore.get()).thenReturn(config);
         when(config.getCustomApplicationSchema(any())).thenReturn(schema);
@@ -699,7 +699,10 @@ public class ApplicationSchemaServiceTest {
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
         when(encryptionService.decrypt(anyString())).thenReturn("/Users/123/");
 
-        Assertions.assertThrows(ApplicationTypeResourceException.class, () -> service.getPrompts(application));
+        List<ResourceDescriptor> result = service.getPrompts(application);
+
+        Assertions.assertEquals(1, result.size());
+        Assertions.assertEquals("my-folder", result.getFirst().getName());
     }
 
     @Test
