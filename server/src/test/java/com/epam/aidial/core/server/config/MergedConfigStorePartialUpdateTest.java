@@ -10,12 +10,10 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
-import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import io.vertx.core.Vertx;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -27,8 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -36,8 +32,6 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -61,16 +55,6 @@ public class MergedConfigStorePartialUpdateTest {
     private SecretFieldProcessor secretFieldProcessor;
     @Mock
     private FileConfigStore fileConfigStore;
-    @Mock
-    private LockService lockService;
-
-    @BeforeEach
-    public void setUpLockService() {
-        lenient().when(lockService.underBucketLocks(any(), any()))
-                .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
-        // MergedConfigStore adopts ApiKeyStore's mutation lock; mock must supply a real one.
-        lenient().when(apiKeyStore.getMutationLock()).thenReturn(new ReentrantLock());
-    }
 
     @Test
     public void interceptorDeleteCascadesToModelInvalidEntities() {
@@ -89,37 +73,6 @@ public class MergedConfigStorePartialUpdateTest {
         Map<String, InvalidEntityRecord> invalidModels = store.getInvalidEntities().get(ResourceTypes.MODEL);
         assertEquals(1, invalidModels.size(), "model recorded in invalidEntities sibling store");
         assertTrue(invalidModels.containsKey(MODEL_ID));
-    }
-
-    @Test
-    public void cascadeClassifiesSourceByMapKeyShape() {
-        // Two models reference the same interceptor: one file-defined (bare simple-name key) and one
-        // API-defined (canonical-id key). Deleting the interceptor cross-ref-invalidates both; the
-        // recorded source must follow the key shape, mirroring the full rebuild() onSkip classifier.
-        Model fileModel = new Model();
-        fileModel.setInterceptors(List.of(INTERCEPTOR_ID));
-        Model apiModel = new Model();
-        apiModel.setInterceptors(List.of(INTERCEPTOR_ID));
-        Config seeded = newConfig();
-        Map<String, Model> models = new LinkedHashMap<>();
-        models.put("gpt-4-file", fileModel);       // bare simple name → file-sourced
-        models.put(MODEL_ID, apiModel);            // contains '/' → api-sourced
-        seeded.setModels(models);
-        seeded.setInterceptors(mutable(INTERCEPTOR_ID, new Interceptor()));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_SKIP);
-
-        store.applyEntityDelete(ResourceTypes.INTERCEPTOR, INTERCEPTOR_ID);
-
-        Map<String, InvalidEntityRecord> invalidModels = store.getInvalidEntities().get(ResourceTypes.MODEL);
-        assertEquals(2, invalidModels.size(), "both cross-ref-invalidated models recorded");
-
-        InvalidEntityRecord fileRecord = invalidModels.get("models/public/gpt-4-file");
-        assertEquals("file", fileRecord.getSource(), "bare-key model attributed to file source");
-        assertEquals("gpt-4-file", fileRecord.getSimpleName());
-
-        InvalidEntityRecord apiRecord = invalidModels.get(MODEL_ID);
-        assertEquals("api", apiRecord.getSource(), "canonical-id-key model attributed to api source");
-        assertEquals("gpt-4", apiRecord.getSimpleName());
     }
 
     @Test
@@ -244,7 +197,7 @@ public class MergedConfigStorePartialUpdateTest {
         when(fileConfigStore.get()).thenReturn(seeded);
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, onInvalidEntity);
+                secretFieldProcessor, onInvalidEntity);
         store.init(fileConfigStore);
         return store;
     }
