@@ -10,10 +10,8 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.Vertx;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -27,8 +25,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -37,8 +33,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -53,8 +47,6 @@ public class MergedConfigStoreReplicaUpdateTest {
     private static final String SETTINGS_ID = "settings/platform/global";
     private static final String KEY_JSON =
             "{\"project\":\"proj-a\",\"role\":\"admin-role\",\"key\":\"secret-A\"}";
-    private static final String KEY_JSON_NEW_SECRET =
-            "{\"project\":\"proj-a\",\"role\":\"admin-role\",\"key\":\"secret-NEW\"}";
     private static final String SETTINGS_JSON =
             "{\"globalInterceptors\":[\"api-overlay\"],\"retriableErrorCodes\":[503]}";
 
@@ -70,21 +62,6 @@ public class MergedConfigStoreReplicaUpdateTest {
     private SecretFieldProcessor secretFieldProcessor;
     @Mock
     private FileConfigStore fileConfigStore;
-    @Mock
-    private LockService lockService;
-
-    // The real ReentrantLock the store adopts as its rebuildLock (== ApiKeyStore's mutationLock).
-    // Captured here so lock-held-invariant tests can assert it is held at the mutation call sites.
-    private ReentrantLock mutationLock;
-
-    @BeforeEach
-    public void setUpLockService() {
-        lenient().when(lockService.underBucketLocks(any(), any()))
-                .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
-        // MergedConfigStore adopts ApiKeyStore's mutation lock; mock must supply a real one.
-        mutationLock = new ReentrantLock();
-        lenient().when(apiKeyStore.getMutationLock()).thenReturn(mutationLock);
-    }
 
     @Test
     public void selfPodEventIsFiltered() {
@@ -99,40 +76,6 @@ public class MergedConfigStoreReplicaUpdateTest {
 
         verifyNoInteractions(taskExecutor);
         verifyNoInteractions(resourceService);
-    }
-
-    @Test
-    public void nonManagedFirehoseEventShortCircuitsBeforeParse() {
-        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
-        Mockito.reset(taskExecutor, resourceService);
-
-        ResourceEvent event = new ResourceEvent()
-                .setUrl("conversations/someEncryptedBucket/folder/conv-1")
-                .setAction(ResourceEvent.Action.UPDATE)
-                .setSenderPodId("pod-other");
-        invokeOnResourceEvent(store, event);
-
-        verifyNoInteractions(taskExecutor);
-        verifyNoInteractions(resourceService);
-    }
-
-    @Test
-    public void isManagedEventUrlMatchesManagedSegments() {
-        assertTrue(MergedConfigStore.isManagedEventUrl("models/public/gpt-4"));
-        assertTrue(MergedConfigStore.isManagedEventUrl("schemas/public/s-1"));
-        assertTrue(MergedConfigStore.isManagedEventUrl("interceptors/public/i-1"));
-        assertTrue(MergedConfigStore.isManagedEventUrl("roles/public/r-1"));
-        assertTrue(MergedConfigStore.isManagedEventUrl("keys/platform/proj-a"));
-        assertTrue(MergedConfigStore.isManagedEventUrl("routes/public/rt-1"));
-        assertTrue(MergedConfigStore.isManagedEventUrl("settings/platform/global"));
-
-        assertFalse(MergedConfigStore.isManagedEventUrl("conversations/x"));
-        assertFalse(MergedConfigStore.isManagedEventUrl("prompts/x"));
-        assertFalse(MergedConfigStore.isManagedEventUrl("files/x"));
-        assertFalse(MergedConfigStore.isManagedEventUrl(null));
-        assertFalse(MergedConfigStore.isManagedEventUrl(""));
-        assertFalse(MergedConfigStore.isManagedEventUrl("noslash"));
-        assertFalse(MergedConfigStore.isManagedEventUrl("/models/x"));
     }
 
     @Test
@@ -167,44 +110,6 @@ public class MergedConfigStoreReplicaUpdateTest {
 
         assertTrue(store.get().getKeys().containsKey(KEY_ID));
         verify(apiKeyStore).addOrUpdateKey(eq("secret-A"), any(ApiKeyData.class));
-    }
-
-    @Test
-    public void projectKeyRotationViaReplicaRemovesOldSecret() {
-        Key existing = new Key();
-        existing.setProject("proj-a");
-        existing.setKey("secret-OLD");
-        Config seeded = newConfig();
-        seeded.setKeys(new HashMap<>(java.util.Map.of(KEY_ID, existing)));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
-        Mockito.reset(apiKeyStore, resourceService);
-
-        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
-        when(resourceService.getResource(descriptor)).thenReturn(KEY_JSON_NEW_SECRET);
-
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE);
-
-        verify(apiKeyStore).addOrUpdateKey(eq("secret-NEW"), any(ApiKeyData.class));
-        verify(apiKeyStore).removeKey("secret-OLD");
-    }
-
-    @Test
-    public void projectKeyReplicaSameSecretDoesNotRemove() {
-        Key existing = new Key();
-        existing.setProject("proj-a");
-        existing.setKey("secret-A");
-        Config seeded = newConfig();
-        seeded.setKeys(new HashMap<>(java.util.Map.of(KEY_ID, existing)));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
-        Mockito.reset(apiKeyStore, resourceService);
-
-        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
-        when(resourceService.getResource(descriptor)).thenReturn(KEY_JSON);
-
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE);
-
-        verify(apiKeyStore).addOrUpdateKey(eq("secret-A"), any(ApiKeyData.class));
-        verify(apiKeyStore, never()).removeKey(any());
     }
 
     @Test
@@ -318,72 +223,11 @@ public class MergedConfigStoreReplicaUpdateTest {
         verify(vertx, atLeastOnce()).setTimer(anyLong(), any());
     }
 
-    @Test
-    public void replicaRotationHoldsRebuildLockAcrossSnapshotAndMutations() {
-        Key existing = new Key();
-        existing.setProject("proj-a");
-        existing.setKey("secret-OLD");
-        Config seeded = newConfig();
-        seeded.setKeys(new HashMap<>(java.util.Map.of(KEY_ID, existing)));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
-        Mockito.reset(apiKeyStore, resourceService);
-
-        boolean[] heldOnAdd = {false};
-        boolean[] heldOnRemove = {false};
-        // The store mutates a Mockito mock here, so these doAnswers run at the call site INSIDE
-        // applyReplicaEvent — not inside any real ApiKeyStore lock acquisition. On the fixed code
-        // the surrounding rebuildLock critical section means the lock is held by this thread; on the
-        // unfixed code (no outer critical section, only the inner per-method locks which this mock
-        // skips) it is not, turning the test red.
-        doAnswer(inv -> {
-            heldOnAdd[0] = mutationLock.isHeldByCurrentThread();
-            return null;
-        }).when(apiKeyStore).addOrUpdateKey(eq("secret-NEW"), any(ApiKeyData.class));
-        doAnswer(inv -> {
-            heldOnRemove[0] = mutationLock.isHeldByCurrentThread();
-            return null;
-        }).when(apiKeyStore).removeKey("secret-OLD");
-
-        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
-        when(resourceService.getResource(descriptor)).thenReturn(KEY_JSON_NEW_SECRET);
-
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE);
-
-        assertTrue(heldOnAdd[0], "rebuildLock must be held by current thread during addOrUpdateKey");
-        assertTrue(heldOnRemove[0], "rebuildLock must be held by current thread during removeKey");
-        // Lock must be fully released once the critical section completes.
-        assertFalse(mutationLock.isLocked(), "rebuildLock must be released after applyReplicaEvent");
-    }
-
-    @Test
-    public void replicaDeleteHoldsRebuildLockAcrossSnapshotAndRemoveKey() {
-        Key existing = new Key();
-        existing.setProject("proj-a");
-        existing.setKey("secret-A");
-        Config seeded = newConfig();
-        seeded.setKeys(new HashMap<>(java.util.Map.of(KEY_ID, existing)));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
-        Mockito.reset(apiKeyStore, resourceService);
-
-        boolean[] heldOnRemove = {false};
-        doAnswer(inv -> {
-            heldOnRemove[0] = mutationLock.isHeldByCurrentThread();
-            return null;
-        }).when(apiKeyStore).removeKey("secret-A");
-
-        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
-        store.applyReplicaEvent(descriptor, ResourceEvent.Action.DELETE);
-
-        assertTrue(heldOnRemove[0], "rebuildLock must be held by current thread during removeKey");
-        assertFalse(mutationLock.isLocked(), "rebuildLock must be released after applyReplicaDelete");
-        verify(resourceService, never()).getResource(any(ResourceDescriptor.class));
-    }
-
     private MergedConfigStore initStore(Config seeded, String onInvalidEntity) {
         when(fileConfigStore.get()).thenReturn(seeded);
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, onInvalidEntity, false, POD_ID);
+                secretFieldProcessor, onInvalidEntity, false, POD_ID);
         store.init(fileConfigStore);
         return store;
     }
