@@ -326,6 +326,338 @@ public final class MergedConfigStore implements ConfigStore {
         }
     }
 
+    /**
+     * Partial-update fast path for the API write controller (slice 4S.4 / OQ-32). Mutates the
+     * single entity at {@code canonicalId} of the given {@code type} in the merged {@link Config}
+     * without re-scanning blob storage. {@code decryptedEntity} is the post-decryption Java entity
+     * (or the JSON-string body for {@code APP_TYPE_SCHEMA}) — the controller has already validated
+     * cross-references in strict mode and called {@code apiKeyStore.addOrUpdateKey} for keys.
+     *
+     * <p>For {@code INTERCEPTOR} writes the previously-broken models in {@code invalidEntities} are
+     * resurrected when the new interceptor satisfies their references. For other types no transitive
+     * effect runs.
+     */
+    public Config applyEntityWrite(ResourceTypes type, String canonicalId, Object decryptedEntity) {
+        rebuildLock.lock();
+        try {
+            return applyEntityWriteLocked(type, canonicalId, decryptedEntity);
+        } finally {
+            rebuildLock.unlock();
+        }
+    }
+
+    /**
+     * Partial-update fast path for DELETE (slice 4S.4). {@code INTERCEPTOR} delete cascades
+     * cross-reference revalidation across the model map and routes newly-orphaned models through
+     * the {@code invalidEntities} sibling store. Other types have no transitive effect.
+     */
+    public Config applyEntityDelete(ResourceTypes type, String canonicalId) {
+        rebuildLock.lock();
+        try {
+            return applyEntityDeleteLocked(type, canonicalId);
+        } finally {
+            rebuildLock.unlock();
+        }
+    }
+
+    /**
+     * Bulk partial-update for {@code AdminApplyController} (slice 4S.4). Runs each entry under a
+     * single {@code rebuildLock} acquisition. Failures (validation/coercion exceptions per entry)
+     * surface in the returned {@code canonicalId → reason} map; survivors are applied.
+     */
+    public Map<String, String> applyBatch(List<EntityChange> changes) {
+        Map<String, String> failures = new LinkedHashMap<>();
+        rebuildLock.lock();
+        try {
+            for (EntityChange change : changes) {
+                try {
+                    if (change.decryptedEntity() == null) {
+                        applyEntityDeleteLocked(change.type(), change.canonicalId());
+                    } else {
+                        applyEntityWriteLocked(change.type(), change.canonicalId(), change.decryptedEntity());
+                    }
+                } catch (Exception error) {
+                    failures.put(change.canonicalId(), error.getMessage());
+                }
+            }
+        } finally {
+            rebuildLock.unlock();
+        }
+        return failures;
+    }
+
+    /**
+     * Settings singleton overlay write (slice 4S.4). Applies {@code globalInterceptors} +
+     * {@code retriableErrorCodes} fields from the supplied {@link GlobalSettings}, flips
+     * {@code settingsFromApi} to {@code true}.
+     */
+    public Config applySettingsWrite(GlobalSettings settings) {
+        rebuildLock.lock();
+        try {
+            Config next = shallowClone(this.config);
+            next.setGlobalInterceptors(settings.getGlobalInterceptors() == null
+                    ? List.of() : settings.getGlobalInterceptors());
+            next.setRetriableErrorCodes(settings.getRetriableErrorCodes() == null
+                    ? Set.of() : settings.getRetriableErrorCodes());
+            this.config = next;
+            this.settingsFromApi = true;
+            return next;
+        } finally {
+            rebuildLock.unlock();
+        }
+    }
+
+    /**
+     * Settings singleton overlay delete (slice 4S.4). Restores {@code globalInterceptors} +
+     * {@code retriableErrorCodes} from the file-derived {@link Config} and flips
+     * {@code settingsFromApi} to {@code false}.
+     */
+    public Config applySettingsDelete() {
+        rebuildLock.lock();
+        try {
+            Config base = fileConfigStore.get();
+            Config next = shallowClone(this.config);
+            next.setGlobalInterceptors(base.getGlobalInterceptors());
+            next.setRetriableErrorCodes(base.getRetriableErrorCodes());
+            this.config = next;
+            this.settingsFromApi = false;
+            return next;
+        } finally {
+            rebuildLock.unlock();
+        }
+    }
+
+    private Config applyEntityWriteLocked(ResourceTypes type, String canonicalId, Object decryptedEntity) {
+        Config next = shallowClone(this.config);
+        Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid = cloneInvalidDeep(this.invalidEntities);
+        clearInvalid(nextInvalid, type, canonicalId);
+
+        BiConsumer<ResourceTypes, InvalidEntityException> onSkip = skipRouter(nextInvalid);
+
+        putEntity(next, type, canonicalId, decryptedEntity);
+
+        switch (type) {
+            case MODEL -> ConfigPostProcessor.validateSingleModel(next, canonicalId, onSkip);
+            case INTERCEPTOR -> {
+                ConfigPostProcessor.validateSingleInterceptor(next, canonicalId);
+                // Resurrection mutates the models map; clone it so the previous Config (still
+                // visible to readers via volatile config) keeps its reference-shared instance intact.
+                next.setModels(new LinkedHashMap<>(next.getModels()));
+                resurrectInvalidModels(next, nextInvalid);
+            }
+            case ROLE -> ConfigPostProcessor.validateSingleRole(next, canonicalId);
+            case PROJECT_KEY, APP_TYPE_SCHEMA -> { /* no post-processing */ }
+            case ROUTE -> ConfigPostProcessor.sortRoutesInPlace(next);
+            default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
+        }
+
+        this.config = next;
+        this.invalidEntities = freeze(nextInvalid);
+        return next;
+    }
+
+    private Config applyEntityDeleteLocked(ResourceTypes type, String canonicalId) {
+        Config next = shallowClone(this.config);
+        Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid = cloneInvalidDeep(this.invalidEntities);
+        clearInvalid(nextInvalid, type, canonicalId);
+
+        removeEntity(next, type, canonicalId);
+
+        if (type == ResourceTypes.INTERCEPTOR) {
+            // INTERCEPTOR delete may invalidate model chains. Cascade mutates next.models — already
+            // its own LinkedHashMap copy via removeEntity above for the INTERCEPTOR map; clone the
+            // models map too so the cascade does not touch the previous Config readers may hold.
+            next.setModels(new LinkedHashMap<>(next.getModels()));
+            BiConsumer<ResourceTypes, InvalidEntityException> onSkip = skipRouter(nextInvalid);
+            ConfigPostProcessor.cascadeInterceptorDelete(next, onSkip);
+        }
+
+        this.config = next;
+        this.invalidEntities = freeze(nextInvalid);
+        return next;
+    }
+
+    private BiConsumer<ResourceTypes, InvalidEntityException> skipRouter(
+            Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid) {
+        if (!MODE_SKIP.equals(onInvalidEntity)) {
+            return null;
+        }
+        return (skippedType, error) -> {
+            String mapKey = error.getMapKey();
+            recordInvalid(nextInvalid, skippedType, mapKey, lastSegment(mapKey),
+                    error.getMessage(), error.getWarnings(), null, REASON_VALIDATION, "api");
+        };
+    }
+
+    private void resurrectInvalidModels(Config next, Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid) {
+        Map<String, InvalidEntityRecord> invalidModels = nextInvalid.get(ResourceTypes.MODEL);
+        if (invalidModels == null || invalidModels.isEmpty()) {
+            return;
+        }
+        // Iterate a snapshot to allow modification of the live map below.
+        for (Map.Entry<String, InvalidEntityRecord> entry : new ArrayList<>(invalidModels.entrySet())) {
+            String canonicalId = entry.getKey();
+            InvalidEntityRecord record = entry.getValue();
+            JsonNode payload = record.getPayload();
+            if (payload == null) {
+                continue; // parse-error case — body unavailable for resurrection
+            }
+            try {
+                Model candidate = ProxyUtil.BLOB_MAPPER.treeToValue(payload, Model.class);
+                ResourceDescriptor descriptor = descriptorFromCanonicalId(ResourceTypes.MODEL, canonicalId);
+                secretFieldProcessor.decryptFields(candidate, descriptor);
+                List<ValidationWarning> warnings = new ArrayList<>();
+                next.getModels().put(canonicalId, candidate);
+                ConfigPostProcessor.validateCrossReferences(candidate, next, warnings);
+                if (warnings.isEmpty()) {
+                    invalidModels.remove(canonicalId);
+                } else {
+                    // Still broken — roll back the speculative insert.
+                    next.getModels().remove(canonicalId);
+                }
+            } catch (Exception resurrectError) {
+                log.debug("Model '{}' could not be resurrected on interceptor write: {}",
+                        canonicalId, resurrectError.getMessage());
+                // Leave in invalidEntities for the next full rebuild to retry.
+            }
+        }
+        if (invalidModels.isEmpty()) {
+            nextInvalid.remove(ResourceTypes.MODEL);
+        }
+    }
+
+    private static Config shallowClone(Config base) {
+        Config next = new Config();
+        next.setModels(base.getModels());
+        next.setInterceptors(base.getInterceptors());
+        next.setRoles(base.getRoles());
+        next.setKeys(base.getKeys());
+        next.setRoutes(base.getRoutes());
+        next.setApplicationTypeSchemas(base.getApplicationTypeSchemas());
+        next.setApplications(base.getApplications());
+        next.setToolsets(base.getToolsets());
+        next.setRetriableErrorCodes(base.getRetriableErrorCodes());
+        next.setGlobalInterceptors(base.getGlobalInterceptors());
+        return next;
+    }
+
+    private static Map<ResourceTypes, Map<String, InvalidEntityRecord>> cloneInvalidDeep(
+            Map<ResourceTypes, Map<String, InvalidEntityRecord>> source) {
+        Map<ResourceTypes, Map<String, InvalidEntityRecord>> clone = new EnumMap<>(ResourceTypes.class);
+        for (Map.Entry<ResourceTypes, Map<String, InvalidEntityRecord>> entry : source.entrySet()) {
+            clone.put(entry.getKey(), new HashMap<>(entry.getValue()));
+        }
+        return clone;
+    }
+
+    private static void clearInvalid(Map<ResourceTypes, Map<String, InvalidEntityRecord>> invalid,
+                                     ResourceTypes type, String canonicalId) {
+        Map<String, InvalidEntityRecord> perType = invalid.get(type);
+        if (perType != null) {
+            perType.remove(canonicalId);
+        }
+    }
+
+    private static Map<ResourceTypes, Map<String, InvalidEntityRecord>> freeze(
+            Map<ResourceTypes, Map<String, InvalidEntityRecord>> source) {
+        source.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+        return source.isEmpty() ? Map.of() : Collections.unmodifiableMap(source);
+    }
+
+    private static void putEntity(Config config, ResourceTypes type, String canonicalId, Object entity) {
+        switch (type) {
+            case MODEL -> {
+                Map<String, Model> map = new LinkedHashMap<>(config.getModels());
+                map.put(canonicalId, (Model) entity);
+                config.setModels(map);
+            }
+            case INTERCEPTOR -> {
+                Map<String, Interceptor> map = new LinkedHashMap<>(config.getInterceptors());
+                map.put(canonicalId, (Interceptor) entity);
+                config.setInterceptors(map);
+            }
+            case ROLE -> {
+                Map<String, Role> map = new HashMap<>(config.getRoles());
+                map.put(canonicalId, (Role) entity);
+                config.setRoles(map);
+            }
+            case PROJECT_KEY -> {
+                Map<String, Key> map = new HashMap<>(config.getKeys());
+                map.put(canonicalId, (Key) entity);
+                config.setKeys(map);
+            }
+            case ROUTE -> {
+                LinkedHashMap<String, Route> map = new LinkedHashMap<>(config.getRoutes());
+                map.put(canonicalId, (Route) entity);
+                config.setRoutes(map);
+            }
+            case APP_TYPE_SCHEMA -> {
+                Map<String, String> map = new LinkedHashMap<>(config.getApplicationTypeSchemas());
+                map.put(canonicalId, schemaBody(entity));
+                config.setApplicationTypeSchemas(map);
+            }
+            default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
+        }
+    }
+
+    private static void removeEntity(Config config, ResourceTypes type, String canonicalId) {
+        switch (type) {
+            case MODEL -> {
+                Map<String, Model> map = new LinkedHashMap<>(config.getModels());
+                map.remove(canonicalId);
+                config.setModels(map);
+            }
+            case INTERCEPTOR -> {
+                Map<String, Interceptor> map = new LinkedHashMap<>(config.getInterceptors());
+                map.remove(canonicalId);
+                config.setInterceptors(map);
+            }
+            case ROLE -> {
+                Map<String, Role> map = new HashMap<>(config.getRoles());
+                map.remove(canonicalId);
+                config.setRoles(map);
+            }
+            case PROJECT_KEY -> {
+                Map<String, Key> map = new HashMap<>(config.getKeys());
+                map.remove(canonicalId);
+                config.setKeys(map);
+            }
+            case ROUTE -> {
+                LinkedHashMap<String, Route> map = new LinkedHashMap<>(config.getRoutes());
+                map.remove(canonicalId);
+                config.setRoutes(map);
+            }
+            case APP_TYPE_SCHEMA -> {
+                Map<String, String> map = new LinkedHashMap<>(config.getApplicationTypeSchemas());
+                map.remove(canonicalId);
+                config.setApplicationTypeSchemas(map);
+            }
+            default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
+        }
+    }
+
+    private static String schemaBody(Object entity) {
+        if (entity instanceof String s) {
+            return s;
+        }
+        if (entity instanceof JsonNode n) {
+            return n.toString();
+        }
+        return entity == null ? null : entity.toString();
+    }
+
+    private static ResourceDescriptor descriptorFromCanonicalId(ResourceTypes type, String canonicalId) {
+        // Canonical IDs are the resource URL form; ResourceDescriptorFactory.fromAnyUrl handles the
+        // platform/public bucket-location convention. The {@code type} parameter is retained for the
+        // callsite's type-safety contract (assert the resolved descriptor type matches).
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(canonicalId, null);
+        if (descriptor.getType() != type) {
+            throw new IllegalArgumentException("Canonical ID type mismatch: expected "
+                    + type + " got " + descriptor.getType() + " from " + canonicalId);
+        }
+        return descriptor;
+    }
+
     private Config rebuild() {
         Config base = fileConfigStore.get();
         // Shallow-clone of the file-derived Config: maps that the post-processor or this rebuild
@@ -542,8 +874,13 @@ public final class MergedConfigStore implements ConfigStore {
         return slash < 0 ? key : key.substring(slash + 1);
     }
 
-    static String canonicalId(ResourceTypes type, String bucket, String name) {
+    public static String canonicalId(ResourceTypes type, String bucket, String name) {
         return type.urlSegment() + ResourceDescriptor.PATH_SEPARATOR + bucket + ResourceDescriptor.PATH_SEPARATOR + name;
+    }
+
+    public static String canonicalId(ResourceDescriptor descriptor) {
+        return canonicalId((ResourceTypes) descriptor.getType(),
+                descriptor.getBucketName(), descriptor.getName());
     }
 
     private static AddedEntity addBlobEntity(ResourceTypes type, String canonicalId, JsonNode node,

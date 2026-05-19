@@ -11,6 +11,7 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
+import com.epam.aidial.core.server.config.EntityChange;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.config.ValidationWarning;
@@ -36,6 +37,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
 import java.nio.charset.StandardCharsets;
@@ -45,6 +47,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 public class AdminApplyController {
 
     private static final String SETTINGS_SINGLETON_NAME = "global";
@@ -208,10 +211,14 @@ public class AdminApplyController {
         }
 
         boolean anyApplied = false;
+        // Slice 4S.4: collect partial-update changes per applied entity; flush as one applyBatch
+        // after the apply loop so the merged Config swap happens once, after all blobs are written.
+        List<EntityChange> pendingChanges = new ArrayList<>();
+        GlobalSettings pendingSettings = null;
         for (ManifestEntry entry : entries) {
             EntityResult result;
             try {
-                result = applySingle(entry, scratch);
+                result = applySingle(entry, scratch, pendingChanges);
             } catch (Exception ex) {
                 result = new EntityResult(entityId(entry), "FAILED", ex.getMessage());
             }
@@ -219,10 +226,23 @@ public class AdminApplyController {
             if ("applied".equals(result.status()) || "applied_invalid".equals(result.status())) {
                 anyApplied = true;
                 mutateScratch(scratch, entry);
+                if ("Settings".equals(entry.kind())) {
+                    pendingSettings = ConfigResourceController.treeToEntity(entry.spec(), GlobalSettings.class);
+                }
             }
         }
         if (anyApplied) {
-            mergedConfigStore.rebuildNow();
+            if (!pendingChanges.isEmpty()) {
+                Map<String, String> failures = mergedConfigStore.applyBatch(pendingChanges);
+                // Blobs are already written; if the in-memory swap of any entity failed (e.g. an
+                // unforeseen type coercion error not caught by precheck) the merged Config diverges
+                // from blob until the next full rebuild. Surface via log so operators see it.
+                failures.forEach((id, reason) ->
+                        log.warn("Partial-update swap failed for {} after blob put: {}", id, reason));
+            }
+            if (pendingSettings != null) {
+                mergedConfigStore.applySettingsWrite(pendingSettings);
+            }
         }
         return buildResponse(HttpStatus.OK, results);
     }
@@ -312,7 +332,7 @@ public class AdminApplyController {
         return new EntityResult(id, "valid", null);
     }
 
-    private EntityResult applySingle(ManifestEntry entry, Config scratch) {
+    private EntityResult applySingle(ManifestEntry entry, Config scratch, List<EntityChange> pending) {
         String id = entityId(entry);
         if (!KIND_URL_SEGMENT.containsKey(entry.kind())) {
             return new EntityResult(id, "FAILED", "Unknown kind: " + entry.kind());
@@ -329,18 +349,18 @@ public class AdminApplyController {
         }
         return switch (entry.kind()) {
             case "Settings" -> applySettings(entry, id);
-            case "Schema" -> applySchema(entry, id);
+            case "Schema" -> applySchema(entry, id, pending);
             case "Interceptor" -> applyManagedEntity(entry, id, ResourceTypes.INTERCEPTOR,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
-                    Interceptor.class);
+                    Interceptor.class, pending);
             case "Role" -> applyManagedEntity(entry, id, ResourceTypes.ROLE,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
-                    Role.class);
+                    Role.class, pending);
             case "Route" -> applyManagedEntity(entry, id, ResourceTypes.ROUTE,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
-                    Route.class);
-            case "Key" -> applyKey(entry, id);
-            case "Model" -> applyModel(entry, id, scratch);
+                    Route.class, pending);
+            case "Key" -> applyKey(entry, id, pending);
+            case "Model" -> applyModel(entry, id, scratch, pending);
             case "ToolSet" -> applyToolSet(entry, id);
             case "Application" -> applyApplication(entry, id);
             default -> new EntityResult(id, "FAILED", "Unknown kind: " + entry.kind());
@@ -360,7 +380,7 @@ public class AdminApplyController {
         return new EntityResult(id, "applied", null);
     }
 
-    private EntityResult applySchema(ManifestEntry entry, String id) {
+    private EntityResult applySchema(ManifestEntry entry, String id, List<EntityChange> pending) {
         if (!entry.spec().isObject()) {
             return new EntityResult(id, "FAILED", "Schema spec must be a JSON object");
         }
@@ -376,21 +396,23 @@ public class AdminApplyController {
             return new EntityResult(id, "FAILED", "Failed to serialize schema for " + id);
         }
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        pending.add(new EntityChange(ResourceTypes.APP_TYPE_SCHEMA, MergedConfigStore.canonicalId(descriptor), entry.spec()));
         return new EntityResult(id, "applied", null);
     }
 
     private <T> EntityResult applyManagedEntity(ManifestEntry entry, String id,
                                                 ResourceTypes type, String bucket, String location,
-                                                Class<T> entityClass) {
+                                                Class<T> entityClass, List<EntityChange> pending) {
         T entity = ConfigResourceController.treeToEntity(entry.spec(), entityClass);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 type, bucket, location, entry.name());
         String blobBody = ConfigResourceController.serializeForBlob(entity);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        pending.add(new EntityChange(type, MergedConfigStore.canonicalId(descriptor), entity));
         return new EntityResult(id, "applied", null);
     }
 
-    private EntityResult applyKey(ManifestEntry entry, String id) {
+    private EntityResult applyKey(ManifestEntry entry, String id, List<EntityChange> pending) {
         Key key = ConfigResourceController.treeToEntity(entry.spec(), Key.class);
         if (StringUtils.isBlank(key.getKey())) {
             return new EntityResult(id, "FAILED", "Key.key must be provided explicitly");
@@ -412,10 +434,14 @@ public class AdminApplyController {
         ApiKeyData data = new ApiKeyData();
         data.setOriginalKey(key);
         apiKeyStore.addOrUpdateKey(secret, data);
+        // Slice 4S.4: decrypt-in-place after blob put so the partial-update path receives a
+        // fully-plaintext Key. decryptValue is idempotent on plaintext fields.
+        secretFieldProcessor.decryptFields(key, descriptor);
+        pending.add(new EntityChange(ResourceTypes.PROJECT_KEY, MergedConfigStore.canonicalId(descriptor), key));
         return new EntityResult(id, "applied", null);
     }
 
-    private EntityResult applyModel(ManifestEntry entry, String id, Config scratch) {
+    private EntityResult applyModel(ManifestEntry entry, String id, Config scratch, List<EntityChange> pending) {
         Model model = ConfigResourceController.treeToEntity(entry.spec(), Model.class);
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
@@ -429,6 +455,9 @@ public class AdminApplyController {
         secretFieldProcessor.encryptFields(model, descriptor);
         String blobBody = ConfigResourceController.serializeForBlob(model);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        // Slice 4S.4: decrypt-in-place so partial-update receives plaintext upstream secrets.
+        secretFieldProcessor.decryptFields(model, descriptor);
+        pending.add(new EntityChange(ResourceTypes.MODEL, MergedConfigStore.canonicalId(descriptor), model));
         return new EntityResult(id, invalid ? "applied_invalid" : "applied", null);
     }
 

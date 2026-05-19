@@ -355,7 +355,7 @@ public class ConfigResourceController implements Controller {
             return taskExecutor.submit(() -> {
                 try (LockService.Lock ignored = adminWriteLockService.acquire()) {
                     ResourceItemMetadata meta = resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-                    mergedConfigStore.rebuildNow();
+                    mergedConfigStore.applySettingsWrite(settings);
                     return meta;
                 }
             });
@@ -380,7 +380,7 @@ public class ConfigResourceController implements Controller {
             // collapse to 204 since the post-state (no API blob) is identical.
             try (LockService.Lock ignored = adminWriteLockService.acquire()) {
                 resourceService.deleteResource(descriptor, EtagHeader.ANY);
-                mergedConfigStore.rebuildNow();
+                mergedConfigStore.applySettingsDelete();
                 return true;
             }
         }).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
@@ -447,7 +447,15 @@ public class ConfigResourceController implements Controller {
                     if (keySecret != null) {
                         apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
                     }
-                    mergedConfigStore.rebuildNow();
+                    // Slice 4S.4: decrypt-in-place to give the partial-update path a fully-plaintext
+                    // entity. decryptValue is idempotent on already-plaintext fields, so this works
+                    // for POST (all-plaintext source) and PUT preserve-on-omit (mixed source) alike.
+                    if (entity != null && spec.hasEncryptedFields()) {
+                        secretFieldProcessor.decryptFields(entity, descriptor);
+                    }
+                    mergedConfigStore.applyEntityWrite(typeOf(descriptor),
+                            MergedConfigStore.canonicalId(descriptor),
+                            entity != null ? entity : requestNode);
                     return meta;
                 }
             });
@@ -480,6 +488,7 @@ public class ConfigResourceController implements Controller {
                     String blobBody;
                     Key keyEntity = null;
                     String keySecret = null;
+                    Object entity = null;
                     if (spec.entityClass() == null) {
                         blobBody = requestNode.toString();
                     } else {
@@ -503,7 +512,7 @@ public class ConfigResourceController implements Controller {
                         } else {
                             source = requestNode;
                         }
-                        Object entity = treeToEntity(source, spec.entityClass());
+                        entity = treeToEntity(source, spec.entityClass());
                         if (entity instanceof Model m) {
                             checkCrossReferences(m);
                         }
@@ -523,7 +532,16 @@ public class ConfigResourceController implements Controller {
                     if (keySecret != null) {
                         apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
                     }
-                    mergedConfigStore.rebuildNow();
+                    // Slice 4S.4: decrypt-in-place after blob put. PUT preserve-on-omit produces a
+                    // mixed plaintext/ciphertext entity; decryptValue is idempotent on plaintext and
+                    // restores ciphertext fields to plaintext, yielding a fully-decrypted entity for
+                    // applyEntityWrite to put into the merged Config (read-after-write parity).
+                    if (entity != null && spec.hasEncryptedFields()) {
+                        secretFieldProcessor.decryptFields(entity, descriptor);
+                    }
+                    mergedConfigStore.applyEntityWrite(typeOf(descriptor),
+                            MergedConfigStore.canonicalId(descriptor),
+                            entity != null ? entity : requestNode);
                     return meta;
                 }
             });
@@ -588,12 +606,18 @@ public class ConfigResourceController implements Controller {
                 if (deletedSecret != null) {
                     apiKeyStore.removeKey(deletedSecret);
                 }
-                mergedConfigStore.rebuildNow();
+                mergedConfigStore.applyEntityDelete(typeOf(descriptor), MergedConfigStore.canonicalId(descriptor));
                 return true;
             }
         }).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
 
         return Future.succeededFuture();
+    }
+
+    private static ResourceTypes typeOf(ResourceDescriptor descriptor) {
+        // prepareWrite() always builds descriptors with a ResourceTypes constant — see line 622+;
+        // ResourceDescriptor exposes the wider ResourceType interface so the cast is required here.
+        return (ResourceTypes) descriptor.getType();
     }
 
     private static ApiKeyData apiKeyData(Key key) {

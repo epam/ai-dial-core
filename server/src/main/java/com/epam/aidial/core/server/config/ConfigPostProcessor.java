@@ -103,6 +103,88 @@ public final class ConfigPostProcessor {
         }
     }
 
+    /**
+     * Targeted per-type helper for {@link MergedConfigStore} partial-update path (slice 4S.4).
+     * Sets {@code model.name} from the map key, runs cross-reference check against the
+     * supplied {@link Config}'s current interceptor map. On warning, removes the model from
+     * {@code config.getModels()} and routes the violation through {@code onSkip}. Skip-mode
+     * only — {@code onSkip == null} means cross-refs are not validated (matches file-loaded
+     * abort path in {@link #processModels}).
+     */
+    static void validateSingleModel(Config config, String canonicalId,
+                                    @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Model model = config.getModels().get(canonicalId);
+        if (model == null) {
+            return;
+        }
+        model.setName(canonicalId);
+        if (onSkip == null) {
+            return;
+        }
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validateCrossReferences(model, config, warnings);
+        if (!warnings.isEmpty()) {
+            config.getModels().remove(canonicalId);
+            onSkip.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, canonicalId, warnings));
+        }
+    }
+
+    /**
+     * Targeted per-type helper. Sets {@code interceptor.name} from the map key. No cross-ref
+     * validation — interceptors have no outbound refs.
+     */
+    static void validateSingleInterceptor(Config config, String canonicalId) {
+        Interceptor interceptor = config.getInterceptors().get(canonicalId);
+        if (interceptor != null) {
+            interceptor.setName(canonicalId);
+        }
+    }
+
+    /**
+     * Targeted per-type helper. Sets {@code role.name} from the map key. {@code Role.limits}
+     * keys are loose-refs (warning-only today) so no cross-ref validation runs.
+     */
+    static void validateSingleRole(Config config, String canonicalId) {
+        Role role = config.getRoles().get(canonicalId);
+        if (role != null) {
+            role.setName(canonicalId);
+        }
+    }
+
+    /**
+     * Targeted per-type helper for {@link MergedConfigStore} partial-update path (slice 4S.4).
+     * After an {@code INTERCEPTOR} delete that may have orphaned model chains, walks the
+     * model map and routes any model with a now-missing interceptor reference through
+     * {@code onSkip} after removing it from the map. Skip-mode only — {@code onSkip == null}
+     * is a no-op (matches {@link #processModels}'s abort-mode behavior).
+     */
+    static void cascadeInterceptorDelete(Config config,
+                                         @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        if (onSkip == null) {
+            return;
+        }
+        Iterator<Map.Entry<String, Model>> iterator = config.getModels().entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Model> entry = iterator.next();
+            Model model = entry.getValue();
+            List<ValidationWarning> warnings = new ArrayList<>();
+            validateCrossReferences(model, config, warnings);
+            if (!warnings.isEmpty()) {
+                String canonicalId = entry.getKey();
+                iterator.remove();
+                onSkip.accept(ResourceTypes.MODEL,
+                        new InvalidEntityException(ResourceTypes.MODEL, canonicalId, warnings));
+            }
+        }
+    }
+
+    /**
+     * Package-visible wrapper around route sort for {@link MergedConfigStore} partial-update path.
+     */
+    static void sortRoutesInPlace(Config config) {
+        sortRoutes(config);
+    }
+
     private static void sortRoutes(Config config) {
         List<Route> sortedRoutes = new ArrayList<>();
         for (Map.Entry<String, Route> entry : config.getRoutes().entrySet()) {
