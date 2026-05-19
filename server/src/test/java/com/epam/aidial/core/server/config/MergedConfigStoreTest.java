@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.service.ResourceService;
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -83,9 +84,9 @@ public class MergedConfigStoreTest {
     }
 
     @Test
-    public void testListenerOtherPodManagedTypeTriggersRebuild() {
+    public void testListenerOtherPodManagedTypeDispatchesReplicaApply() {
         when(fileConfigStore.get()).thenReturn(new Config());
-        when(vertx.setTimer(anyLong(), any())).thenReturn(99L);
+        when(taskExecutor.submit(any())).thenReturn(Future.succeededFuture(null));
         Consumer<ResourceEvent> listener = registerAndCaptureListener("pod-self");
 
         listener.accept(new ResourceEvent()
@@ -93,7 +94,7 @@ public class MergedConfigStoreTest {
                 .setAction(ResourceEvent.Action.UPDATE)
                 .setSenderPodId("pod-other"));
 
-        verify(vertx, times(1)).setTimer(anyLong(), any());
+        verify(taskExecutor, times(1)).submit(any());
     }
 
     @Test
@@ -125,14 +126,14 @@ public class MergedConfigStoreTest {
     @Test
     public void testListenerNullSenderPodIdTreatedAsForeign() {
         when(fileConfigStore.get()).thenReturn(new Config());
-        when(vertx.setTimer(anyLong(), any())).thenReturn(7L);
+        when(taskExecutor.submit(any())).thenReturn(Future.succeededFuture(null));
         Consumer<ResourceEvent> listener = registerAndCaptureListener("pod-self");
 
         listener.accept(new ResourceEvent()
                 .setUrl("interceptors/platform/foo")
                 .setAction(ResourceEvent.Action.CREATE));
 
-        verify(vertx, times(1)).setTimer(anyLong(), any());
+        verify(taskExecutor, times(1)).submit(any());
     }
 
     @SuppressWarnings("unchecked")

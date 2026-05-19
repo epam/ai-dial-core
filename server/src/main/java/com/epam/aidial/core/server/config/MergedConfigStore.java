@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -172,12 +173,13 @@ public final class MergedConfigStore implements ConfigStore {
     }
 
     /**
-     * Cross-replica rebuild trigger (design 02 §11.1). Filters self-events via
+     * Cross-replica fast-path entry (design 02 §4 — slice 4S.5). Filters self-events via
      * {@link #thisPodId} and other-pod events for non-{@link #MANAGED_TYPES} resources;
-     * any survivor enqueues a debounced {@link #requestRebuild()}. Malformed or
-     * encrypted-bucket URLs (which {@link ResourceDescriptorFactory#fromAnyUrl}
-     * rejects without an encryption service) are silently dropped — none of them
-     * carry MANAGED_TYPES content.
+     * any survivor is dispatched off-callback-thread onto {@link #taskExecutor} which
+     * invokes {@link #applyReplicaEvent} (fetch the body, decrypt, single-entity mutate).
+     * Malformed or encrypted-bucket URLs (which {@link ResourceDescriptorFactory#fromAnyUrl}
+     * rejects without an encryption service) are silently dropped — none of them carry
+     * MANAGED_TYPES content. Dispatch failures fall back to {@link #requestRebuild()}.
      */
     private void onResourceEvent(ResourceEvent event) {
         String senderPodId = event.getSenderPodId();
@@ -195,7 +197,100 @@ public final class MergedConfigStore implements ConfigStore {
                 && descriptor.getType() != ResourceTypes.GLOBAL_SETTINGS) {
             return;
         }
-        requestRebuild();
+        ResourceEvent.Action action = event.getAction();
+        taskExecutor.submit(() -> {
+            applyReplicaEvent(descriptor, action);
+            return null;
+        }).onFailure(error -> {
+            log.warn("Replica event dispatch failed for {}; falling back to full rebuild",
+                    descriptor.getUrl(), error);
+            requestRebuild();
+        });
+    }
+
+    /**
+     * Cross-replica partial-update fast path (slice 4S.5). Mirrors the writer-pod ordering
+     * invariants: PROJECT_KEY DELETE snapshots the plaintext secret from the current
+     * {@link Config#getKeys()} before {@link #applyEntityDelete} (which builds a new Config
+     * without the entry), then calls {@link ApiKeyStore#removeKey}; PROJECT_KEY CREATE/UPDATE
+     * decrypts and calls {@link ApiKeyStore#addOrUpdateKey} BEFORE {@link #applyEntityWrite}.
+     * GLOBAL_SETTINGS routes to {@link #applySettingsWrite} / {@link #applySettingsDelete}.
+     * APP_TYPE_SCHEMA bypasses {@code decryptFields} — schemas are raw JSON strings, not POJOs
+     * with {@code @EncryptedField} annotations. A null body on CREATE/UPDATE means the writer
+     * deleted the entity before this replica could fetch it (pub/sub race) and is treated as
+     * DELETE. Any exception falls back to {@link #requestRebuild()} — the polling SLA covers
+     * eventual convergence even if the fast path bails.
+     *
+     * <p>Package-private for direct test invocation; production callsite is
+     * {@link #onResourceEvent} via {@link AsyncTaskExecutor#submit}.
+     */
+    void applyReplicaEvent(ResourceDescriptor descriptor, ResourceEvent.Action action) {
+        try {
+            ResourceTypes type = (ResourceTypes) descriptor.getType();
+            String canonicalId = canonicalId(descriptor);
+            if (action == ResourceEvent.Action.DELETE) {
+                applyReplicaDelete(type, canonicalId);
+                return;
+            }
+            String body = resourceService.getResource(descriptor);
+            if (body == null) {
+                applyReplicaDelete(type, canonicalId);
+                return;
+            }
+            JsonNode node = ProxyUtil.BLOB_MAPPER.readTree(body);
+            if (type == ResourceTypes.GLOBAL_SETTINGS) {
+                GlobalSettings settings = ProxyUtil.BLOB_MAPPER.treeToValue(node, GlobalSettings.class);
+                applySettingsWrite(settings);
+                return;
+            }
+            Object entity = deserializeReplicaEntity(type, node);
+            if (!(entity instanceof String)) {
+                secretFieldProcessor.decryptFields(entity, descriptor);
+            }
+            if (type == ResourceTypes.PROJECT_KEY) {
+                Key key = (Key) entity;
+                String secret = key.getKey();
+                if (secret != null && !secret.isBlank()) {
+                    ApiKeyData data = new ApiKeyData();
+                    data.setOriginalKey(key);
+                    apiKeyStore.addOrUpdateKey(secret, data);
+                }
+            }
+            applyEntityWrite(type, canonicalId, entity);
+        } catch (Exception error) {
+            log.warn("Failed to apply replica event for {}; falling back to full rebuild",
+                    descriptor.getUrl(), error);
+            requestRebuild();
+        }
+    }
+
+    private void applyReplicaDelete(ResourceTypes type, String canonicalId) {
+        if (type == ResourceTypes.GLOBAL_SETTINGS) {
+            applySettingsDelete();
+            return;
+        }
+        if (type == ResourceTypes.PROJECT_KEY) {
+            Config snapshot = this.config;
+            Key existing = snapshot == null ? null : snapshot.getKeys().get(canonicalId);
+            String secret = existing == null ? null : existing.getKey();
+            if (secret != null && !secret.isBlank()) {
+                apiKeyStore.removeKey(secret);
+            }
+        }
+        applyEntityDelete(type, canonicalId);
+    }
+
+    private static Object deserializeReplicaEntity(ResourceTypes type, JsonNode node)
+            throws com.fasterxml.jackson.core.JsonProcessingException {
+        return switch (type) {
+            case MODEL -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Model.class);
+            case INTERCEPTOR -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Interceptor.class);
+            case ROLE -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Role.class);
+            case PROJECT_KEY -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Key.class);
+            case ROUTE -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Route.class);
+            case APP_TYPE_SCHEMA -> node.toString();
+            default -> throw new IllegalArgumentException("Unsupported replica type: " + type);
+        };
     }
 
     @Override
