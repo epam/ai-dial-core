@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.server.service.AdminWriteLockService;
 import com.epam.aidial.core.storage.service.LockService;
 import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
@@ -20,10 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * admin-write lock. The test acquires the lock from the test thread and confirms an in-flight admin
  * write request cannot make progress until the lock is released — proving the controllers actually
  * take the same lock the test holds.
- *
- * <p>U.0 (2026-05-20): POST is removed from the lock scope — POST at the single-entity surface
- * returns 405 before any write logic runs; only PUT (upsert) and DELETE acquire the admin-write
- * lock. The PUT path now covers both create and update arms.
  */
 public class AdminWriteSerializationTest extends ResourceBaseTest {
 
@@ -49,23 +44,23 @@ public class AdminWriteSerializationTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testPerEntityPutCreateBlocksWhileGlobalLockHeld() {
+    void testPerEntityPostBlocksWhileGlobalLockHeld() {
         String interceptorBody = """
                 {"endpoint": "http://localhost:4088/api/v1/interceptor/handle"}
                 """;
         runBlockedByAdminWriteLock(() ->
-                send(HttpMethod.PUT, "/v1/interceptors/platform/lock-test-create", null,
-                        interceptorBody, "authorization", "admin", "If-None-Match", "*"));
-        verify(send(HttpMethod.GET, "/v1/interceptors/platform/lock-test-create", null, "",
+                send(HttpMethod.POST, "/v1/interceptors/platform/lock-test-post", null,
+                        interceptorBody, "authorization", "admin"));
+        verify(send(HttpMethod.GET, "/v1/interceptors/platform/lock-test-post", null, "",
                 "authorization", "admin"), 200);
     }
 
     @Test
     @SneakyThrows
     void testPerEntityPutAndDeleteBlockWhileGlobalLockHeld() {
-        verify(send(HttpMethod.PUT, "/v1/interceptors/platform/lock-test-put", null,
+        verify(send(HttpMethod.POST, "/v1/interceptors/platform/lock-test-put", null,
                 "{\"endpoint\": \"http://localhost:4088/api/v1/interceptor/handle\"}",
-                "authorization", "admin", "If-None-Match", "*"), 200);
+                "authorization", "admin"), 201);
 
         String updateBody = """
                 {"endpoint": "http://localhost:4088/api/v1/interceptor/handle/v2"}
@@ -85,12 +80,7 @@ public class AdminWriteSerializationTest extends ResourceBaseTest {
     @SneakyThrows
     private void runBlockedByAdminWriteLock(Supplier<Response> writeCall) {
         LockService lockService = dial.getProxy().getLockService();
-        // Admin writes acquire both PUBLIC and PLATFORM bucket locks via LockService.underBucketLocks;
-        // holding either one is sufficient to block the controller. PLATFORM_LOCATION matches the
-        // test's write targets (`/v1/interceptors/platform/...`, `/v1/admin/apply` for platform-bucket entities).
-        String contendingKey = BlobStorageUtil.toStoragePath(
-                lockService.getPrefix(), ResourceDescriptor.PLATFORM_LOCATION);
-        LockService.Lock held = lockService.lock(contendingKey);
+        LockService.Lock held = lockService.lock(AdminWriteLockService.LOCK_KEY);
         CompletableFuture<Response> future = CompletableFuture.supplyAsync(writeCall::get);
         try {
             assertThrows(TimeoutException.class, () -> future.get(500, TimeUnit.MILLISECONDS),

@@ -17,6 +17,7 @@ import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
+import com.epam.aidial.core.server.service.AdminWriteLockService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -26,6 +27,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -79,6 +81,7 @@ public class AdminApplyController {
     private final ApiKeyStore apiKeyStore;
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
+    private final AdminWriteLockService adminWriteLockService;
 
     public AdminApplyController(ProxyContext context,
                                 ConfigAuthorizationService authorizationService,
@@ -89,7 +92,8 @@ public class AdminApplyController {
                                 boolean softValidation,
                                 ApiKeyStore apiKeyStore,
                                 ApplicationService applicationService,
-                                ToolSetService toolSetService) {
+                                ToolSetService toolSetService,
+                                AdminWriteLockService adminWriteLockService) {
         this.context = context;
         this.authorizationService = authorizationService;
         this.mergedConfigStore = mergedConfigStore;
@@ -100,6 +104,7 @@ public class AdminApplyController {
         this.apiKeyStore = apiKeyStore;
         this.applicationService = applicationService;
         this.toolSetService = toolSetService;
+        this.adminWriteLockService = adminWriteLockService;
     }
 
     public Future<?> handle() {
@@ -158,7 +163,11 @@ public class AdminApplyController {
             entries.add(new ManifestEntry(kind, name, spec));
         }
 
-        taskExecutor.submit(() -> applyBatch(precheck, entries))
+        taskExecutor.submit(() -> {
+            try (LockService.Lock ignored = adminWriteLockService.acquire()) {
+                return applyBatch(precheck, entries);
+            }
+        })
                 .onSuccess(result -> context.respond(result.status(), result.body()))
                 .onFailure(error -> {
                     if (error instanceof HttpException ex) {

@@ -46,7 +46,7 @@ The proposal deliberately reuses existing DIAL Core infrastructure:
 | Blob storage (jclouds) | ✅ Production | Reuse as-is |
 | Redis (Redisson) | ✅ Production | Reuse + add pub/sub topic (Phase 1.5) |
 | ResourceService (two-tier cache) | ✅ Production | Add new resource types for config entities |
-| Distributed locking (LockService) | ✅ Production | Reuse as-is |
+| Distributed locking (LockService) | ✅ Production | Reuse as-is + **new `AdminWriteLockService` facade** (single global lock key `"admin-writes"` serializing every admin write — see §4.4 "Cross-pod admin-write serialization") |
 | ETag concurrency | ✅ Production | Reuse as-is |
 | ConfigStore interface | ✅ Exists | New `MergedConfigStore` implementation |
 | FileConfigStore | ✅ Production | Preserved for seed/fallback |
@@ -295,6 +295,18 @@ The `status`, `source`, and `validationWarnings` fields live on the **response w
 `etag` is returned in the HTTP `ETag` header (not in the body). `lastModified` is intentionally not exposed on the wire today (YAGNI — revisit if a use case shows up).
 
 **Audit rollback (deferred — Phase 7).** When the audit subsystem lands, `dial-cli audit history` and `dial-cli audit snapshot` will work against any past state and `dial-cli audit rollback` will re-apply a prior snapshot through the standard write path — meaning it is subject to current-version validation. If the snapshot's payload no longer satisfies validation (renamed field, removed schema reference, deprecated enum), the rollback is rejected with the same error a manual `PUT` of that payload would produce. A subsequent phase will need to add a recovery mechanism for restoring snapshots whose payload is incompatible with the current entity model. See OQ-31 in [`08-open-questions-and-references.md`](08-open-questions-and-references.md).
+
+### 4.4 Cross-pod admin-write serialization
+
+Every admin write path — per-entity `POST`/`PUT`/`DELETE` on `/v1/{type}/{bucket}/{name}` for the admin scope (both `public/` admin-managed types and `platform/`) and bulk `POST /v1/admin/apply` — acquires a single cluster-wide lock (`AdminWriteLockService`, backed by `LockService.lock("admin-writes")`) around its write phase. Concurrent admin writes on different DIAL Core pods are therefore strictly serialized at the entity-set level, not just per-resource-key.
+
+**Why a global lock rather than per-bucket / per-entity.** The per-resource `ResourceService` lock prevents same-key races but admits cross-entity interleavings between concurrent batches on different pods — e.g. pod A's `apply` writes interceptor `I`, pod B's `apply` writes model `M` referencing `I`, and the two writes can land in an order that violates within-batch invariants the apply path otherwise upholds (`02-architecture.md` §4 "rebuild serialization", `03-api-reference.md` §7 proposed-config validation). Admin writes are rare on real environments (dozens/day at most — see §6 "Why this approach is correct"), so the simpler answer is to serialize them fully. Per-bucket locks would still allow cross-bucket interleavings (`platform/` + `public/`) and add vocabulary without buying meaningful parallelism on this workload.
+
+**Lock-ordering invariant.** Callers acquire the admin-write lock **before** any per-resource `ResourceService` lock. Non-admin paths (publications, code-interpreter, user resource CRUD) never acquire the admin-write lock, so the consistent ordering precludes deadlock with the existing per-resource lock fabric.
+
+**Scope.** The lock brackets the entire write phase, including the local `MergedConfigStore.rebuildNow()` invocation in the write path. The lock-holder pod thus commits its writes AND its volatile-`Config` swap before any other admin writer can acquire — peer pods are notified through the existing pub/sub fan-out (§4.6/§Phase 1.5) under the rebuild's own debounce window. Reads never take this lock.
+
+**Forward-compatibility with MT.** Under future multi-tenancy, each top-level scope (`platform/`, `tenants/{id}`, `teams/{id}`, …) gets its own write-serialization lock — the lock key today (`"admin-writes"`) is the per-scope key for the single `platform/` scope in scope today. The mechanism extends naturally; no design change is required when MT scopes are introduced.
 
 ## 5. Bucket Strategy: `public/` for User-Facing, `platform/` for Infrastructure
 
@@ -690,7 +702,7 @@ The field is added to `ResourceEvent` (small extension to the existing Lombok `@
 
 **Ordering semantics.** Redis pub/sub does **not** guarantee ordering across publishers. With multiple writer pods, two events for the same entity can arrive in either order on a given subscriber. Correctness is preserved because:
 - Each event triggers a rebuild that re-reads blob (the source of truth) — pub/sub is a *signal* that something changed, not the change itself.
-- Blob writes are serialized per-entity by `LockService`'s distributed lock (see §2 — "Distributed locking via `LockService`"), so the last write wins consistently across replicas.
+- Blob writes are serialized per-entity by `LockService`'s distributed lock (see §2 — "Distributed locking via `LockService`"); admin writes are additionally serialized cluster-wide by the global admin-write lock (§4.4), so even cross-entity admin batches commit consistently across replicas.
 - Within one replica, the rebuild executor serializes execution per §4, so the rebuild always observes blob in a consistent post-write state.
 
 Worst case from out-of-order events: "a redundant rebuild" — the same `Config` constructed twice — never an inconsistent observation.
