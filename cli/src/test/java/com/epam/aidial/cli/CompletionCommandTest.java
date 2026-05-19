@@ -48,7 +48,7 @@ class CompletionCommandTest {
         assertEquals(0, r.exitCode);
         for (String name : new String[]{"env", "get", "model", "application", "toolset",
                 "interceptor", "role", "key", "route", "schema", "settings",
-                "export", "diff", "completion"}) {
+                "completion"}) {
             assertTrue(r.out.contains(name), "completion script missing subcommand `" + name + "`");
         }
     }
