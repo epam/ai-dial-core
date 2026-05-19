@@ -28,6 +28,7 @@ public class CollectRequestApplicationFilesFn extends BaseRequestFunction<Reques
                 throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, "Typed application's properties not set");
             }
             shareApplicationFiles(application);
+            shareApplicationPrompts(application);
             return false;
         } catch (HttpException ex) {
             throw ex;

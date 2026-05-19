@@ -43,6 +43,7 @@ public class AutoShareDeploymentFn extends BaseRequestFunction<RequestObject> {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, initialDeployment);
         if (deployment instanceof Application app && app.hasApplicationTypeSchemaId()) {
             shareApplicationFiles(app);
+            shareApplicationPrompts(app);
             shareApplicationDeployments(app);
         }
         return false;
