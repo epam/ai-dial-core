@@ -45,6 +45,7 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.AdminWriteLockService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -191,6 +192,7 @@ public class AiDial {
             redis = CacheClientFactory.create(toJsonNode(settings("redis")));
 
             LockService lockService = new LockService(redis, storage.getPrefix());
+            AdminWriteLockService adminWriteLockService = new AdminWriteLockService(lockService);
             TimerService timerService = new VertxTimerService(vertx, taskExecutor);
             ResourceService.Settings resourceServiceSettings = getResourceSettings();
             String podId = UUID.randomUUID().toString();
@@ -275,7 +277,7 @@ public class AiDial {
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
-                    shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
+                    shareService, publicationService, accessService, lockService, adminWriteLockService, resourceOperationService, ruleService,
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
                     toolSetService, applicationSchemaService, authorizationHeaderProvider, resourceAuthSettingsService, resourceCredentialsService,

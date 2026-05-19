@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.server.security.Operation;
+import com.epam.aidial.core.server.service.AdminWriteLockService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -70,6 +71,7 @@ public class ConfigResourceController implements Controller {
     private final SecretFieldProcessor secretFieldProcessor;
     private final boolean softValidation;
     private final ApiKeyStore apiKeyStore;
+    private final AdminWriteLockService adminWriteLockService;
     private final String entityType;
     private final String bucket;
     private final String path;
@@ -82,6 +84,7 @@ public class ConfigResourceController implements Controller {
                                     SecretFieldProcessor secretFieldProcessor,
                                     boolean softValidation,
                                     ApiKeyStore apiKeyStore,
+                                    AdminWriteLockService adminWriteLockService,
                                     String entityType,
                                     String bucket,
                                     String path) {
@@ -93,6 +96,7 @@ public class ConfigResourceController implements Controller {
         this.secretFieldProcessor = secretFieldProcessor;
         this.softValidation = softValidation;
         this.apiKeyStore = apiKeyStore;
+        this.adminWriteLockService = adminWriteLockService;
         this.entityType = entityType;
         this.bucket = bucket;
         this.path = path;
@@ -349,9 +353,11 @@ public class ConfigResourceController implements Controller {
             GlobalSettings settings = treeToEntity(requestNode, GlobalSettings.class);
             String blobBody = serializeForBlob(settings);
             return taskExecutor.submit(() -> {
-                ResourceItemMetadata meta = resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-                mergedConfigStore.rebuildNow();
-                return meta;
+                try (LockService.Lock ignored = adminWriteLockService.acquire()) {
+                    ResourceItemMetadata meta = resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+                    mergedConfigStore.rebuildNow();
+                    return meta;
+                }
             });
         }).onSuccess(meta -> context.putHeader(HttpHeaders.ETAG, meta.getEtag())
                 .respond(HttpStatus.OK, createNameEnvelope(SETTINGS_SINGLETON_NAME)))
@@ -372,9 +378,11 @@ public class ConfigResourceController implements Controller {
         taskExecutor.submit(() -> {
             // Idempotent — deleteResource returns false when the blob is absent; both outcomes
             // collapse to 204 since the post-state (no API blob) is identical.
-            resourceService.deleteResource(descriptor, EtagHeader.ANY);
-            mergedConfigStore.rebuildNow();
-            return true;
+            try (LockService.Lock ignored = adminWriteLockService.acquire()) {
+                resourceService.deleteResource(descriptor, EtagHeader.ANY);
+                mergedConfigStore.rebuildNow();
+                return true;
+            }
         }).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
 
         return Future.succeededFuture();
@@ -422,7 +430,9 @@ public class ConfigResourceController implements Controller {
                     }
                     blobBody = serializeForBlob(entity);
                 }
-                try (LockService.Lock ignored = resourceService.lockResource(descriptor)) {
+                // Lock-ordering invariant: admin-write lock first, then per-resource lock.
+                try (LockService.Lock ignored1 = adminWriteLockService.acquire();
+                     LockService.Lock ignored2 = resourceService.lockResource(descriptor)) {
                     ResourceItemMetadata existing = resourceService.getResourceMetadata(descriptor);
                     // Honor client-supplied conditional headers (If-Match / If-None-Match: *) before
                     // the implicit create-only 409: this yields RFC-compliant 412 PRECONDITION_FAILED
@@ -460,7 +470,8 @@ public class ConfigResourceController implements Controller {
         context.getRequest().body().compose(body -> {
             JsonNode requestNode = parseJsonBody(body);
             return taskExecutor.submit(() -> {
-                try (LockService.Lock ignored = resourceService.lockResource(descriptor)) {
+                try (LockService.Lock ignored1 = adminWriteLockService.acquire();
+                     LockService.Lock ignored2 = resourceService.lockResource(descriptor)) {
                     String existingBody = resourceService.getResource(descriptor, EtagHeader.ANY, false);
                     if (existingBody == null) {
                         throw new HttpException(HttpStatus.NOT_FOUND,
@@ -535,7 +546,8 @@ public class ConfigResourceController implements Controller {
             // Pre-read + delete must run under the same lock so the secret extracted for
             // apiKeyStore.removeKey matches the secret in the blob being deleted (no race
             // with a concurrent PUT swapping the key).
-            try (LockService.Lock ignored = resourceService.lockResource(descriptor)) {
+            try (LockService.Lock ignored1 = adminWriteLockService.acquire();
+                 LockService.Lock ignored2 = resourceService.lockResource(descriptor)) {
                 String deletedSecret = null;
                 if (spec.isKey()) {
                     String existing = resourceService.getResource(descriptor, EtagHeader.ANY, false);

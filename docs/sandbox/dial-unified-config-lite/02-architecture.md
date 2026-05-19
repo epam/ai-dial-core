@@ -35,7 +35,7 @@ The proposal deliberately reuses existing DIAL Core infrastructure:
 |---|---|
 | Blob storage (JClouds), Redis (Redisson) | New resource types for config entities |
 | `ResourceService` — two-tier cache (Redis + Blob) | `MergedConfigStore` riding on top of it |
-| `LockService` — distributed locking | Reused as-is |
+| `LockService` — distributed locking | Reused as-is + thin `AdminWriteLockService` facade (single global key `"admin-writes"`) wrapping every admin write |
 | ETag-based optimistic concurrency | Reused as-is |
 | `FileConfigStore` — periodic polled reload | Preserved as seed/fallback |
 | Existing `ResourceTopic` pub/sub | One more listener for cross-replica propagation |
@@ -93,6 +93,8 @@ The locked decision is **reuse `ResourceService`** — Redis cache + Blob storag
 - a new consensus or coordination system
 
 `ResourceService` already provides two-tier caching, distributed locking, ETag concurrency, and pub/sub events. Applications and toolsets already run on it with infinite cache TTL — config-like entities fit the same pattern.
+
+**Cross-pod admin-write serialization.** Per-resource locking prevents same-key races but admits cross-entity interleavings between concurrent admin batches on different pods. Every admin write surface — per-entity `POST`/`PUT`/`DELETE` and bulk `POST /v1/admin/apply` — therefore acquires a single cluster-wide lock (`AdminWriteLockService`, backed by `LockService.lock("admin-writes")`) **before** any per-resource lock, around the write phase including the local `MergedConfigStore` rebuild. Admin writes are rare (dozens/day at most on real envs) so the simpler, fully sequential model is preferable to finer-grained schemes that would still allow cross-bucket interleavings. Lock-ordering invariant — admin-write lock first, then per-resource lock — keeps non-admin paths deadlock-free since they never take the admin lock. Forward-compatible with MT: future scopes (`tenants/{id}`, `teams/{id}`) get their own per-scope lock under the same mechanism.
 
 ## What flows through `MergedConfigStore`
 

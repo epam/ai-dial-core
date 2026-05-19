@@ -320,7 +320,8 @@ public class ControllerSelector {
                     mergedConfigStore.isSoftValidation(),
                     proxy.getApiKeyStore(),
                     proxy.getApplicationService(),
-                    proxy.getToolSetService());
+                    proxy.getToolSetService(),
+                    proxy.getAdminWriteLockService());
             return controller::handle;
         });
         post(RouteTemplate.CONFIG, (proxy, context, pathMatcher) -> new ConfigController(context));
@@ -459,6 +460,7 @@ public class ControllerSelector {
                 mergedConfigStore.getSecretFieldProcessor(),
                 mergedConfigStore.isSoftValidation(),
                 proxy.getApiKeyStore(),
+                proxy.getAdminWriteLockService(),
                 entityType, bucket, path);
     }
 
