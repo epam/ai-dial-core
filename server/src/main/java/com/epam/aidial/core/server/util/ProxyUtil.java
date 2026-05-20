@@ -197,6 +197,19 @@ public class ProxyUtil {
         return EtagHeader.fromHeader(request.getHeader(HttpHeaders.IF_MATCH), request.getHeader(HttpHeaders.IF_NONE_MATCH), request.method().name());
     }
 
+    public record MetadataQuery(String token, int limit, boolean recursive) {
+    }
+
+    public static MetadataQuery metadataQuery(HttpServerRequest request) {
+        String token = request.getParam("token");
+        int limit = Integer.parseInt(request.getParam("limit", "100"));
+        boolean recursive = Boolean.parseBoolean(request.getParam("recursive", "false"));
+        if (limit < 0 || limit > 1000) {
+            throw new IllegalArgumentException("Limit is out of allowed range");
+        }
+        return new MetadataQuery(token, limit, recursive);
+    }
+
     public String generateReference() {
         return UUID.randomUUID().toString();
     }

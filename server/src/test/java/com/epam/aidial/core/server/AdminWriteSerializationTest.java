@@ -19,6 +19,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * admin-write lock. The test acquires the lock from the test thread and confirms an in-flight admin
  * write request cannot make progress until the lock is released — proving the controllers actually
  * take the same lock the test holds.
+ *
+ * <p>U.0 (2026-05-20): POST is removed from the lock scope — POST at the single-entity surface
+ * returns 405 before any write logic runs; only PUT (upsert) and DELETE acquire the admin-write
+ * lock. The PUT path now covers both create and update arms.
  */
 public class AdminWriteSerializationTest extends ResourceBaseTest {
 
@@ -44,23 +48,23 @@ public class AdminWriteSerializationTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testPerEntityPostBlocksWhileGlobalLockHeld() {
+    void testPerEntityPutCreateBlocksWhileGlobalLockHeld() {
         String interceptorBody = """
                 {"endpoint": "http://localhost:4088/api/v1/interceptor/handle"}
                 """;
         runBlockedByAdminWriteLock(() ->
-                send(HttpMethod.POST, "/v1/interceptors/platform/lock-test-post", null,
-                        interceptorBody, "authorization", "admin"));
-        verify(send(HttpMethod.GET, "/v1/interceptors/platform/lock-test-post", null, "",
+                send(HttpMethod.PUT, "/v1/interceptors/platform/lock-test-create", null,
+                        interceptorBody, "authorization", "admin", "If-None-Match", "*"));
+        verify(send(HttpMethod.GET, "/v1/interceptors/platform/lock-test-create", null, "",
                 "authorization", "admin"), 200);
     }
 
     @Test
     @SneakyThrows
     void testPerEntityPutAndDeleteBlockWhileGlobalLockHeld() {
-        verify(send(HttpMethod.POST, "/v1/interceptors/platform/lock-test-put", null,
+        verify(send(HttpMethod.PUT, "/v1/interceptors/platform/lock-test-put", null,
                 "{\"endpoint\": \"http://localhost:4088/api/v1/interceptor/handle\"}",
-                "authorization", "admin"), 201);
+                "authorization", "admin", "If-None-Match", "*"), 200);
 
         String updateBody = """
                 {"endpoint": "http://localhost:4088/api/v1/interceptor/handle/v2"}

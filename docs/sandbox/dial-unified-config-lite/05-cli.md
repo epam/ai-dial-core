@@ -12,11 +12,11 @@ The CLI follows kubectl-like ergonomics. Per-resource-type commands:
 
 | Command | HTTP | What it does |
 |---|---|---|
-| `list` (or `dial-cli get <plural>`) | `GET` | List entities of a type |
+| `list` (or `dial-cli get <plural>`) | `GET /v1/metadata/{type}/{bucket}/` | List entities of a type |
 | `get <name>` | `GET` | Get one entity |
-| `add` | `POST` | Create — exits `5` (409) if it already exists |
-| `update <name> [--set k=v…]` | `PUT` | Update — exits `4` (404) if missing. Field-level `--set` runs GET → local merge → PUT |
-| `delete <name>` | `DELETE` | Delete — exits `4` if missing |
+| `add` | `PUT … If-None-Match: *` | Create-only — exits `5` on `412` if entity already exists |
+| `update <name> [--set k=v…] [--if-match <etag>]` | `PUT` (bare upsert; `If-Match` when supplied) | Bare is last-write-wins upsert; `--if-match` is CAS — exits `6` on `412` mismatch. Field-level `--set` runs GET → local merge → PUT |
+| `delete <name> [--if-match <etag>]` | `DELETE` | Delete — exits `4` on `404` if missing; `--if-match` adds CAS — exits `6` on `412` |
 | `validate` | `POST /v1/admin/validate` | Validate without applying |
 | `promote --from <env> --to <env>` | `GET` + `POST /v1/admin/apply` | Promote between environments |
 | `diff --source <env> --target <env>` | `GET` × 2 | Diff between environments |
@@ -46,11 +46,18 @@ dial-cli apply -f manifests/ --env uat
 dial-cli promote --from dev --to uat --name models/public/gpt-4 --template bedrock-chat
 ```
 
-### Strict create vs update — no implicit upsert
+### CLI verbs over one wire shape — `PUT` upsert + conditional headers
 
-`add` maps to `POST` (create-only, `409` on conflict) and `update` maps to `PUT` (update-only, `404` on missing). The CLI never silently falls back between them — a typo in an entity name surfaces as a clean error instead of a stub creation. Bulk upsert is the explicit role of `dial-cli apply -f`.
+The wire is one `PUT`-upsert per `03-api.md`; the CLI verbs are client-side ergonomic differentiators over it:
 
-The singleton `settings update` is the documented exception (the global-settings projection always has a value — `PUT` is upsert by nature). `settings reset` (mapping to `DELETE`) clears the API blob and reverts to the file-sourced or default projection — the explicit "release API control" mechanism.
+- `add` issues `PUT … If-None-Match: *` — create-only gate. Exits `5` on `412` (entity already exists) so a typo in an entity name surfaces as a clean error instead of silently overwriting an unrelated entity.
+- `update <name>` bare issues an unconditional `PUT` — last-write-wins upsert.
+- `update <name> --if-match <etag>` issues `PUT … If-Match: <etag>` — CAS guard. Exits `6` on `412` mismatch.
+- `delete <name>` issues `DELETE` — exits `4` on `404`; `--if-match` adds the CAS guard (exit `6` on `412`).
+
+The `5` / `6` split reflects which conditional header the CLI sent — both map to the same `412` on the wire. Bulk upsert is the explicit role of `dial-cli apply -f` (which the server processes via `POST /v1/admin/apply`).
+
+The singleton `settings update` shares the wire shape — `PUT` upsert of the singleton URL. `settings reset` (mapping to `DELETE`) clears the API blob and reverts to the file-sourced or default projection — the explicit "release API control" mechanism (idempotent — exit `0` whether or not a blob was present).
 
 ## Profile config
 
@@ -114,7 +121,7 @@ Manifests support a **base + env overlay** pattern: a base manifest under `manif
 - **As-is** — no transformation. Right for entity types with no env-specific fields (roles, schemas, keys, routes).
 - **Auto-detect** — reverse-matches the source entity against source-env templates and re-applies the same template at the target.
 
-Always dry-run first. Promotions submit a single-entity manifest to `POST /v1/admin/apply` so the canonical upsert path is used — there is no client-side POST/PUT split that could TOCTOU between source-fetch and target-write.
+Always dry-run first. Promotions submit a single-entity manifest to `POST /v1/admin/apply` so the canonical bulk-upsert path is used — no client-side conditional-header dance between source-fetch and target-write.
 
 Secrets are deliberately *skipped* by `promote` — set them per environment.
 

@@ -123,7 +123,7 @@ Admin has **no** read or write access to user buckets — this is locked by `Con
 
 ### 1.5 Response projection: Public / Owner views
 
-Per-entity GET and listing endpoints share the same URL between authenticated user readers, bucket owners, and admins (per §1.4 above). Operational metadata that admins/owners need (`source`, `validationWarnings`) must not leak to Public callers; entity-intrinsic fields and validity status (`status`) are public-safe. Two Jackson views handle this declaratively:
+**Scope — per-entity GET only.** The Public / Owner projection described in this section applies to per-entity `GET /v1/{type}/{bucket}/{name}` responses. The folder metadata listing surface (`GET /v1/metadata/{type}/{bucket}/{path}`) returns the existing `ResourceItemMetadata` shape (`url`, `name`, `etag`, `createdAt`, `updatedAt`, `author`) and carries no projection — see [`03-api-reference.md`](03-api-reference.md) §4. Operational metadata that admins/owners need on a per-entity GET (`source`, `validationWarnings`) must not leak to Public callers; entity-intrinsic fields and validity status (`status`) are public-safe. Two Jackson views handle this declaratively:
 
 ```java
 public final class Views {
@@ -280,19 +280,18 @@ public class Upstream {
 
 ### 2.5 API write-only policy
 
-| Operation | Secret field behavior |
-|-----------|----------------------|
-| `GET` | Masked: `"key": "***"` |
-| `POST` (field absent/null) | Store as null (no secret set on create) |
-| `POST` (field present, non-mask value) | Encrypt and store |
-| `POST` (field = `"***"`) | Reject with `400 Bad Request` — message: *"Secret field 'X' contains the mask sentinel '***'. Provide a real secret value or omit the field."* The mask sentinel is not a valid create-time secret; treating it as one would persist the literal `"***"` string as the secret. |
-| `PUT` (field absent/null/`"***"`) | Preserve existing encrypted value (preserve-on-omit) |
-| `PUT` (field present with value) | Encrypt and store |
-| `export` | Masked: `"key": "***"` |
-| `promote` | Secrets skipped — set per-environment |
-| `validate` | Secret fields ignored |
+`PUT` is upsert (see [`03-api-reference.md`](03-api-reference.md) §3) — the controller distinguishes "create" from "update" by reading the pre-state inside the same `LockService` scope as the write (the same pre-read the preserve-on-omit logic needs). The secret-field policy splits along that pre-state, not along HTTP method:
 
-The `POST` rows are first-class Phase 2 controller checklist items: the mask-sentinel rejection on create must be implemented at the same site as the preserve-on-omit logic (the per-entity `POST` controller for every entity type whose data class carries `@EncryptedField` annotations) so the two behaviors compose without ambiguity. The rejection is a `400 Bad Request`, not a `409 Conflict` — `409` is reserved for "entity already exists" per the strict create/update split in [`03-api-reference.md`](03-api-reference.md) §1.
+| Operation | Pre-state | Secret field behavior |
+|-----------|-----------|-----------------------|
+| `GET` | (any) | Masked: `"key": "***"` |
+| `PUT` (creating: pre-state absent) | absent | Field absent/null → store as null (no secret set on create). Field present, non-mask value → encrypt and store. Field = `"***"` → reject with `400 Bad Request` — message: *"Secret field 'X' contains the mask sentinel '***'. Provide a real secret value or omit the field."* The mask sentinel is not a valid create-time secret. |
+| `PUT` (updating: pre-state present) | present | Field absent/null/`"***"` → preserve existing encrypted value (preserve-on-omit). Field present with non-mask value → encrypt and store. |
+| `export` | (any) | Masked: `"key": "***"` |
+| `promote` | (any) | Secrets skipped — set per-environment |
+| `validate` | (any) | Secret fields ignored |
+
+The mask-sentinel rejection on a creating PUT must be implemented at the same site as the preserve-on-omit logic (the per-entity `PUT` controller for every entity type whose data class carries `@EncryptedField` annotations) so the two behaviors compose without ambiguity. The rejection is a `400 Bad Request`, not a `412 Precondition Failed` — `412` is reserved for `If-Match` / `If-None-Match` conditional-header failures per [`03-api-reference.md`](03-api-reference.md) §3.
 
 **Write path for entities with `@EncryptedField` fields — server-side preserve-on-omit (Phase 2 implementation requirement).** Preserve-on-omit is **server behavior**, not CLI ergonomic — every CLI / Admin Backend / MCP / direct-curl client gets the same behavior, no client-side logic required. On any `PUT /v1/{type}/{bucket}/{name}` whose entity class declares one or more `@EncryptedField` fields, the controller:
 
@@ -358,7 +357,7 @@ See `dial_secrets_storage_analysis.md` for the full evaluation of alternative ap
 
 | ID | Requirement |
 |----|---|
-| R-Audit-1 | **Change audit log.** Every Configuration API mutation recorded with timestamp, admin identity (`requestedBy`), entity type, canonical entity ID, operation, post-mutation state snapshot, diff summary, batch correlation. Vault-style intent log: PENDING before mutation, APPLIED/FAILED after. Storage: Redis Streams (hot, queryable) + blob archival (cold, durable). Scope: all Configuration API mutations across both `public/` and `platform/` buckets. Audit captures actor mutations only — validity transitions are derived runtime state surfaced through listing/health/Prometheus channels ([`02-architecture.md`](02-architecture.md) §4.1), not as audit events. User publication workflow (`PublicationService`) auditing deferred to Phase 4+. |
+| R-Audit-1 | **Change audit log.** Every Configuration API mutation recorded with timestamp, admin identity (`requestedBy`), entity type, canonical entity ID, operation, post-mutation state snapshot, diff summary, batch correlation. Vault-style intent log: PENDING before mutation, APPLIED/FAILED after. Storage: Redis Streams (hot, queryable) + blob archival (cold, durable). Scope: all Configuration API mutations across both `public/` and `platform/` buckets. Audit captures actor mutations only — validity transitions are derived runtime state surfaced through per-entity-GET / `/v1/admin/health/config` / Prometheus channels ([`02-architecture.md`](02-architecture.md) §4.1), not as audit events. User publication workflow (`PublicationService`) auditing deferred to Phase 4+. |
 | R-Audit-2 | **Audit log query API.** Filterable by: time range, `requestedBy`, entity type, entity ID, bucket, batch ID, operation, status. Paginated. CLI support via `dial-cli audit`. |
 
 ### 3.2 Design: Vault-style intent log
@@ -385,7 +384,7 @@ Separate audit scope (different code path, higher volume):
 3. Write APPLIED or FAILED completion event to Redis Stream
 ```
 
-**Operation derivation.** The audit `operation` field (`create | update | delete`) is derived directly from the HTTP method on the Configuration API surface — `POST` → `create`, `PUT` → `update`, `DELETE` → `delete`. No pre-state probe is required (the strict POST/PUT split in [`03-api-reference.md`](03-api-reference.md) §1 guarantees the method is unambiguous), which removes a TOCTOU race that would otherwise exist if the server had to read-then-decide. For bulk `POST /v1/admin/apply` — which is upsert by design — the per-entity audit event records `create` or `update` based on whether the entity existed pre-write within the same transaction; `apply` is the only place this read-then-decide branch lives.
+**Operation derivation.** The audit `operation` field (`create | update | delete`) is derived from the HTTP method plus the pre-state observed inside the write transaction: `DELETE` → `delete`; `PUT` → `create` if no prior entity existed at the URL (the same read the preserve-on-omit and `If-None-Match: *` paths already perform) else `update`. The per-entity-write controller already holds the `LockService` lock around the pre-read + merge + put bracket (see [§2.5](#25-api-write-only-policy)), so the pre-state read is colocated with the write and the audit `operation` derivation runs without a separate round-trip and without a TOCTOU race. Bulk `POST /v1/admin/apply` follows the same rule on each per-entity step.
 
 ### 3.3 Event schema
 
@@ -414,7 +413,7 @@ Single `state` field, canonical resource ID:
 - `requestedBy` — who initiated the change. For Configuration API mutations: always the admin JWT identity.
 - `approvedBy` — reserved for the future publication workflow audit, where user creates and admin approves. Always null for Configuration API mutations.
 
-**Audit records actor mutations only.** The audit log captures what *admins did*, not derived runtime state. Validity transitions (an entity becoming invalid because a referenced interceptor was removed, then later becoming valid again when the interceptor returns) are not audited as separate events — they are derivable by correlating mutation events with the current listing snapshot. The visibility surface for entity validity is the three runtime channels in [`02-architecture.md`](02-architecture.md) §4.1: listing API `status` field, Prometheus metrics, and the `/v1/admin/health/config` endpoint.
+**Audit records actor mutations only.** The audit log captures what *admins did*, not derived runtime state. Validity transitions (an entity becoming invalid because a referenced interceptor was removed, then later becoming valid again when the interceptor returns) are not audited as separate events — they are derivable by correlating mutation events with the current per-entity-GET / health-endpoint snapshot. The visibility surface for entity validity is the three runtime channels in [`02-architecture.md`](02-architecture.md) §4.1: per-entity GET `status` field + `/v1/admin/health/config` aggregator, Prometheus metrics, and the cluster-wide skip-and-continue path.
 
 **Audit rollback in Phase 7 is read-mostly.** `dial-cli audit history` and `dial-cli audit snapshot` work against any past state. `dial-cli audit rollback` re-applies a prior snapshot through the standard write path, which means it is subject to current-version validation — if the snapshot's payload no longer satisfies validation (renamed field, removed schema reference, deprecated enum), the rollback is rejected the same way a manual `PUT` of that payload would be. A recovery mechanism for restoring snapshots whose payload is incompatible with the current entity model (a write-time validation bypass, an in-place schema-tolerant load, or a hybrid) is tracked as OQ-31 in [`08-open-questions-and-references.md`](08-open-questions-and-references.md) and is intentionally out of scope for Phase 7's MVP.
 
@@ -482,7 +481,7 @@ dial-cli audit reconcile --dry-run
 
 **Audit blocks the mutation.** If the PENDING write to Redis Stream fails, the config change is aborted. This is the Vault model — the audit trail cannot lag or be silently dropped. A write that isn't audited doesn't happen.
 
-**Operational consequence (runbook).** Because the PENDING write is in the critical path, Redis Streams availability becomes the SLO for all admin config mutations. If Redis is partitioned, overloaded, or its stream storage is exhausted, admin-gated writes (per-entity `POST` / `PUT` / `DELETE` to `public/` and `platform/`, plus `/v1/admin/apply` and any other `/v1/admin/*` mutating op) will return `503 Service Unavailable` with a body identifying audit-write failure as the cause. **Scope of the 503 is limited to admin write endpoints only.** Unaffected by an audit-stream outage: (a) all `GET` endpoints (per-entity reads, listings, `GET /v1/admin/export`, `GET /v1/admin/audit` itself for query — the read tier is independent of the write-tier PENDING gate), (b) the unauthenticated `/health` Kubernetes liveness probe, (c) the `MergedConfigStore` rebuild path (it reads from Redis HASH / blob, not the Stream), and (d) all runtime traffic — chat completions, embeddings, file uploads, and the entire user Resource API. Pod scale-up and skip-and-continue invariants from §4.1 of `02-architecture.md` are preserved; only the admin mutation surface is gated by the Stream SLO. Operators should:
+**Operational consequence (runbook).** Because the PENDING write is in the critical path, Redis Streams availability becomes the SLO for all admin config mutations. If Redis is partitioned, overloaded, or its stream storage is exhausted, admin-gated writes (per-entity `PUT` / `DELETE` to `public/` and `platform/`, plus `/v1/admin/apply` and any other `/v1/admin/*` mutating op) will return `503 Service Unavailable` with a body identifying audit-write failure as the cause. **Scope of the 503 is limited to admin write endpoints only.** Unaffected by an audit-stream outage: (a) all `GET` endpoints (per-entity reads, listings, `GET /v1/admin/export`, `GET /v1/admin/audit` itself for query — the read tier is independent of the write-tier PENDING gate), (b) the unauthenticated `/health` Kubernetes liveness probe, (c) the `MergedConfigStore` rebuild path (it reads from Redis HASH / blob, not the Stream), and (d) all runtime traffic — chat completions, embeddings, file uploads, and the entire user Resource API. Pod scale-up and skip-and-continue invariants from §4.1 of `02-architecture.md` are preserved; only the admin mutation surface is gated by the Stream SLO. Operators should:
 
 - Alert on `config_api_audit_write_failed_total` Prometheus counter with a low threshold (any sustained rate > 0 is a SEV-2).
 - Monitor Redis Stream length for `dial:audit:events`; set a warning at ~70% of configured `MAXLEN` and a page at ~90%. Stream trimming runs after archival (§3.4); if archival lags, the stream grows.

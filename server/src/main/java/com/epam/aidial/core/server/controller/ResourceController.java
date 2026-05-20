@@ -100,23 +100,15 @@ public class ResourceController extends AccessControlBaseController {
     }
 
     private Future<?> getMetadata(ResourceDescriptor descriptor) {
-        String token;
-        int limit;
-        boolean recursive;
-
+        ProxyUtil.MetadataQuery query;
         try {
-            token = context.getRequest().getParam("token");
-            limit = Integer.parseInt(context.getRequest().getParam("limit", "100"));
-            recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));
-            if (limit < 0 || limit > 1000) {
-                throw new IllegalArgumentException("Limit is out of allowed range");
-            }
-        } catch (Throwable error) {
+            query = ProxyUtil.metadataQuery(context.getRequest());
+        } catch (IllegalArgumentException error) {
             return context.respond(BAD_REQUEST, "Bad query parameters. Limit must be in [0, 1000] range. Recursive must be true/false");
         }
 
         taskExecutor.submit(() -> {
-            MetadataBase result = resourceService.getMetadata(descriptor, token, limit, recursive);
+            MetadataBase result = resourceService.getMetadata(descriptor, query.token(), query.limit(), query.recursive());
             if (result == null) {
                 return null;
             }

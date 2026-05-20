@@ -58,12 +58,11 @@ public class ConfigBootstrapTest extends ResourceBaseTest {
 
     @Test
     void testAdminCanWritePublicEntity() {
-        // PUT against a name not present in the API store returns 404 — slice 2S.11 enforces strict-split
-        // semantics (PUT requires existing API entity; gpt-4 here is a file-defined entry, not an API
-        // entry, so PUT is not an in-place upsert).
+        // U.0 (2026-05-20): PUT is upsert. Bare PUT against a non-existent entity creates it —
+        // an empty body deserializes to a Model with no upstreams; the write succeeds (200).
         Response response = send(HttpMethod.PUT, "/v1/models/public/non-existent-name", null, "{}",
                 "authorization", "admin");
-        verify(response, 404);
+        verify(response, 200);
     }
 
     @Test
@@ -83,9 +82,8 @@ public class ConfigBootstrapTest extends ResourceBaseTest {
 
     @Test
     void testApiKeyWithDefaultRoleCannotReadPlatformRoles() {
-        // Same gate as testApiKeyWithDefaultRoleCannotReadPlatform; this asserts it specifically
-        // for /v1/roles/platform/ since that is the endpoint operators most often probe first.
-        Response response = send(HttpMethod.GET, "/v1/roles/platform/");
+        // U.0: listing route moved to /v1/metadata/...; same admin-only gate applies.
+        Response response = send(HttpMethod.GET, "/v1/metadata/roles/platform/");
         verify(response, 403);
     }
 
@@ -93,7 +91,7 @@ public class ConfigBootstrapTest extends ResourceBaseTest {
     void testUnknownApiKeyIsRejected() {
         // Unknown key fails in ApiKeyStore before authz — 401 (not 403); proves the gate cannot
         // be probed by guessing keys.
-        Response response = send(HttpMethod.GET, "/v1/roles/platform/", null, "",
+        Response response = send(HttpMethod.GET, "/v1/metadata/roles/platform/", null, "",
                 "api-key", "no-such-key-exists");
         verify(response, 401);
     }
@@ -101,18 +99,20 @@ public class ConfigBootstrapTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     @DialConfigLocation("dial-config/admin-api-key-config.json")
-    void testApiKeyWithAdminRoleCanReadPlatform() {
+    void testApiKeyWithAdminRoleCanReadPlatformMetadata() {
         // Sibling tests gate admin via the JWT mock (authorization: "admin"); this is the only
         // coverage of the api-key path — Key.roles=["admin"] flows through getMergedRoles to
         // context.userRoles and matches access.admin.rules (CONTAIN, target="admin").
-        Response response = send(HttpMethod.GET, "/v1/roles/platform/", null, "",
+        // U.0: metadata listing is blob-only; with only file-defined roles, expect FOLDER+empty
+        // items or 404. The point of this test is to assert the gate admits the api-key.
+        Response response = send(HttpMethod.GET, "/v1/metadata/roles/platform/", null, "",
                 "api-key", "adminKey1");
-        verify(response, 200);
-        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals("roles", body.get("entityType").asText());
-        assertEquals("platform", body.get("bucket").asText());
-        JsonNode items = body.get("items");
-        assertTrue(items.isArray() && !items.isEmpty(),
-                () -> "items must include the admin role from the fixture: " + response.body());
+        if (response.status() == 200) {
+            JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+            assertEquals("FOLDER", body.get("nodeType").asText());
+            assertTrue(body.has("items"), () -> "Expected items array: " + response.body());
+        } else {
+            verify(response, 404);
+        }
     }
 }

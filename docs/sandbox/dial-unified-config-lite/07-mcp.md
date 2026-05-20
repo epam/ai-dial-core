@@ -60,7 +60,7 @@ One illustrative tool definition (every Write tool follows this shape):
 ```json
 {
   "name": "dial_admin_update_entity",
-  "description": "Update an existing DIAL configuration entity (full-entity replace). Returns the persisted entity with its new ETag. Returns a structured 404 if the entity does not exist — call dial_admin_create_entity instead.",
+  "description": "Update (or upsert) a DIAL configuration entity (full-entity replace). Wraps PUT /v1/{type}/{bucket}/{name} — bare is last-write-wins; pass if_match for CAS (structured 412 with error code E_STALE_ETAG on mismatch). Returns the persisted entity with its new ETag.",
   "inputSchema": {
     "type": "object",
     "required": ["type", "id", "spec", "env"],
@@ -76,7 +76,7 @@ One illustrative tool definition (every Write tool follows this shape):
 }
 ```
 
-The `create_entity` peer has the same shape minus `if_match`, returns `409` if the entity exists, and is the only way to create a single entity through MCP — mirroring the strict create/update split on the REST surface.
+The `create_entity` peer has the same shape minus `if_match`. It wraps `PUT … If-None-Match: *` and returns a structured `412 Precondition Failed` (MCP error code `E_ALREADY_EXISTS`) when the entity already exists — agents must then call `dial_admin_update_entity`. The two-tool split keeps the LLM-correction story explicit: a hallucinated entity ID on an "update" lands on a structured error instead of silently creating a stub. Apply remains the only batch-upsert path. `dial_admin_list_entities` wraps `GET /v1/metadata/{type}/{bucket}/` and returns `ResourceFolderMetadata` (the same shape the existing Resource API has used since launch).
 
 ## Deployment options
 

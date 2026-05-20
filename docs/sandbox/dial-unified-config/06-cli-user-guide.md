@@ -27,7 +27,7 @@ Today, managing DIAL configuration means hand-editing `aidial.config.json`, push
 
 Changes take effect **immediately on the writer pod** (the replica that handled the write) — no file-watcher polling, no eventual consistency on that pod. Cross-replica propagation is ≤60s in Phase 1 and near-instant after Phase 1.5 (Redis pub/sub). This is materially different from today's Admin-Backend → file export → 60–180s poll chain; it is **not** the same as "every replica sees the change in the same tick".
 
-> **What "immediate" covers, precisely.** The writer-pod's volatile `Config` reference (the in-memory map that backs routing, model resolution, role lookup, interceptor chains, and route matching) is swapped before the HTTP response returns — that is genuinely immediate. Mechanically, the API write path on the writer pod uses `MergedConfigStore.rebuildNow()`, the synchronous entry point that bypasses the debounce; the 500ms trailing-edge debounce applies to `requestRebuild()`, which is used by the file-poll callback, the pub/sub listener, and the safety-net poll timer ([`02-architecture.md`](02-architecture.md) §4 / §11.1). The `ApiKeyStore`, however, is updated inside the rebuild's `ConfigPostProcessor` step on rebuild paths driven by `requestRebuild()` (debounced ~500ms in Phase 1.5) — so a brand-new key created via `POST /v1/keys/...` would not authenticate any request for ~500ms+ on a stock implementation. Phase 2 wires a per-entity-type fast-path on the keys controller (`ApiKeyStore.addOrUpdateKey` invoked directly after `ResourceService.put` succeeds, before the HTTP response) so that newly created or rotated keys authenticate immediately on the writer pod. Without that fast-path, you would observe a brief authentication gap on freshly minted keys; with it, the "immediate" guarantee covers both routing/lookup (via `rebuildNow()`) and key authentication (via the fast-path) on the writer pod.
+> **What "immediate" covers, precisely.** The writer-pod's volatile `Config` reference (the in-memory map that backs routing, model resolution, role lookup, interceptor chains, and route matching) is swapped before the HTTP response returns — that is genuinely immediate. Mechanically, the API write path on the writer pod uses `MergedConfigStore.rebuildNow()`, the synchronous entry point that bypasses the debounce; the 500ms trailing-edge debounce applies to `requestRebuild()`, which is used by the file-poll callback, the pub/sub listener, and the safety-net poll timer ([`02-architecture.md`](02-architecture.md) §4 / §11.1). The `ApiKeyStore`, however, is updated inside the rebuild's `ConfigPostProcessor` step on rebuild paths driven by `requestRebuild()` (debounced ~500ms in Phase 1.5) — so a brand-new key created via `PUT /v1/keys/... (with If-None-Match: * for create-only)` would not authenticate any request for ~500ms+ on a stock implementation. Phase 2 wires a per-entity-type fast-path on the keys controller (`ApiKeyStore.addOrUpdateKey` invoked directly after `ResourceService.put` succeeds, before the HTTP response) so that newly created or rotated keys authenticate immediately on the writer pod. Without that fast-path, you would observe a brief authentication gap on freshly minted keys; with it, the "immediate" guarantee covers both routing/lookup (via `rebuildNow()`) and key authentication (via the fast-path) on the writer pod.
 
 **Tech note:** `dial-cli` is distributed as a self-contained native binary (~30–50MB, ~3ms startup) — no JVM required. See [`05-cli-design.md`](05-cli-design.md) §6 for implementer details (language, framework, build pipeline).
 
@@ -248,19 +248,14 @@ dial-cli get settings --env prod        # global settings (globalInterceptors, e
 Example — `dial-cli get models --env uat`:
 
 ```
-NAME                                          TYPE   DISPLAY NAME                   SOURCE  STATUS    ENDPOINT
-models/public/anthropic.claude-sonnet-4-6     chat   Anthropic Claude Sonnet 4.6    api     valid     http://dial-bedrock/openai/...
-models/public/chat-gpt-35-turbo               chat   GPT-3.5 Turbo                  file    valid     http://dial-openai/openai/...
-models/public/embedding-ada                   emb    Embedding Ada                  file    valid     http://dial-openai/openai/...
-models/public/old-broken-model                chat   Legacy model                   api     invalid   (2 warnings — see `dial-cli model get`)
+NAME                                          RESOURCE_TYPE  CREATED_AT            UPDATED_AT            ETAG
+models/public/anthropic.claude-sonnet-4-6     MODEL          2026-05-14T09:12:03Z  2026-05-18T16:44:21Z  "7c3a91e2"
+models/public/old-broken-model                MODEL          2026-05-10T11:02:55Z  2026-05-19T08:30:11Z  "4f0b2dde"
 ```
 
-The `STATUS` column distinguishes valid entities from invalid ones. The `STATUS` column appears on listings for **every entity type** — models, roles, schemas, interceptors, routes, keys, applications, toolsets — with one underlying difference in how it's computed:
+Note: `source` and `status` are not surfaced on metadata listings (full alignment with the existing Resource API). To see validity or provenance for a specific entity, run `dial-cli model get <name>`; for the cluster-wide degraded-entity view, run `dial-cli admin health` (or query `GET /v1/admin/health/config`). File-sourced entries do not appear in the metadata listing — they live in `Config` only and are visible via `dial-cli export`.
 
-- For MergedConfigStore-managed entities (models, roles, schemas, interceptors, routes, keys, settings), invalid means *not in the runtime `Config` and not serving traffic* — pre-computed at reload, surfaced for visibility.
-- For blob-native entities (applications, toolsets), invalid means *cross-references don't resolve against the current `Config`* — computed lazily on the admin-API read path. **The hot path is unchanged from today's behavior**: an invalid blob app still serves through `findDeployment` and fails at request time on the missing reference (`404` from the interceptor lookup, schema mismatch on schema-rich apps). The listing tells you about the broken state before users do.
-
-Causes of `invalid` are upstream changes (referenced interceptor or schema removed) and version drift after a Core upgrade introduces stricter validation. Direct creation of an invalid entity is rejected by write-time validation. Inspect with `dial-cli model get <id>` (or `application get`, `toolset get`, etc.) or check the operator-facing health surface at `GET /v1/admin/health/config` (which covers MergedConfigStore-managed entities — invalid blob apps surface through listing, not health). See [`02-architecture.md`](02-architecture.md) §4.1–§4.3 for the full failure-and-recovery model.
+Listings (`dial-cli get <type>`) return metadata only — `NAME`, `RESOURCE_TYPE`, `CREATED_AT`, `UPDATED_AT`, `ETAG` per entity, matching the existing Resource API's `ResourceItemMetadata` shape. Validity (`status: "valid" | "invalid"`), provenance (`source: "file" | "api"`), and `validationWarnings` are surfaced **only** on a per-entity `GET` (`dial-cli <type> get <name>`) or on the aggregate operator endpoint `GET /v1/admin/health/config` (which lists every invalid entity across all admin-config types in one call). File-sourced entries do not appear in metadata listings — they live in `Config` only and are visible via `dial-cli export`.
 
 **Get single entity** (canonical path):
 
@@ -343,7 +338,7 @@ dial-cli model add \
 
 ```shell
 dial-cli model update models/public/chat-gpt-35-turbo --env uat \
-  --set maxTotalTokens=128000 --set 'userRoles=["basic","admin"]'
+  --set maxTotalTokens=128000 --set 'userRoles=["basic","admin"]'   # unconditional upsert — creates if absent, replaces if present
 
 dial-cli model delete models/public/old-unused-model --env uat
 ```
@@ -370,15 +365,15 @@ dial-cli settings get --env prod                            # source: "file" (or
 
 This is the **only** way to release API control of `globalSettings` — there is no per-field "reset"; the blob is whole-object. Operators using config files as the source of truth (e.g. via Vault / Secret Manager export pipelines) typically never `PUT` settings in the first place; `settings reset` exists for the case where someone took API control and the team wants to hand authority back to the config file.
 
-**Note on `update --set`:** Since the API currently supports PUT (full entity replacement) only, `--set` works by fetching the current entity, merging your changes locally, and PUTting the full result back. ETag-based optimistic concurrency protects against conflicts — if someone else modified the entity between your GET and PUT, you'll get a `412 Precondition Failed` and the CLI exits `6`. **The CLI does not auto-retry on `412`** — a single GET → merge → PUT is one attempt; that's it. If you need retry-on-conflict semantics, wrap `update --if-match` in a shell loop, or use `dial-cli apply -f` with a full-spec manifest (which goes through the canonical `POST /v1/admin/apply` upsert path).
+**Note on `update --set`:** Since the API supports `PUT` (full entity upsert) and `DELETE` only, `--set` works by fetching the current entity, merging your changes locally, and PUTting the full result back. ETag-based optimistic concurrency protects against conflicts — if you pass `--if-match` and someone else modified the entity between your GET and PUT, you'll get a `412 Precondition Failed` and the CLI exits `6`. **The CLI does not auto-retry on `412`** — a single GET → merge → PUT is one attempt; that's it. If you need retry-on-conflict semantics, wrap `update --if-match` in a shell loop, or use `dial-cli apply -f` with a full-spec manifest (which goes through the canonical `POST /v1/admin/apply` upsert path).
 
-**Strict create vs update (no silent stub creation).** `add` and `update` are intentionally non-overlapping:
+**Create-only and CAS-update gates (no silent overwrite).** The CLI verbs are ergonomic shortcuts that pick which conditional header to send on the underlying `PUT`/`DELETE`:
 
-- `dial-cli model add ...` → fails with **409 Conflict** (exit `5`) if a model with that name already exists. Use `update` if you meant to modify it.
-- `dial-cli model update models/public/gpt4 ...` → fails with **404 Not Found** (exit `4`) if no such model exists. A typo in the name surfaces here instead of silently creating a half-configured stub.
-- `dial-cli model delete ...` → fails with **404 Not Found** if missing.
+- `dial-cli model add ...` → sends `PUT … If-None-Match: *`; fails with **412 Precondition Failed** (exit `5`) if a model with that name already exists. Use `update` if you meant to modify it.
+- `dial-cli model update <name> --if-match <etag>` → sends `PUT … If-Match: <etag>`; fails with **412 Precondition Failed** (exit `6`) if someone else modified the model between your GET and PUT. Re-read and retry.
+- `dial-cli model delete <name>` → sends `DELETE`; fails with **404 Not Found** (exit `4`) if the model doesn't exist. Pass `--if-match <etag>` to add a CAS guard (412 on mismatch).
 
-If you want create-or-update behavior in one shot (e.g. CI applying a manifest tree where some entities are new and some exist), use `dial-cli apply -f config/` — that's the canonical declarative path and the only place upsert lives. Optional `--if-match <etag>` on `update`/`delete` adds optimistic concurrency on top.
+If you want create-or-update behavior on a single entity without ETag guards, use `dial-cli model update <name>` without `--if-match` — that issues an unconditional `PUT` (last-write-wins) and is itself an upsert. For batch create-or-update across many entities, use `dial-cli apply -f config/` — the canonical declarative path. Optional `--if-match <etag>` on `update`/`delete` adds optimistic concurrency on top.
 
 **Other entity types — same pattern:**
 
@@ -392,7 +387,7 @@ dial-cli interceptor add --env uat --name interceptors/platform/guardrail-1 \
 dial-cli settings update --env prod --set 'globalInterceptors=["guardrail-1","audit-logger"]'
 ```
 
-> `settings update` is upsert — it maps to `PUT /v1/settings/platform/global`, the one allowed exception to the strict create/update split (the singleton's GET projection always has a value, so there's no "missing" state to 404 on). Safe to run on a fresh environment without first calling `add` — no `404` path, no exit `4`. To release API control afterwards, use `dial-cli settings reset` (`DELETE`) — see the singleton section above. Full API contract: [`03-api-reference.md`](03-api-reference.md) §1.
+> `settings update` is `PUT /v1/settings/platform/global` — same upsert wire shape as every other admin-config type, but the singleton's GET projection always has a value, so there's no "missing" state to 404 on. Safe to run on a fresh environment without first calling `add` — no `404` path, no exit `4`. To release API control afterwards, use `dial-cli settings reset` (`DELETE`) — see the singleton section above. Full API contract: [`03-api-reference.md`](03-api-reference.md) §1.
 
 > **FEEDBACK Q6 (write commands):**
 >
@@ -631,13 +626,13 @@ deploy_dial_config:
 | `1` | Partial batch failure / general error — one or more entities failed at apply time after the validate-first gate passed. |
 | `2` | Validation failed — the pre-apply gate rejected the manifest. Nothing was written. |
 | `3` | Auth failed — invalid / missing API key, expired JWT, or insufficient role. |
-| `4` | Entity not found — `404` from `update` / `delete` / `get` / `promote` against a non-existent entity. |
-| `5` | Conflict — `409` on `add` (entity already exists; remediation: use `update` instead). |
-| `6` | Precondition failed — `412` on `update` / `delete` with `If-Match` (stale ETag, concurrent modification; remediation: re-read and retry). |
+| `4` | Entity not found — `404` from `delete` / `get` / `promote` against a non-existent entity. |
+| `5` | Create-only gate failed — `412` on `add` because the entity already exists (`PUT … If-None-Match: *` returned `412 Precondition Failed`; remediation: use `update` instead). |
+| `6` | CAS guard failed — `412` on `update` / `delete` with `--if-match` because the stored ETag has moved (concurrent modification; remediation: re-read and retry). |
 
-Differentiated codes are preserved intentionally so pipelines can branch without parsing stderr — the same convention `kubectl`, `helm`, `terraform`, and `aws-cli` use. Exit `5` and exit `6` are split rather than collapsed because they require different remediation (use a different verb vs. re-read and retry); CI scripts that don't care about the distinction can match `5|6` as a single class. The per-entity outcomes inside an apply batch are still reported in the apply summary; the exit code is the pipeline-facing aggregate.
+Differentiated codes are preserved intentionally so pipelines can branch without parsing stderr — the same convention `kubectl`, `helm`, `terraform`, and `aws-cli` use. Exit `5` and exit `6` both originate from `412 Precondition Failed` on the wire (since the server unifies create-only and CAS update under one PUT verb with conditional headers per [`03-api-reference.md`](03-api-reference.md) §3); the CLI splits them by which header it sent so operators get different remediation guidance. CI scripts that don't care about the distinction can match `5|6` as a single class. The per-entity outcomes inside an apply batch are still reported in the apply summary; the exit code is the pipeline-facing aggregate.
 
-**Per-entity 409 inside bulk apply.** Bulk apply is upsert by design — the dependency-ordered sequential application performs create-or-update, never colliding-create — so a per-entity `409` cannot arise from a missing-create or duplicate-create case during apply. The only path that could surface a `409`-like state is a CAS / ETag check failure if the apply payload carried per-entity ETag metadata triggering it; the current payload schema has no per-entity ETag field, so this path is closed in practice. Any non-200 per-entity status appearing inside a 200-batch (typically per-entity `FAILED` from validation under `precheck: false` + `softValidation: false`) maps to exit `1` (partial-batch runtime failure) — exit `5` is reserved for the single-entity `add` case. See [`03-api-reference.md`](03-api-reference.md) §7 for the full per-entity status taxonomy.
+**Per-entity 412 inside bulk apply.** Bulk apply is upsert by design — the dependency-ordered sequential application performs create-or-update, never colliding-create — so a per-entity `412` from an `If-None-Match: *` gate cannot arise during apply. The only path that could surface a `412`-like state is a CAS / ETag check failure if the apply payload carried per-entity ETag metadata triggering it; the current payload schema has no per-entity ETag field, so this path is closed in practice. Any non-200 per-entity status appearing inside a 200-batch (typically per-entity `FAILED` from validation under `precheck: false` + `softValidation: false`) maps to exit `1` (partial-batch runtime failure) — exit `5` is reserved for the single-entity `add` case. See [`03-api-reference.md`](03-api-reference.md) §7 for the full per-entity status taxonomy.
 
 > **FEEDBACK Q10:** Exit codes sufficient? Need `--non-interactive`/`--yes` flag? Need `dial-cli status` health-check? Any GitOps tool integration (ArgoCD, Flux)?
 
