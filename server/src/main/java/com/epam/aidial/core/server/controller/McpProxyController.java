@@ -259,7 +259,7 @@ public class McpProxyController implements Controller {
         BufferingReadStream.BaseEventListener eventListener = null;
         if (requireToolFiltering()) {
             FilterAllowedToolsFn fn = new FilterAllowedToolsFn(proxy, context);
-            eventListener = new BufferingReadStream.BaseEventListener(fn);
+            eventListener = new BufferingReadStream.BaseEventListener(List.of(fn));
         }
 
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,

@@ -400,7 +400,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         public static final String CHAT_COMPLETION_FINAL_MESSAGE = "[DONE]";
 
         public ChatCompletionSseListener(BaseResponseFunction function) {
-            super(function);
+            super(List.of(function));
         }
 
         @Override

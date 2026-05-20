@@ -4,8 +4,10 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -89,14 +91,14 @@ public class ResponseItemControllerTest {
                 .initiatorBucket("Users/other-user/")
                 .build();
 
-        when(proxy.getResponseMappingService().getMapping("resp_dial_forbidden")).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getUserId()).thenReturn("test-user");
         when(context.getResponse()).thenReturn(response);
         when(response.ended()).thenReturn(false);
         when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
 
-        controller("resp_dial_forbidden", GET).handle();
+        controller("dial_test-deployment_forbidden", GET).handle();
 
         await(testContext);
 
@@ -109,13 +111,13 @@ public class ResponseItemControllerTest {
 
     @Test
     public void testMappingNotFound(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        when(proxy.getResponseMappingService().getMapping("resp_dial_unknown")).thenReturn(null);
+        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(null);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getResponse()).thenReturn(response);
         when(response.ended()).thenReturn(false);
         when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
 
-        controller("resp_dial_unknown", GET).handle();
+        controller("dial_test-deployment_unknown", GET).handle();
 
         await(testContext);
 
@@ -145,7 +147,7 @@ public class ResponseItemControllerTest {
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-id-123\",\"status\":\"completed\"}");
 
-        when(proxy.getResponseMappingService().getMapping("resp_dial_123")).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
         when(upstreamRoute.get("endpoint")).thenReturn(upstream);
@@ -164,7 +166,7 @@ public class ResponseItemControllerTest {
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("resp_dial_123", GET).handle();
+        controller("dial_test-deployment_123", GET).handle();
 
         await(testContext);
 
@@ -177,9 +179,9 @@ public class ResponseItemControllerTest {
         ArgumentCaptor<Buffer> bodyCaptor = ArgumentCaptor.forClass(Buffer.class);
         verify(response).end(bodyCaptor.capture());
         JsonNode sentJson = ProxyUtil.MAPPER.readTree(bodyCaptor.getValue().getBytes());
-        assertEquals("resp_dial_123", sentJson.path("id").asText());
+        assertEquals("dial_test-deployment_123", sentJson.path("id").asText());
 
-        verify(proxy.getResponseMappingService(), never()).deleteMapping(anyString());
+        verify(proxy.getResponseMappingService(), never()).deleteMapping(any(ResourceDescriptor.class));
     }
 
     @Test
@@ -200,7 +202,7 @@ public class ResponseItemControllerTest {
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-id-123\",\"status\":\"cancelled\"}");
 
-        when(proxy.getResponseMappingService().getMapping("resp_dial_123")).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
         when(upstreamRoute.get("endpoint")).thenReturn(upstream);
@@ -219,7 +221,7 @@ public class ResponseItemControllerTest {
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("resp_dial_123", CANCEL).handle();
+        controller("dial_test-deployment_123", CANCEL).handle();
 
         await(testContext);
 
@@ -247,7 +249,7 @@ public class ResponseItemControllerTest {
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
-        when(proxy.getResponseMappingService().getMapping("resp_dial_del")).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
         when(upstreamRoute.get("endpoint")).thenReturn(upstream);
@@ -266,11 +268,11 @@ public class ResponseItemControllerTest {
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("resp_dial_del", DELETE).handle();
+        controller("dial_test-deployment_del", DELETE).handle();
 
         await(testContext);
 
-        verify(proxy.getResponseMappingService()).deleteMapping("resp_dial_del");
+        verify(proxy.getResponseMappingService()).deleteMapping(any(ResourceDescriptor.class));
     }
 
     @Test
@@ -290,7 +292,7 @@ public class ResponseItemControllerTest {
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
-        when(proxy.getResponseMappingService().getMapping("resp_dial_del")).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
         when(upstreamRoute.get("endpoint")).thenReturn(upstream);
@@ -309,11 +311,11 @@ public class ResponseItemControllerTest {
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("resp_dial_del", DELETE).handle();
+        controller("dial_test-deployment_del", DELETE).handle();
 
         await(testContext);
 
-        verify(proxy.getResponseMappingService(), never()).deleteMapping(anyString());
+        verify(proxy.getResponseMappingService(), never()).deleteMapping(any(ResourceDescriptor.class));
     }
 
     @Test
@@ -327,13 +329,13 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("no-responses-deployment");
 
-        when(proxy.getResponseMappingService().getMapping("resp_dial_x")).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "no-responses-deployment")).thenReturn(deployment);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getUserId()).thenReturn("test-user");
         when(context.respond(any(HttpStatus.class), anyString())).thenAnswer(invocation -> complete(testContext));
 
-        controller("resp_dial_x", GET).handle();
+        controller("dial_no-responses-deployment_x", GET).handle();
 
         await(testContext);
 
@@ -354,7 +356,7 @@ public class ResponseItemControllerTest {
         deployment.setResponsesEndpoint("http://adapter/responses");
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
 
-        when(proxy.getResponseMappingService().getMapping("resp_dial_y")).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
         when(upstreamRoute.get("missing-upstream-key")).thenReturn(null);
@@ -362,7 +364,7 @@ public class ResponseItemControllerTest {
         when(context.getUserId()).thenReturn("test-user");
         when(context.respond(any(HttpStatus.class), anyString())).thenAnswer(invocation -> complete(testContext));
 
-        controller("resp_dial_y", GET).handle();
+        controller("dial_test-deployment_y", GET).handle();
 
         await(testContext);
 
@@ -387,7 +389,7 @@ public class ResponseItemControllerTest {
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
-        when(proxy.getResponseMappingService().getMapping("resp_dial_empty")).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
         when(upstreamRoute.get("endpoint")).thenReturn(upstream);
@@ -406,14 +408,14 @@ public class ResponseItemControllerTest {
         when(response.end(any(Buffer.class))).thenAnswer(invocation -> complete(testContext));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("resp_dial_empty", GET).handle();
+        controller("dial_test-deployment_empty", GET).handle();
 
         await(testContext);
 
         ArgumentCaptor<Buffer> bodyCaptor = ArgumentCaptor.forClass(Buffer.class);
         verify(response).end(bodyCaptor.capture());
         assertEquals(0, bodyCaptor.getValue().length());
-        verify(proxy.getResponseMappingService(), never()).deleteMapping(anyString());
+        verify(proxy.getResponseMappingService(), never()).deleteMapping(any(ResourceDescriptor.class));
     }
 
     @Test
@@ -444,7 +446,7 @@ public class ResponseItemControllerTest {
         List<Buffer> writtenChunks = new ArrayList<>();
         AtomicReference<Buffer> endChunkRef = new AtomicReference<>();
 
-        when(proxy.getResponseMappingService().getMapping("resp_dial_stream")).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
         when(upstreamRoute.get("endpoint")).thenReturn(upstream);
@@ -475,6 +477,7 @@ public class ResponseItemControllerTest {
 
         when(context.getResponse()).thenReturn(response);
         when(context.getUserId()).thenReturn("test-user");
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(response.setChunked(anyBoolean())).thenReturn(response);
         when(response.setStatusCode(anyInt())).thenReturn(response);
         when(response.putHeader(anyString(), anyString())).thenReturn(response);
@@ -490,7 +493,7 @@ public class ResponseItemControllerTest {
         }).when(response).end(any(Buffer.class));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
-        controller("resp_dial_stream", GET).handle();
+        controller("dial_test-deployment_stream", GET).handle();
 
         await(testContext);
 
@@ -501,13 +504,13 @@ public class ResponseItemControllerTest {
         // First event (response.created) forwarded as a regular chunk with rewritten id
         assertEquals(1, writtenChunks.size());
         String firstEvent = writtenChunks.get(0).toString();
-        assertTrue(firstEvent.contains("resp_dial_stream"));
+        assertTrue(firstEvent.contains("dial_test-deployment_stream"));
         assertFalse(firstEvent.contains(upstreamId));
 
         // Last event (response.completed) sent via end() with rewritten id
         assertNotNull(endChunkRef.get());
         String lastEvent = endChunkRef.get().toString();
-        assertTrue(lastEvent.contains("resp_dial_stream"));
+        assertTrue(lastEvent.contains("dial_test-deployment_stream"));
         assertFalse(lastEvent.contains(upstreamId));
     }
 

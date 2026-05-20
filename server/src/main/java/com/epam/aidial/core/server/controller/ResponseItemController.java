@@ -5,8 +5,11 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResponseMapping;
-import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
+import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
+import com.epam.aidial.core.server.util.ResponseIdUtil;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -25,6 +28,8 @@ import io.vertx.core.http.RequestOptions;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
+
+import java.util.List;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -47,7 +52,8 @@ public class ResponseItemController implements Controller {
     }
 
     private ResponseMapping loadMapping() {
-        ResponseMapping mapping = proxy.getResponseMappingService().getMapping(dialResponseId);
+        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(dialResponseId);
+        ResponseMapping mapping = proxy.getResponseMappingService().getMapping(descriptor);
         if (mapping == null) {
             throw notFoundException();
         }
@@ -103,8 +109,9 @@ public class ResponseItemController implements Controller {
                 .compose(body -> rewriteId(body, upstreamResponseId))
                 .compose(rewritten -> {
                     if (operation.shouldDeleteMapping(proxyResponse.statusCode())) {
+                        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(dialResponseId);
                         return proxy.getTaskExecutor().submit(() -> {
-                            proxy.getResponseMappingService().deleteMapping(dialResponseId);
+                            proxy.getResponseMappingService().deleteMapping(descriptor);
                             return rewritten;
                         });
                     }
@@ -141,10 +148,12 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> collectAndForwardStreaming(HttpClientResponse proxyResponse, String upstreamResponseId) {
+        CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
+        ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context, dialResponseId, upstreamResponseId);
         BufferingReadStream responseStream = new BufferingReadStream(
                 proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024),
-                new GetSseListener(upstreamResponseId));
+                new ResponsesSseListener(List.of(attachmentsFn, replaceIdFn)));
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
@@ -159,34 +168,6 @@ public class ResponseItemController implements Controller {
                     log.warn("Can't send streaming response to client. Error:", error);
                 })
                 .mapEmpty();
-    }
-
-    private class GetSseListener extends BufferingReadStream.BaseEventListener {
-
-        private final String upstreamResponseId;
-
-        GetSseListener(String upstreamResponseId) {
-            super(null);
-            this.upstreamResponseId = upstreamResponseId;
-        }
-
-        @Override
-        protected boolean isLastEvent(SseEvent event, JsonNode data) {
-            return "response.incomplete".equals(event.getEvent()) || "response.completed".equals(event.getEvent());
-        }
-
-        @Override
-        protected Future<JsonNode> transform(SseEvent event, JsonNode ignored) {
-            JsonNode tree = JsonUtil.tryParse(event.getData());
-            if (tree.isObject() && tree instanceof ObjectNode object
-                    && object.get("response") instanceof ObjectNode response) {
-                JsonNode idNode = response.path("id");
-                if (!idNode.isNull() && upstreamResponseId.equals(idNode.asText())) {
-                    response.put("id", dialResponseId);
-                }
-            }
-            return Future.succeededFuture(tree);
-        }
     }
 
     private static HttpException notFoundException() {
