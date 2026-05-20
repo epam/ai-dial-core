@@ -25,7 +25,7 @@ import javax.annotation.Nullable;
 @AllArgsConstructor
 public class ResponseMappingService {
     private static final int PAGE_SIZE = 1000;
-    private static final long DEFAULT_CHECK_PERIOD = 3_600_000L;
+    private static final long DEFAULT_CHECK_PERIOD = 24 * 60 * 60 * 1000;
     private static final long DEFAULT_TTL = 30L * 24 * 60 * 60 * 1000;
 
     private final ResourceService resourceService;
