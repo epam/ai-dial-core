@@ -80,11 +80,6 @@ public enum RouteTemplate {
             "/v1/metadata/{resourceType}/{bucket}/{path}"
     ),
 
-    CONFIG_EXPORT(
-            "^/v1/admin/export$",
-            "/v1/admin/export"
-    ),
-
     CONFIG_HEALTH(
             "^/v1/admin/health/config$",
             "/v1/admin/health/config"

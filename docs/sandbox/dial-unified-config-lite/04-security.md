@@ -44,7 +44,7 @@ API-managed entities store secret fields encrypted via the existing `CredentialE
 
 | Operation | Behavior |
 |---|---|
-| `GET` / `export` | Secret value masked as `"***"` |
+| `GET` *(and future `export` — deferred per Defer.1)* | Secret value masked as `"***"` |
 | `PUT … If-None-Match: *` (create — field absent / `null`) | Stored as `null` |
 | `PUT … If-None-Match: *` (create — field with `"***"`) | Rejected `400` — the mask sentinel is not a valid create-time secret |
 | `PUT … If-None-Match: *` (create — real value) | Encrypted and stored |

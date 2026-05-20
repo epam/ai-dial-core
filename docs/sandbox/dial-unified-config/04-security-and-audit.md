@@ -77,9 +77,10 @@ public class AdminRoleAuthorizationService implements ConfigAuthorizationService
     }
 }
 
-// Cross-entity ops endpoints (/v1/admin/apply, /v1/admin/validate, /v1/admin/export,
+// Cross-entity ops endpoints (/v1/admin/apply, /v1/admin/validate,
 // /v1/admin/audit, /v1/admin/health/config, /v1/admin/schema) call a separate path —
 // always admin-role, no bucket dimension, no per-entity cross-ref check.
+// (/v1/admin/export is deferred — see IMPLEMENTATION.md §5.5 Defer.1.)
 
 // Future Auth-MT implementation (not in scope):
 // HierarchicalAuthorizationService evaluates: platform admin > tenant admin > team owner
@@ -481,7 +482,7 @@ dial-cli audit reconcile --dry-run
 
 **Audit blocks the mutation.** If the PENDING write to Redis Stream fails, the config change is aborted. This is the Vault model — the audit trail cannot lag or be silently dropped. A write that isn't audited doesn't happen.
 
-**Operational consequence (runbook).** Because the PENDING write is in the critical path, Redis Streams availability becomes the SLO for all admin config mutations. If Redis is partitioned, overloaded, or its stream storage is exhausted, admin-gated writes (per-entity `PUT` / `DELETE` to `public/` and `platform/`, plus `/v1/admin/apply` and any other `/v1/admin/*` mutating op) will return `503 Service Unavailable` with a body identifying audit-write failure as the cause. **Scope of the 503 is limited to admin write endpoints only.** Unaffected by an audit-stream outage: (a) all `GET` endpoints (per-entity reads, listings, `GET /v1/admin/export`, `GET /v1/admin/audit` itself for query — the read tier is independent of the write-tier PENDING gate), (b) the unauthenticated `/health` Kubernetes liveness probe, (c) the `MergedConfigStore` rebuild path (it reads from Redis HASH / blob, not the Stream), and (d) all runtime traffic — chat completions, embeddings, file uploads, and the entire user Resource API. Pod scale-up and skip-and-continue invariants from §4.1 of `02-architecture.md` are preserved; only the admin mutation surface is gated by the Stream SLO. Operators should:
+**Operational consequence (runbook).** Because the PENDING write is in the critical path, Redis Streams availability becomes the SLO for all admin config mutations. If Redis is partitioned, overloaded, or its stream storage is exhausted, admin-gated writes (per-entity `PUT` / `DELETE` to `public/` and `platform/`, plus `/v1/admin/apply` and any other `/v1/admin/*` mutating op) will return `503 Service Unavailable` with a body identifying audit-write failure as the cause. **Scope of the 503 is limited to admin write endpoints only.** Unaffected by an audit-stream outage: (a) all `GET` endpoints (per-entity reads, listings, `GET /v1/admin/audit` itself for query — the read tier is independent of the write-tier PENDING gate; the deferred `GET /v1/admin/export` will follow the same unaffected-by-audit-outage rule when it ships — see [IMPLEMENTATION.md §5.5 Defer.1](IMPLEMENTATION.md)), (b) the unauthenticated `/health` Kubernetes liveness probe, (c) the `MergedConfigStore` rebuild path (it reads from Redis HASH / blob, not the Stream), and (d) all runtime traffic — chat completions, embeddings, file uploads, and the entire user Resource API. Pod scale-up and skip-and-continue invariants from §4.1 of `02-architecture.md` are preserved; only the admin mutation surface is gated by the Stream SLO. Operators should:
 
 - Alert on `config_api_audit_write_failed_total` Prometheus counter with a low threshold (any sustained rate > 0 is a SEV-2).
 - Monitor Redis Stream length for `dial:audit:events`; set a warning at ~70% of configured `MAXLEN` and a page at ~90%. Stream trimming runs after archival (§3.4); if archival lags, the stream grows.

@@ -7,7 +7,9 @@ The shape of the Configuration API for reviewers. Verbs, URL patterns, concurren
 ```
 Per-entity CRUD              /v1/{type}/{bucket}/{name}
 Per-bucket / folder listing  /v1/metadata/{type}/{bucket}/{path}
-Cross-entity operator ops    /v1/admin/{apply | validate | export | schema | audit | health/config}
+Cross-entity operator ops    /v1/admin/{apply | validate | schema | health/config}
+                             # /v1/admin/export deferred — Defer.1
+                             # /v1/admin/audit  deferred — Phase 7
 ```
 
 Per-entity CRUD is uniform with the existing Resource API: a full resource identifier in the URL, type-first. Per-bucket and per-folder listings live on the sibling `/v1/metadata/{type}/{bucket}/{path}` route — identical shape to the existing `RESOURCE_METADATA` / `FILES_METADATA` routes for files, conversations, prompts, applications, and toolsets. Operator endpoints live under `/v1/admin/*` and are always admin-role-gated; non-admin callers get `403`.
@@ -52,14 +54,14 @@ The singleton `PUT /v1/settings/platform/global` follows the same shape — upse
 ```
 POST  /v1/admin/apply                # apply a set of resource manifests
 POST  /v1/admin/validate             # validate manifests without applying
-GET   /v1/admin/export               # full effective config (YAML/JSON)
-GET   /v1/admin/export?type=models   # one entity type
 GET   /v1/admin/schema/{type}        # JSON Schema for an entity type
 GET   /v1/admin/health/config        # status: ok | degraded + skipped[]
 GET   /v1/admin/audit                # Phase 7 — deferred
+# GET /v1/admin/export               # deferred — Defer.1 (design preserved)
+# GET /v1/admin/export?type=models   # deferred — Defer.1
 ```
 
-`export` is the single source of truth for runtime state — it returns the effective merged config DIAL Core is actually serving (file + API entries). `health/config` exposes invalid-entity skip state separately from the unauthenticated Kubernetes `/health` liveness probe, which is unchanged.
+`export` was originally the single source of truth for runtime state — it returns the effective merged config DIAL Core is actually serving (file + API entries). **Deferred from MVP at core-team request 2026-05-20** — see `../dial-unified-config/IMPLEMENTATION.md` §5.5 Defer.1; design preserved. Until it ships, operators consult `aidial.config.json` directly for file-sourced entries. `health/config` exposes invalid-entity skip state separately from the unauthenticated Kubernetes `/health` liveness probe, which is unchanged.
 
 ## Concurrency
 
@@ -114,7 +116,7 @@ The full authorization spec is in [`04-security.md`](04-security.md).
 
 `nextToken` is **present iff there is another page** (omitted on the last page — no separate `hasMore` field). The token is opaque; clients must not parse it.
 
-**Listings are blob-only and carry no Public/Owner projection.** No `status`, no `source`, no `validationWarnings`, no entity body. File-sourced entries (from `aidial.config.json`) are not surfaced through `/v1/metadata/...` — operators see them via `GET /v1/admin/export` (or `dial-cli export`). Operators who need entity-level validity or provenance do a per-entity `GET` after the listing.
+**Listings are blob-only and carry no Public/Owner projection.** No `status`, no `source`, no `validationWarnings`, no entity body. File-sourced entries (from `aidial.config.json`) are not surfaced through `/v1/metadata/...`. During MVP, operators consult `aidial.config.json` directly off the deployment to see file-sourced entries (`GET /v1/admin/export` / `dial-cli export` deferred — see `../dial-unified-config/IMPLEMENTATION.md` §5.5 Defer.1). Operators who need entity-level validity or provenance do a per-entity `GET` after the listing.
 
 ## Bulk apply semantics
 

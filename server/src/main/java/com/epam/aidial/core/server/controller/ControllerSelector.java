@@ -88,11 +88,6 @@ public class ControllerSelector {
         post(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
         put(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
         delete(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
-        get(RouteTemplate.CONFIG_EXPORT, (proxy, context, pathMatcher) -> {
-            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
-            AdminExportController controller = new AdminExportController(context, authService, proxy.getTaskExecutor());
-            return controller::handle;
-        });
         get(RouteTemplate.CONFIG_HEALTH, (proxy, context, pathMatcher) -> {
             ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
             AdminHealthConfigController controller = new AdminHealthConfigController(

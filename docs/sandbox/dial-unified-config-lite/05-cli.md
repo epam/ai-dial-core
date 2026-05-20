@@ -26,7 +26,7 @@ Top-level commands:
 | Command | What it does |
 |---|---|
 | `dial-cli apply -f <path>` | Declarative bulk apply against `POST /v1/admin/apply` |
-| `dial-cli export --env <env>` | Full export of effective config |
+| `dial-cli export --env <env>` *(deferred — Defer.1)* | Full export of effective config. Deferred from MVP — see `../dial-unified-config/IMPLEMENTATION.md` §5.5 Defer.1. Design preserved. |
 | `dial-cli env list \| current \| use <name> \| check` | Environment management (kubectl `use-context` analog) |
 | `dial-cli audit` *(Phase 7 — deferred)* | Query audit log |
 | `dial-cli completion {bash\|zsh\|fish}` | Shell completion |

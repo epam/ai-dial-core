@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * HTTP integration tests for the per-bucket models listing — slice 1S.2 amended by U.0 (2026-05-20)
  * to live at {@code /v1/metadata/models/public/} and return {@code ResourceFolderMetadata}
  * (same shape as the user Resource API). Listings are now blob-only — file-defined models do not
- * surface here. Operators see the file twin via {@code GET /v1/admin/export}.
+ * surface here.
  *
  * <p>The empty-path single-entity URL {@code /v1/models/public/} now returns 404 (no longer a
  * listing surface).
