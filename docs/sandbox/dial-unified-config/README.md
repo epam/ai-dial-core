@@ -2,7 +2,7 @@
 
 > **Version**: 2.20
 > **Status**: Decisions locked — ready for Phase 1 implementation
-> **Last updated**: April 2026
+> **Last updated**: May 2026
 
 This folder contains the proposal for unifying DIAL Core's configuration management — a native Configuration API plus a `dial-cli` tool that replaces today's file-based, eventually-consistent workflow. The proposal is split into focused topic docs so each audience can read only what's relevant to them.
 

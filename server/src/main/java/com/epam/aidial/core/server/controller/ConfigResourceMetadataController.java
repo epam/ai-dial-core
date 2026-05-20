@@ -22,8 +22,8 @@ import lombok.extern.slf4j.Slf4j;
  * {@code GET /v1/metadata/{type}/{bucket}/{path}} — the unified metadata-listing route.
  * Returns {@link com.epam.aidial.core.storage.data.ResourceFolderMetadata} /
  * {@link com.epam.aidial.core.storage.data.ResourceItemMetadata} (same shape the user Resource
- * API uses), so listings are now blob-only. File-sourced entries are not surfaced here; during
- * MVP, operators consult {@code aidial.config.json} directly.
+ * API uses), so listings are now blob-only. File-sourced entries are not surfaced here; operators
+ * see them via {@code GET /v1/admin/export}.
  *
  * <p>The singleton {@code settings} type has no listing surface — responds 405. Every 405
  * response on the metadata route advertises {@code Allow: GET} because the metadata surface is

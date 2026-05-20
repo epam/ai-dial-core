@@ -6,42 +6,46 @@ The shape of the Configuration API for reviewers. Verbs, URL patterns, concurren
 
 ```
 Per-entity CRUD              /v1/{type}/{bucket}/{name}
+Per-bucket / folder listing  /v1/metadata/{type}/{bucket}/{path}
 Cross-entity operator ops    /v1/admin/{apply | validate | export | schema | audit | health/config}
 ```
 
-Per-entity CRUD is uniform with the existing Resource API: a full resource identifier in the URL, type-first. Operator endpoints live under `/v1/admin/*` and are always admin-role-gated; non-admin callers get `403`. These are sibling routes to the existing `/v1/metadata/{type}/{bucket}/...` listings for files, conversations, prompts, applications, and toolsets — those existing paths are deliberately left unchanged.
+Per-entity CRUD is uniform with the existing Resource API: a full resource identifier in the URL, type-first. Per-bucket and per-folder listings live on the sibling `/v1/metadata/{type}/{bucket}/{path}` route — identical shape to the existing `RESOURCE_METADATA` / `FILES_METADATA` routes for files, conversations, prompts, applications, and toolsets. Operator endpoints live under `/v1/admin/*` and are always admin-role-gated; non-admin callers get `403`.
 
 ## Per-entity CRUD
 
 ```
-GET    /v1/{type}/{bucket}/             # list entities in this bucket
-GET    /v1/{type}/{bucket}/{name}       # get entity
-POST   /v1/{type}/{bucket}/{name}       # create-only — 409 if exists
-PUT    /v1/{type}/{bucket}/{name}       # update-only — 404 if missing
-DELETE /v1/{type}/{bucket}/{name}       # delete — 404 if missing
+GET    /v1/{type}/{bucket}/{name}       # get entity (304 on If-None-Match match)
+PUT    /v1/{type}/{bucket}/{name}       # upsert; If-None-Match: * → 412 if exists; If-Match: <etag> → 412 on mismatch
+DELETE /v1/{type}/{bucket}/{name}       # delete; If-Match: <etag> → 412 on mismatch; 404 if missing
 ```
+
+`POST` on the per-entity URL returns `405 Method Not Allowed` with `Allow: GET, PUT, DELETE`.
 
 Canonical examples:
 
 ```
-GET    /v1/models/public/gpt-4                   # user-facing model
-POST   /v1/roles/platform/viewer                 # infrastructure role (409 if exists)
-PUT    /v1/applications/public/my-admin-app      # admin update of public app
-GET    /v1/settings/platform/global              # singleton settings
+GET    /v1/models/public/gpt-4                                 # user-facing model
+PUT    /v1/roles/platform/viewer    If-None-Match: *           # create-only (412 if exists)
+PUT    /v1/applications/public/my-admin-app                    # bare upsert (last-write-wins)
+GET    /v1/settings/platform/global                            # singleton settings
 ```
 
 The bucket is always explicit. `public/` for user-facing types (models, applications, toolsets, schemas); `platform/` for infrastructure (roles, keys, routes, interceptors, settings). Admin scope also covers `public/` instances of `files`, `prompts`, and `conversations` (shared assets); user-owned instances in user buckets remain owner-managed by the existing Resource API rule.
 
-### The strict create/update split
+### Wire shape — PUT-upsert with RFC 7232 conditional headers
 
-`POST` and `PUT` are deliberately non-overlapping:
+Aligned with the existing Resource API since launch: one `PUT` upsert at the single-entity surface, with conditional headers covering create-only and CAS semantics.
 
-- `POST` creates and returns `409 Conflict` if the entity exists.
-- `PUT` updates and returns `404 Not Found` if it doesn't.
+- `PUT … If-None-Match: *` — create-only gate. Returns `412 Precondition Failed` if any entity already exists at that URL.
+- `PUT … If-Match: <etag>` — CAS update guard. Returns `412 Precondition Failed` if the stored ETag has moved.
+- `PUT` bare — last-write-wins upsert (creates if absent, replaces if present).
+- `DELETE … If-Match: <etag>` — `412` on mismatch; `404` if missing.
+- `GET … If-None-Match: <etag>` — `304 Not Modified` when the supplied ETag matches stored (RFC 7232 §3.2).
 
-A typo in an entity name therefore surfaces as a clean `404` / `409` instead of a silent stub creation. Bulk upsert lives only on `POST /v1/admin/apply` — that is the canonical declarative path.
+A typo on `PUT … If-None-Match: *` (entity exists) or on `DELETE` (entity missing) surfaces as a clean structured error instead of a silent stub creation. Bulk upsert lives only on `POST /v1/admin/apply` — that is the canonical declarative path.
 
-The only exception is the singleton `PUT /v1/settings/platform/global`, which is upsert by design (the projection always has a value — blob, file, or default). `POST` on that URL returns `405 Method Not Allowed` (with `Allow: GET, PUT, DELETE`); `DELETE` clears the API blob and reverts to the file-sourced or default projection.
+The singleton `PUT /v1/settings/platform/global` follows the same shape — upsert by design (the projection always has a value: blob, file, or default). `DELETE` clears the API blob and reverts to the file-sourced or default projection (idempotent). `POST` returns `405` with `Allow: GET, PUT, DELETE`. On the metadata route (`GET /v1/metadata/settings/platform/`) the controller is read-only — `POST` / `PUT` / `DELETE` there return `405` with `Allow: GET`.
 
 ## Operator endpoints (`/v1/admin/*`)
 
@@ -62,8 +66,9 @@ GET   /v1/admin/audit                # Phase 7 — deferred
 ETag-based optimistic concurrency, matching the existing Resource API:
 
 - `If-Match: <etag>` on `PUT` / `DELETE` is **optional**. Present → server returns `412 Precondition Failed` on mismatch. Absent → write proceeds (last-write-wins).
-- ETag is returned in the HTTP `ETag` response header on `POST`, `PUT`, `GET`. Never in the body, never on `DELETE`.
-- `POST` covers the create-only case natively (`409 Conflict` if exists). No `If-None-Match: *` is needed.
+- `If-None-Match: *` on `PUT` is the **create-only gate** — `412 Precondition Failed` if the entity already exists.
+- `If-None-Match: <etag>` on `GET` returns `304 Not Modified` when the supplied ETag matches stored.
+- ETag is returned in the HTTP `ETag` response header on `PUT` and `GET` (and on per-item `GET /v1/metadata/...`). Never in the body, never on `DELETE`.
 
 CI pipelines and concurrency-sensitive callers should always pass `If-Match`; ad-hoc CLI updates can omit it for ergonomics.
 
@@ -71,7 +76,7 @@ CI pipelines and concurrency-sensitive callers should always pass `If-Match`; ad
 
 `PUT` is full-replace by default — absent fields revert to defaults. **Secret fields are the explicit exception**: an absent / `null` / `"***"` secret on `PUT` preserves the value already stored. This applies to `Key.key`, `Upstream.key`, `Upstream.extraData`, plus toolset OAuth credentials (`ResourceAuthSettings.clientSecret` and `codeVerifier`) — those use the existing toolset-encryption path but follow the same preserve-on-omit semantics. All other fields follow standard full-replace; clients that want to keep a non-secret value must include it in the body.
 
-`POST` does **not** participate — a `"***"` sentinel at create time is rejected as `400`.
+On a create (`PUT … If-None-Match: *` against a non-existent URL) there is no prior value to preserve — a `"***"` sentinel at create time is rejected as `400 Bad Request`.
 
 ## Authorization model
 
@@ -86,25 +91,30 @@ The full authorization spec is in [`04-security.md`](04-security.md).
 
 - **Entity name** — `^[A-Za-z0-9._-]+$` per path segment. `400` on violation.
 - **Body** — current-version structural + semantic validation, no bypass flag. Soft-validation (accepting dangling cross-references) is opt-in via `config.write.softValidation: true`; default is strict `422`.
-- **Status of stored entities** — invalid entities are visible on the listing and `GET` surface with `"status": "invalid"` and an Owner-only `validationWarnings` array. They don't disappear silently.
+- **Status of stored entities** — invalid entities surface their `"status": "invalid"` + Owner-only `validationWarnings` on per-entity `GET` responses. The aggregate "which entities are invalid" view lives on `GET /v1/admin/health/config`. Listings do not carry this projection (see below).
 
 ## Listing & pagination
 
-`GET /v1/{type}/{bucket}/?limit=N&cursor=…` returns items in a paginated envelope (both query parameters optional; `limit` defaults to 100, max 500 — values above the cap are clamped to 500):
+`GET /v1/metadata/{type}/{bucket}/{path}?limit=N&token=…` returns the same `ResourceFolderMetadata` / `ResourceItemMetadata` shape the existing `RESOURCE_METADATA` and `FILES_METADATA` controllers return. A folder GET returns `ResourceFolderMetadata`; a per-item GET returns `ResourceItemMetadata`. `limit` defaults to 100, hard cap 1000.
 
 ```json
 {
-  "entityType": "models",
+  "name": null,
+  "parentPath": null,
   "bucket": "public",
-  "items": [ /* … */ ],
-  "nextCursor": "opaque-base64-token",
-  "hasMore": true
+  "url": "models/public/",
+  "nodeType": "FOLDER",
+  "resourceType": "MODEL",
+  "items": [
+    { "name": "gpt-4", "url": "models/public/gpt-4", "nodeType": "ITEM", "resourceType": "MODEL", "etag": "…", "updatedAt": 1715800000000, "createdAt": 1715700000000 }
+  ],
+  "nextToken": "opaque-base64-token"
 }
 ```
 
-`nextCursor` is opaque. `hasMore` is always present. Owner callers (admin or bucket-owner) also see `source` (`"file"` / `"api"` / `"default"`) and `validationWarnings` per item; Public callers see the body + `status` only.
+`nextToken` is **present iff there is another page** (omitted on the last page — no separate `hasMore` field). The token is opaque; clients must not parse it.
 
-File-sourced and API-managed entries appear as distinct rows: a file entry keyed `gpt-4` and an API entry keyed `models/public/gpt-4` are two rows, distinguished by `name` (simple vs canonical) and the Owner-only `source` field.
+**Listings are blob-only and carry no Public/Owner projection.** No `status`, no `source`, no `validationWarnings`, no entity body. File-sourced entries (from `aidial.config.json`) are not surfaced through `/v1/metadata/...` — operators see them via `GET /v1/admin/export` (or `dial-cli export`). Operators who need entity-level validity or provenance do a per-entity `GET` after the listing.
 
 ## Bulk apply semantics
 
@@ -114,7 +124,7 @@ File-sourced and API-managed entries appear as distinct rows: a file entry keyed
 - **Dependency-ordered application** — the server applies entities in a fixed order (`settings → schemas → interceptors → roles → keys → routes → models → toolsets → applications`), not submission order.
 - **Two orthogonal flags govern behaviour.** `precheck: true` (per-call, default) pre-validates the whole batch and aborts on any error — fail-fast batch atomicity. `precheck: false` validates at each entity's write step and continues on per-entity failure. The server-wide `config.write.softValidation` (see Validation) composes orthogonally — `precheck` controls atomicity, `softValidation` controls whether broken entities are admitted at all.
 - **Continue on per-entity failure** (under `precheck: false`) — one failed entity does not roll back successful ones. The response carries a per-entity result list (`created` / `updated` / `unchanged` / `failed`, with error details for failures).
-- **Cluster-wide serialization.** Every admin write surface — bulk apply and per-entity `POST`/`PUT`/`DELETE` alike — runs under a single global admin-write lock (`AdminWriteLockService`; see `02-architecture.md`). Concurrent admin writes on different pods serialize at the entity-set level; an in-flight apply cannot have another batch's writes interleaved into it.
+- **Cluster-wide serialization.** Every admin write surface — bulk apply and per-entity `PUT` / `DELETE` alike — runs under a single global admin-write lock (`AdminWriteLockService`; see `02-architecture.md`). Concurrent admin writes on different pods serialize at the entity-set level; an in-flight apply cannot have another batch's writes interleaved into it.
 
 This is the locked failure-semantics decision: a partial-success report is more useful operationally than an all-or-nothing transaction across heterogeneous entity types.
 

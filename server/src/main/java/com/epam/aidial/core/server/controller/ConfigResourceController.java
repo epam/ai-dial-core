@@ -41,27 +41,29 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.function.BiFunction;
 
 /**
  * Controller for the {@code /v1/{type}/{bucket}/{path}} CONFIG_RESOURCE route — gates on
  * the {@link EntityBucketBinding} allowlist and {@link ConfigAuthorizationService}, then
- * dispatches GET to per-type read handlers and POST/PUT/DELETE for models, interceptors,
- * roles, keys, routes, schemas, and the settings singleton (singleton has no POST surface).
+ * dispatches GET to per-type read handlers and PUT/DELETE for models, interceptors, roles,
+ * keys, routes, schemas, and the settings singleton. POST is universally 405 with
+ * {@code Allow: GET, PUT, DELETE}. PUT is a pure upsert honoring RFC 7232
+ * {@code If-None-Match: *} (create-only gate, 412 if exists) and {@code If-Match: <etag>}
+ * (412 on mismatch). Per-bucket listings live on the sibling
+ * {@link com.epam.aidial.core.server.data.RouteTemplate#CONFIG_RESOURCE_METADATA} route.
  */
 @Slf4j
 public class ConfigResourceController implements Controller {
 
-    private static final String SETTINGS_TYPE = "settings";
     private static final String SETTINGS_SINGLETON_NAME = "global";
-    private static final String SETTINGS_ALLOW = "GET, PUT, DELETE";
-    private static final String WRITE_ALLOW = "GET, POST, PUT, DELETE";
+    private static final String ALLOW_HEADER = "GET, PUT, DELETE";
 
     private final ProxyContext context;
     private final ConfigAuthorizationService authorizationService;
@@ -124,7 +126,7 @@ public class ConfigResourceController implements Controller {
         if (method == HttpMethod.GET || method == HttpMethod.HEAD) {
             return handleGet();
         }
-        if (SETTINGS_TYPE.equals(entityType)) {
+        if (resourceType() == ResourceTypes.GLOBAL_SETTINGS) {
             // Singleton has its own write surface: PUT-upsert + idempotent DELETE; POST is 405.
             if (method == HttpMethod.PUT) {
                 return handleSettingsPut();
@@ -133,9 +135,6 @@ public class ConfigResourceController implements Controller {
                 return handleSettingsDelete();
             }
             return respondMethodNotAllowed();
-        }
-        if (method == HttpMethod.POST) {
-            return handlePost();
         }
         if (method == HttpMethod.PUT) {
             return handlePut();
@@ -158,19 +157,19 @@ public class ConfigResourceController implements Controller {
         // Bucket-aware authz already gated non-admin readers off platform/, so source is always emitted
         // for platform/ types. For public/ types, source is Owner-only.
         return switch (resourceType()) {
-            case MODEL -> handleSingleOrList(
+            case MODEL -> handleSingleGet(
                     config.getModels(), ResourceTypes.MODEL,
                     (key, model) -> projectItem(model, displayName(key), fromApi(key), admin, revealSecrets));
-            case INTERCEPTOR -> handleSingleOrList(
+            case INTERCEPTOR -> handleSingleGet(
                     config.getInterceptors(), ResourceTypes.INTERCEPTOR,
                     (key, interceptor) -> projectItem(interceptor, displayName(key), fromApi(key), true, revealSecrets));
-            case ROLE -> handleSingleOrList(
+            case ROLE -> handleSingleGet(
                     config.getRoles(), ResourceTypes.ROLE,
                     (key, role) -> projectItem(role, displayName(key), fromApi(key), true, revealSecrets));
-            case PROJECT_KEY -> handleSingleOrList(
+            case PROJECT_KEY -> handleSingleGet(
                     config.getKeys(), ResourceTypes.PROJECT_KEY,
                     (key, value) -> projectItem(value, displayName(key), fromApi(key), true, revealSecrets));
-            case ROUTE -> handleSingleOrList(
+            case ROUTE -> handleSingleGet(
                     config.getRoutes(), ResourceTypes.ROUTE,
                     (key, route) -> projectItem(route, displayName(key), fromApi(key), true, revealSecrets));
             case APP_TYPE_SCHEMA -> handleSchemaGet(config, admin);
@@ -179,28 +178,44 @@ public class ConfigResourceController implements Controller {
         };
     }
 
-    private <T> Future<?> handleSingleOrList(Map<String, T> source,
-                                             ResourceTypes resourceType,
-                                             BiFunction<String, T, ObjectNode> projector) {
+    private <T> Future<?> handleSingleGet(Map<String, T> source,
+                                          ResourceTypes resourceType,
+                                          BiFunction<String, T, ObjectNode> projector) {
         Map<String, InvalidEntityRecord> invalid = mergedConfigStore.getInvalidEntities()
                 .getOrDefault(resourceType, Map.of());
         boolean admin = authorizationService.isAdmin(context);
 
         if (path == null || path.isEmpty()) {
-            return respondList(source, invalid, projector, admin);
+            // Per-entity URL with empty name is not a listing surface — listings live on
+            // /v1/metadata/{type}/{bucket}/.
+            context.respond(HttpStatus.NOT_FOUND);
+            return Future.succeededFuture();
         }
         // MergedConfigStore keys API entries by canonical ID ("models/public/gpt-4") and file
         // entries by simple name ("gpt-4"). Try canonical ID first, fall back to simple name —
         // see design 02 §4 union semantics.
         T item = source.get(canonicalId());
+        String matchedKey = null;
         if (item != null) {
-            context.respond(HttpStatus.OK, projector.apply(canonicalId(), item));
-            return Future.succeededFuture();
+            matchedKey = canonicalId();
+        } else {
+            item = source.get(path);
+            if (item != null) {
+                matchedKey = path;
+            }
         }
-        item = source.get(path);
         if (item != null) {
-            context.respond(HttpStatus.OK, projector.apply(path, item));
-            return Future.succeededFuture();
+            // RFC 7232 If-None-Match: emit 304 only when the entity has a blob-backed ETag and the
+            // client-supplied tag matches. File-sourced entries have no blob and skip the check.
+            final T matchedItem = item;
+            final String matched = matchedKey;
+            return respondNotModifiedIfMatched(matchedKey)
+                    .onSuccess(notModified -> {
+                        if (!notModified) {
+                            context.respond(HttpStatus.OK, projector.apply(matched, matchedItem));
+                        }
+                    })
+                    .onFailure(this::handleWriteError);
         }
         InvalidEntityRecord invalidRecord = invalid.get(canonicalId());
         if (invalidRecord != null) {
@@ -211,32 +226,84 @@ public class ConfigResourceController implements Controller {
         return Future.succeededFuture();
     }
 
-    private String canonicalId() {
-        return entityType + "/" + bucket + "/" + path;
+    /**
+     * Emits a {@code 304 Not Modified} if the matched entity has a blob (API-managed) and the
+     * client's {@code If-None-Match} request header carries that blob's ETag. The returned
+     * future resolves to {@code true} iff the 304 was written. File-sourced entries (no blob)
+     * always resolve to {@code false} — treated as always-modified. The blob-metadata fetch
+     * runs on the blocking executor to keep the Vert.x event loop unblocked; the response is
+     * written back on the event loop via the future-chain completion.
+     */
+    private Future<Boolean> respondNotModifiedIfMatched(String matchedKey) {
+        if (!fromApi(matchedKey)) {
+            return Future.succeededFuture(false);
+        }
+        ResourceDescriptor descriptor = singleEntityDescriptor();
+        if (descriptor == null) {
+            return Future.succeededFuture(false);
+        }
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
+        return taskExecutor.<HttpException>submit(() -> {
+            ResourceItemMetadata meta = resourceService.getResourceMetadata(descriptor);
+            if (meta == null || meta.getEtag() == null) {
+                return null;
+            }
+            try {
+                etag.validate(meta.getEtag());
+            } catch (HttpException e) {
+                if (e.getStatus() == HttpStatus.NOT_MODIFIED) {
+                    return e;
+                }
+                // Other status codes (e.g. If-Match failure) are not surfaced here — GET ignores
+                // If-Match per RFC 7232; only If-None-Match drives 304/200 on GET.
+            }
+            return null;
+        }).map(notModified -> {
+            if (notModified != null) {
+                context.respond(notModified);
+                return true;
+            }
+            return false;
+        });
     }
 
-    private <T> Future<?> respondList(Map<String, T> source,
-                                      Map<String, InvalidEntityRecord> invalid,
-                                      BiFunction<String, T, ObjectNode> projector,
-                                      boolean admin) {
-        if (!isLimitValid()) {
-            context.respond(HttpStatus.BAD_REQUEST, "Invalid 'limit' query parameter");
-            return Future.succeededFuture();
+    /**
+     * Returns a single-entity {@link ResourceDescriptor} for the current request, or {@code null}
+     * when the entity type cannot be mapped or the {@code path} is empty/folder-like. Used by
+     * the GET 304 path to fetch blob metadata.
+     */
+    private ResourceDescriptor singleEntityDescriptor() {
+        if (path == null || path.isEmpty() || path.endsWith("/")) {
+            return null;
         }
-        // Sort + dedup by the Config map key so file entries (simple-name keys) and API entries
-        // (canonical-ID keys) appear as distinct rows when both share a simple name; invalid records
-        // merge by their canonical ID and yield to a valid in-Config entry on collision.
-        Map<String, ObjectNode> byKey = new TreeMap<>();
-        for (Map.Entry<String, T> entry : source.entrySet()) {
-            byKey.put(entry.getKey(), projector.apply(entry.getKey(), entry.getValue()));
-        }
-        for (InvalidEntityRecord record : invalid.values()) {
-            byKey.putIfAbsent(record.getCanonicalId(), projectInvalidItem(record, admin));
-        }
-        ArrayNode items = ProxyUtil.MAPPER.createArrayNode();
-        byKey.values().forEach(items::add);
-        context.respond(HttpStatus.OK, listEnvelope(items));
-        return Future.succeededFuture();
+        return descriptorFor(resourceType());
+    }
+
+    /**
+     * Builds a {@link ResourceDescriptor} for the given type using the controller's {@code path},
+     * mapping each type to its fixed (bucket, location) pair. Returns {@code null} for types not
+     * served by the per-entity surface (e.g. {@code GLOBAL_SETTINGS} uses its own handlers).
+     */
+    private ResourceDescriptor descriptorFor(ResourceTypes type) {
+        return switch (type) {
+            case MODEL -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.MODEL,
+                    ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path);
+            case INTERCEPTOR -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.INTERCEPTOR,
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
+            case ROLE -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROLE,
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
+            case PROJECT_KEY -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.PROJECT_KEY,
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
+            case ROUTE -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROUTE,
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
+            case APP_TYPE_SCHEMA -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.APP_TYPE_SCHEMA,
+                    ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path);
+            default -> null;
+        };
+    }
+
+    private String canonicalId() {
+        return entityType + "/" + bucket + "/" + path;
     }
 
     /** Extract the simple name from a canonical ID ("models/public/gpt-4" → "gpt-4"); pass through otherwise. */
@@ -269,34 +336,37 @@ public class ConfigResourceController implements Controller {
         Map<String, InvalidEntityRecord> invalid = mergedConfigStore.getInvalidEntities()
                 .getOrDefault(ResourceTypes.APP_TYPE_SCHEMA, Map.of());
         if (path == null || path.isEmpty()) {
-            if (!isLimitValid()) {
-                context.respond(HttpStatus.BAD_REQUEST, "Invalid 'limit' query parameter");
-                return Future.succeededFuture();
-            }
-            Map<String, ObjectNode> byKey = new TreeMap<>();
-            for (Map.Entry<String, String> entry : schemas.entrySet()) {
-                byKey.put(entry.getKey(),
-                        projectSchemaItem(displayName(entry.getKey()), entry.getValue(),
-                                fromApi(entry.getKey()), admin));
-            }
-            for (InvalidEntityRecord record : invalid.values()) {
-                byKey.putIfAbsent(record.getCanonicalId(), projectInvalidItem(record, admin));
-            }
-            ArrayNode items = ProxyUtil.MAPPER.createArrayNode();
-            byKey.values().forEach(items::add);
-            context.respond(HttpStatus.OK, listEnvelope(items));
+            context.respond(HttpStatus.NOT_FOUND);
             return Future.succeededFuture();
         }
-        // Canonical-ID first, simple-name fallback (see handleSingleOrList).
+        // Canonical-ID first, simple-name fallback (see handleSingleGet).
         String schemaJson = schemas.get(canonicalId());
+        String matchedKey = null;
+        boolean apiBacked = false;
         if (schemaJson != null) {
-            context.respond(HttpStatus.OK, projectSchemaItem(canonicalId(), schemaJson, true, admin));
-            return Future.succeededFuture();
+            matchedKey = canonicalId();
+            apiBacked = true;
+        } else {
+            schemaJson = schemas.get(path);
+            if (schemaJson != null) {
+                matchedKey = path;
+            }
         }
-        schemaJson = schemas.get(path);
         if (schemaJson != null) {
-            context.respond(HttpStatus.OK, projectSchemaItem(path, schemaJson, false, admin));
-            return Future.succeededFuture();
+            final String matched = matchedKey;
+            final String json = schemaJson;
+            final boolean fromApi = apiBacked;
+            return respondNotModifiedIfMatched(matchedKey)
+                    .onSuccess(notModified -> {
+                        if (!notModified) {
+                            try {
+                                context.respond(HttpStatus.OK, projectSchemaItem(matched, json, fromApi, admin));
+                            } catch (JsonProcessingException e) {
+                                context.respond(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
+                            }
+                        }
+                    })
+                    .onFailure(this::handleWriteError);
         }
         InvalidEntityRecord invalidRecord = invalid.get(canonicalId());
         if (invalidRecord != null) {
@@ -309,7 +379,7 @@ public class ConfigResourceController implements Controller {
 
     private Future<?> handleSettingsGet(Config config) {
         if (path == null || path.isEmpty()) {
-            // Singleton has no listing surface — design-locked 405 with full eventual Allow set.
+            // Singleton has no listing surface.
             return respondMethodNotAllowed();
         }
         if (!SETTINGS_SINGLETON_NAME.equals(path)) {
@@ -390,86 +460,12 @@ public class ConfigResourceController implements Controller {
         return Future.succeededFuture();
     }
 
-    private Future<?> handlePost() {
-        WriteSpec spec = prepareWrite();
-        if (spec == null) {
-            return Future.succeededFuture();
-        }
-        ResourceDescriptor descriptor = spec.descriptor();
-        String name = path;
-        EtagHeader etag = ProxyUtil.etag(context.getRequest());
-        String author = context.getUserDisplayName();
-
-        context.getRequest().body().compose(body -> {
-            JsonNode requestNode = parseJsonBody(body);
-            if (spec.hasEncryptedFields()) {
-                try {
-                    secretFieldProcessor.validateNoMaskSentinel(requestNode, spec.entityClass());
-                } catch (IllegalArgumentException e) {
-                    throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
-                }
-            }
-            return taskExecutor.submit(() -> {
-                String blobBody;
-                Key keyEntity = null;
-                String keySecret = null;
-                Object entity = null;
-                if (spec.entityClass() == null) {
-                    blobBody = requestNode.toString();
-                } else {
-                    entity = treeToEntity(requestNode, spec.entityClass());
-                    if (entity instanceof Model m) {
-                        checkCrossReferences(m);
-                    }
-                    if (spec.isKey()) {
-                        keyEntity = (Key) entity;
-                        validateKeyForApiWrite(keyEntity, "POST");
-                        // Capture before encryptFields mutates Key.key to ciphertext in place;
-                        // ApiKeyStore is indexed by plaintext secret (see ApiKeyStore.getApiKeyData).
-                        keySecret = keyEntity.getKey();
-                    }
-                    if (spec.hasEncryptedFields()) {
-                        secretFieldProcessor.encryptFields(entity, descriptor);
-                    }
-                    blobBody = serializeForBlob(entity);
-                }
-                // The admin-write lock alone serializes all writes to admin-only types
-                // cluster-wide (these types are never written by non-admin paths), so the
-                // per-resource lock is redundant here. See 02-architecture.md §4.4.
-                try (LockService.Lock ignored = adminWriteLockService.acquire()) {
-                    ResourceItemMetadata existing = resourceService.getResourceMetadata(descriptor);
-                    // Honor client-supplied conditional headers (If-Match / If-None-Match: *) before
-                    // the implicit create-only 409: this yields RFC-compliant 412 PRECONDITION_FAILED
-                    // when a client opts in via etag. Headerless POST falls through to 409.
-                    etag.validate(existing == null ? null : existing.getEtag());
-                    if (existing != null) {
-                        throw new HttpException(HttpStatus.CONFLICT,
-                                "Resource already exists: " + descriptor.getUrl());
-                    }
-                    ResourceItemMetadata meta = resourceService.putResource(
-                            descriptor, blobBody, EtagHeader.ANY, author, false);
-                    if (keySecret != null) {
-                        apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
-                    }
-                    // Slice 4S.4: decrypt-in-place to give the partial-update path a fully-plaintext
-                    // entity. decryptValue is idempotent on already-plaintext fields, so this works
-                    // for POST (all-plaintext source) and PUT preserve-on-omit (mixed source) alike.
-                    if (entity != null && spec.hasEncryptedFields()) {
-                        secretFieldProcessor.decryptFields(entity, descriptor);
-                    }
-                    mergedConfigStore.applyEntityWrite(typeOf(descriptor),
-                            MergedConfigStore.canonicalId(descriptor),
-                            entity != null ? entity : requestNode);
-                    return meta;
-                }
-            });
-        }).onSuccess(meta -> context.putHeader(HttpHeaders.ETAG, meta.getEtag())
-                .respond(HttpStatus.CREATED, createNameEnvelope(name)))
-                .onFailure(this::handleWriteError);
-
-        return Future.succeededFuture();
-    }
-
+    /**
+     * PUT-upsert: creates the entity when no prior blob exists, updates it otherwise.
+     * Honors RFC 7232 {@code If-None-Match: *} (412 if the entity already exists) and
+     * {@code If-Match: <etag>} (412 on mismatch) via {@link EtagHeader#validate(String)}. Both
+     * arms call {@link MergedConfigStore#applyEntityWrite} uniformly (partial-update fast path).
+     */
     private Future<?> handlePut() {
         WriteSpec spec = prepareWrite();
         if (spec == null) {
@@ -483,14 +479,34 @@ public class ConfigResourceController implements Controller {
         context.getRequest().body().compose(body -> {
             JsonNode requestNode = parseJsonBody(body);
             return taskExecutor.submit(() -> {
-                // Per-resource lock dropped — admin-write lock alone serializes all writes
-                // to admin-only types cluster-wide. See 02-architecture.md §4.4.
+                // The admin-write lock alone serializes all writes to admin-only types
+                // cluster-wide (these types are never written by non-admin paths), so the
+                // per-resource lock is redundant here. See 02-architecture.md §4.4.
                 try (LockService.Lock ignored = adminWriteLockService.acquire()) {
-                    String existingBody = resourceService.getResource(descriptor, EtagHeader.ANY, false);
-                    if (existingBody == null) {
-                        throw new HttpException(HttpStatus.NOT_FOUND,
-                                "Resource not found: " + descriptor.getUrl());
+                    // Read existing blob first — both to validate conditional headers and to drive
+                    // preserve-on-omit when secrets are involved. One combined fetch (metadata +
+                    // body) saves a Redis/blob round-trip. Returns null when no blob exists
+                    // (file-sourced entries don't show up here; the union with file entries is
+                    // reapplied via applyEntityWrite below).
+                    Pair<ResourceItemMetadata, String> existingPair =
+                            resourceService.getResourceWithMetadata(descriptor, EtagHeader.ANY);
+                    ResourceItemMetadata existing = existingPair == null ? null : existingPair.getLeft();
+                    String existingBody = existingPair == null ? null : existingPair.getRight();
+                    // Honor If-Match / If-None-Match: * before the write — yields RFC-compliant 412
+                    // PRECONDITION_FAILED. Bare PUT (no conditional header) passes through and the
+                    // write proceeds as an upsert.
+                    etag.validate(existing == null ? null : existing.getEtag());
+                    // Sentinel rejection runs only on the create arm. On update, a "***" sentinel
+                    // in an encrypted field is honored by mergePreservingOmittedSecrets as a signal
+                    // to keep the prior ciphertext — see SecretFieldProcessor.
+                    if (existing == null && spec.hasEncryptedFields()) {
+                        try {
+                            secretFieldProcessor.validateNoMaskSentinel(requestNode, spec.entityClass());
+                        } catch (IllegalArgumentException e) {
+                            throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
+                        }
                     }
+
                     String blobBody;
                     Key keyEntity = null;
                     String keySecret = null;
@@ -503,7 +519,9 @@ public class ConfigResourceController implements Controller {
                                     "Request body must be a JSON object");
                         }
                         JsonNode source;
-                        if (spec.hasEncryptedFields()) {
+                        if (spec.hasEncryptedFields() && existingBody != null) {
+                            // Update arm with secret fields — preserve omitted/sentinel-masked
+                            // ciphertext from the prior blob (see SecretFieldProcessor).
                             JsonNode existingBlobNode;
                             try {
                                 existingBlobNode = ProxyUtil.BLOB_MAPPER.readTree(existingBody);
@@ -516,6 +534,9 @@ public class ConfigResourceController implements Controller {
                             source = secretFieldProcessor.mergePreservingOmittedSecrets(
                                     existingBlobNode, requestNode, spec.entityClass());
                         } else {
+                            // Create arm (no prior blob) or no encrypted fields — use the request
+                            // body verbatim. SecretFieldProcessor encryptFields below will handle
+                            // any plaintext secrets.
                             source = requestNode;
                         }
                         entity = treeToEntity(source, spec.entityClass());
@@ -525,7 +546,8 @@ public class ConfigResourceController implements Controller {
                         if (spec.isKey()) {
                             keyEntity = (Key) entity;
                             validateKeyForApiWrite(keyEntity, "PUT");
-                            // Capture before encryptFields mutates Key.key to ciphertext in place.
+                            // Capture before encryptFields mutates Key.key to ciphertext in place;
+                            // ApiKeyStore is indexed by plaintext secret (see ApiKeyStore.getApiKeyData).
                             keySecret = keyEntity.getKey();
                         }
                         if (spec.hasEncryptedFields()) {
@@ -533,15 +555,18 @@ public class ConfigResourceController implements Controller {
                         }
                         blobBody = serializeForBlob(entity);
                     }
+                    // Conditional headers were already validated above; persist with ANY so the
+                    // blob layer doesn't re-validate against a stale snapshot.
                     ResourceItemMetadata meta = resourceService.putResource(
-                            descriptor, blobBody, etag, author, false);
+                            descriptor, blobBody, EtagHeader.ANY, author, false);
                     if (keySecret != null) {
                         apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
                     }
-                    // Slice 4S.4: decrypt-in-place after blob put. PUT preserve-on-omit produces a
-                    // mixed plaintext/ciphertext entity; decryptValue is idempotent on plaintext and
-                    // restores ciphertext fields to plaintext, yielding a fully-decrypted entity for
-                    // applyEntityWrite to put into the merged Config (read-after-write parity).
+                    // Decrypt-in-place after blob put. PUT-upsert can produce a mixed
+                    // plaintext/ciphertext entity (preserve-on-omit on the update arm); decryptValue
+                    // is idempotent on plaintext and restores ciphertext fields to plaintext,
+                    // yielding a fully-decrypted entity for applyEntityWrite to put into the merged
+                    // Config (read-after-write parity).
                     if (entity != null && spec.hasEncryptedFields()) {
                         secretFieldProcessor.decryptFields(entity, descriptor);
                     }
@@ -622,7 +647,7 @@ public class ConfigResourceController implements Controller {
     }
 
     private static ResourceTypes typeOf(ResourceDescriptor descriptor) {
-        // prepareWrite() always builds descriptors with a ResourceTypes constant — see line 622+;
+        // prepareWrite() always builds descriptors with a ResourceTypes constant — see below;
         // ResourceDescriptor exposes the wider ResourceType interface so the cast is required here.
         return (ResourceTypes) descriptor.getType();
     }
@@ -650,33 +675,21 @@ public class ConfigResourceController implements Controller {
             context.respond(HttpStatus.BAD_REQUEST, "Resource name must not be empty or a folder");
             return null;
         }
-        return switch (resourceType()) {
-            case MODEL -> new WriteSpec(
-                    ResourceDescriptorFactory.fromDecoded(ResourceTypes.MODEL,
-                            ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path),
-                    Model.class, true, false);
-            case INTERCEPTOR -> new WriteSpec(
-                    ResourceDescriptorFactory.fromDecoded(ResourceTypes.INTERCEPTOR,
-                            ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path),
-                    Interceptor.class, false, false);
-            case ROLE -> new WriteSpec(
-                    ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROLE,
-                            ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path),
-                    Role.class, false, false);
-            case PROJECT_KEY -> new WriteSpec(
-                    ResourceDescriptorFactory.fromDecoded(ResourceTypes.PROJECT_KEY,
-                            ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path),
-                    Key.class, true, true);
-            case ROUTE -> new WriteSpec(
-                    ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROUTE,
-                            ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path),
-                    Route.class, true, false);
-            case APP_TYPE_SCHEMA -> new WriteSpec(
-                    ResourceDescriptorFactory.fromDecoded(ResourceTypes.APP_TYPE_SCHEMA,
-                            ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path),
-                    null, false, false);
+        ResourceTypes type = resourceType();
+        ResourceDescriptor descriptor = descriptorFor(type);
+        if (descriptor == null) {
+            respondMethodNotAllowed();
+            return null;
+        }
+        return switch (type) {
+            case MODEL -> new WriteSpec(descriptor, Model.class, true, false);
+            case INTERCEPTOR -> new WriteSpec(descriptor, Interceptor.class, false, false);
+            case ROLE -> new WriteSpec(descriptor, Role.class, false, false);
+            case PROJECT_KEY -> new WriteSpec(descriptor, Key.class, true, true);
+            case ROUTE -> new WriteSpec(descriptor, Route.class, true, false);
+            case APP_TYPE_SCHEMA -> new WriteSpec(descriptor, null, false, false);
             default -> {
-                respondWriteMethodNotAllowed();
+                respondMethodNotAllowed();
                 yield null;
             }
         };
@@ -777,15 +790,6 @@ public class ConfigResourceController implements Controller {
         return body;
     }
 
-    private ObjectNode listEnvelope(ArrayNode items) {
-        ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
-        body.put("entityType", entityType);
-        body.put("bucket", bucket);
-        body.set("items", items);
-        body.put("hasMore", false);
-        return body;
-    }
-
     private ObjectNode projectItem(Object item, String name, boolean fromApi, boolean includeSource, boolean revealSecrets) {
         // BLOB_MAPPER pass-through emits stored values verbatim — when in-memory Config holds the
         // post-rebuild plaintext, this surfaces the secret (security-admin reveal flow). The default
@@ -859,31 +863,9 @@ public class ConfigResourceController implements Controller {
     }
 
     private Future<?> respondMethodNotAllowed() {
-        if (SETTINGS_TYPE.equals(entityType)) {
-            context.putHeader("Allow", SETTINGS_ALLOW);
-        }
+        context.putHeader("Allow", ALLOW_HEADER);
         context.respond(HttpStatus.METHOD_NOT_ALLOWED, "Not implemented");
         return Future.succeededFuture();
-    }
-
-    private Future<?> respondWriteMethodNotAllowed() {
-        // Default 405 with the eventual Allow set for entity types not yet in the write switch.
-        context.putHeader("Allow", WRITE_ALLOW);
-        context.respond(HttpStatus.METHOD_NOT_ALLOWED, "Not implemented");
-        return Future.succeededFuture();
-    }
-
-    /** Phase 1 validates limit shape only — accepts absent or any positive integer (clamping ships in Phase 2). */
-    private boolean isLimitValid() {
-        String raw = context.getRequest().getParam("limit");
-        if (raw == null) {
-            return true;
-        }
-        try {
-            return Integer.parseInt(raw) >= 1;
-        } catch (NumberFormatException e) {
-            return false;
-        }
     }
 
     private record WriteSpec(

@@ -82,6 +82,12 @@ public class ControllerSelector {
             return () -> controller.handle(resourcePath(path));
         });
         get(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
+        get(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        // Wire POST/PUT/DELETE so the controller can emit a proper 405 + Allow header (RFC 7231)
+        // instead of the router-level 404 for verbs the metadata surface does not implement.
+        post(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        put(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        delete(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
         get(RouteTemplate.CONFIG_EXPORT, (proxy, context, pathMatcher) -> {
             ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
             AdminExportController controller = new AdminExportController(context, authService, proxy.getTaskExecutor());
@@ -378,7 +384,6 @@ public class ControllerSelector {
             return () -> controller.handle(resourcePath(path));
         });
         delete(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
-        post(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
         delete(RouteTemplate.INVITATION, (proxy, context, pathMatcher) -> {
             String invitationId = UrlUtil.decodePath(pathMatcher.group(1));
             InvitationController controller = new InvitationController(proxy, context);
@@ -476,6 +481,16 @@ public class ControllerSelector {
                 mergedConfigStore.isSoftValidation(),
                 proxy.getApiKeyStore(),
                 proxy.getAdminWriteLockService(),
+                entityType, bucket, path);
+    }
+
+    private static Controller configResourceMetadataController(Proxy proxy, ProxyContext context, Matcher pathMatcher) {
+        String entityType = pathMatcher.group(1);
+        String bucket = pathMatcher.group("bucket");
+        String path = UrlUtil.decodePath(pathMatcher.group("path"));
+        ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+        return new ConfigResourceMetadataController(context, authService,
+                proxy.getResourceService(), proxy.getTaskExecutor(),
                 entityType, bucket, path);
     }
 

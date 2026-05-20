@@ -24,8 +24,8 @@ public class CanonicalIdListingTest extends ResourceBaseTest {
 
     @Test
     void testApiManagedModelSurfacedAsCanonicalIdInOpenAiModels() {
-        verify(send(HttpMethod.POST, "/v1/models/public/canonical-test", null, API_MODEL_BODY,
-                "authorization", "admin"), 201);
+        verify(send(HttpMethod.PUT, "/v1/models/public/canonical-test", null, API_MODEL_BODY,
+                "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response list = send(HttpMethod.GET, "/openai/models", null, "");
         verify(list, 200);
@@ -37,8 +37,8 @@ public class CanonicalIdListingTest extends ResourceBaseTest {
 
     @Test
     void testApiManagedModelSurfacedAsCanonicalIdInOpenAiDeployments() {
-        verify(send(HttpMethod.POST, "/v1/models/public/canonical-deployments", null, API_MODEL_BODY,
-                "authorization", "admin"), 201);
+        verify(send(HttpMethod.PUT, "/v1/models/public/canonical-deployments", null, API_MODEL_BODY,
+                "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response list = send(HttpMethod.GET, "/openai/deployments", null, "");
         verify(list, 200);
@@ -61,9 +61,9 @@ public class CanonicalIdListingTest extends ResourceBaseTest {
     void testApiManagedModelAdminGetProjectsCanonicalId() {
         // Polish.1 (2026-05-08): admin GET projects the canonical ID for API-managed entries so
         // operators can copy-paste the identifier verbatim. File-sourced entries keep their simple
-        // name (asserted in ConfigModelListTest#testItemNameSynthesizedFromMapKey).
-        verify(send(HttpMethod.POST, "/v1/models/public/admin-listing-projection", null, API_MODEL_BODY,
-                "authorization", "admin"), 201);
+        // name. Under U.0 the per-entity GET still projects the canonical ID.
+        verify(send(HttpMethod.PUT, "/v1/models/public/admin-listing-projection", null, API_MODEL_BODY,
+                "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response single = send(HttpMethod.GET, "/v1/models/public/admin-listing-projection", null, "",
                 "authorization", "admin");

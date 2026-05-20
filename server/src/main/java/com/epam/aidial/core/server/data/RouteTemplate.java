@@ -71,8 +71,13 @@ public enum RouteTemplate {
     ),
 
     CONFIG_RESOURCE(
-            "^/v1/(models|interceptors|roles|keys|routes|schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)(?:/(?<path>.*))?$",
+            "^/v1/(models|interceptors|roles|keys|routes|schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
             "/v1/{resourceType}/{bucket}/{path}"
+    ),
+
+    CONFIG_RESOURCE_METADATA(
+            "^/v1/metadata/(models|interceptors|roles|keys|routes|schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
+            "/v1/metadata/{resourceType}/{bucket}/{path}"
     ),
 
     CONFIG_EXPORT(
