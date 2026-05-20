@@ -253,9 +253,9 @@ models/public/anthropic.claude-sonnet-4-6     MODEL          2026-05-14T09:12:03
 models/public/old-broken-model                MODEL          2026-05-10T11:02:55Z  2026-05-19T08:30:11Z  "4f0b2dde"
 ```
 
-Note: `source` and `status` are not surfaced on metadata listings (full alignment with the existing Resource API). To see validity or provenance for a specific entity, run `dial-cli model get <name>`; for the cluster-wide degraded-entity view, run `dial-cli admin health` (or query `GET /v1/admin/health/config`). File-sourced entries do not appear in the metadata listing — they live in `Config` only and are visible via `dial-cli export`.
+Note: `source` and `status` are not surfaced on metadata listings (full alignment with the existing Resource API). To see validity or provenance for a specific entity, run `dial-cli model get <name>`; for the cluster-wide degraded-entity view, run `dial-cli admin health` (or query `GET /v1/admin/health/config`). File-sourced entries do not appear in the metadata listing — they live in `Config` only. During MVP, operators consult `aidial.config.json` directly off the deployment to see file-sourced entries; `dial-cli export` is deferred — see [IMPLEMENTATION.md §5.5 Defer.1](IMPLEMENTATION.md).
 
-Listings (`dial-cli get <type>`) return metadata only — `NAME`, `RESOURCE_TYPE`, `CREATED_AT`, `UPDATED_AT`, `ETAG` per entity, matching the existing Resource API's `ResourceItemMetadata` shape. Validity (`status: "valid" | "invalid"`), provenance (`source: "file" | "api"`), and `validationWarnings` are surfaced **only** on a per-entity `GET` (`dial-cli <type> get <name>`) or on the aggregate operator endpoint `GET /v1/admin/health/config` (which lists every invalid entity across all admin-config types in one call). File-sourced entries do not appear in metadata listings — they live in `Config` only and are visible via `dial-cli export`.
+Listings (`dial-cli get <type>`) return metadata only — `NAME`, `RESOURCE_TYPE`, `CREATED_AT`, `UPDATED_AT`, `ETAG` per entity, matching the existing Resource API's `ResourceItemMetadata` shape. Validity (`status: "valid" | "invalid"`), provenance (`source: "file" | "api"`), and `validationWarnings` are surfaced **only** on a per-entity `GET` (`dial-cli <type> get <name>`) or on the aggregate operator endpoint `GET /v1/admin/health/config` (which lists every invalid entity across all admin-config types in one call). File-sourced entries do not appear in metadata listings — they live in `Config` only. During MVP, operators consult `aidial.config.json` directly off the deployment to see file-sourced entries; `dial-cli export` is deferred — see [IMPLEMENTATION.md §5.5 Defer.1](IMPLEMENTATION.md).
 
 **Get single entity** (canonical path):
 
@@ -280,9 +280,10 @@ config:
   userRoles: [basic, power-user]
 ```
 
-**Export full environment:**
+**Export full environment.** *(Deferred from MVP — see [IMPLEMENTATION.md §5.5 Defer.1](IMPLEMENTATION.md). Design preserved; commands below describe the intended shape once the underlying `GET /v1/admin/export` endpoint ships.)*
 
 ```shell
+# deferred — not available in MVP
 dial-cli export --env uat -o yaml > uat-full.yaml
 dial-cli export --env uat --type models -o json > uat-models.json
 ```

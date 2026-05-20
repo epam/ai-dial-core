@@ -52,7 +52,7 @@ Write commands (`add`, `update`, `delete`) target API-managed entities only, so 
 
 | Command | HTTP | Description |
 |---------|------|-------------|
-| `list` | `GET /v1/metadata/{type}/{bucket}/` | List blob-managed resources of this type via the metadata route — returns `ResourceFolderMetadata` (matches the existing Resource API listing shape; see [`03-api-reference.md`](03-api-reference.md) §4). Alias: `dial-cli get <plural>` (kubectl-style; e.g., `dial-cli get models` ≡ `dial-cli model list`). File-sourced entries do not appear in this listing — use `dial-cli export` for the full runtime view. |
+| `list` | `GET /v1/metadata/{type}/{bucket}/` | List blob-managed resources of this type via the metadata route — returns `ResourceFolderMetadata` (matches the existing Resource API listing shape; see [`03-api-reference.md`](03-api-reference.md) §4). Alias: `dial-cli get <plural>` (kubectl-style; e.g., `dial-cli get models` ≡ `dial-cli model list`). File-sourced entries do not appear in this listing — during MVP, operators consult `aidial.config.json` directly (`dial-cli export` is deferred — see [IMPLEMENTATION.md §5.5 Defer.1](IMPLEMENTATION.md)). |
 | `get <name>` | `GET` | Get details of a specific resource (per-entity URL). `--if-none-match <etag>` accepted for client-side caching (server returns `304` on match). |
 | `add [flags] [--template <t>] [--param k=v]` | `PUT … If-None-Match: *` | Create-only — exits `5` on `412` Precondition Failed if entity already exists. No silent overwrite. See [`03-api-reference.md`](03-api-reference.md) §3 / §3.1 (concurrency model and secret-field handling on `PUT`). |
 | `update <name> [flags] [--if-match <etag>]` | `PUT` (with `If-Match` when supplied) | Upsert by default; `--if-match <etag>` adds the CAS guard (exit `6` on `412` mismatch). **Retry semantics.** `update --set` performs a single GET → local merge → PUT and exits `6` on `412` without automatic retries — the CLI never retries-on-conflict implicitly. Operators who need retry-on-conflict pass `--if-match` inside an explicit shell loop or use `apply -f` with a full spec. |
@@ -72,7 +72,7 @@ Write commands (`add`, `update`, `delete`) target API-managed entities only, so 
 | Command | Phase | Description |
 |---------|-------|-------------|
 | `dial-cli apply -f <path>` | Phase 4 | Apply resource manifests (declarative) — uses `POST /v1/admin/apply`, see [`03-api-reference.md`](03-api-reference.md) §7 |
-| `dial-cli export --env <env>` | Phase 1 | Export full environment to files — uses read-only `GET /v1/admin/export` |
+| `dial-cli export --env <env>` | deferred — Defer.1 | Export full environment to files — uses read-only `GET /v1/admin/export`. Both the CLI command and the underlying endpoint are deferred from MVP (see [IMPLEMENTATION.md §5.5 Defer.1](IMPLEMENTATION.md)); design preserved. |
 | `dial-cli diff --source <env> --target <env>` | Phase 1 | Diff all resources between environments — read-only, uses `GET` on both envs |
 | `dial-cli audit --env <env> [filters]` | Phase 7 — deferred | Query audit log |
 | `dial-cli env list` | Phase 1 | List configured environments |

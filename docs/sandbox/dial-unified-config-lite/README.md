@@ -14,7 +14,7 @@ DIAL Core manages deployment configuration through two planes today: a polled JS
 | 60–180+ s propagation delay between Admin UI and DIAL Core | Immediate effect on the writer pod; ≤ 60 s cross-replica in Phase 1; near-instant after Phase 1.5 (Redis pub/sub) |
 | No audit trail for configuration changes | Intent-log audit with PENDING → APPLIED/FAILED, point-in-time snapshots, rollback *(deferred — Phase 7)* |
 | No CLI tool — DevOps hand-edit JSON, push via Helm, wait | `dial-cli apply -f config/ --env uat` with dry-run, validation, env promotion |
-| No single source of truth API for runtime state | Per-entity `GET` + full `/v1/admin/export` snapshot of effective config |
+| No single source of truth API for runtime state | Per-entity `GET` of effective config *(full `/v1/admin/export` snapshot deferred — see `../dial-unified-config/IMPLEMENTATION.md` §5.5 Defer.1)* |
 | Manual per-field substitution when promoting configs | Template-based promotion: `dial-cli promote --from dev --to uat --template …` |
 | Two overlapping configuration planes | Union model — config file and API coexist by design; migration is gradual and per-entity |
 

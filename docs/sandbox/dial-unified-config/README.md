@@ -21,7 +21,7 @@ An agent-native surface over the same API — a **DIAL Admin MCP server** — is
 | 60–180+ second propagation delay between Admin UI and DIAL Core | Immediate effect on the writer pod (the replica that handled the write); ≤60s cross-replica in Phase 1; near-instant after Phase 1.5 (Redis pub/sub) |
 | No audit trail for configuration changes | Intent-log audit (PENDING → APPLIED/FAILED) with point-in-time snapshots and rollback *(deferred — Phase 7)* |
 | No CLI tool — DevOps hand-edits JSON, pushes via Helm, waits | `dial-cli apply -f config/ --env uat` with dry-run, validation, environment promotion |
-| No single source of truth API for runtime state | `dial-cli get` / `GET /v1/{type}/{bucket}/{name}` (per-entity) and `GET /v1/admin/export` (full snapshot) return the effective merged config DIAL Core is actually serving |
+| No single source of truth API for runtime state | `dial-cli get` / `GET /v1/{type}/{bucket}/{name}` (per-entity) returns the effective merged config DIAL Core is actually serving *(full-snapshot `GET /v1/admin/export` deferred — see [IMPLEMENTATION.md §5.5 Defer.1](IMPLEMENTATION.md))* |
 | Manual per-field substitution when promoting configs across environments | Template-based promotion: `dial-cli promote --from dev --to uat --template bedrock-chat` |
 | Two overlapping configuration planes (config file vs Resource API) | Union model: both coexist by design, migration is gradual and per-entity |
 
