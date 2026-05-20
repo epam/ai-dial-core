@@ -45,11 +45,11 @@ API-managed entities store secret fields encrypted via the existing `CredentialE
 | Operation | Behavior |
 |---|---|
 | `GET` / `export` | Secret value masked as `"***"` |
-| `POST` (field absent / `null`) | Stored as `null` |
-| `POST` (field with `"***"`) | Rejected `400` — the mask sentinel is not a valid create-time secret |
-| `POST` (real value) | Encrypted and stored |
-| `PUT` (field absent / `null` / `"***"`) | **Preserve-on-omit** — existing ciphertext kept |
-| `PUT` (real value) | Encrypted and stored |
+| `PUT … If-None-Match: *` (create — field absent / `null`) | Stored as `null` |
+| `PUT … If-None-Match: *` (create — field with `"***"`) | Rejected `400` — the mask sentinel is not a valid create-time secret |
+| `PUT … If-None-Match: *` (create — real value) | Encrypted and stored |
+| `PUT` (update — field absent / `null` / `"***"`) | **Preserve-on-omit** — existing ciphertext kept |
+| `PUT` (update — real value) | Encrypted and stored |
 | `promote` | Secrets skipped — set per environment |
 | `validate` | Secret fields ignored |
 

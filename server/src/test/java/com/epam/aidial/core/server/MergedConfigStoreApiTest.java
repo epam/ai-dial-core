@@ -106,7 +106,10 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testBlobModelSurfacesUnderListing() {
+    void testBlobModelSurfacesUnderMetadataListing() {
+        // U.0 (2026-05-20): the per-bucket listing route is /v1/metadata/{type}/{bucket}/ and
+        // emits ResourceFolderMetadata; the row carries the blob's simple name (entity {@code name}
+        // canonicalisation lives in MergedConfigStore, not the storage metadata).
         String blobName = "list-blob-model";
         String body = """
                 {
@@ -120,38 +123,33 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
         assertEquals(200, reload.status());
 
-        Response list = send(HttpMethod.GET, "/v1/models/public/", null, "",
+        Response list = send(HttpMethod.GET, "/v1/metadata/models/public/", null, "",
                 "authorization", "admin");
         verify(list, 200);
-        assertTrue(list.body().contains("\"name\":\"models/public/" + blobName + "\""),
-                () -> "Expected canonical name for API entry in listing: " + list.body());
+        assertTrue(list.body().contains("\"name\":\"" + blobName + "\""),
+                () -> "Expected blob entry in metadata listing: " + list.body());
     }
 
     @Test
-    void testFileAndApiTwinsAppearAsSeparateListingRows() {
-        // Polish.1 (2026-05-08): the listing dedup is keyed by Config map key, not by simple name,
-        // so a file entry 'test-model-v1' and an API entry 'models/public/test-model-v1' coexist
-        // as distinct rows. Pre-Polish.1 the simple-name dedup silently dropped one of them.
-        String simpleName = "test-model-v1"; // file fixture in aidial.config.json
-        String body = """
-                {
-                    "type": "chat",
-                    "endpoint": "http://localhost:7001/openai/deployments/twin/chat/completions"
-                }
-                """;
-        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
-                simpleName, body);
-
-        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
-        assertEquals(200, reload.status());
-
-        Response list = send(HttpMethod.GET, "/v1/models/public/", null, "",
+    void testFileEntriesDoNotAppearInMetadataListing() {
+        // U.0 (2026-05-20) — replaces the Polish.1 file-vs-API twin regression guard. Metadata
+        // listings are blob-only; file entries (e.g. test-model-v1 from aidial.config.json) are
+        // reachable only via per-entity GET. This locks the new "no file entries in metadata"
+        // invariant established by the U.0 amendment.
+        Response list = send(HttpMethod.GET, "/v1/metadata/models/public/", null, "",
                 "authorization", "admin");
-        verify(list, 200);
-        assertTrue(list.body().contains("\"name\":\"" + simpleName + "\""),
-                () -> "File entry must appear by simple name: " + list.body());
-        assertTrue(list.body().contains("\"name\":\"models/public/" + simpleName + "\""),
-                () -> "API twin must appear by canonical id: " + list.body());
+        if (list.status() == 200) {
+            // File entry must not appear in the blob-only metadata listing.
+            assertTrue(!list.body().contains("\"name\":\"test-model-v1\"")
+                            || list.body().contains("\"name\":\"models/public/test-model-v1\""),
+                    () -> "File simple-name entry must not appear in metadata listing: " + list.body());
+        }
+        // File-defined model is still reachable via the per-entity GET.
+        Response single = send(HttpMethod.GET, "/v1/models/public/test-model-v1", null, "",
+                "authorization", "admin");
+        verify(single, 200);
+        assertTrue(single.body().contains("\"name\":\"test-model-v1\""),
+                () -> "Per-entity GET must surface the file entry: " + single.body());
     }
 
     @Test

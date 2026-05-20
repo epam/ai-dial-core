@@ -8,10 +8,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * HTTP integration tests for slice 2S.11: write API for {@code /v1/models/public/{name}}.
- * Covers strict-split semantics (POST=409, PUT=404, DELETE=404), {@code If-Match} preconditions,
- * preserve-on-omit secret merging, sentinel rejection on POST, and {@code ?reveal_secrets=true}
- * gated by the security-admin role.
+ * HTTP integration tests for slice 2S.11 (write API for {@code /v1/models/public/{name}})
+ * amended by slice U.0 (2026-05-20) — PUT-upsert wire shape. POST is universally 405 with
+ * {@code Allow: GET, PUT, DELETE}. PUT honors {@code If-None-Match: *} (412 if entity exists)
+ * and {@code If-Match: <etag>} (412 on mismatch). Covers preserve-on-omit secret merging,
+ * sentinel rejection on PUT, and {@code ?reveal_secrets=true} gated by the security-admin role.
  *
  * <p>Slice 2S.14: write controllers call {@code MergedConfigStore.rebuildNow()} on the writer pod,
  * making post-write GETs immediately consistent — no polling helpers needed.
@@ -66,13 +67,13 @@ public class ModelWriteApiTest extends ResourceBaseTest {
             """;
 
     @Test
-    void testPost201HappyPath() {
-        Response post = send(HttpMethod.POST, "/v1/models/public/test-model-create",
-                null, MODEL_BODY_NO_SECRET, "authorization", "admin");
-        verify(post, 201);
-        assertNotNull(post.headers().get("etag"));
-        assertTrue(post.body().contains("\"name\":\"test-model-create\""),
-                () -> "Expected name in body: " + post.body());
+    void testPutCreate200HappyPath() {
+        Response put = send(HttpMethod.PUT, "/v1/models/public/test-model-create",
+                null, MODEL_BODY_NO_SECRET, "authorization", "admin", "If-None-Match", "*");
+        verify(put, 200);
+        assertNotNull(put.headers().get("etag"));
+        assertTrue(put.body().contains("\"name\":\"test-model-create\""),
+                () -> "Expected name in body: " + put.body());
 
         Response get = send(HttpMethod.GET, "/v1/models/public/test-model-create", null, "",
                 "authorization", "admin");
@@ -84,42 +85,57 @@ public class ModelWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testPost409OnConflict() {
-        verify(send(HttpMethod.POST, "/v1/models/public/test-model-conflict", null, MODEL_BODY_NO_SECRET,
-                "authorization", "admin"), 201);
-        Response again = send(HttpMethod.POST, "/v1/models/public/test-model-conflict", null,
-                MODEL_BODY_NO_SECRET, "authorization", "admin");
-        verify(again, 409);
+    void testPost405OnEntityUrl() {
+        Response post = send(HttpMethod.POST, "/v1/models/public/test-model-post-405",
+                null, MODEL_BODY_NO_SECRET, "authorization", "admin");
+        verify(post, 405);
+        assertNotNull(post.headers().get("Allow"));
+        assertTrue(post.headers().get("Allow").contains("GET")
+                        && post.headers().get("Allow").contains("PUT")
+                        && post.headers().get("Allow").contains("DELETE"),
+                () -> "Expected Allow header to include GET, PUT, DELETE: " + post.headers().get("Allow"));
     }
 
     @Test
-    void testPost412OnIfNoneMatchStarConflict() {
-        verify(send(HttpMethod.POST, "/v1/models/public/test-model-inm", null, MODEL_BODY_NO_SECRET,
-                "authorization", "admin"), 201);
-        Response again = send(HttpMethod.POST, "/v1/models/public/test-model-inm", null,
+    void testPutIfNoneMatchStar412OnExisting() {
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-inm", null,
+                MODEL_BODY_NO_SECRET, "authorization", "admin", "If-None-Match", "*"), 200);
+        Response again = send(HttpMethod.PUT, "/v1/models/public/test-model-inm", null,
                 MODEL_BODY_NO_SECRET, "authorization", "admin", "If-None-Match", "*");
         verify(again, 412);
     }
 
     @Test
-    void testPost400OnSentinelInUpstreamKey() {
-        Response post = send(HttpMethod.POST, "/v1/models/public/test-model-sentinel", null,
-                MODEL_BODY_WITH_SENTINEL_KEY, "authorization", "admin");
-        verify(post, 400);
-        assertTrue(post.body().contains("***"), () -> "Expected sentinel mention in error: " + post.body());
+    void testPutBareUpsertCreates() {
+        // No conditional header → upsert creates when no prior entity exists.
+        Response put = send(HttpMethod.PUT, "/v1/models/public/test-model-bare", null,
+                MODEL_BODY_NO_SECRET, "authorization", "admin");
+        verify(put, 200);
+
+        Response get = send(HttpMethod.GET, "/v1/models/public/test-model-bare", null, "",
+                "authorization", "admin");
+        verify(get, 200);
     }
 
     @Test
-    void testPost403ForNonAdmin() {
-        Response post = send(HttpMethod.POST, "/v1/models/public/test-model-noadmin", null,
+    void testPut400OnSentinelInUpstreamKey() {
+        Response put = send(HttpMethod.PUT, "/v1/models/public/test-model-sentinel", null,
+                MODEL_BODY_WITH_SENTINEL_KEY, "authorization", "admin", "If-None-Match", "*");
+        verify(put, 400);
+        assertTrue(put.body().contains("***"), () -> "Expected sentinel mention in error: " + put.body());
+    }
+
+    @Test
+    void testPut403ForNonAdmin() {
+        Response put = send(HttpMethod.PUT, "/v1/models/public/test-model-noadmin", null,
                 MODEL_BODY_NO_SECRET, "authorization", "user");
-        verify(post, 403);
+        verify(put, 403);
     }
 
     @Test
-    void testPut200HappyPath() {
-        verify(send(HttpMethod.POST, "/v1/models/public/test-model-update", null, MODEL_BODY_NO_SECRET,
-                "authorization", "admin"), 201);
+    void testPut200HappyPathUpdate() {
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-update", null, MODEL_BODY_NO_SECRET,
+                "authorization", "admin", "If-None-Match", "*"), 200);
 
         String updatedBody = """
                 {
@@ -141,17 +157,9 @@ public class ModelWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testPut404OnMissing() {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/no-such-model", null, MODEL_BODY_NO_SECRET,
-                "authorization", "admin");
-        verify(put, 404);
-    }
-
-    @Test
     void testPut412OnStaleIfMatch() {
-        Response post = send(HttpMethod.POST, "/v1/models/public/test-model-etag", null, MODEL_BODY_NO_SECRET,
-                "authorization", "admin");
-        verify(post, 201);
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-etag", null, MODEL_BODY_NO_SECRET,
+                "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response put = send(HttpMethod.PUT, "/v1/models/public/test-model-etag", null, MODEL_BODY_NO_SECRET,
                 "authorization", "admin", "If-Match", "\"stale\"");
@@ -160,8 +168,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testPutPreservesOmittedSecret() {
-        verify(send(HttpMethod.POST, "/v1/models/public/test-model-omit", null, MODEL_BODY_WITH_SECRET,
-                "authorization", "admin"), 201);
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-omit", null, MODEL_BODY_WITH_SECRET,
+                "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response put = send(HttpMethod.PUT, "/v1/models/public/test-model-omit", null, MODEL_BODY_OMIT_KEY,
                 "authorization", "admin");
@@ -184,8 +192,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testPutTreatsTripleStarAsPreserve() {
-        verify(send(HttpMethod.POST, "/v1/models/public/test-model-star", null, MODEL_BODY_WITH_SECRET,
-                "authorization", "admin"), 201);
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-star", null, MODEL_BODY_WITH_SECRET,
+                "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response put = send(HttpMethod.PUT, "/v1/models/public/test-model-star", null, MODEL_BODY_TRIPLE_STAR,
                 "authorization", "admin");
@@ -200,8 +208,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testDelete204HappyPath() {
-        verify(send(HttpMethod.POST, "/v1/models/public/test-model-delete", null, MODEL_BODY_NO_SECRET,
-                "authorization", "admin"), 201);
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-delete", null, MODEL_BODY_NO_SECRET,
+                "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response del = send(HttpMethod.DELETE, "/v1/models/public/test-model-delete", null, "",
                 "authorization", "admin");
@@ -221,8 +229,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testDelete412OnStaleIfMatch() {
-        verify(send(HttpMethod.POST, "/v1/models/public/test-model-delete-etag", null, MODEL_BODY_NO_SECRET,
-                "authorization", "admin"), 201);
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-delete-etag", null, MODEL_BODY_NO_SECRET,
+                "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response del = send(HttpMethod.DELETE, "/v1/models/public/test-model-delete-etag", null, "",
                 "authorization", "admin", "If-Match", "\"stale\"");
@@ -231,8 +239,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testGetDefaultMasksSecrets() {
-        verify(send(HttpMethod.POST, "/v1/models/public/test-model-mask", null, MODEL_BODY_WITH_SECRET,
-                "authorization", "admin"), 201);
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-mask", null, MODEL_BODY_WITH_SECRET,
+                "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response get = send(HttpMethod.GET, "/v1/models/public/test-model-mask", null, "",
                 "authorization", "admin");
@@ -245,8 +253,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testGetRevealSecretsAsSecurityAdmin() {
-        verify(send(HttpMethod.POST, "/v1/models/public/test-model-reveal", null, MODEL_BODY_WITH_SECRET,
-                "authorization", "admin"), 201);
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-reveal", null, MODEL_BODY_WITH_SECRET,
+                "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response revealed = send(HttpMethod.GET, "/v1/models/public/test-model-reveal",
                 "reveal_secrets=true", "", "authorization", "security-admin");
@@ -257,8 +265,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testGetRevealSecretsAsPlainAdmin() {
-        verify(send(HttpMethod.POST, "/v1/models/public/test-model-reveal-deny", null, MODEL_BODY_WITH_SECRET,
-                "authorization", "admin"), 201);
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-reveal-deny", null, MODEL_BODY_WITH_SECRET,
+                "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response forbidden = send(HttpMethod.GET, "/v1/models/public/test-model-reveal-deny",
                 "reveal_secrets=true", "", "authorization", "admin");
@@ -266,22 +274,22 @@ public class ModelWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testPostImmediatelyVisibleOnGet() {
-        Response post = send(HttpMethod.POST, "/v1/models/public/test-model-immediate-post", null,
-                MODEL_BODY_NO_SECRET, "authorization", "admin");
-        verify(post, 201);
+    void testPutImmediatelyVisibleOnGet() {
+        Response put = send(HttpMethod.PUT, "/v1/models/public/test-model-immediate-post", null,
+                MODEL_BODY_NO_SECRET, "authorization", "admin", "If-None-Match", "*");
+        verify(put, 200);
 
         // No polling — rebuildNow() in the writer makes the new entity visible by the time the
-        // POST response returns. Asserts the immediacy guarantee from slice 2S.14.
+        // PUT response returns. Asserts the immediacy guarantee from slice 2S.14.
         Response get = send(HttpMethod.GET, "/v1/models/public/test-model-immediate-post", null, "",
                 "authorization", "admin");
         verify(get, 200);
         assertTrue(get.body().contains("\"name\":\"models/public/test-model-immediate-post\""),
-                () -> "Expected immediate visibility of POST (canonical name): " + get.body());
+                () -> "Expected immediate visibility of PUT (canonical name): " + get.body());
     }
 
     @Test
-    void testPostGetWithUrlEncodedName() {
+    void testPutGetWithUrlEncodedName() {
         // The {name} segment may carry percent-encoded characters; the controller must decode at
         // the route boundary so the stored entity name and canonical id are the decoded form.
         // Repro from PR #1529 / thread r3249802671 — name with spaces and assorted ASCII punctuation.
@@ -289,8 +297,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         // Percent-encoded for use in the request line — matches what a sane HTTP client would send.
         String encoded = "new%20model%20super%20%21%40%23%24%25%5E%26%2A%28%29_%2B1234567890-%3D%5B%5D%5C%7C%2C.%3C%3E~%60%3B%3A%27__1.0.0";
 
-        verify(send(HttpMethod.POST, "/v1/models/public/" + encoded, null, MODEL_BODY_NO_SECRET,
-                "authorization", "admin"), 201);
+        verify(send(HttpMethod.PUT, "/v1/models/public/" + encoded, null, MODEL_BODY_NO_SECRET,
+                "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response get = send(HttpMethod.GET, "/v1/models/public/" + encoded, null, "",
                 "authorization", "admin");
@@ -303,8 +311,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testDeleteImmediatelyVisibleOnGet() {
-        verify(send(HttpMethod.POST, "/v1/models/public/test-model-immediate-delete", null,
-                MODEL_BODY_NO_SECRET, "authorization", "admin"), 201);
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-immediate-delete", null,
+                MODEL_BODY_NO_SECRET, "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response del = send(HttpMethod.DELETE, "/v1/models/public/test-model-immediate-delete", null, "",
                 "authorization", "admin");

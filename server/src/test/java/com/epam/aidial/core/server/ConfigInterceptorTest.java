@@ -7,7 +7,6 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -32,19 +31,16 @@ public class ConfigInterceptorTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testAdminListsInterceptors() {
-        Response response = send(HttpMethod.GET, "/v1/interceptors/platform/", null, "",
+    void testAdminListsInterceptorsMetadata() {
+        // U.0 (2026-05-20): per-bucket listings live on /v1/metadata/... and are blob-only.
+        // File-sourced interceptors no longer surface here.
+        Response response = send(HttpMethod.GET, "/v1/metadata/interceptors/platform/", null, "",
                 "authorization", "admin");
-        verify(response, 200);
-        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals("interceptors", body.get("entityType").asText());
-        assertEquals("platform", body.get("bucket").asText());
-        assertFalse(body.get("hasMore").asBoolean());
-        assertFalse(body.has("nextCursor"));
-        JsonNode items = body.get("items");
-        assertTrue(items.isArray() && !items.isEmpty(), () -> "Expected items: " + response.body());
-        for (JsonNode item : items) {
-            assertEquals("file", item.get("source").asText());
+        if (response.status() == 200) {
+            JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+            assertEquals("FOLDER", body.get("nodeType").asText());
+        } else {
+            verify(response, 404);
         }
     }
 
@@ -52,7 +48,7 @@ public class ConfigInterceptorTest extends ResourceBaseTest {
     void testNonAdminGetsForbidden() {
         verify(send(HttpMethod.GET, "/v1/interceptors/platform/interceptor1", null, "",
                 "authorization", "user"), 403);
-        verify(send(HttpMethod.GET, "/v1/interceptors/platform/", null, "",
+        verify(send(HttpMethod.GET, "/v1/metadata/interceptors/platform/", null, "",
                 "authorization", "user"), 403);
     }
 

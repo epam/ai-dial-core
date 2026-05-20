@@ -45,21 +45,24 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testMalformedBlobSurfacesAsInvalidUnderListing() {
+    void testMalformedBlobSurfacesAsInvalidUnderGet() {
+        // U.0 (2026-05-20): metadata listings are blob-only and don't project status/source/warnings.
+        // The invalid-entity sibling store is still surfaced via the single-entity GET path —
+        // see testMalformedBlobSurfacesUnderGetByName below for the canonical assertion. This test
+        // keeps coverage of the legacy "listing→invalid" guard by collapsing it to a per-entity GET.
         String name = "broken-blob-model";
         putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
                 name, "{ this is not json ");
         reload();
 
-        Response list = adminGet("/v1/models/public/");
-        verify(list, 200);
-        JsonNode body = ProxyUtil.MAPPER.readTree(list.body());
-        JsonNode invalidItem = findItem(body.get("items"), name);
-        assertEquals("invalid", invalidItem.get("status").asText());
-        assertEquals("api", invalidItem.get("source").asText());
-        JsonNode warnings = invalidItem.get("validationWarnings");
+        Response resp = adminGet("/v1/models/public/" + name);
+        verify(resp, 200);
+        JsonNode body = ProxyUtil.MAPPER.readTree(resp.body());
+        assertEquals("invalid", body.get("status").asText());
+        assertEquals("api", body.get("source").asText());
+        JsonNode warnings = body.get("validationWarnings");
         assertTrue(warnings.isArray() && !warnings.isEmpty(),
-                () -> "Expected validationWarnings array: " + list.body());
+                () -> "Expected validationWarnings array: " + resp.body());
     }
 
     @Test
@@ -184,12 +187,4 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
         resourceService.putResource(descriptor, body, EtagHeader.ANY, null, false);
     }
 
-    private static JsonNode findItem(JsonNode items, String name) {
-        for (JsonNode item : items) {
-            if (name.equals(item.get("name").asText())) {
-                return item;
-            }
-        }
-        throw new AssertionError("No item with name '" + name + "' in: " + items);
-    }
 }

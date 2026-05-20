@@ -7,7 +7,6 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -15,6 +14,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Phase 1 has no {@code ?reveal_secrets=true} surface — the secret value is masked with the
  * locked sentinel {@code "***"} for every read (design 04 §2.5–§2.6, polish round 1).
+ *
+ * <p>U.0 (2026-05-20): per-bucket listings live on the sibling {@code /v1/metadata/...} route and
+ * are blob-only — file-sourced keys do not appear in metadata listings.
  */
 public class ConfigKeyTest extends ResourceBaseTest {
 
@@ -36,21 +38,16 @@ public class ConfigKeyTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testAdminListsKeysWithMaskedSecrets() {
-        Response response = send(HttpMethod.GET, "/v1/keys/platform/", null, "",
+    void testAdminListsKeysMetadata() {
+        // Metadata listing returns ResourceFolderMetadata; with only file-defined keys present,
+        // either the folder is empty or absent. No items field exists for the legacy envelope.
+        Response response = send(HttpMethod.GET, "/v1/metadata/keys/platform/", null, "",
                 "authorization", "admin");
-        verify(response, 200);
-        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals("keys", body.get("entityType").asText());
-        assertEquals("platform", body.get("bucket").asText());
-        JsonNode items = body.get("items");
-        assertTrue(items.isArray() && !items.isEmpty());
-        for (JsonNode item : items) {
-            // Every listed key must have its secret masked — never leak through the listing channel.
-            if (item.has("key")) {
-                assertEquals("***", item.get("key").asText(),
-                        () -> "Secret leak in listing: " + item);
-            }
+        if (response.status() == 200) {
+            JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+            assertEquals("FOLDER", body.get("nodeType").asText());
+        } else {
+            verify(response, 404);
         }
     }
 
@@ -58,16 +55,5 @@ public class ConfigKeyTest extends ResourceBaseTest {
     void testNonAdminGetsForbidden() {
         verify(send(HttpMethod.GET, "/v1/keys/platform/proxyKey1", null, "",
                 "authorization", "user"), 403);
-    }
-
-    @Test
-    @SneakyThrows
-    void testListingHasEnvelope() {
-        Response response = send(HttpMethod.GET, "/v1/keys/platform", null, "",
-                "authorization", "admin");
-        verify(response, 200);
-        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
-        assertFalse(body.get("hasMore").asBoolean());
-        assertFalse(body.has("nextCursor"));
     }
 }
