@@ -91,7 +91,7 @@ The full authorization spec is in [`04-security.md`](04-security.md).
 
 ## Validation
 
-- **Entity name** — `^[A-Za-z0-9._-]+$` per path segment. `400` on violation.
+- **Entity name** — `^[A-Za-z0-9._%:-]+$` per path segment, checked on the URL-decoded value (literal `%` sent as `%25`). `400` on violation. Extendable on client request — see `02-architecture.md`.
 - **Body** — current-version structural + semantic validation, no bypass flag. Soft-validation (accepting dangling cross-references) is opt-in via `config.write.softValidation: true`; default is strict `422`.
 - **Status of stored entities** — invalid entities surface their `"status": "invalid"` + Owner-only `validationWarnings` on per-entity `GET` responses. The aggregate "which entities are invalid" view lives on `GET /v1/admin/health/config`. Listings do not carry this projection (see below).
 
