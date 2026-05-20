@@ -48,6 +48,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
+import java.util.regex.Pattern;
 
 /**
  * Controller for the {@code /v1/{type}/{bucket}/{path}} CONFIG_RESOURCE route — gates on
@@ -64,6 +65,10 @@ public class ConfigResourceController implements Controller {
 
     private static final String SETTINGS_SINGLETON_NAME = "global";
     private static final String ALLOW_HEADER = "GET, PUT, DELETE";
+
+    // Per design 02 §4 / 03 §3: conservative floor for admin-config entity names, extendable
+    // on client request when a concrete workflow is broken. Applied to the URL-decoded segment.
+    private static final Pattern ENTITY_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9._%:-]+$");
 
     private final ProxyContext context;
     private final ConfigAuthorizationService authorizationService;
@@ -125,6 +130,12 @@ public class ConfigResourceController implements Controller {
 
         if (method == HttpMethod.GET || method == HttpMethod.HEAD) {
             return handleGet();
+        }
+        if ((method == HttpMethod.PUT || method == HttpMethod.DELETE)
+                && !ENTITY_NAME_PATTERN.matcher(path == null ? "" : path).matches()) {
+            context.respond(HttpStatus.BAD_REQUEST,
+                    "Invalid entity name segment: must match " + ENTITY_NAME_PATTERN.pattern());
+            return Future.succeededFuture();
         }
         if (resourceType() == ResourceTypes.GLOBAL_SETTINGS) {
             // Singleton has its own write surface: PUT-upsert + idempotent DELETE; POST is 405.
