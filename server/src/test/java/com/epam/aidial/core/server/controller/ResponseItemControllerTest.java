@@ -81,6 +81,33 @@ public class ResponseItemControllerTest {
     }
 
     @Test
+    public void testAccessDenied(Vertx vertx, VertxTestContext testContext) throws Throwable {
+        ResponseMapping mapping = ResponseMapping.builder()
+                .upstreamResponseId("upstream-id-forbidden")
+                .upstreamKey("endpoint")
+                .deploymentName("test-deployment")
+                .initiatorBucket("Users/other-user/")
+                .build();
+
+        when(proxy.getResponseMappingService().getMapping("resp_dial_forbidden")).thenReturn(mapping);
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(context.getUserId()).thenReturn("test-user");
+        when(context.getResponse()).thenReturn(response);
+        when(response.ended()).thenReturn(false);
+        when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
+
+        controller("resp_dial_forbidden", GET).handle();
+
+        await(testContext);
+
+        verify(context).respond(
+                argThat((Throwable e) -> e instanceof HttpException
+                        && ((HttpException) e).getStatus() == HttpStatus.FORBIDDEN
+                        && "Access denied".equals(e.getMessage())),
+                anyString());
+    }
+
+    @Test
     public void testMappingNotFound(Vertx vertx, VertxTestContext testContext) throws Throwable {
         when(proxy.getResponseMappingService().getMapping("resp_dial_unknown")).thenReturn(null);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));

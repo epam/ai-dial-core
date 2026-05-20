@@ -127,6 +127,10 @@ public class ResponseMappingService {
                 for (MetadataBase item : items) {
                     if (item.getNodeType() == NodeType.ITEM && item instanceof ResourceItemMetadata itemMeta) {
                         Long createdAt = itemMeta.getCreatedAt();
+                        if (createdAt == null) {
+                            // S3 provides Last-Modified header only
+                            createdAt = itemMeta.getUpdatedAt();
+                        }
                         if (createdAt != null && createdAt + DEFAULT_TTL < now) {
                             deleteExpiredItem(deploymentName, item.getName());
                         }
