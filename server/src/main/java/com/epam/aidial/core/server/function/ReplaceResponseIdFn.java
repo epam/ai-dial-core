@@ -6,9 +6,9 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import io.vertx.core.Future;
 
 public class ReplaceResponseIdFn extends BaseResponseFunction {

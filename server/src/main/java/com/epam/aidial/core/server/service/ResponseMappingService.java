@@ -1,9 +1,9 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.data.ResponseMapping;
-import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.NodeType;
