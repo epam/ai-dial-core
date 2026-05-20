@@ -293,7 +293,11 @@ public class ResponsesController extends BaseDeploymentPostController {
     private String generateDialResponseId() {
         String uuid = proxy.getGenerator().get();
         String deploymentName = context.getDeployment().getName();
-        return proxy.getResponseMappingService().encodeResponseId(deploymentName, uuid);
+        return encodeResponseId(deploymentName, uuid);
+    }
+
+    private static String encodeResponseId(String deploymentName, String uuid) {
+        return "dial_" + deploymentName + "_" + uuid;
     }
 
     private void handleResponse(BufferingReadStream responseStream) {

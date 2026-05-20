@@ -20,8 +20,6 @@ public class ResourceDescriptor {
     public static final String PATH_SEPARATOR = "/";
     public static final String PUBLIC_BUCKET = "public";
     public static final String PUBLIC_LOCATION = PUBLIC_BUCKET + PATH_SEPARATOR;
-    public static final String PRIVATE_BUCKET = "private";
-    public static final String PRIVATE_LOCATION = PRIVATE_BUCKET + PATH_SEPARATOR;
 
     ResourceType type;
     /**

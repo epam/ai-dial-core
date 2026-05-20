@@ -91,10 +91,7 @@ public class ResponseMappingServiceTest {
         triggerCleanup();
 
         ResourceDescriptor expected = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.RESPONSE_MAPPING,
-                ResourceDescriptor.PRIVATE_BUCKET,
-                ResourceDescriptor.PRIVATE_LOCATION,
-                "deploy1/uuid-abc");
+                ResourceTypes.RESPONSE_MAPPING, "response_mappings", "response_mappings/", "deploy1/uuid-abc");
         verify(resourceService).deleteResource(eq(expected), eq(EtagHeader.ANY));
     }
 
@@ -217,10 +214,7 @@ public class ResponseMappingServiceTest {
         triggerCleanup();
 
         ResourceDescriptor expected = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.RESPONSE_MAPPING,
-                ResourceDescriptor.PRIVATE_BUCKET,
-                ResourceDescriptor.PRIVATE_LOCATION,
-                "deploy1/uuid-old");
+                ResourceTypes.RESPONSE_MAPPING, "response_mappings", "response_mappings/", "deploy1/uuid-old");
         verify(resourceService).deleteResource(eq(expected), eq(EtagHeader.ANY));
     }
 }

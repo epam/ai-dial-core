@@ -16,14 +16,14 @@ import io.vertx.core.Vertx;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.List;
 import javax.annotation.Nullable;
 
 @Slf4j
 @AllArgsConstructor
 public class ResponseMappingService {
+    private static final String BUCKET = "response_mappings";
+    private static final String BUCKET_LOCATION = BUCKET + "/";
     private static final int PAGE_SIZE = 1000;
     private static final long DEFAULT_CHECK_PERIOD = 24 * 60 * 60 * 1000;
     private static final long DEFAULT_TTL = 30L * 24 * 60 * 60 * 1000;
@@ -32,11 +32,6 @@ public class ResponseMappingService {
 
     public void init(Vertx vertx, AsyncTaskExecutor taskExecutor) {
         vertx.setPeriodic(DEFAULT_CHECK_PERIOD, DEFAULT_CHECK_PERIOD, ignored -> taskExecutor.submit(this::cleanExpiredMappings));
-    }
-
-    public String encodeResponseId(String deploymentName, String uuid) {
-        String combined = deploymentName + "/" + uuid;
-        return "resp_dial_" + Base64.getUrlEncoder().withoutPadding().encodeToString(combined.getBytes(StandardCharsets.UTF_8));
     }
 
     public void saveMapping(String dialResponseId, ResponseMapping mapping) {
@@ -57,31 +52,25 @@ public class ResponseMappingService {
     }
 
     ResourceDescriptor getDescriptor(String dialResponseId) {
-        String prefix = "resp_dial_";
+        String prefix = "dial_";
         if (!dialResponseId.startsWith(prefix)) {
             throw new IllegalArgumentException("Invalid response id: " + dialResponseId);
         }
-        String encoded = dialResponseId.substring(prefix.length());
-        String decoded = new String(Base64.getUrlDecoder().decode(encoded), StandardCharsets.UTF_8);
-        int slash = decoded.indexOf('/');
-        if (slash < 0) {
+        int underscore = dialResponseId.lastIndexOf('_');
+        if (underscore < prefix.length()) {
             throw new IllegalArgumentException("Invalid response id: " + dialResponseId);
         }
-        String deploymentName = decoded.substring(0, slash);
-        String uuid = decoded.substring(slash + 1);
+        String deploymentName = dialResponseId.substring(prefix.length(), underscore);
+        String uuid = dialResponseId.substring(underscore + 1);
         String relativePath = deploymentName + "/" + uuid;
-        return ResourceDescriptorFactory.fromDecoded(ResourceTypes.RESPONSE_MAPPING,
-                ResourceDescriptor.PRIVATE_BUCKET, ResourceDescriptor.PRIVATE_LOCATION, relativePath);
+        return ResourceDescriptorFactory.fromDecoded(ResourceTypes.RESPONSE_MAPPING, BUCKET, BUCKET_LOCATION, relativePath);
     }
 
     private Void cleanExpiredMappings() {
         log.debug("Housekeeping: scanning for expired response mappings");
         try {
             ResourceDescriptor root = ResourceDescriptorFactory.fromDecoded(
-                    ResourceTypes.RESPONSE_MAPPING,
-                    ResourceDescriptor.PRIVATE_BUCKET,
-                    ResourceDescriptor.PRIVATE_LOCATION,
-                    null);
+                    ResourceTypes.RESPONSE_MAPPING, BUCKET, BUCKET_LOCATION, null);
             cleanDeploymentSubfolders(root);
         } catch (Throwable e) {
             log.warn("Housekeeping: failed to clean expired response mappings", e);
@@ -110,10 +99,7 @@ public class ResponseMappingService {
 
     private void cleanItemsInDeploymentFolder(String deploymentName) {
         ResourceDescriptor subfolder = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.RESPONSE_MAPPING,
-                ResourceDescriptor.PRIVATE_BUCKET,
-                ResourceDescriptor.PRIVATE_LOCATION,
-                deploymentName + "/");
+                ResourceTypes.RESPONSE_MAPPING, BUCKET, BUCKET_LOCATION, deploymentName + "/");
 
         long now = System.currentTimeMillis();
         String token = null;
@@ -144,10 +130,7 @@ public class ResponseMappingService {
     private void deleteExpiredItem(String deploymentName, String uuid) {
         try {
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
-                    ResourceTypes.RESPONSE_MAPPING,
-                    ResourceDescriptor.PRIVATE_BUCKET,
-                    ResourceDescriptor.PRIVATE_LOCATION,
-                    deploymentName + "/" + uuid);
+                    ResourceTypes.RESPONSE_MAPPING, BUCKET, BUCKET_LOCATION, deploymentName + "/" + uuid);
             resourceService.deleteResource(descriptor, EtagHeader.ANY);
             log.debug("Housekeeping: deleted expired response mapping {}/{}", deploymentName, uuid);
         } catch (Throwable e) {

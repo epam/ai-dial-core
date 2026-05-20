@@ -277,7 +277,7 @@ public class ResponsesControllerTest {
                         },
                         "total_tokens": 28
                     },
-                    "id": "resp_dial_fixed-uuid-1234"
+                    "id": "dial_test_fixed-uuid-1234"
                 }
                 """));
         TokenUsage tokenUsage = new TokenUsage();
@@ -320,8 +320,7 @@ public class ResponsesControllerTest {
         when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
-        when(proxy.getResponseMappingService().encodeResponseId("test", "fixed-uuid-1234"))
-                .thenReturn("resp_dial_fixed-uuid-1234");
+
         when(proxy.getTokenStatsTracker().startSpan(context))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getAccessService().hasReadAccess(
@@ -397,7 +396,7 @@ public class ResponsesControllerTest {
                         },
                         "total_tokens": 28
                     },
-                    "id": "resp_dial_fixed-uuid-1234"
+                    "id": "dial_test_fixed-uuid-1234"
                 }
                 """));
         TokenUsage tokenUsage = new TokenUsage();
@@ -440,8 +439,7 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
-        when(proxy.getResponseMappingService().encodeResponseId("test", "fixed-uuid-1234"))
-                .thenReturn("resp_dial_fixed-uuid-1234");
+
         when(proxy.getTokenStatsTracker().startSpan(context))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getTokenStats(context))
@@ -518,7 +516,7 @@ public class ResponsesControllerTest {
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\",\"background\":true}");
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-resp-id\",\"status\":\"completed\"}");
-        String expectedDialId = "resp_dial_fixed-uuid-1234";
+        String expectedDialId = "dial_test_fixed-uuid-1234";
         ResponseMapping expectedMapping = ResponseMapping.builder()
                 .upstreamResponseId("upstream-resp-id")
                 .upstreamKey("endpoint")
@@ -557,8 +555,7 @@ public class ResponsesControllerTest {
         when(proxy.getTokenStatsTracker().getTokenStats(context))
                 .thenReturn(Future.succeededFuture(new TokenUsage()));
         when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
-        when(proxy.getResponseMappingService().encodeResponseId("test", "fixed-uuid-1234"))
-                .thenReturn("resp_dial_fixed-uuid-1234");
+
         when(context.getUserId()).thenReturn("test-user");
         doAnswer(invocation -> {
             textContext.completeNow();
@@ -604,7 +601,7 @@ public class ResponsesControllerTest {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         String upstreamId = "upstream-resp-stream";
-        String expectedDialId = "resp_dial_fixed-uuid-1234";
+        String expectedDialId = "dial_test_fixed-uuid-1234";
         String sseContent = "event: response.created\n"
                 + "data: {\"response\":{\"id\":\"" + upstreamId + "\"}}\n\n"
                 + "event: response.completed\n"
@@ -665,8 +662,7 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
-        when(proxy.getResponseMappingService().encodeResponseId("test", "fixed-uuid-1234"))
-                .thenReturn("resp_dial_fixed-uuid-1234");
+
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getTokenStats(context))
                 .thenReturn(Future.succeededFuture(new TokenUsage()));
