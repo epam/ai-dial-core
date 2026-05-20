@@ -253,7 +253,8 @@ public class AiDial {
             Duration clientChannelTtl = Duration.ofMillis(resourceServiceSettings.getResourceTypesExpiration().get(ResourceTypes.CLIENT_CHANNEL.name()));
             ClientChannelService clientChannelService = new ClientChannelService(lockService, redis, taskExecutor, clock, storage.getPrefix(), clientChannelTtl);
 
-            ResponseMappingService responseMappingService = new ResponseMappingService(resourceService, encryptionService);
+            ResponseMappingService responseMappingService = new ResponseMappingService(resourceService);
+            responseMappingService.init(vertx, taskExecutor);
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,

@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -46,9 +47,13 @@ public class ResponseItemController implements Controller {
     }
 
     private ResponseMapping loadMapping() {
-        ResponseMapping mapping = proxy.getResponseMappingService().getMapping(context, dialResponseId);
+        ResponseMapping mapping = proxy.getResponseMappingService().getMapping(dialResponseId);
         if (mapping == null) {
             throw notFoundException();
+        }
+        String currentBucket = BucketBuilder.buildInitiatorBucket(context);
+        if (!currentBucket.equals(mapping.getInitiatorBucket())) {
+            throw new HttpException(HttpStatus.FORBIDDEN, "Access denied");
         }
         return mapping;
     }
@@ -99,7 +104,7 @@ public class ResponseItemController implements Controller {
                 .compose(rewritten -> {
                     if (operation.shouldDeleteMapping(proxyResponse.statusCode())) {
                         return proxy.getTaskExecutor().submit(() -> {
-                            proxy.getResponseMappingService().deleteMapping(context, dialResponseId);
+                            proxy.getResponseMappingService().deleteMapping(dialResponseId);
                             return rewritten;
                         });
                     }

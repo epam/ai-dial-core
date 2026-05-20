@@ -13,4 +13,5 @@ public class ResponseMapping {
     String upstreamResponseId;
     String upstreamKey;
     String deploymentName;
+    String initiatorBucket;
 }

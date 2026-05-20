@@ -23,6 +23,7 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -46,8 +47,6 @@ import java.util.List;
 
 @Slf4j
 public class ResponsesController extends BaseDeploymentPostController {
-
-    static final String DIAL_RESPONSE_ID_PREFIX = "resp_dial_";
 
     private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
 
@@ -292,7 +291,9 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private String generateDialResponseId() {
-        return DIAL_RESPONSE_ID_PREFIX + proxy.getGenerator().get();
+        String uuid = proxy.getGenerator().get();
+        String deploymentName = context.getDeployment().getName();
+        return proxy.getResponseMappingService().encodeResponseId(deploymentName, uuid);
     }
 
     private void handleResponse(BufferingReadStream responseStream) {
@@ -378,9 +379,10 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .upstreamResponseId(upstreamId)
                 .upstreamKey(upstream.toStickyKey())
                 .deploymentName(context.getDeployment().getName())
+                .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
                 .build();
         return proxy.getTaskExecutor().submit(() -> {
-            proxy.getResponseMappingService().saveMapping(context, dialId, mapping);
+            proxy.getResponseMappingService().saveMapping(dialId, mapping);
             return null;
         });
     }

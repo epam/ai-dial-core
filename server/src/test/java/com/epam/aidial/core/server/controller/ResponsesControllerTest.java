@@ -320,6 +320,8 @@ public class ResponsesControllerTest {
         when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
+        when(proxy.getResponseMappingService().encodeResponseId("test", "fixed-uuid-1234"))
+                .thenReturn("resp_dial_fixed-uuid-1234");
         when(proxy.getTokenStatsTracker().startSpan(context))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getAccessService().hasReadAccess(
@@ -438,6 +440,8 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
+        when(proxy.getResponseMappingService().encodeResponseId("test", "fixed-uuid-1234"))
+                .thenReturn("resp_dial_fixed-uuid-1234");
         when(proxy.getTokenStatsTracker().startSpan(context))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getTokenStats(context))
@@ -519,6 +523,7 @@ public class ResponsesControllerTest {
                 .upstreamResponseId("upstream-resp-id")
                 .upstreamKey("endpoint")
                 .deploymentName("test")
+                .initiatorBucket("Users/test-user/")
                 .build();
 
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
@@ -552,6 +557,9 @@ public class ResponsesControllerTest {
         when(proxy.getTokenStatsTracker().getTokenStats(context))
                 .thenReturn(Future.succeededFuture(new TokenUsage()));
         when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
+        when(proxy.getResponseMappingService().encodeResponseId("test", "fixed-uuid-1234"))
+                .thenReturn("resp_dial_fixed-uuid-1234");
+        when(context.getUserId()).thenReturn("test-user");
         doAnswer(invocation -> {
             textContext.completeNow();
             return Future.succeededFuture(Boolean.TRUE);
@@ -575,7 +583,7 @@ public class ResponsesControllerTest {
 
         await(textContext);
 
-        verify(proxy.getResponseMappingService()).saveMapping(eq(context), eq(expectedDialId), eq(expectedMapping));
+        verify(proxy.getResponseMappingService()).saveMapping(eq(expectedDialId), eq(expectedMapping));
         ArgumentCaptor<Buffer> bodyCaptor = ArgumentCaptor.forClass(Buffer.class);
         verify(response).end(bodyCaptor.capture());
         JsonNode sentJson = ProxyUtil.MAPPER.readTree(bodyCaptor.getValue().getBytes());
@@ -657,6 +665,8 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
+        when(proxy.getResponseMappingService().encodeResponseId("test", "fixed-uuid-1234"))
+                .thenReturn("resp_dial_fixed-uuid-1234");
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getTokenStats(context))
                 .thenReturn(Future.succeededFuture(new TokenUsage()));
