@@ -18,6 +18,7 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -26,11 +27,13 @@ public class ResponseMappingService {
     private static final int PAGE_SIZE = 1000;
     private static final long DEFAULT_CHECK_PERIOD = 24 * 60 * 60 * 1000;
     private static final long DEFAULT_TTL = 30L * 24 * 60 * 60 * 1000;
+    private static final long MAX_START_OFFSET = 4 * 60 * 60 * 1000;
 
     private final ResourceService resourceService;
 
     public void init(Vertx vertx, AsyncTaskExecutor taskExecutor) {
-        vertx.setPeriodic(DEFAULT_CHECK_PERIOD, DEFAULT_CHECK_PERIOD, ignored -> taskExecutor.submit(this::cleanExpiredMappings));
+        long offset = ThreadLocalRandom.current().nextLong(MAX_START_OFFSET + 1);
+        vertx.setPeriodic(offset, DEFAULT_CHECK_PERIOD, ignored -> taskExecutor.submit(this::cleanExpiredMappings));
     }
 
     public void saveMapping(ResourceDescriptor descriptor, ResponseMapping mapping) {
