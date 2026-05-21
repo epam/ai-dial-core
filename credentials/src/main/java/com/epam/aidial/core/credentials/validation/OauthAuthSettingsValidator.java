@@ -1,5 +1,7 @@
 package com.epam.aidial.core.credentials.validation;
 
+import com.epam.aidial.core.config.ResourceAuthSettings;
+import com.epam.aidial.core.credentials.data.credentials.TokenEndpointAuthMethod;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 
 import java.util.Set;
@@ -20,6 +22,20 @@ import java.util.Set;
  * </ul>
  */
 public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
+
+    @Override
+    public void validate(ResourceAuthSettings resourceAuthSettings,
+                         ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode) {
+        super.validate(resourceAuthSettings, resourceAuthSettingsChangeMode);
+        // Reject unsupported token_endpoint_auth_method at save time so the failure surfaces
+        // here rather than during the first sign-in attempt deep inside TokenService.
+        // Dynamic registration ignores the user-supplied value (DCR response wins), so skip
+        // the check there to avoid rejecting harmless input.
+        if (resourceAuthSettingsChangeMode != ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT
+                && resourceAuthSettings.getTokenEndpointAuthMethod() != null) {
+            TokenEndpointAuthMethod.parse(resourceAuthSettings.getTokenEndpointAuthMethod());
+        }
+    }
 
     /**
      * Determines validation fields for `ResourceAuthSettings` based on the mode of authentication configuration change.

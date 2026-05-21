@@ -325,6 +325,34 @@ class ResourceAuthSettingsServiceTest {
     }
 
     @Test
+    void testProcessResourceAuthSettings_OauthUpdate_TokenEndpointAuthMethodNull_PreservesExisting() {
+        ToolSet updatedToolSet = createOauthToolSetWithTokenEndpointAuthMethod("clientId", "clientSecret", null);
+        ToolSet existingToolSet = createOauthToolSetWithTokenEndpointAuthMethod("clientId", "clientSecret",
+                "client_secret_basic");
+
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+
+        verifyNoInteractions(resourceRegistrationService);
+        assertEquals("client_secret_basic", updatedToolSet.getAuthSettings().getTokenEndpointAuthMethod());
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_OauthUpdate_TokenEndpointAuthMethodChanged_Overrides() {
+        ToolSet updatedToolSet = createOauthToolSetWithTokenEndpointAuthMethod("clientId", "clientSecret", "none");
+        ToolSet existingToolSet = createOauthToolSetWithTokenEndpointAuthMethod("clientId", "clientSecret",
+                "client_secret_basic");
+
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+
+        verifyNoInteractions(resourceRegistrationService);
+        assertEquals("none", updatedToolSet.getAuthSettings().getTokenEndpointAuthMethod());
+    }
+
+    @Test
     void testProcessResourceAuthSettings_UpdatedApiKeyToolSet() {
         // Given
         ToolSet updatedToolSet = createApiKeyToolSet("newApiKeyHeader");
@@ -492,6 +520,17 @@ class ResourceAuthSettingsServiceTest {
         authSettings.setClientId(clientId);
         authSettings.setClientSecret(clientSecret);
         authSettings.setCodeVerifier(codeVerifier);
+        return createToolSet(authSettings);
+    }
+
+    private static ToolSet createOauthToolSetWithTokenEndpointAuthMethod(String clientId,
+                                                                         String clientSecret,
+                                                                         String tokenEndpointAuthMethod) {
+        ResourceAuthSettings authSettings = new ResourceAuthSettings();
+        authSettings.setAuthenticationType(AuthenticationType.OAUTH);
+        authSettings.setClientId(clientId);
+        authSettings.setClientSecret(clientSecret);
+        authSettings.setTokenEndpointAuthMethod(tokenEndpointAuthMethod);
         return createToolSet(authSettings);
     }
 

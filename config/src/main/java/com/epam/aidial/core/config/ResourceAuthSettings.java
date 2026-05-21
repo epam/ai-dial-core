@@ -68,4 +68,7 @@ public class ResourceAuthSettings {
 
     @JsonAlias({"scopesSupported", "scopes_supported"})
     private List<String> scopesSupported;
+
+    @JsonAlias({"tokenEndpointAuthMethod", "token_endpoint_auth_method"})
+    private String tokenEndpointAuthMethod;
 }

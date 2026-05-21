@@ -60,6 +60,11 @@ public class ResourceAuthorizationClient {
     }
 
     public <R> R executePost(String url, Object requestPayload, String contentType, Class<R> responseType) {
+        return executePost(url, requestPayload, contentType, Map.of(), responseType);
+    }
+
+    public <R> R executePost(String url, Object requestPayload, String contentType,
+                             Map<String, String> extraHeaders, Class<R> responseType) {
         String stringPayload;
         if (contentType.equals(ContentType.APPLICATION_JSON.toString())) {
             stringPayload = JsonMapperUtil.convertToString(requestPayload);
@@ -68,11 +73,13 @@ public class ResourceAuthorizationClient {
         }
 
         assert stringPayload != null;
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .timeout(createRequestConfig())
                 .header("Content-Type", contentType)
-                .header("Accept", ContentType.APPLICATION_JSON.toString())
+                .header("Accept", ContentType.APPLICATION_JSON.toString());
+        extraHeaders.forEach(requestBuilder::header);
+        HttpRequest request = requestBuilder
                 .POST(HttpRequest.BodyPublishers.ofString(stringPayload, StandardCharsets.UTF_8))
                 .build();
 
