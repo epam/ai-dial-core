@@ -4,8 +4,6 @@ Authorization, secrets at rest, and audit — at the level a reviewer needs to a
 
 ## Authorization
 
-Authorization for the Configuration API runs through a `ConfigAuthorizationService` — a pluggable interface, not inline `isAdmin()` checks scattered across controllers. Phase 1–3 ships an `AdminRoleAuthorizationService` that dispatches on `(role, verb, entityType, bucket)`.
-
 Effective permissions:
 
 | Bucket | Read | Write |
@@ -27,13 +25,11 @@ The per-entity Configuration API (`/v1/{type}/{bucket}/{name}`) is blob-only —
 
 The `keys` carve-out is locked because file-sourced `Config.keys` uses the legacy format where the map key *equals the secret value* (OQ-12 — kept permanently dual-format so existing customer config files are not broken). Listing or addressing those entries via URL therefore exposes secrets to anyone who can read the response — admin role alone is not enough. Security-admin is the same operator-vetted tier already gating `?reveal_secrets=true` for plaintext secret reads (see *Secrets at rest* below); reusing it keeps the secret-exposure surface coherent. No `PUT` / `DELETE` on file entries — `aidial.config.json` remains the operator-managed source of truth.
 
-When multi-tenancy lands, only the `ConfigAuthorizationService` implementation is swapped — endpoint code does not change.
-
 ### Public vs Owner views
 
-Per-entity `GET` and listing share the same URL between authenticated readers, bucket owners, and admins. Operational metadata that admins/owners need (`validationWarnings`) must not leak to public callers; entity-intrinsic fields and the `status` flag are public-safe. There is no `source` field on any response — the per-entity Configuration API is blob-only, the file-config surface is file-only, and the URL itself tells the caller which they're looking at.
+Per-entity `GET` shares the same URL between authenticated readers, bucket owners, and admins. The Public view exposes a **per-type allowlist** of properties — not "everything that isn't a secret". The allowlist for each `public/`-bucket type matches today's hand-curated public projection (`ModelData` for models at `server/.../data/ModelData.java`, `ApplicationData` for applications at `server/.../data/ApplicationData.java`): identity, display metadata, capabilities, limits, pricing, attachment types — but **not** `upstreams`, `endpoint`, `extraData`, interceptor references, or other infrastructure fields. Those are Owner-only, alongside operational metadata such as `validationWarnings`. The `status` flag (`valid` | `invalid`) is Public — anyone discovering the entity sees whether it's functional. There is no `source` field on any response: the per-entity Configuration API is blob-only, the file-config surface is file-only, and the URL itself tells the caller which they're looking at.
 
-Two Jackson views (`Public`, `Owner extends Public`) handle this declaratively. The controller picks `Owner` when the caller is admin or bucket-owner, `Public` otherwise. The serializer is configured fail-closed (`DEFAULT_VIEW_INCLUSION = false`) so a forgotten annotation makes a field invisible everywhere, not silently public.
+The Public allowlist is the *contract*; implementations may realize it via dedicated DTOs (continuing today's `ModelData` / `ApplicationData` pattern) or via Jackson `@JsonView(Public)` annotations on a curated subset of entity fields. A fail-closed serializer (`DEFAULT_VIEW_INCLUSION = false`) makes a forgotten annotation invisible everywhere rather than silently Public.
 
 `platform/`-bucket types have no Public view at all — non-admin callers never reach the projection step.
 
