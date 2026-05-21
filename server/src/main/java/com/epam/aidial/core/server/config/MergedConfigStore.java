@@ -154,6 +154,16 @@ public final class MergedConfigStore implements ConfigStore {
     }
 
     /**
+     * Returns the file-sourced {@link Config} as last loaded by {@link FileConfigStore},
+     * with no API-managed overlay applied. Used by the {@code /v1/admin/config/file/*}
+     * inspection surface to project file/default values for the singleton settings
+     * (which the API blob would otherwise shadow in the merged {@code Config}).
+     */
+    public Config getFileSourcedConfig() {
+        return fileConfigStore == null ? null : fileConfigStore.get();
+    }
+
+    /**
      * Bind the file store and perform the explicit initial merged rebuild.
      * {@link FileConfigStore} fires its constructor-time {@code load(true)} before
      * any external callback can register, so the merged store seeds itself once
@@ -330,7 +340,9 @@ public final class MergedConfigStore implements ConfigStore {
      * Whether the {@code globalInterceptors} / {@code retriableErrorCodes} fields in the
      * current {@link Config} were sourced from the API-managed settings singleton blob
      * ({@code platform/settings/global}) rather than from the file-defined defaults.
-     * Drives the {@code source} label in the settings GET projection (design 03 §1).
+     * Drives the blob-only {@code 404} path on {@code GET /v1/settings/platform/global}
+     * (slice U.1): when {@code false}, the per-entity endpoint returns {@code 404} and
+     * operators consult {@code /v1/admin/config/file/settings/global} for the file/default view.
      */
     public boolean isSettingsFromApi() {
         return settingsFromApi;

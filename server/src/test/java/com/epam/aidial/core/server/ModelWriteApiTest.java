@@ -78,7 +78,7 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         Response get = send(HttpMethod.GET, "/v1/models/public/test-model-create", null, "",
                 "authorization", "admin");
         verify(get, 200);
-        assertTrue(get.body().contains("\"source\":\"api\""), () -> "Expected source=api: " + get.body());
+        // U.1 (2026-05-21): source field retired entirely; URL itself discloses source (per-entity = blob).
         assertTrue(get.body().contains("\"status\":\"valid\""), () -> "Expected status=valid: " + get.body());
         assertTrue(get.body().contains("\"name\":\"models/public/test-model-create\""),
                 () -> "Expected canonical name in body: " + get.body());

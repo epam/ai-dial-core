@@ -26,7 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class InvalidEntityApiTest extends ResourceBaseTest {
 
     @Test
-    void testValidBlobModelHasValidStatusAndApiSource() {
+    void testValidBlobModelHasValidStatus() {
+        // U.1 (2026-05-21): the source field is retired entirely. The URL itself discloses the source.
         String name = "valid-blob-model";
         putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
                 name, """
@@ -40,7 +41,8 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
         Response resp = adminGet("/v1/models/public/" + name);
         verify(resp, 200);
         assertTrue(resp.body().contains("\"status\":\"valid\""));
-        assertTrue(resp.body().contains("\"source\":\"api\""));
+        assertFalse(resp.body().contains("\"source\""),
+                () -> "U.1: source field must not appear in any response: " + resp.body());
     }
 
     @Test
@@ -59,7 +61,9 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
         verify(resp, 200);
         JsonNode body = ProxyUtil.MAPPER.readTree(resp.body());
         assertEquals("invalid", body.get("status").asText());
-        assertEquals("api", body.get("source").asText());
+        // U.1: source field retired.
+        assertFalse(body.has("source"),
+                () -> "U.1: source field must not appear in any response: " + resp.body());
         JsonNode warnings = body.get("validationWarnings");
         assertTrue(warnings.isArray() && !warnings.isEmpty(),
                 () -> "Expected validationWarnings array: " + resp.body());

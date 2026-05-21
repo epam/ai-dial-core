@@ -42,11 +42,13 @@ public class ConfigBootstrapTest extends ResourceBaseTest {
     }
 
     @Test
-    void testAuthenticatedNonAdminCanReadPublicEntity() {
-        // public/ reads are open to any authenticated caller; the 1S.1 read path returns the model body.
+    void testAuthenticatedNonAdminPassesAuthGateForPublicBucketGet() {
+        // public/ reads are open to any authenticated caller. U.1 (2026-05-21): the per-entity GET
+        // is blob-only; gpt-4 is a file entry so the result is 404, not 200. 404 (not 401/403)
+        // confirms the auth gate admitted the caller and only the entity lookup failed.
         Response response = send(HttpMethod.GET, "/v1/models/public/gpt-4", null, "",
                 "authorization", "user");
-        verify(response, 200);
+        verify(response, 404);
     }
 
     @Test
@@ -66,11 +68,13 @@ public class ConfigBootstrapTest extends ResourceBaseTest {
     }
 
     @Test
-    void testApiKeyWithDefaultRoleCanReadPublic() {
+    void testApiKeyWithDefaultRolePassesAuthGateForPublicBucketGet() {
         // Default api-key proxyKey1 (role: "default") authenticates but is not admin — public reads
-        // are open to any authenticated caller, so the 1S.1 read path returns the model body.
+        // are open to any authenticated caller. U.1 (2026-05-21): per-entity GET is blob-only;
+        // gpt-4 is a file entry so the result is 404, not 200. 404 (not 401) confirms the auth gate
+        // admitted the key and only the entity lookup failed.
         Response response = send(HttpMethod.GET, "/v1/models/public/gpt-4");
-        verify(response, 200);
+        verify(response, 404);
     }
 
     @Test

@@ -7,7 +7,6 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * HTTP integration tests for slice 1S.3: GET reads on the {@code keys} platform-bucket type.
@@ -22,17 +21,30 @@ public class ConfigKeyTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testAdminReadsKeyWithMaskedSecret() {
+    void testFileKeyNotAddressableOnPerEntityGet() {
+        // U.1 (2026-05-21): per-entity GET is blob-only; file keys are not addressable here.
         Response response = send(HttpMethod.GET, "/v1/keys/platform/proxyKey1", null, "",
                 "authorization", "admin");
-        verify(response, 200);
-        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+        verify(response, 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testFileKeyRequiresSecurityAdminOnFileConfigEndpoint() {
+        // U.1: file-config /keys requires security-admin (file map keys equal secrets per OQ-12).
+        Response forbidden = send(HttpMethod.GET, "/v1/admin/config/file/keys/proxyKey1", null, "",
+                "authorization", "admin");
+        verify(forbidden, 403);
+
+        Response allowed = send(HttpMethod.GET, "/v1/admin/config/file/keys/proxyKey1", null, "",
+                "authorization", "security-admin");
+        verify(allowed, 200);
+        JsonNode body = ProxyUtil.MAPPER.readTree(allowed.body());
         assertEquals("proxyKey1", body.get("name").asText());
         assertEquals("valid", body.get("status").asText());
-        assertEquals("file", body.get("source").asText());
-        assertTrue(body.has("key"), () -> "Expected key field with masked value: " + response.body());
+        // Secret remains masked under the default response mapper; ?reveal_secrets=true unmasks.
         assertEquals("***", body.get("key").asText(),
-                () -> "Secret must be masked in Phase 1 reads: " + response.body());
+                () -> "Secret must be masked without reveal_secrets: " + allowed.body());
         assertEquals("EPM-RTC-GPT", body.get("project").asText());
     }
 

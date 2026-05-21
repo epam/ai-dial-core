@@ -13,7 +13,9 @@ import org.junit.jupiter.api.Test;
 
 import static com.epam.aidial.core.server.util.ResourceDescriptorFactory.fromDecoded;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -28,12 +30,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class MergedConfigStoreApiTest extends ResourceBaseTest {
 
     @Test
-    void testFileModelStillReadable() {
+    void testFileModelNotAddressableOnPerEntityGet() {
+        // U.1 (2026-05-21): per-entity GET is blob-only; file entries are not addressable here.
         Response response = send(HttpMethod.GET, "/v1/models/public/test-model-v1", null, "",
+                "authorization", "admin");
+        verify(response, 404);
+    }
+
+    @Test
+    void testFileModelReadableViaFileConfigEndpoint() {
+        // U.1 (2026-05-21): file entries are inspected via /v1/admin/config/file/{type}/{name}.
+        Response response = send(HttpMethod.GET, "/v1/admin/config/file/models/test-model-v1", null, "",
                 "authorization", "admin");
         verify(response, 200);
         assertTrue(response.body().contains("\"name\":\"test-model-v1\""));
-        assertTrue(response.body().contains("\"source\":\"file\""));
+        // The source field is retired entirely (U.1) — the URL itself discloses the source.
+        assertFalse(response.body().contains("\"source\""),
+                () -> "U.1: source field must not appear in any response: " + response.body());
     }
 
     @Test
@@ -132,24 +145,20 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
 
     @Test
     void testFileEntriesDoNotAppearInMetadataListing() {
-        // U.0 (2026-05-20) — replaces the Polish.1 file-vs-API twin regression guard. Metadata
-        // listings are blob-only; file entries (e.g. test-model-v1 from aidial.config.json) are
-        // reachable only via per-entity GET. This locks the new "no file entries in metadata"
-        // invariant established by the U.0 amendment.
+        // U.0 (2026-05-20) — metadata listings are blob-only. U.1 (2026-05-21): file entries are
+        // reachable via /v1/admin/config/file/{type}/{name} (no longer via per-entity GET).
         Response list = send(HttpMethod.GET, "/v1/metadata/models/public/", null, "",
                 "authorization", "admin");
         if (list.status() == 200) {
-            // File entry must not appear in the blob-only metadata listing.
             assertTrue(!list.body().contains("\"name\":\"test-model-v1\"")
                             || list.body().contains("\"name\":\"models/public/test-model-v1\""),
                     () -> "File simple-name entry must not appear in metadata listing: " + list.body());
         }
-        // File-defined model is still reachable via the per-entity GET.
-        Response single = send(HttpMethod.GET, "/v1/models/public/test-model-v1", null, "",
+        Response single = send(HttpMethod.GET, "/v1/admin/config/file/models/test-model-v1", null, "",
                 "authorization", "admin");
         verify(single, 200);
         assertTrue(single.body().contains("\"name\":\"test-model-v1\""),
-                () -> "Per-entity GET must surface the file entry: " + single.body());
+                () -> "File-config GET must surface the file entry: " + single.body());
     }
 
     @Test
@@ -188,14 +197,18 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         // proxyKey1 is defined in aidial.config.json. After MergedConfigStore wiring,
         // ConfigPostProcessor (invoked by MergedConfigStore) is the sole owner of
         // ApiKeyStore.addProjectKeys. A reload must keep the file-defined api-key valid.
+        // U.1: the file model is no longer addressable via per-entity GET; assert auth works by
+        // checking a non-401 status (404 is the expected post-U.1 outcome for the file entry).
         Response resp = send(HttpMethod.GET, "/v1/models/public/test-model-v1");
-        verify(resp, 200);
+        assertNotEquals(401, resp.status(),
+                () -> "proxyKey1 auth must succeed before reload: " + resp.status());
 
         Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
         assertEquals(200, reload.status());
 
         Response after = send(HttpMethod.GET, "/v1/models/public/test-model-v1");
-        verify(after, 200);
+        assertNotEquals(401, after.status(),
+                () -> "proxyKey1 auth must survive the reload: " + after.status());
     }
 
     private void putBlob(ResourceTypes type, String bucket, String location, String name, String body) {

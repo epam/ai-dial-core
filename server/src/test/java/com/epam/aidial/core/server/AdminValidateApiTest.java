@@ -454,9 +454,9 @@ public class AdminValidateApiTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     void testV16SettingsDoesNotPersist() {
-        // Settings has a file/default GET projection that always returns 200; distinguish "not
-        // persisted" by checking the source field is NOT "api". Ship a sentinel value in
-        // retriableErrorCodes that the file/default does not have, and confirm absence post-call.
+        // U.1 (2026-05-21): /v1/settings/platform/global is blob-only. After validate (no mutation),
+        // there is no blob → GET returns 404. We additionally verify the sentinel does not appear
+        // via the file-config GET, which projects file/default values.
         String body = """
                 {
                   "manifests": [
@@ -475,11 +475,13 @@ public class AdminValidateApiTest extends ResourceBaseTest {
 
         Response get = send(HttpMethod.GET, "/v1/settings/platform/global", null, "",
                 "authorization", "admin");
-        verify(get, 200);
-        JsonNode settings = ProxyUtil.MAPPER.readTree(get.body());
-        assertNotEquals("api", settings.get("source").asText(),
-                () -> "Settings should not be sourced from API after validate: " + get.body());
-        // Sentinel 599 must not appear in projected retriableErrorCodes.
+        verify(get, 404);
+
+        // File-config view: the sentinel must not be present in file/default-sourced values.
+        Response fileGet = send(HttpMethod.GET, "/v1/admin/config/file/settings/global", null, "",
+                "authorization", "admin");
+        verify(fileGet, 200);
+        JsonNode settings = ProxyUtil.MAPPER.readTree(fileGet.body());
         JsonNode codes = settings.get("retriableErrorCodes");
         if (codes != null && codes.isArray()) {
             for (JsonNode code : codes) {

@@ -42,14 +42,24 @@ GET    /v1/settings/platform/global                   # singleton settings (admi
 GET    /v1/metadata/models/public/                    # list blob-managed models in public/
 
 # Singleton settings (uniform {type}/{bucket}/{name} shape; bucket=platform, name=global)
-GET    /v1/settings/platform/global                   # Get effective global settings (blob | file | default projection)
+# Blob-only on the per-entity surface (slice U.1): GET returns the API blob if present, 404 otherwise.
+# File-defined and schema-default values for the singleton are inspected via the file-config surface
+# below (/v1/admin/config/file/settings/global).
+GET    /v1/settings/platform/global                   # Get API blob (200) or 404 if no blob
 PUT    /v1/settings/platform/global                   # Replace global settings (upsert — sets/updates the API blob)
-DELETE /v1/settings/platform/global                   # Clear the API blob; revert to file-sourced (or default) projection (idempotent, 204)
+DELETE /v1/settings/platform/global                   # Clear the API blob (idempotent, 204)
 
 # Cross-entity operator endpoints — every /v1/admin/* path requires admin role
-# (gated by ConfigAuthorizationService.isAdmin(ctx); 403 otherwise)
+# (gated by ConfigAuthorizationService.isAdmin(ctx); 403 otherwise) except /v1/admin/config/file/keys
+# which requires the security-admin tier (see §"File-config inspection surface" below).
 POST   /v1/admin/apply                                # Apply set of resource manifests (declarative bulk)
 POST   /v1/admin/validate                             # Validate manifests without applying
+
+# File-config inspection (slice U.1, 2026-05-21) — read-only surface for file-sourced entries
+# Authz: admin role for every type EXCEPT keys, which requires security-admin (file Config.keys
+# map keys equal secrets per OQ-12).
+GET    /v1/admin/config/file/{entityType}             # List file-sourced entries of that type
+GET    /v1/admin/config/file/{entityType}/{name}      # Get single file-sourced entry
 
 # State export (admin) — runtime-config snapshot including both file-sourced and API-managed entries
 # *(deferred — see IMPLEMENTATION.md §5.5 Defer.1; design preserved, not in MVP)*
@@ -100,17 +110,11 @@ Validation is performed by `ResourceDescriptorFactory`, which enforces type, buc
 
 **Singleton settings rationale.** The `globalSettings` document doesn't have a natural per-entity name. Rather than carve out `/v1/admin/settings` as a one-off, the singleton uses `bucket=platform`, `name=global` to follow the uniform `{type}/{bucket}/{name}` pattern — keeps URL parsing, auth dispatch, and route regex uniform; future MT scopes plug in as `/v1/settings/{tenant-id}/...` without reshaping the route.
 
-**Settings supports `GET`, `PUT`, and `DELETE`.** `PUT` is upsert (same as every other admin-config type — see §3); it sets or replaces the API blob at `platform/settings/global`. `DELETE` **clears the API blob** and reverts the singleton to its file-sourced (or schema-default) projection — operators take API control via `PUT` and release it via `DELETE`. `DELETE` is idempotent: it returns `204 No Content` whether or not the blob was present, and after the call `GET` reflects the file-sourced (or default) values (`source: "file"` or `"default"`). The `405 Method Not Allowed` response on `POST` (which the controller returns for every admin-config type, not just `settings`) MUST include `Allow: GET, PUT, DELETE` per RFC 9110 §15.5.6. `HEAD` is treated as `GET`. Concurrency: `PUT` and `DELETE` accept `If-Match` against the current `ETag`; mismatch returns `412 Precondition Failed`; `PUT` additionally accepts `If-None-Match: *` to gate create-only (singleton always exists once the API blob is written, so `If-None-Match: *` returns `412` whenever a blob is already present).
+**Settings supports `GET`, `PUT`, and `DELETE`** — blob-only on the per-entity surface, symmetric with every other admin-config type (slice U.1, 2026-05-21). `PUT` is upsert (same as every other admin-config type — see §3); it sets or replaces the API blob at `platform/settings/global`. `GET` returns the API blob if present, `404 Not Found` otherwise — there is no longer a file/default fallback projection on the per-entity URL. `DELETE` **clears the API blob** (idempotent — returns `204 No Content` whether or not the blob was present). After `DELETE`, `GET` returns `404`; operators wanting to inspect the file-defined or schema-default values use `GET /v1/admin/config/file/settings/global` (see §"File-config inspection surface" below). The `405 Method Not Allowed` response on `POST` MUST include `Allow: GET, PUT, DELETE` per RFC 9110 §15.5.6. `HEAD` is treated as `GET`. Concurrency: `PUT` and `DELETE` accept `If-Match` against the current `ETag`; mismatch returns `412 Precondition Failed`; `PUT` additionally accepts `If-None-Match: *` to gate create-only (when an API blob is already present, `If-None-Match: *` returns `412`).
 
-**GET projection sources.** The `GET` response is the **effective** projection of `globalSettings`, with the `source` field disclosing the origin (Owner-only):
+**No `source` field on per-entity GET (slice U.1).** The previously-projected `source: "api" | "file" | "default"` field on the singleton GET — and the analogous `source: "api" | "file"` on every other per-entity GET / invalid-entity GET response — is **retired entirely**. The URL itself discloses the source: per-entity URLs (`/v1/{type}/{bucket}/{name}`) reflect the blob; file-config URLs (`/v1/admin/config/file/{type}[/{name}]`) reflect the file. Runtime resolution (`findDeployment`, chat-completion routing, `RateLimiter`, etc.) continues to consume the union via the merged `Config` map — only the operator-facing API surface is single-source. The `ETag` returned via the HTTP header is computed over the response body.
 
-| Blob present? | Config file defines `globalInterceptors` / `retriableErrorCodes`? | Body content | `source` |
-|---|---|---|---|
-| yes | (any) | API blob (whole-object replace per [OQ-10](08-open-questions-and-references.md)) | `"api"` |
-| no | yes | file-sourced fields | `"file"` |
-| no | no | schema defaults (empty `globalInterceptors`, default `retriableErrorCodes`) | `"default"` |
-
-`"default"` is a singleton-only `source` value introduced for this projection — per-entity types do not produce it. The `ETag` returned via the HTTP header is computed over the projected body so clients can use `If-Match` consistently across the three states.
+**File-config inspection surface.** Operators inspect file-sourced entries via a dedicated read-only surface — `GET /v1/admin/config/file/{type}` (list) and `GET /v1/admin/config/file/{type}/{name}` (single). Authorization: admin role for every supported type EXCEPT `keys`, which requires the existing security-admin tier — file-sourced `Config.keys` keeps the legacy map-key-as-secret format per [OQ-12](08-open-questions-and-references.md), so leaking key names via URL or listing exposes secrets to anyone with admin role. The `keys` carve-out reuses the same security-admin tier that already gates `?reveal_secrets=true` for plaintext secret reads (see [`04-security-and-audit.md`](04-security-and-audit.md) §2.6). For the singleton, `GET /v1/admin/config/file/settings/global` returns the file-defined and schema-default values regardless of whether an API blob exists on the per-entity endpoint — this surface is the file-side window, independent of the blob's presence. No `PUT` / `DELETE` on file entries — `aidial.config.json` remains operator-managed; file write workflows continue through the existing config-file mechanism.
 
 **Listing on the singleton — `GET /v1/metadata/settings/platform/` returns `405 Method Not Allowed`.** The listing path for the singleton type is not meaningful (there is exactly one entity at the fixed name `global`). The controller returns `405 Method Not Allowed` with `Allow: GET` — the metadata surface is read-only; the singleton's write verbs (`PUT`, `DELETE`) live on the entity URL `/v1/settings/platform/global`, not on the metadata URL. Per RFC 9110 §15.5.6 the `Allow` header lists verbs valid on the **requested** resource, so emitting `PUT`/`DELETE` here would mislead a caller. Admin MCP and CLI clients should use the per-entity GET rather than listing — see [`09-admin-mcp-spec.md`](09-admin-mcp-spec.md) §6.1.
 
@@ -125,11 +129,12 @@ Validation is performed by `ResourceDescriptorFactory`, which enforces type, buc
 Global settings groups root-level Config fields that aren't per-entity: `globalInterceptors`, `retriableErrorCodes`, and future extensible fields. This is a single JSON object, not a collection of named entities (the `{bucket}/{name}` segments are fixed at `platform/global`).
 
 ```json
-// GET /v1/settings/platform/global response (Owner view):
+// GET /v1/settings/platform/global response (200, blob present):
 {
+  "name": "global",
+  "status": "valid",
   "globalInterceptors": ["audit-logger", "pii-anonymizer"],
-  "retriableErrorCodes": [429, 503, 504],
-  "source": "api"
+  "retriableErrorCodes": [429, 503, 504]
 }
 ```
 
@@ -156,7 +161,7 @@ Global settings groups root-level Config fields that aren't per-entity: `globalI
 
 Entity JSON payloads match the existing `Config` data model exactly. The same Jackson-based serialization that reads `aidial.config.json` today is reused for API request/response bodies.
 
-**Response shape — Public vs Owner views (per-entity GET only).** Entity-intrinsic fields live at top level (matching today's user Resource API shape). On per-entity `GET /v1/{type}/{bucket}/{name}` responses, two extra fields are projected per [`04-security-and-audit.md`](04-security-and-audit.md) §1.5: `status` (top-level, **Public** — visible to anyone who can read the entity) and `source` + `validationWarnings` (top-level, **Owner-only** — admin or bucket-owner). Public callers see the entity body + `status` only; Owner callers additionally see `source` and `validationWarnings`. The flat shape is enforced by Jackson `@JsonView` annotations on the response wrapper with `DEFAULT_VIEW_INCLUSION = false` — a forgotten annotation makes a field invisible everywhere (fail-closed at write time, never silently leaks). `etag` is returned via the HTTP `ETag` header, never in the body. **The projection does not apply to listings**: `GET /v1/metadata/{type}/{bucket}/{path}` returns `ResourceItemMetadata` items with no entity body, no `status`, no `source`, no `validationWarnings` — matching the existing `RESOURCE_METADATA` / `FILES_METADATA` shape. Operators who need entity-level validity or provenance use a per-entity `GET` after the listing. *(A runtime-config snapshot endpoint `GET /v1/admin/export` was originally specified here for the file-sourced overview; deferred — see [IMPLEMENTATION.md §5.5 Defer.1](IMPLEMENTATION.md). Until it ships, operators consult `aidial.config.json` directly for file-sourced entries.)*
+**Response shape — Public vs Owner views (per-entity GET only).** Entity-intrinsic fields live at top level (matching today's user Resource API shape). On per-entity `GET /v1/{type}/{bucket}/{name}` responses, two extra fields are projected per [`04-security-and-audit.md`](04-security-and-audit.md) §1.5: `status` (top-level, **Public** — visible to anyone who can read the entity) and `validationWarnings` (top-level, **Owner-only** — admin or bucket-owner). Public callers see the entity body + `status` only; Owner callers additionally see `validationWarnings`. The flat shape is enforced by Jackson `@JsonView` annotations on the response wrapper with `DEFAULT_VIEW_INCLUSION = false` — a forgotten annotation makes a field invisible everywhere (fail-closed at write time, never silently leaks). `etag` is returned via the HTTP `ETag` header, never in the body. **The projection does not apply to listings**: `GET /v1/metadata/{type}/{bucket}/{path}` returns `ResourceItemMetadata` items with no entity body, no `status`, no `validationWarnings` — matching the existing `RESOURCE_METADATA` / `FILES_METADATA` shape. Operators who need entity-level validity use a per-entity `GET` after the listing. *(Slice U.1, 2026-05-21: the previously-projected `source: "file" | "api"` field is retired from the per-entity response — the URL itself discloses the source; file entries surface only via the `/v1/admin/config/file/*` endpoint. A runtime-config snapshot endpoint `GET /v1/admin/export` was originally specified here for the file-sourced overview; deferred — see [IMPLEMENTATION.md §5.5 Defer.1](IMPLEMENTATION.md).)*
 
 **Example — `PUT /v1/models/public/anthropic.claude-sonnet-4-6`:**
 
@@ -288,7 +293,7 @@ Listing is served by the metadata route — `GET /v1/metadata/{type}/{bucket}/{p
 }
 ```
 
-**No entity body in listings.** The metadata listing carries **no entity payload** — operators who need the model's `endpoint`, `pricing`, `upstreams`, etc. follow up with a per-entity `GET /v1/models/public/anthropic.claude-sonnet-4-6`. Likewise, validity (`status`), provenance (`source`), and `validationWarnings` are **not surfaced through the listing** — they appear on the per-entity GET response per §2 (Public/Owner views), or operators query `GET /v1/admin/health/config` for the full degraded-entity report. This is full alignment with the existing Resource API which has never put entity bodies into folder listings.
+**No entity body in listings.** The metadata listing carries **no entity payload** — operators who need the model's `endpoint`, `pricing`, `upstreams`, etc. follow up with a per-entity `GET /v1/models/public/anthropic.claude-sonnet-4-6`. Likewise, validity (`status`) and `validationWarnings` are **not surfaced through the listing** — they appear on the per-entity GET response per §2 (Public/Owner views), or operators query `GET /v1/admin/health/config` for the full degraded-entity report. This is full alignment with the existing Resource API which has never put entity bodies into folder listings.
 
 **`name` synthesis.** Listing items derive `name` directly from the `ResourceDescriptor` (the simple name segment) — the same way the existing Resource API has always done it. The full canonical form lives in `url` (`models/public/anthropic.claude-sonnet-4-6`); operators copy-paste from `url` when constructing per-entity URLs. There is no separate dedup-by-key step because the listing is blob-only — there are no file-vs-API simple-name twins to disambiguate within a single response.
 

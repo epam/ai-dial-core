@@ -18,11 +18,20 @@ Effective permissions:
 
 A static `(entityType, bucket)` allowlist (`models → public`, `keys → platform`, etc.) rejects structurally-permitted-but-semantically-invalid combinations (e.g. `GET /v1/keys/public/foo`) with `404 Not Found` — same response shape as a genuinely-missing entity so unauthenticated probes can't distinguish the two.
 
+### File-config inspection surface
+
+The per-entity Configuration API (`/v1/{type}/{bucket}/{name}`) is blob-only — file-sourced entries from `aidial.config.json` are not addressable there. Operators who need to inspect file-sourced configuration use a separate read-only surface: `GET /v1/admin/config/file/{type}` and `GET /v1/admin/config/file/{type}/{name}`. Authz:
+
+- **All types except `keys`** — admin role, same gate as the rest of `/v1/admin/*`.
+- **`keys`** — **security-admin role required**. Non-security-admin callers receive `403`.
+
+The `keys` carve-out is locked because file-sourced `Config.keys` uses the legacy format where the map key *equals the secret value* (OQ-12 — kept permanently dual-format so existing customer config files are not broken). Listing or addressing those entries via URL therefore exposes secrets to anyone who can read the response — admin role alone is not enough. Security-admin is the same operator-vetted tier already gating `?reveal_secrets=true` for plaintext secret reads (see *Secrets at rest* below); reusing it keeps the secret-exposure surface coherent. No `PUT` / `DELETE` on file entries — `aidial.config.json` remains the operator-managed source of truth.
+
 When multi-tenancy lands, only the `ConfigAuthorizationService` implementation is swapped — endpoint code does not change.
 
 ### Public vs Owner views
 
-Per-entity `GET` and listing share the same URL between authenticated readers, bucket owners, and admins. Operational metadata that admins/owners need (`source`, `validationWarnings`) must not leak to public callers; entity-intrinsic fields and the `status` flag are public-safe.
+Per-entity `GET` and listing share the same URL between authenticated readers, bucket owners, and admins. Operational metadata that admins/owners need (`validationWarnings`) must not leak to public callers; entity-intrinsic fields and the `status` flag are public-safe. There is no `source` field on any response — the per-entity Configuration API is blob-only, the file-config surface is file-only, and the URL itself tells the caller which they're looking at.
 
 Two Jackson views (`Public`, `Owner extends Public`) handle this declaratively. The controller picks `Owner` when the caller is admin or bucket-owner, `Public` otherwise. The serializer is configured fail-closed (`DEFAULT_VIEW_INCLUSION = false`) so a forgotten annotation makes a field invisible everywhere, not silently public.
 
@@ -55,7 +64,7 @@ API-managed entities store secret fields encrypted via the existing `CredentialE
 
 Preserve-on-omit is server-side behavior, not a CLI ergonomic — every client (CLI, Admin Backend, MCP, direct curl) gets it for free.
 
-**Optional reveal** — operators with a separate `security-admin` role can request plaintext via `?reveal_secrets=true`. If the role isn't configured on the environment, the feature is simply unavailable.
+**Optional reveal** — operators with a separate `security-admin` role can request plaintext via `?reveal_secrets=true`. If the role isn't configured on the environment, the feature is simply unavailable. The same `security-admin` tier gates the file-config `/keys` endpoints (`/v1/admin/config/file/keys[/...]`) — see *File-config inspection surface* above.
 
 **Backward compatibility with config files** — file-sourced entities continue to carry plaintext secrets. `MergedConfigStore` transparently handles four formats: plaintext (file/dev), `ENC[...]` (this proposal), `${SECRET:...}` (future vault references — Phase 5+), and the existing bare-Base64 `ResourceAuthSettings` payloads on toolsets.
 
