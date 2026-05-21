@@ -94,6 +94,23 @@ public class ControllerSelector {
                     context, authService, (MergedConfigStore) proxy.getConfigStore());
             return controller::handle;
         });
+        ControllerRoute.Initializer fileConfigInitializer = (proxy, context, pathMatcher) -> {
+            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+            String type = pathMatcher.group("type");
+            String name = pathMatcher.group("name");
+            String decodedName = name == null ? null : UrlUtil.decodePath(name);
+            FileConfigController controller = new FileConfigController(
+                    context, authService, mergedConfigStore, type, decodedName);
+            return controller::handle;
+        };
+        get(RouteTemplate.ADMIN_FILE_CONFIG, fileConfigInitializer);
+        // Wire POST/PUT/DELETE so the controller can emit 405 with Allow: GET (RFC 9110 §15.5.6)
+        // instead of falling through to GlobalRouteController, which could match an unintended
+        // configured route in production.
+        post(RouteTemplate.ADMIN_FILE_CONFIG, fileConfigInitializer);
+        put(RouteTemplate.ADMIN_FILE_CONFIG, fileConfigInitializer);
+        delete(RouteTemplate.ADMIN_FILE_CONFIG, fileConfigInitializer);
         get(RouteTemplate.BUCKET, (proxy, context, pathMatcher) -> {
             BucketController controller = new BucketController(proxy, context);
             return controller::getBucket;

@@ -18,14 +18,22 @@ public class ConfigRoleTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testAdminReadsSingleRole() {
+    void testFileRoleNotAddressableOnPerEntityGet() {
+        // U.1 (2026-05-21): per-entity GET is blob-only; the file-defined role is not addressable.
         Response response = send(HttpMethod.GET, "/v1/roles/platform/default", null, "",
+                "authorization", "admin");
+        verify(response, 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testFileRoleReadableViaFileConfigEndpoint() {
+        Response response = send(HttpMethod.GET, "/v1/admin/config/file/roles/default", null, "",
                 "authorization", "admin");
         verify(response, 200);
         JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals("default", body.get("name").asText());
         assertEquals("valid", body.get("status").asText());
-        assertEquals("file", body.get("source").asText());
         assertTrue(body.has("limits"));
     }
 

@@ -165,24 +165,24 @@ public class ConfigResourceController implements Controller {
             context.respond(HttpStatus.FORBIDDEN, "reveal_secrets requires security-admin role");
             return Future.succeededFuture();
         }
-        // Bucket-aware authz already gated non-admin readers off platform/, so source is always emitted
-        // for platform/ types. For public/ types, source is Owner-only.
+        // Per-entity GET is blob-only (slice U.1): only canonical-ID lookups resolve here.
+        // File-sourced entries are inspected via /v1/admin/config/file/{type}[/{name}].
         return switch (resourceType()) {
             case MODEL -> handleSingleGet(
                     config.getModels(), ResourceTypes.MODEL,
-                    (key, model) -> projectItem(model, displayName(key), fromApi(key), admin, revealSecrets));
+                    (key, model) -> projectItem(model, key, revealSecrets));
             case INTERCEPTOR -> handleSingleGet(
                     config.getInterceptors(), ResourceTypes.INTERCEPTOR,
-                    (key, interceptor) -> projectItem(interceptor, displayName(key), fromApi(key), true, revealSecrets));
+                    (key, interceptor) -> projectItem(interceptor, key, revealSecrets));
             case ROLE -> handleSingleGet(
                     config.getRoles(), ResourceTypes.ROLE,
-                    (key, role) -> projectItem(role, displayName(key), fromApi(key), true, revealSecrets));
+                    (key, role) -> projectItem(role, key, revealSecrets));
             case PROJECT_KEY -> handleSingleGet(
                     config.getKeys(), ResourceTypes.PROJECT_KEY,
-                    (key, value) -> projectItem(value, displayName(key), fromApi(key), true, revealSecrets));
+                    (key, value) -> projectItem(value, key, revealSecrets));
             case ROUTE -> handleSingleGet(
                     config.getRoutes(), ResourceTypes.ROUTE,
-                    (key, route) -> projectItem(route, displayName(key), fromApi(key), true, revealSecrets));
+                    (key, route) -> projectItem(route, key, revealSecrets));
             case APP_TYPE_SCHEMA -> handleSchemaGet(config, admin);
             case GLOBAL_SETTINGS -> handleSettingsGet(config);
             default -> respondMethodNotAllowed();
@@ -202,25 +202,16 @@ public class ConfigResourceController implements Controller {
             context.respond(HttpStatus.NOT_FOUND);
             return Future.succeededFuture();
         }
-        // MergedConfigStore keys API entries by canonical ID ("models/public/gpt-4") and file
-        // entries by simple name ("gpt-4"). Try canonical ID first, fall back to simple name —
-        // see design 02 §4 union semantics.
+        // Per-entity GET is blob-only (U.1): MergedConfigStore keys API entries by canonical ID
+        // ("models/public/gpt-4"); file-sourced entries are not addressable here. Operators
+        // inspect file entries via /v1/admin/config/file/{type}[/{name}] — see FileConfigController.
         T item = source.get(canonicalId());
-        String matchedKey = null;
-        if (item != null) {
-            matchedKey = canonicalId();
-        } else {
-            item = source.get(path);
-            if (item != null) {
-                matchedKey = path;
-            }
-        }
         if (item != null) {
             // RFC 7232 If-None-Match: emit 304 only when the entity has a blob-backed ETag and the
-            // client-supplied tag matches. File-sourced entries have no blob and skip the check.
+            // client-supplied tag matches.
             final T matchedItem = item;
-            final String matched = matchedKey;
-            return respondNotModifiedIfMatched(matchedKey)
+            final String matched = canonicalId();
+            return respondNotModifiedIfMatched(matched)
                     .onSuccess(notModified -> {
                         if (!notModified) {
                             context.respond(HttpStatus.OK, projector.apply(matched, matchedItem));
@@ -238,17 +229,12 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Emits a {@code 304 Not Modified} if the matched entity has a blob (API-managed) and the
-     * client's {@code If-None-Match} request header carries that blob's ETag. The returned
-     * future resolves to {@code true} iff the 304 was written. File-sourced entries (no blob)
-     * always resolve to {@code false} — treated as always-modified. The blob-metadata fetch
+     * Emits a {@code 304 Not Modified} if the matched entity's stored blob has an ETag
+     * that matches the client's {@code If-None-Match} header. The blob-metadata fetch
      * runs on the blocking executor to keep the Vert.x event loop unblocked; the response is
      * written back on the event loop via the future-chain completion.
      */
     private Future<Boolean> respondNotModifiedIfMatched(String matchedKey) {
-        if (!fromApi(matchedKey)) {
-            return Future.succeededFuture(false);
-        }
         ResourceDescriptor descriptor = singleEntityDescriptor();
         if (descriptor == null) {
             return Future.succeededFuture(false);
@@ -317,31 +303,6 @@ public class ConfigResourceController implements Controller {
         return entityType + "/" + bucket + "/" + path;
     }
 
-    /** Extract the simple name from a canonical ID ("models/public/gpt-4" → "gpt-4"); pass through otherwise. */
-    private static String simpleName(String key) {
-        int slash = key.lastIndexOf('/');
-        return slash < 0 ? key : key.substring(slash + 1);
-    }
-
-    /**
-     * A canonical-ID-shaped key — {@code <entityType>/<bucket>/<name>} — marks an API-managed entry.
-     * File-defined entries either keep simple-name keys (most types) or use external URL keys
-     * ({@code applicationTypeSchemas} keys are {@code $id} URLs); only the canonical prefix is
-     * conclusive evidence of API origin.
-     */
-    private boolean fromApi(String key) {
-        return key.startsWith(entityType + "/" + bucket + "/");
-    }
-
-    /**
-     * Projected {@code name} value: full canonical ID for API-managed entries (so the listing
-     * row's name is copy-paste-friendly into chat-completion / canonical URLs), simple name for
-     * file-defined entries (their only addressable form). See design 03 §4 (amended 2026-05-08).
-     */
-    private String displayName(String key) {
-        return fromApi(key) ? key : simpleName(key);
-    }
-
     private Future<?> handleSchemaGet(Config config, boolean admin) throws JsonProcessingException {
         Map<String, String> schemas = config.getApplicationTypeSchemas();
         Map<String, InvalidEntityRecord> invalid = mergedConfigStore.getInvalidEntities()
@@ -350,28 +311,17 @@ public class ConfigResourceController implements Controller {
             context.respond(HttpStatus.NOT_FOUND);
             return Future.succeededFuture();
         }
-        // Canonical-ID first, simple-name fallback (see handleSingleGet).
+        // Per-entity GET is blob-only (U.1): canonical-ID lookup only; file-defined schemas
+        // are inspected via /v1/admin/config/file/schemas/{name}.
         String schemaJson = schemas.get(canonicalId());
-        String matchedKey = null;
-        boolean apiBacked = false;
         if (schemaJson != null) {
-            matchedKey = canonicalId();
-            apiBacked = true;
-        } else {
-            schemaJson = schemas.get(path);
-            if (schemaJson != null) {
-                matchedKey = path;
-            }
-        }
-        if (schemaJson != null) {
-            final String matched = matchedKey;
+            final String matched = canonicalId();
             final String json = schemaJson;
-            final boolean fromApi = apiBacked;
-            return respondNotModifiedIfMatched(matchedKey)
+            return respondNotModifiedIfMatched(matched)
                     .onSuccess(notModified -> {
                         if (!notModified) {
                             try {
-                                context.respond(HttpStatus.OK, projectSchemaItem(matched, json, fromApi, admin));
+                                context.respond(HttpStatus.OK, projectSchemaItem(matched, json));
                             } catch (JsonProcessingException e) {
                                 context.respond(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
                             }
@@ -397,20 +347,18 @@ public class ConfigResourceController implements Controller {
             context.respond(HttpStatus.NOT_FOUND);
             return Future.succeededFuture();
         }
+        // Blob-only (U.1): the per-entity endpoint reflects the API blob; when no blob is present
+        // it returns 404. File-defined or schema-default values are projected via
+        // /v1/admin/config/file/settings/global.
+        if (!mergedConfigStore.isSettingsFromApi()) {
+            context.respond(HttpStatus.NOT_FOUND);
+            return Future.succeededFuture();
+        }
         ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
         body.set("globalInterceptors", ProxyUtil.MAPPER.valueToTree(config.getGlobalInterceptors()));
         body.set("retriableErrorCodes", ProxyUtil.MAPPER.valueToTree(config.getRetriableErrorCodes()));
         body.put("name", SETTINGS_SINGLETON_NAME);
         body.put("status", "valid");
-        String source;
-        if (mergedConfigStore.isSettingsFromApi()) {
-            source = "api";
-        } else if (!config.getGlobalInterceptors().isEmpty() || !config.getRetriableErrorCodes().isEmpty()) {
-            source = "file";
-        } else {
-            source = "default";
-        }
-        body.put("source", source);
         context.respond(HttpStatus.OK, body);
         return Future.succeededFuture();
     }
@@ -423,6 +371,7 @@ public class ConfigResourceController implements Controller {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.GLOBAL_SETTINGS, ResourceDescriptor.PLATFORM_BUCKET,
                 ResourceDescriptor.PLATFORM_LOCATION, SETTINGS_SINGLETON_NAME);
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
 
         context.getRequest().body().compose(body -> {
             JsonNode requestNode = parseJsonBody(body);
@@ -436,6 +385,11 @@ public class ConfigResourceController implements Controller {
             String author = context.getUserDisplayName();
             return taskExecutor.submit(() -> {
                 try (LockService.Lock ignored = adminWriteLockService.acquire()) {
+                    // RFC 7232 conditional headers must be honored on the singleton too: read prior
+                    // metadata, validate If-None-Match/If-Match, then persist with ANY so the blob
+                    // layer doesn't re-validate against a stale snapshot.
+                    ResourceItemMetadata existing = resourceService.getResourceMetadata(descriptor);
+                    etag.validate(existing == null ? null : existing.getEtag());
                     ResourceItemMetadata meta = resourceService.putResource(
                             descriptor, blobBody, EtagHeader.ANY, author, false);
                     mergedConfigStore.applySettingsWrite(settings);
@@ -457,12 +411,14 @@ public class ConfigResourceController implements Controller {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.GLOBAL_SETTINGS, ResourceDescriptor.PLATFORM_BUCKET,
                 ResourceDescriptor.PLATFORM_LOCATION, SETTINGS_SINGLETON_NAME);
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
 
         taskExecutor.submit(() -> {
-            // Idempotent — deleteResource returns false when the blob is absent; both outcomes
-            // collapse to 204 since the post-state (no API blob) is identical.
+            // Idempotent on bare DELETE — deleteResource returns false when the blob is absent and
+            // both outcomes collapse to 204 since the post-state (no API blob) is identical.
+            // If-Match passes through to deleteResource which throws 412 on mismatch.
             try (LockService.Lock ignored = adminWriteLockService.acquire()) {
-                resourceService.deleteResource(descriptor, EtagHeader.ANY, false);
+                resourceService.deleteResource(descriptor, etag, false);
                 mergedConfigStore.applySettingsDelete();
                 return true;
             }
@@ -801,7 +757,7 @@ public class ConfigResourceController implements Controller {
         return body;
     }
 
-    private ObjectNode projectItem(Object item, String name, boolean fromApi, boolean includeSource, boolean revealSecrets) {
+    private ObjectNode projectItem(Object item, String name, boolean revealSecrets) {
         // BLOB_MAPPER pass-through emits stored values verbatim — when in-memory Config holds the
         // post-rebuild plaintext, this surfaces the secret (security-admin reveal flow). The default
         // MAPPER applies the masking serializer modifier and emits "***" instead.
@@ -809,13 +765,10 @@ public class ConfigResourceController implements Controller {
         ObjectNode node = mapper.valueToTree(item);
         node.put("name", name);
         node.put("status", "valid");
-        if (includeSource) {
-            node.put("source", fromApi ? "api" : "file");
-        }
         return node;
     }
 
-    private ObjectNode projectSchemaItem(String name, String json, boolean fromApi, boolean admin)
+    private ObjectNode projectSchemaItem(String name, String json)
             throws JsonProcessingException {
         // applicationTypeSchemas stores raw JSON strings; parse for projection.
         JsonNode schema = ProxyUtil.MAPPER.readTree(json);
@@ -827,9 +780,6 @@ public class ConfigResourceController implements Controller {
         }
         node.put("name", name);
         node.put("status", "valid");
-        if (admin) {
-            node.put("source", fromApi ? "api" : "file");
-        }
         return node;
     }
 
@@ -847,7 +797,6 @@ public class ConfigResourceController implements Controller {
         node.put("name", record.getSimpleName());
         node.put("status", "invalid");
         if (admin) {
-            node.put("source", record.getSource());
             ArrayNode warnings = node.putArray("validationWarnings");
             for (ValidationWarning warning : record.getValidationWarnings()) {
                 ObjectNode w = warnings.addObject();

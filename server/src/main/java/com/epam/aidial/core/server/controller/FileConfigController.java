@@ -13,7 +13,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpMethod;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
 
@@ -22,12 +21,10 @@ import java.util.Map;
  * the per-entity Configuration API ({@code /v1/{type}/{bucket}/{name}}) is blob-only,
  * so operators inspect file entries through this dedicated path.
  *
- * <p>Authorization: admin role for every supported type EXCEPT {@code keys}. File-sourced
- * {@code Config.keys} uses the legacy map-key-as-secret format (OQ-12), so leaking key names
- * via URL/listing exposes secrets. Slice U.4 retired the security-admin tier that previously
- * gated this carve-out — the surface now denies the {@code keys} type to every caller
- * (admin included). Operators with strict need to inspect file-sourced keys read
- * {@code aidial.config.json} directly off the deployment.
+ * <p>Authorization: admin role for every supported type EXCEPT {@code keys}, which requires
+ * the security-admin tier — file-sourced {@code Config.keys} keeps the legacy
+ * map-key-as-secret format per OQ-12, so leaking key names via URL/listing exposes secrets
+ * to anyone with the admin role.
  *
  * <p>Singleton settings: {@code GET /v1/admin/config/file/settings/global} returns the
  * file-defined (or schema-default) values for {@code globalInterceptors} and
@@ -39,7 +36,6 @@ import java.util.Map;
  * so the controller can emit {@code 405 Method Not Allowed} with {@code Allow: GET}
  * (RFC 9110 §15.5.6), rather than falling through to the global route handler.
  */
-@Slf4j
 @RequiredArgsConstructor
 public class FileConfigController implements Controller {
 
@@ -63,17 +59,24 @@ public class FileConfigController implements Controller {
 
         // The route regex restricts {type} to a closed set; ResourceTypes.of() cannot throw here.
         ResourceTypes resourceType = ResourceTypes.of(entityType);
+        boolean securityAdmin = authorizationService.isSecurityAdmin(context);
 
-        // Slice U.4: PROJECT_KEY is denied for everyone on the file-config surface — the legacy
-        // map-key-as-secret format (OQ-12) makes the names secret-equivalent, and the
-        // security-admin tier that previously gated this carve-out has been retired.
+        // PROJECT_KEY requires security-admin specifically (file map keys equal secrets per OQ-12).
+        // All other types accept either admin or security-admin (security-admin is strictly stronger).
         if (resourceType == ResourceTypes.PROJECT_KEY) {
-            context.respond(HttpStatus.FORBIDDEN,
-                    "Access to file-sourced keys via this surface is disabled");
+            if (!securityAdmin) {
+                context.respond(HttpStatus.FORBIDDEN,
+                        "Access to file-sourced keys requires security-admin role");
+                return Future.succeededFuture();
+            }
+        } else if (!securityAdmin && !authorizationService.isAdmin(context)) {
+            context.respond(HttpStatus.FORBIDDEN, "Forbidden");
             return Future.succeededFuture();
         }
-        if (!authorizationService.isAdmin(context)) {
-            context.respond(HttpStatus.FORBIDDEN, "Forbidden");
+
+        boolean revealSecrets = "true".equals(context.getRequest().getParam("reveal_secrets"));
+        if (revealSecrets && !securityAdmin) {
+            context.respond(HttpStatus.FORBIDDEN, "reveal_secrets requires security-admin role");
             return Future.succeededFuture();
         }
 
@@ -105,7 +108,7 @@ public class FileConfigController implements Controller {
         if (name == null || name.isEmpty()) {
             return handleList(fileConfig, resourceType);
         }
-        return handleSingle(fileConfig, resourceType);
+        return handleSingle(fileConfig, resourceType, revealSecrets);
     }
 
     private Future<?> handleList(Config fileConfig, ResourceTypes resourceType) {
@@ -123,7 +126,7 @@ public class FileConfigController implements Controller {
         return Future.succeededFuture();
     }
 
-    private Future<?> handleSingle(Config fileConfig, ResourceTypes resourceType) {
+    private Future<?> handleSingle(Config fileConfig, ResourceTypes resourceType, boolean revealSecrets) {
         Map<String, ?> source = entitySource(fileConfig, resourceType);
         if (source == null) {
             context.respond(HttpStatus.NOT_FOUND);
@@ -149,14 +152,15 @@ public class FileConfigController implements Controller {
                 node.put("status", "valid");
                 context.respond(HttpStatus.OK, node);
             } catch (Exception e) {
-                log.error("Failed to render file-config schema '{}'", name, e);
-                context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to render schema for " + name);
+                context.respond(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
             }
             return Future.succeededFuture();
         }
 
-        // Slice U.4: default MAPPER drops @EncryptedField fields (WRITE_ONLY); no reveal path.
-        ObjectNode node = ProxyUtil.MAPPER.valueToTree(item);
+        // BLOB_MAPPER pass-through for security-admin reveal flow; the default MAPPER applies the
+        // masking serializer modifier and emits "***" for @EncryptedField values.
+        var mapper = revealSecrets ? ProxyUtil.BLOB_MAPPER : ProxyUtil.MAPPER;
+        ObjectNode node = mapper.valueToTree(item);
         node.put("name", name);
         node.put("status", "valid");
         context.respond(HttpStatus.OK, node);

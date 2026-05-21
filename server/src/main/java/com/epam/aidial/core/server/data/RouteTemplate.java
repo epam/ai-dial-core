@@ -85,6 +85,11 @@ public enum RouteTemplate {
             "/v1/admin/health/config"
     ),
 
+    ADMIN_FILE_CONFIG(
+            "^/v1/admin/config/file/(?<type>models|interceptors|roles|keys|routes|schemas|settings)(?:/(?<name>.+))?$",
+            "/v1/admin/config/file/{type}/{name}"
+    ),
+
     CONFIG_VALIDATE(
             "^/v1/admin/validate$",
             "/v1/admin/validate"

@@ -66,6 +66,8 @@ Cross-replica freshness is delivered in two layers:
 
 Per-entity validation runs on each rebuild. The default is **strict abort** (matching today's `FileConfigStore` reload semantics); an opt-in `config.reload.onInvalidEntity: skip` switches to per-entity skip-with-visibility, so a single corrupt blob doesn't block scale-up. The same posture applies to writes: cross-references that don't resolve **block the write with `422`** by default; an opt-in `config.write.softValidation: true` accepts dangling references and surfaces them via `status: "invalid"` for gradual file→API migration. "No broken entities accepted" is the headline contract across both paths.
 
+**Operator surface vs runtime resolution.** The union lives in the runtime `Config` for chat-completion routing — `findDeployment`, `RateLimiter`, the route matcher, and the interceptor chain resolver all keep using both simple-name (file) and canonical-ID (API) keys. The Configuration API operator surface is **not** the union: per-entity GET (`/v1/{type}/{bucket}/{name}`) and metadata listing (`/v1/metadata/...`) are blob-only — file entries do not appear on either. Operators inspect file entries via a dedicated read-only path, `/v1/admin/config/file/{type}[/{name}]`, with the security-admin role gating the `keys` type because file `Config.keys` map keys equal secrets (see [`04-security.md`](04-security.md)). Splitting the surface this way keeps the operator-facing API clean (one source per endpoint, no per-entity `source` field to disambiguate, no name-collision corner cases like file `gpt-4` vs API `models/public/gpt-4`) while runtime resolution remains untouched.
+
 ## Bucket strategy: `public/` vs `platform/`
 
 Two buckets, chosen by *who the entity is for*:

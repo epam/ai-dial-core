@@ -18,14 +18,22 @@ public class ConfigInterceptorTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testAdminReadsSingleInterceptor() {
+    void testFileInterceptorNotAddressableOnPerEntityGet() {
+        // U.1 (2026-05-21): per-entity GET is blob-only.
         Response response = send(HttpMethod.GET, "/v1/interceptors/platform/interceptor1", null, "",
+                "authorization", "admin");
+        verify(response, 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testFileInterceptorReadableViaFileConfigEndpoint() {
+        Response response = send(HttpMethod.GET, "/v1/admin/config/file/interceptors/interceptor1", null, "",
                 "authorization", "admin");
         verify(response, 200);
         JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals("interceptor1", body.get("name").asText());
         assertEquals("valid", body.get("status").asText());
-        assertEquals("file", body.get("source").asText());
         assertTrue(body.has("endpoint"));
     }
 
@@ -46,6 +54,8 @@ public class ConfigInterceptorTest extends ResourceBaseTest {
 
     @Test
     void testNonAdminGetsForbidden() {
+        // The platform/ admin gate fires BEFORE the entity lookup, so non-admin gets 403 even
+        // though the file entry is no longer addressable on the per-entity surface (U.1).
         verify(send(HttpMethod.GET, "/v1/interceptors/platform/interceptor1", null, "",
                 "authorization", "user"), 403);
         verify(send(HttpMethod.GET, "/v1/metadata/interceptors/platform/", null, "",

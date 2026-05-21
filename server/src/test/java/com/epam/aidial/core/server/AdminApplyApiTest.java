@@ -8,6 +8,7 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -306,11 +307,14 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         verify(response, 200);
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        // U.1 (2026-05-21): /v1/settings/platform/global is blob-only. After a successful apply
+        // the blob exists and the GET surfaces the API-projected values; no source field.
         Response get = send(HttpMethod.GET, "/v1/settings/platform/global", null, "",
                 "authorization", "admin");
         verify(get, 200);
         JsonNode settings = ProxyUtil.MAPPER.readTree(get.body());
-        assertEquals("api", settings.get("source").asText(), () -> "Body: " + get.body());
+        assertFalse(settings.has("source"),
+                () -> "U.1: source field must not appear in any response: " + get.body());
         JsonNode globalInterceptors = settings.get("globalInterceptors");
         assertNotNull(globalInterceptors);
         assertEquals(1, globalInterceptors.size());

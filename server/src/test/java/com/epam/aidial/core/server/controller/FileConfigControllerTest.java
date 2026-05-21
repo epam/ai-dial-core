@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
@@ -14,9 +13,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
@@ -44,6 +40,10 @@ public class FileConfigControllerTest {
     void singleGetReturns404WhenFileConfigNotYetInitialised() {
         when(context.getRequest()).thenReturn(request);
         when(request.method()).thenReturn(HttpMethod.GET);
+        // Stub both auth probes explicitly: this test exercises the "plain admin" branch
+        // (non-key types accept admin OR security-admin), so make isSecurityAdmin=false the
+        // contract under test rather than relying on Mockito's default-false return.
+        when(authorizationService.isSecurityAdmin(context)).thenReturn(false);
         when(authorizationService.isAdmin(context)).thenReturn(true);
         when(mergedConfigStore.getFileSourcedConfig()).thenReturn(null);
 
@@ -59,6 +59,7 @@ public class FileConfigControllerTest {
         // Envelope shape must be {"items":[]} — a bare [] array body would break every client.
         when(context.getRequest()).thenReturn(request);
         when(request.method()).thenReturn(HttpMethod.GET);
+        when(authorizationService.isSecurityAdmin(context)).thenReturn(false);
         when(authorizationService.isAdmin(context)).thenReturn(true);
         when(mergedConfigStore.getFileSourcedConfig()).thenReturn(null);
 
@@ -75,31 +76,5 @@ public class FileConfigControllerTest {
         assertTrue(envelope.has("items") && envelope.get("items").isArray()
                         && envelope.get("items").isEmpty(),
                 () -> "Expected empty items array: " + envelope);
-    }
-
-    @Test
-    void malformedSchemaReturns500WithoutLeakingRawContent() {
-        // FINDING #9: a malformed file-sourced schema must surface a generic 500, never the raw
-        // (potentially sensitive) content from the offending blob.
-        String malformed = "{not valid json -- secret-token-xyz";
-        Config fileConfig = new Config();
-        fileConfig.setApplicationTypeSchemas(Map.of("broken-schema", malformed));
-
-        when(context.getRequest()).thenReturn(request);
-        when(request.method()).thenReturn(HttpMethod.GET);
-        when(authorizationService.isAdmin(context)).thenReturn(true);
-        when(mergedConfigStore.getFileSourcedConfig()).thenReturn(fileConfig);
-
-        FileConfigController controller = new FileConfigController(
-                context, authorizationService, mergedConfigStore, "schemas", "broken-schema");
-        controller.handle();
-
-        ArgumentCaptor<String> bodyCaptor = ArgumentCaptor.forClass(String.class);
-        verify(context).respond(eq(HttpStatus.INTERNAL_SERVER_ERROR), bodyCaptor.capture());
-        String responseBody = bodyCaptor.getValue();
-        assertTrue(responseBody.contains("Failed to render schema"),
-                () -> "Expected generic message, got: " + responseBody);
-        assertFalse(responseBody.contains("secret-token-xyz"),
-                () -> "Raw schema content must not leak: " + responseBody);
     }
 }

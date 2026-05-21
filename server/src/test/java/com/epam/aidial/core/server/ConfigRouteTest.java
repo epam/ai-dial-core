@@ -16,14 +16,22 @@ public class ConfigRouteTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testAdminReadsSingleRoute() {
+    void testFileRouteNotAddressableOnPerEntityGet() {
+        // U.1 (2026-05-21): per-entity GET is blob-only.
         Response response = send(HttpMethod.GET, "/v1/routes/platform/plain", null, "",
+                "authorization", "admin");
+        verify(response, 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testFileRouteReadableViaFileConfigEndpoint() {
+        Response response = send(HttpMethod.GET, "/v1/admin/config/file/routes/plain", null, "",
                 "authorization", "admin");
         verify(response, 200);
         JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals("plain", body.get("name").asText());
         assertEquals("valid", body.get("status").asText());
-        assertEquals("file", body.get("source").asText());
     }
 
     @Test

@@ -124,7 +124,7 @@ Admin has **no** read or write access to user buckets — this is locked by `Con
 
 ### 1.5 Response projection: Public / Owner views
 
-**Scope — per-entity GET only.** The Public / Owner projection described in this section applies to per-entity `GET /v1/{type}/{bucket}/{name}` responses. The folder metadata listing surface (`GET /v1/metadata/{type}/{bucket}/{path}`) returns the existing `ResourceItemMetadata` shape (`url`, `name`, `etag`, `createdAt`, `updatedAt`, `author`) and carries no projection — see [`03-api-reference.md`](03-api-reference.md) §4. Operational metadata that admins/owners need on a per-entity GET (`source`, `validationWarnings`) must not leak to Public callers; entity-intrinsic fields and validity status (`status`) are public-safe. Two Jackson views handle this declaratively:
+**Scope — per-entity GET only.** The Public / Owner projection described in this section applies to per-entity `GET /v1/{type}/{bucket}/{name}` responses. The folder metadata listing surface (`GET /v1/metadata/{type}/{bucket}/{path}`) returns the existing `ResourceItemMetadata` shape (`url`, `name`, `etag`, `createdAt`, `updatedAt`, `author`) and carries no projection — see [`03-api-reference.md`](03-api-reference.md) §4. Operational metadata that admins/owners need on a per-entity GET (`validationWarnings`) must not leak to Public callers; entity-intrinsic fields and validity status (`status`) are public-safe. Two Jackson views handle this declaratively. *(Slice U.1, 2026-05-21: the previously Owner-only `source: "file" | "api"` field has been retired from the per-entity Configuration API — the URL itself discloses the source. File-sourced entries are no longer addressable on `/v1/{type}/{bucket}/{name}`; operators inspect them via `/v1/admin/config/file/{type}[/{name}]` — see "File-config inspection surface" below.)*
 
 ```java
 public final class Views {
@@ -154,12 +154,26 @@ Admin and bucket-owner share the Owner view because they are the same kind of pr
 |---|---|---|
 | Entity-intrinsic fields (top level) | `Public` | Existing user Resource API shape preserved. Phase 2 mechanically adds `@JsonView(Public)` to every existing field on `Application`, `ToolSet`, `Key`, `Model`, `Role`, etc. |
 | `status: "valid" \| "invalid"` (top level, on response wrapper) | `Public` | Validity is a public signal — anyone discovering the entity sees whether it's functional. |
-| `source: "file" \| "api"` (top level, on response wrapper) | `Owner` | Provenance — useful for owners managing migrations; not for public consumption. |
 | `validationWarnings: [...]` (top level, on response wrapper, only when `status: "invalid"`) | `Owner` | Warning text reveals admin-managed component names (interceptor names, schema URIs) Public callers shouldn't enumerate. Public sees the *fact* of invalidity; Owner sees the *reason*. |
 | `etag` | n/a | Returned in HTTP `ETag` header, never in the body. |
 | `lastModified` | n/a | Intentionally not exposed today (YAGNI — revisit if a use case shows up). |
 
-`status`, `source`, and `validationWarnings` live on the **response wrapper**, not on the entity data classes (`Model`, `Role`, `Application`, …). Those classes round-trip through `aidial.config.json` and are imported as a Gradle dependency by the CLI — adding runtime status fields on them would leak into the file format and the CLI types.
+`status` and `validationWarnings` live on the **response wrapper**, not on the entity data classes (`Model`, `Role`, `Application`, …). Those classes round-trip through `aidial.config.json` and are imported as a Gradle dependency by the CLI — adding runtime status fields on them would leak into the file format and the CLI types.
+
+### 1.5.1 File-config inspection surface
+
+Per slice U.1 (2026-05-21), file-sourced entries are inspected via a dedicated read-only surface — `GET /v1/admin/config/file/{type}` (list) and `GET /v1/admin/config/file/{type}/{name}` (single). The per-entity Configuration API (`/v1/{type}/{bucket}/{name}`) and the metadata listing (`/v1/metadata/{type}/{bucket}/{path}`) are blob-only — file entries do not surface there.
+
+Authorization:
+
+- **All types except `keys`** — admin role (same gate as the rest of `/v1/admin/*`). Security-admin is also accepted since it is strictly stronger.
+- **`keys`** — security-admin role required. Non-security-admin callers receive `403`.
+
+The `keys` carve-out is locked because file-sourced `Config.keys` uses the legacy format where the map key *equals the secret value* ([OQ-12](08-open-questions-and-references.md) — kept permanently dual-format so existing customer config files are not broken). Listing or addressing those entries via URL therefore exposes secrets to anyone who can read the response — admin role alone is not enough. Security-admin is the same operator-vetted tier that already gates `?reveal_secrets=true` for plaintext secret reads (see §2.6 below); reusing it keeps the secret-exposure surface coherent.
+
+Singleton settings file-side view: `GET /v1/admin/config/file/settings/global` returns the file-defined and schema-default values for `globalInterceptors` and `retriableErrorCodes` regardless of whether an API blob exists on the per-entity endpoint. The merged `Config`'s values reflect the API blob when one is present (whole-object replacement per the prior OQ-10 contract); the file-config surface bypasses the merge and reads `MergedConfigStore.getFileSourcedConfig()` directly. This is the only way to see "what would the effective value be if no API blob existed?" after U.1 retired the singleton's three-state `source` projection on the per-entity GET.
+
+No `PUT` / `DELETE` on file entries — `aidial.config.json` remains the operator-managed source of truth for file-sourced configuration; the file-config surface is strictly read-only.
 
 **Defense in depth: `DEFAULT_VIEW_INCLUSION = false`.** The admin-CRUD `ObjectMapper` is configured with Jackson's `MapperFeature.DEFAULT_VIEW_INCLUSION = false` — every serialized field must carry an explicit `@JsonView` annotation. A new field added without an annotation is invisible everywhere (fail-closed at write time, caught by snapshot tests on existing endpoints), not silently public. The blob-I/O `ObjectMapper` keeps its current configuration unchanged (it always serializes everything, including encrypted secret blobs — that's its job).
 

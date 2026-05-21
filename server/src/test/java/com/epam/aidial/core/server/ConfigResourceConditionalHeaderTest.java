@@ -207,8 +207,9 @@ public class ConfigResourceConditionalHeaderTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     void testMetadataListingHidesFileEntries() {
-        // File fixtures (aidial.config.json) include 'test-model-v1' which surfaces under per-entity
-        // GET but must NOT appear in the blob-only metadata listing.
+        // File fixtures (aidial.config.json) include 'test-model-v1' / 'chat-gpt-35-turbo' /
+        // 'embedding-ada' which under U.1 are reachable only via /v1/admin/config/file/...; they
+        // must NOT appear in the blob-only metadata listing.
         Response list = send(HttpMethod.GET, "/v1/metadata/models/public/", null, "",
                 "authorization", "admin");
         if (list.status() == 200) {
