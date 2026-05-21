@@ -1,9 +1,14 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.data.LimitStats;
+import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.sun.net.httpserver.HttpServer;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
@@ -116,6 +121,89 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
             if (adapterRef.getValue() != null) {
                 adapterRef.getValue().stop(0);
             }
+        }
+    }
+
+    @Test
+    public void testAutoShareAnnotationCitationAttachment() {
+        // Register a public application that internally calls gpt-3-turbo.
+        // Auto-sharing of annotation citation attachments only activates when the
+        // inner request carries a per-request key, i.e. goes through an application.
+        ApplicationService applicationService = dial.getProxy().getApplicationService();
+        Application app = new Application();
+        app.setEndpoint("http://localhost:4848/app");
+        applicationService.putApplication(
+                ResourceDescriptorFactory.fromPublicUrl("applications/public/annot-test-app"),
+                EtagHeader.ANY, null, app);
+
+        // Shared state between the two mock handlers that run sequentially
+        MutableObject<String> citedFileUrl = new MutableObject<>();
+
+        try (TestWebServer server = new TestWebServer(4848)) {
+            // Inner gpt-3-turbo handler: returns annotation whose citation points at the uploaded file.
+            // By the time this handler runs, the outer handler has already set citedFileUrl.
+            server.map(HttpMethod.POST, "/chat/completions", request -> {
+                String body = """
+                        {"id":"id1","object":"chat.completion","created":1,"model":"gpt-35-turbo",
+                         "choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"summary",
+                           "custom_content":{"annotations":[
+                             {"index":0,"body":{"title":"Source","source":{"attachment":{"type":"text/plain","url":"%s"}}}}
+                           ]}
+                         }}],
+                         "usage":{"completion_tokens":5,"prompt_tokens":5,"total_tokens":10}}
+                        """.formatted(citedFileUrl.getValue());
+                return new MockResponse().setResponseCode(200).setBody(body);
+            });
+
+            // Outer application handler: uploads a file, calls gpt-3-turbo,
+            // then verifies it can access the cited file via auto-sharing.
+            server.map(HttpMethod.POST, "/app", request -> {
+                try {
+                    String apiKey = request.getHeader(Proxy.HEADER_API_KEY);
+
+                    // resolve the application's own bucket via per-request key
+                    Response bucketResponse = send(HttpMethod.GET, "/v1/bucket", null, "", "api-key", apiKey);
+                    assertEquals(200, bucketResponse.status());
+                    String appBucket = new JsonObject(bucketResponse.body()).getString("bucket");
+
+                    // upload the file that will be cited in the annotation
+                    String fileUrl = "files/%s/cited/source.txt".formatted(appBucket);
+                    Response upload = upload(HttpMethod.PUT, "/v1/" + fileUrl, null, "cited content", "api-key", apiKey);
+                    assertEquals(200, upload.status());
+                    citedFileUrl.setValue(fileUrl);
+
+                    // call gpt-3-turbo — its response will include the annotation citation
+                    Response nested = send(HttpMethod.POST,
+                            "/openai/deployments/gpt-3-turbo/chat/completions", null,
+                            """
+                            {"model":"gpt-3-turbo","messages":[{"role":"user","content":"Summarize"}]}
+                            """,
+                            "api-key", apiKey,
+                            "content-type", Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+                    assertEquals(200, nested.status());
+
+                    // the annotation's attachment should now be auto-shared to this per-request key
+                    Response fileResponse = send(HttpMethod.GET, "/v1/" + fileUrl, null, null, "api-key", apiKey);
+                    verify(fileResponse, 200);
+
+                    return new MockResponse().setResponseCode(200).setBody("""
+                            {"id":"id2","object":"chat.completion","created":1,"model":"app",
+                             "choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],
+                             "usage":{"completion_tokens":1,"prompt_tokens":1,"total_tokens":2}}
+                            """);
+                } catch (Throwable e) {
+                    return new MockResponse().setResponseCode(500);
+                }
+            });
+
+            // User sends a chat completion to the application
+            Response response = send(HttpMethod.POST,
+                    "/openai/deployments/applications/public/annot-test-app/chat/completions", null,
+                    """
+                    {"model":"annot-test-app","messages":[{"role":"user","content":"Summarize"}]}
+                    """,
+                    "content-type", Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+            verify(response, 200);
         }
     }
 
