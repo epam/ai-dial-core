@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.server.service.AdminWriteLockService;
+import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.LockService;
 import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
@@ -84,7 +85,12 @@ public class AdminWriteSerializationTest extends ResourceBaseTest {
     @SneakyThrows
     private void runBlockedByAdminWriteLock(Supplier<Response> writeCall) {
         LockService lockService = dial.getProxy().getLockService();
-        LockService.Lock held = lockService.lock(AdminWriteLockService.LOCK_KEY);
+        // AdminWriteLockService acquires both PUBLIC and PLATFORM bucket locks; holding either one is
+        // sufficient to block the controller's acquire(). PLATFORM_LOCATION matches the test's write
+        // targets (`/v1/interceptors/platform/...`, `/v1/admin/apply` for platform-bucket entities).
+        String contendingKey = BlobStorageUtil.toStoragePath(
+                lockService.getPrefix(), ResourceDescriptor.PLATFORM_LOCATION);
+        LockService.Lock held = lockService.lock(contendingKey);
         CompletableFuture<Response> future = CompletableFuture.supplyAsync(writeCall::get);
         try {
             assertThrows(TimeoutException.class, () -> future.get(500, TimeUnit.MILLISECONDS),
