@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -29,6 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 
@@ -71,7 +73,7 @@ public class ApplicationController {
                     }
                     throw new ResourceNotFoundException("Application is not found: " + applicationId);
                 })
-                .map(ApplicationController::mapApplication)
+                .map(this::mapApplication)
                 .onSuccess(data -> context.respond(HttpStatus.OK, data))
                 .onFailure(this::respondError);
 
@@ -96,7 +98,7 @@ public class ApplicationController {
             if (applicationService.isIncludeCustomApps()) {
                 list.addAll(deploymentService.listDeployments(context, ResourceTypes.APPLICATION, deploymentExtractor));
             }
-            return list.stream().map(ApplicationController::mapApplication).toList();
+            return list.stream().map(this::mapApplication).toList();
         }).onSuccess(apps -> context.respond(HttpStatus.OK, new ListData<>(apps)))
                 .onFailure(this::respondError);
     }
@@ -207,7 +209,7 @@ public class ApplicationController {
         }
     }
 
-    private static ApplicationData mapApplication(Application application) {
+    private ApplicationData mapApplication(Application application) {
         ApplicationData data = new ApplicationData();
         data.setInvalid(application.getInvalid());
         data.setId(application.getName());
@@ -246,7 +248,14 @@ public class ApplicationController {
             data.setUpdatedAt(application.getUpdatedAt());
         }
 
-        data.setRoutes(application.getRoutes());
+        Map<String, Route> routes = null;
+        if (application.hasApplicationTypeSchemaId()) {
+            routes = applicationSchemaService.getRoutes(application);
+        }
+        if (routes == null) {
+            routes = application.getRoutes();
+        }
+        data.setRoutes(routes);
         data.setViewerUrl(application.getViewerUrl());
         data.setEditorUrl(application.getEditorUrl());
 
