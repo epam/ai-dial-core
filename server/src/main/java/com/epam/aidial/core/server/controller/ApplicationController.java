@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -210,28 +211,6 @@ public class ApplicationController {
         }
     }
 
-    private boolean hasWriteAccess(Application application) {
-        String appName = application.getName();
-        if (appName != null && appName.equals(context.getDecodedSourceDeployment())) {
-            return true;
-        }
-        if (appName != null) {
-            try {
-                ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(appName, encryptionService);
-                if (resource.getType() == ResourceTypes.APPLICATION) {
-                    return accessService.hasWriteAccess(resource, context);
-                }
-            } catch (Exception e) {
-                // appName is not DIAL resource url, fall through to admin check
-            }
-        }
-        return accessService.hasAdminAccess(context);
-    }
-
-    private static void clearUpstreams(Map<String, Route> routes) {
-        routes.forEach((name, route) -> route.setUpstreams(null));
-    }
-
     private ApplicationData mapApplication(Application application) {
         ApplicationData data = new ApplicationData();
         data.setInvalid(application.getInvalid());
@@ -277,9 +256,6 @@ public class ApplicationController {
         }
         if (routes == null) {
             routes = application.getRoutes();
-        }
-        if (!hasWriteAccess(application) && routes != null) {
-            clearUpstreams(routes);
         }
         data.setRoutes(routes);
         data.setViewerUrl(application.getViewerUrl());

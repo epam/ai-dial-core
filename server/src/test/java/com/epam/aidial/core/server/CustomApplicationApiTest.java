@@ -1329,7 +1329,29 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      "invalid" : true,
                      "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
                      "viewer_url" : "https://mydial.somewhere.com/custom_application_schemas/viewer",
-                     "routes" : { }
+                     "routes" : {
+                       "data_sync" : {
+                         "name" : null,
+                         "userRoles" : null,
+                         "response" : null,
+                         "rewritePath" : true,
+                         "paths" : [ "/v1/index/search" ],
+                         "methods" : [ "POST" ],
+                         "upstreams" : [ {
+                           "endpoint" : "http://localhost:4848",
+                           "extraData" : null,
+                           "weight" : 1,
+                           "tier" : 0
+                         } ],
+                         "maxRetryAttempts" : 1,
+                         "order" : 5,
+                         "permissions" : [ "WRITE" ],
+                         "attachmentPaths" : {
+                           "requestBody" : [ ],
+                           "responseBody" : [ ]
+                         }
+                       }
+                     }
                 }
                 """);
     }

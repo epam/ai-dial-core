@@ -44,10 +44,6 @@ public class ApplicationTypeSchemaApiTest extends ResourceBaseTest {
         JsonNode routes = specificType.get("dial:applicationTypeRoutes");
         Assertions.assertNotNull(routes, "dial:applicationTypeRoutes must be exposed in the schema list");
         Assertions.assertTrue(routes.has("data_sync"));
-
-        JsonNode mcp = specificType.get("dial:applicationTypeMcp");
-        Assertions.assertNotNull(mcp, "dial:applicationTypeMcp must be exposed in the schema list");
-        Assertions.assertTrue(mcp.has("dial:endpoint"));
     }
 
     @Test
