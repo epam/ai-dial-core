@@ -1060,12 +1060,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                           "rewritePath" : true,
                           "paths" : [ "/v1/index(/[^/]+)*$" ],
                           "methods" : [ "DELETE", "POST", "PUT" ],
-                          "upstreams" : [ {
-                            "endpoint" : "http://localhost:4848",
-                            "extraData" : null,
-                            "weight" : 1,
-                            "tier" : 0
-                          } ],
+                          "upstreams" : null,
                           "maxRetryAttempts" : 1,
                           "order" : 2147483647,
                           "permissions" : [ ],

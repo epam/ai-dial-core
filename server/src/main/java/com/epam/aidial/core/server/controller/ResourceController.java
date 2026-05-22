@@ -149,7 +149,7 @@ public class ResourceController extends AccessControlBaseController {
         if (descriptor.getType().equals(ResourceTypes.APPLICATION)) {
             responseFuture = getApplicationData(descriptor, hasWriteAccess, etagHeader);
         } else if (descriptor.getType().equals(ResourceTypes.TOOL_SET)) {
-            responseFuture = getToolsetData(descriptor, etagHeader);
+            responseFuture = getToolsetData(descriptor, hasWriteAccess, etagHeader);
         } else {
             responseFuture = getResourceData(descriptor, etagHeader);
         }
@@ -212,13 +212,16 @@ public class ResourceController extends AccessControlBaseController {
         });
     }
 
-    private Future<Pair<ResourceItemMetadata, String>> getToolsetData(ResourceDescriptor descriptor, EtagHeader etagHeader) {
+    private Future<Pair<ResourceItemMetadata, String>> getToolsetData(ResourceDescriptor descriptor, boolean hasWriteAccess, EtagHeader etagHeader) {
         return taskExecutor.submit(() -> {
             Pair<ResourceItemMetadata, ToolSet> result = toolSetService.getToolSet(descriptor, etagHeader);
             ResourceItemMetadata meta = result.getKey();
             ToolSet toolSet = result.getValue();
             toolSetService.setResourceAuthStatuses(context, toolSet, descriptor.getUrl());
             toolSet.clearAuthSettings();
+            if (!hasWriteAccess) {
+                toolSet.setEndpoint(null);
+            }
             String body = ProxyUtil.convertToString(toolSet);
             return Pair.of(meta, body);
         });

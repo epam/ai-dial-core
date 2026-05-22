@@ -2805,4 +2805,49 @@ public class ToolSetApiTest extends ResourceBaseTest {
         }
         return ProxyUtil.MAPPER.writeValueAsString(root);
     }
+
+    @Test
+    void testToolsetEndpointHiddenForReadOnlyUser() throws JsonProcessingException {
+        // Admin creates toolset with endpoint
+        Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/secure-toolset", null, """
+                {
+                    "endpoint": "http://localhost:9876",
+                    "transport": "HTTP",
+                    "allowedTools": [],
+                    "auth_settings": {
+                        "authentication_type": "NONE"
+                    }
+                }
+                """, "authorization", "admin");
+        verify(response, 200);
+
+        // Admin GETs the toolset - should see endpoint
+        response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/secure-toolset", null, null, "authorization", "admin");
+        verify(response, 200);
+        assertNotNull(ProxyUtil.MAPPER.readTree(response.body()).get("endpoint"));
+
+        // Admin shares toolset with user (read-only)
+        response = send(HttpMethod.POST, "/v1/ops/resource/share/create", null, """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "toolsets/4X25dj1mja51jykqxsXnCH/secure-toolset"
+                    }
+                  ]
+                }
+                """, "authorization", "admin");
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        // User accepts invitation
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "authorization", "user");
+        verify(response, 200);
+
+        // User GETs the toolset - endpoint must be absent
+        response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/secure-toolset", null, null, "authorization", "user");
+        verify(response, 200);
+        assertNull(ProxyUtil.MAPPER.readTree(response.body()).get("endpoint"));
+    }
 }

@@ -197,16 +197,40 @@ public class ApplicationController {
     }
 
     private void respondError(Throwable error) {
-        if (error instanceof IllegalArgumentException) {
-            context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
-        } else if (error instanceof PermissionDeniedException) {
-            context.respond(HttpStatus.FORBIDDEN, error.getMessage());
-        } else if (error instanceof ResourceNotFoundException) {
-            context.respond(HttpStatus.NOT_FOUND, error.getMessage());
-        } else {
-            context.respond(error, "Internal error");
-            log.error("Failed to handle application request", error);
+        switch (error) {
+            case IllegalArgumentException ignored ->
+                    context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
+            case PermissionDeniedException ignored ->
+                    context.respond(HttpStatus.FORBIDDEN, error.getMessage());
+            case ResourceNotFoundException ignored ->
+                    context.respond(HttpStatus.NOT_FOUND, error.getMessage());
+            case null, default -> {
+                context.respond(error, "Internal error");
+                log.error("Failed to handle application request", error);
+            }
         }
+    }
+
+    private boolean hasWriteAccess(Application application) {
+        String appName = application.getName();
+        if (appName != null && appName.equals(context.getDecodedSourceDeployment())) {
+            return true;
+        }
+        if (appName != null) {
+            try {
+                ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(appName, encryptionService);
+                if (resource.getType() == ResourceTypes.APPLICATION) {
+                    return accessService.hasWriteAccess(resource, context);
+                }
+            } catch (Exception e) {
+                // appName is a config-based deployment name, fall through to admin check
+            }
+        }
+        return accessService.hasAdminAccess(context);
+    }
+
+    private static void clearUpstreams(Map<String, Route> routes) {
+        routes.forEach((name, route) -> route.setUpstreams(null));
     }
 
     private ApplicationData mapApplication(Application application) {
@@ -254,6 +278,9 @@ public class ApplicationController {
         }
         if (routes == null) {
             routes = application.getRoutes();
+        }
+        if (!hasWriteAccess(application) && routes != null) {
+            clearUpstreams(routes);
         }
         data.setRoutes(routes);
         data.setViewerUrl(application.getViewerUrl());
