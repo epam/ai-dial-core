@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
@@ -155,6 +157,39 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
 
             verify(appResponse, 200, responseBody);
         }
+    }
+
+    @Test
+    public void testSchemaRichAppRoutesExposedInOpenAiApi() throws Exception {
+        Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
+                {
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description",
+                "application_properties" : {
+                    "property1" : "test property1",
+                    "property2" : "test property2"
+                  },
+                "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                }
+                """);
+        Assertions.assertEquals(200, response.status());
+
+        response = send(HttpMethod.GET,
+                "/openai/applications/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application");
+        Assertions.assertEquals(200, response.status());
+
+        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+        JsonNode routes = body.get("routes");
+        Assertions.assertNotNull(routes, "routes must be present in /openai/applications response");
+        JsonNode dataSync = routes.get("data_sync");
+        Assertions.assertNotNull(dataSync, "schema route data_sync must be exposed");
+        Assertions.assertEquals("/v1/index/search", dataSync.get("paths").get(0).asText());
+        Assertions.assertEquals("POST", dataSync.get("methods").get(0).asText());
+        Assertions.assertEquals(5, dataSync.get("order").asInt());
+        Assertions.assertEquals("WRITE", dataSync.get("permissions").get(0).asText());
+        Assertions.assertEquals("http://localhost:4848", dataSync.get("upstreams").get(0).get("endpoint").asText());
     }
 
     @Test
