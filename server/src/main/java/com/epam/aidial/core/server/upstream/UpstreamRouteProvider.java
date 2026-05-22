@@ -75,7 +75,8 @@ public class UpstreamRouteProvider {
         if (upstreamId != null && !upstreamId.isBlank()) {
             Upstream selected = null;
             for (Upstream upstream : upstreams) {
-                if (upstreamId.equals(upstream.getId())) {
+                String id = Objects.requireNonNullElse(upstream.getId(), upstream.getEndpoint());
+                if (upstreamId.equals(id)) {
                     selected = upstream;
                     break;
                 }
