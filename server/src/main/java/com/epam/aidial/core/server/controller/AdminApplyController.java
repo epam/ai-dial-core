@@ -18,7 +18,6 @@ import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
-import com.epam.aidial.core.server.service.AdminWriteLockService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -84,7 +83,13 @@ public class AdminApplyController {
     private final ApiKeyStore apiKeyStore;
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
-    private final AdminWriteLockService adminWriteLockService;
+    private final LockService lockService;
+
+    // Cross-pod serialization for admin writes acquires both PUBLIC and PLATFORM bucket locks
+    // via LockService.underBucketLocks — the cross-bucket interleaving prevention from 02-architecture.md §4.4.
+    private static final List<String> ADMIN_BUCKET_LOCATIONS = List.of(
+            ResourceDescriptor.PUBLIC_LOCATION,
+            ResourceDescriptor.PLATFORM_LOCATION);
 
     public AdminApplyController(ProxyContext context,
                                 ConfigAuthorizationService authorizationService,
@@ -96,7 +101,7 @@ public class AdminApplyController {
                                 ApiKeyStore apiKeyStore,
                                 ApplicationService applicationService,
                                 ToolSetService toolSetService,
-                                AdminWriteLockService adminWriteLockService) {
+                                LockService lockService) {
         this.context = context;
         this.authorizationService = authorizationService;
         this.mergedConfigStore = mergedConfigStore;
@@ -107,7 +112,7 @@ public class AdminApplyController {
         this.apiKeyStore = apiKeyStore;
         this.applicationService = applicationService;
         this.toolSetService = toolSetService;
-        this.adminWriteLockService = adminWriteLockService;
+        this.lockService = lockService;
     }
 
     public Future<?> handle() {
@@ -166,11 +171,8 @@ public class AdminApplyController {
             entries.add(new ManifestEntry(kind, name, spec));
         }
 
-        taskExecutor.submit(() -> {
-            try (LockService.Lock ignored = adminWriteLockService.acquire()) {
-                return applyBatch(precheck, entries);
-            }
-        })
+        taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS,
+                () -> applyBatch(precheck, entries)))
                 .onSuccess(result -> context.respond(result.status(), result.body()))
                 .onFailure(error -> {
                     if (error instanceof HttpException ex) {

@@ -18,7 +18,6 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.server.security.Operation;
-import com.epam.aidial.core.server.service.AdminWriteLockService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -78,10 +77,16 @@ public class ConfigResourceController implements Controller {
     private final SecretFieldProcessor secretFieldProcessor;
     private final boolean softValidation;
     private final ApiKeyStore apiKeyStore;
-    private final AdminWriteLockService adminWriteLockService;
+    private final LockService lockService;
     private final String entityType;
     private final String bucket;
     private final String path;
+
+    // Cross-pod serialization for admin writes acquires both PUBLIC and PLATFORM bucket locks
+    // via LockService.underBucketLocks — the cross-bucket interleaving prevention from 02-architecture.md §4.4.
+    private static final List<String> ADMIN_BUCKET_LOCATIONS = List.of(
+            ResourceDescriptor.PUBLIC_LOCATION,
+            ResourceDescriptor.PLATFORM_LOCATION);
 
     public ConfigResourceController(ProxyContext context,
                                     ConfigAuthorizationService authorizationService,
@@ -91,7 +96,7 @@ public class ConfigResourceController implements Controller {
                                     SecretFieldProcessor secretFieldProcessor,
                                     boolean softValidation,
                                     ApiKeyStore apiKeyStore,
-                                    AdminWriteLockService adminWriteLockService,
+                                    LockService lockService,
                                     String entityType,
                                     String bucket,
                                     String path) {
@@ -103,7 +108,7 @@ public class ConfigResourceController implements Controller {
         this.secretFieldProcessor = secretFieldProcessor;
         this.softValidation = softValidation;
         this.apiKeyStore = apiKeyStore;
-        this.adminWriteLockService = adminWriteLockService;
+        this.lockService = lockService;
         this.entityType = entityType;
         this.bucket = bucket;
         this.path = path;
@@ -383,19 +388,17 @@ public class ConfigResourceController implements Controller {
             GlobalSettings settings = treeToEntity(requestNode, GlobalSettings.class);
             String blobBody = serializeForBlob(settings);
             String author = context.getUserDisplayName();
-            return taskExecutor.submit(() -> {
-                try (LockService.Lock ignored = adminWriteLockService.acquire()) {
-                    // RFC 7232 conditional headers must be honored on the singleton too: read prior
-                    // metadata, validate If-None-Match/If-Match, then persist with ANY so the blob
-                    // layer doesn't re-validate against a stale snapshot.
-                    ResourceItemMetadata existing = resourceService.getResourceMetadata(descriptor);
-                    etag.validate(existing == null ? null : existing.getEtag());
-                    ResourceItemMetadata meta = resourceService.putResource(
-                            descriptor, blobBody, EtagHeader.ANY, author, false);
-                    mergedConfigStore.applySettingsWrite(settings);
-                    return meta;
-                }
-            });
+            return taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
+                // RFC 7232 conditional headers must be honored on the singleton too: read prior
+                // metadata, validate If-None-Match/If-Match, then persist with ANY so the blob
+                // layer doesn't re-validate against a stale snapshot.
+                ResourceItemMetadata existing = resourceService.getResourceMetadata(descriptor);
+                etag.validate(existing == null ? null : existing.getEtag());
+                ResourceItemMetadata meta = resourceService.putResource(
+                        descriptor, blobBody, EtagHeader.ANY, author, false);
+                mergedConfigStore.applySettingsWrite(settings);
+                return meta;
+            }));
         }).onSuccess(meta -> context.putHeader(HttpHeaders.ETAG, meta.getEtag())
                 .respond(HttpStatus.OK, createNameEnvelope(SETTINGS_SINGLETON_NAME)))
                 .onFailure(this::handleWriteError);
@@ -413,16 +416,14 @@ public class ConfigResourceController implements Controller {
                 ResourceDescriptor.PLATFORM_LOCATION, SETTINGS_SINGLETON_NAME);
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
 
-        taskExecutor.submit(() -> {
+        taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
             // Idempotent on bare DELETE — deleteResource returns false when the blob is absent and
             // both outcomes collapse to 204 since the post-state (no API blob) is identical.
             // If-Match passes through to deleteResource which throws 412 on mismatch.
-            try (LockService.Lock ignored = adminWriteLockService.acquire()) {
-                resourceService.deleteResource(descriptor, etag, false);
-                mergedConfigStore.applySettingsDelete();
-                return true;
-            }
-        }).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
+            resourceService.deleteResource(descriptor, etag, false);
+            mergedConfigStore.applySettingsDelete();
+            return true;
+        })).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
 
         return Future.succeededFuture();
     }
@@ -445,104 +446,102 @@ public class ConfigResourceController implements Controller {
 
         context.getRequest().body().compose(body -> {
             JsonNode requestNode = parseJsonBody(body);
-            return taskExecutor.submit(() -> {
+            return taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
                 // The admin-write lock alone serializes all writes to admin-only types
                 // cluster-wide (these types are never written by non-admin paths), so the
                 // per-resource lock is redundant here. See 02-architecture.md §4.4.
-                try (LockService.Lock ignored = adminWriteLockService.acquire()) {
-                    // Read existing blob first — both to validate conditional headers and to drive
-                    // preserve-on-omit when secrets are involved. One combined fetch (metadata +
-                    // body) saves a Redis/blob round-trip. Returns null when no blob exists
-                    // (file-sourced entries don't show up here; the union with file entries is
-                    // reapplied via applyEntityWrite below).
-                    Pair<ResourceItemMetadata, String> existingPair =
-                            resourceService.getResourceWithMetadata(descriptor, EtagHeader.ANY);
-                    ResourceItemMetadata existing = existingPair == null ? null : existingPair.getLeft();
-                    String existingBody = existingPair == null ? null : existingPair.getRight();
-                    // Honor If-Match / If-None-Match: * before the write — yields RFC-compliant 412
-                    // PRECONDITION_FAILED. Bare PUT (no conditional header) passes through and the
-                    // write proceeds as an upsert.
-                    etag.validate(existing == null ? null : existing.getEtag());
-                    // Sentinel rejection runs only on the create arm. On update, a "***" sentinel
-                    // in an encrypted field is honored by mergePreservingOmittedSecrets as a signal
-                    // to keep the prior ciphertext — see SecretFieldProcessor.
-                    if (existing == null && spec.hasEncryptedFields()) {
-                        try {
-                            secretFieldProcessor.validateNoMaskSentinel(requestNode, spec.entityClass());
-                        } catch (IllegalArgumentException e) {
-                            throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
-                        }
+                // Read existing blob first — both to validate conditional headers and to drive
+                // preserve-on-omit when secrets are involved. One combined fetch (metadata +
+                // body) saves a Redis/blob round-trip. Returns null when no blob exists
+                // (file-sourced entries don't show up here; the union with file entries is
+                // reapplied via applyEntityWrite below).
+                Pair<ResourceItemMetadata, String> existingPair =
+                        resourceService.getResourceWithMetadata(descriptor, EtagHeader.ANY);
+                ResourceItemMetadata existing = existingPair == null ? null : existingPair.getLeft();
+                String existingBody = existingPair == null ? null : existingPair.getRight();
+                // Honor If-Match / If-None-Match: * before the write — yields RFC-compliant 412
+                // PRECONDITION_FAILED. Bare PUT (no conditional header) passes through and the
+                // write proceeds as an upsert.
+                etag.validate(existing == null ? null : existing.getEtag());
+                // Sentinel rejection runs only on the create arm. On update, a "***" sentinel
+                // in an encrypted field is honored by mergePreservingOmittedSecrets as a signal
+                // to keep the prior ciphertext — see SecretFieldProcessor.
+                if (existing == null && spec.hasEncryptedFields()) {
+                    try {
+                        secretFieldProcessor.validateNoMaskSentinel(requestNode, spec.entityClass());
+                    } catch (IllegalArgumentException e) {
+                        throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
                     }
-
-                    String blobBody;
-                    Key keyEntity = null;
-                    String keySecret = null;
-                    Object entity = null;
-                    if (spec.entityClass() == null) {
-                        blobBody = requestNode.toString();
-                    } else {
-                        if (!requestNode.isObject()) {
-                            throw new HttpException(HttpStatus.BAD_REQUEST,
-                                    "Request body must be a JSON object");
-                        }
-                        JsonNode source;
-                        if (spec.hasEncryptedFields() && existingBody != null) {
-                            // Update arm with secret fields — preserve omitted/sentinel-masked
-                            // ciphertext from the prior blob (see SecretFieldProcessor).
-                            JsonNode existingBlobNode;
-                            try {
-                                existingBlobNode = ProxyUtil.BLOB_MAPPER.readTree(existingBody);
-                            } catch (JsonProcessingException e) {
-                                // Don't echo getOriginalMessage() — the stored blob can carry
-                                // ciphertext or other content we don't want to surface verbatim.
-                                throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
-                                        "Stored entity is malformed at " + locationOf(e));
-                            }
-                            source = secretFieldProcessor.mergePreservingOmittedSecrets(
-                                    existingBlobNode, requestNode, spec.entityClass());
-                        } else {
-                            // Create arm (no prior blob) or no encrypted fields — use the request
-                            // body verbatim. SecretFieldProcessor encryptFields below will handle
-                            // any plaintext secrets.
-                            source = requestNode;
-                        }
-                        entity = treeToEntity(source, spec.entityClass());
-                        if (entity instanceof Model m) {
-                            checkCrossReferences(m);
-                        }
-                        if (spec.isKey()) {
-                            keyEntity = (Key) entity;
-                            validateKeyForApiWrite(keyEntity, "PUT");
-                            // Capture before encryptFields mutates Key.key to ciphertext in place;
-                            // ApiKeyStore is indexed by plaintext secret (see ApiKeyStore.getApiKeyData).
-                            keySecret = keyEntity.getKey();
-                        }
-                        if (spec.hasEncryptedFields()) {
-                            secretFieldProcessor.encryptFields(entity, descriptor);
-                        }
-                        blobBody = serializeForBlob(entity);
-                    }
-                    // Conditional headers were already validated above; persist with ANY so the
-                    // blob layer doesn't re-validate against a stale snapshot.
-                    ResourceItemMetadata meta = resourceService.putResource(
-                            descriptor, blobBody, EtagHeader.ANY, author, false);
-                    if (keySecret != null) {
-                        apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
-                    }
-                    // Decrypt-in-place after blob put. PUT-upsert can produce a mixed
-                    // plaintext/ciphertext entity (preserve-on-omit on the update arm); decryptValue
-                    // is idempotent on plaintext and restores ciphertext fields to plaintext,
-                    // yielding a fully-decrypted entity for applyEntityWrite to put into the merged
-                    // Config (read-after-write parity).
-                    if (entity != null && spec.hasEncryptedFields()) {
-                        secretFieldProcessor.decryptFields(entity, descriptor);
-                    }
-                    mergedConfigStore.applyEntityWrite(typeOf(descriptor),
-                            MergedConfigStore.canonicalId(descriptor),
-                            entity != null ? entity : requestNode);
-                    return meta;
                 }
-            });
+
+                String blobBody;
+                Key keyEntity = null;
+                String keySecret = null;
+                Object entity = null;
+                if (spec.entityClass() == null) {
+                    blobBody = requestNode.toString();
+                } else {
+                    if (!requestNode.isObject()) {
+                        throw new HttpException(HttpStatus.BAD_REQUEST,
+                                "Request body must be a JSON object");
+                    }
+                    JsonNode source;
+                    if (spec.hasEncryptedFields() && existingBody != null) {
+                        // Update arm with secret fields — preserve omitted/sentinel-masked
+                        // ciphertext from the prior blob (see SecretFieldProcessor).
+                        JsonNode existingBlobNode;
+                        try {
+                            existingBlobNode = ProxyUtil.BLOB_MAPPER.readTree(existingBody);
+                        } catch (JsonProcessingException e) {
+                            // Don't echo getOriginalMessage() — the stored blob can carry
+                            // ciphertext or other content we don't want to surface verbatim.
+                            throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                    "Stored entity is malformed at " + locationOf(e));
+                        }
+                        source = secretFieldProcessor.mergePreservingOmittedSecrets(
+                                existingBlobNode, requestNode, spec.entityClass());
+                    } else {
+                        // Create arm (no prior blob) or no encrypted fields — use the request
+                        // body verbatim. SecretFieldProcessor encryptFields below will handle
+                        // any plaintext secrets.
+                        source = requestNode;
+                    }
+                    entity = treeToEntity(source, spec.entityClass());
+                    if (entity instanceof Model m) {
+                        checkCrossReferences(m);
+                    }
+                    if (spec.isKey()) {
+                        keyEntity = (Key) entity;
+                        validateKeyForApiWrite(keyEntity, "PUT");
+                        // Capture before encryptFields mutates Key.key to ciphertext in place;
+                        // ApiKeyStore is indexed by plaintext secret (see ApiKeyStore.getApiKeyData).
+                        keySecret = keyEntity.getKey();
+                    }
+                    if (spec.hasEncryptedFields()) {
+                        secretFieldProcessor.encryptFields(entity, descriptor);
+                    }
+                    blobBody = serializeForBlob(entity);
+                }
+                // Conditional headers were already validated above; persist with ANY so the
+                // blob layer doesn't re-validate against a stale snapshot.
+                ResourceItemMetadata meta = resourceService.putResource(
+                        descriptor, blobBody, EtagHeader.ANY, author, false);
+                if (keySecret != null) {
+                    apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
+                }
+                // Decrypt-in-place after blob put. PUT-upsert can produce a mixed
+                // plaintext/ciphertext entity (preserve-on-omit on the update arm); decryptValue
+                // is idempotent on plaintext and restores ciphertext fields to plaintext,
+                // yielding a fully-decrypted entity for applyEntityWrite to put into the merged
+                // Config (read-after-write parity).
+                if (entity != null && spec.hasEncryptedFields()) {
+                    secretFieldProcessor.decryptFields(entity, descriptor);
+                }
+                mergedConfigStore.applyEntityWrite(typeOf(descriptor),
+                        MergedConfigStore.canonicalId(descriptor),
+                        entity != null ? entity : requestNode);
+                return meta;
+            }));
         }).onSuccess(meta -> context.putHeader(HttpHeaders.ETAG, meta.getEtag())
                 .respond(HttpStatus.OK, createNameEnvelope(name)))
                 .onFailure(this::handleWriteError);
@@ -558,57 +557,55 @@ public class ConfigResourceController implements Controller {
         ResourceDescriptor descriptor = spec.descriptor();
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
 
-        taskExecutor.submit(() -> {
+        taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
             // Pre-read + delete must run under the same lock so the secret extracted for
             // apiKeyStore.removeKey matches the secret in the blob being deleted (no race
             // with a concurrent PUT swapping the key). The admin-write lock alone provides
             // this — admin-only types are never written by non-admin paths, and all admin
             // writes serialize cluster-wide on this lock. See 02-architecture.md §4.4.
-            try (LockService.Lock ignored = adminWriteLockService.acquire()) {
-                String deletedSecret = null;
-                if (spec.isKey()) {
-                    String existing = resourceService.getResource(descriptor, EtagHeader.ANY, false);
-                    if (existing != null) {
-                        try {
-                            JsonNode node = ProxyUtil.BLOB_MAPPER.readTree(existing);
-                            Key key = ProxyUtil.BLOB_MAPPER.treeToValue(node, Key.class);
-                            secretFieldProcessor.decryptFields(key, descriptor);
-                            deletedSecret = key.getKey();
-                        } catch (Exception e) {
-                            // Corrupt blob or decrypt failure. Fall back to the in-memory snapshot
-                            // so the DELETE ordering invariant (apiKeyStore.removeKey BEFORE the
-                            // new merged Config becomes visible) is preserved — otherwise the live
-                            // secret remains authenticatable until the next full rebuild.
-                            log.warn("Could not extract key secret from blob, falling back to "
-                                    + "in-memory snapshot: {}", e.getMessage());
-                            String canonicalId = "keys/" + descriptor.getBucketName() + "/" + descriptor.getName();
-                            Config snapshot = mergedConfigStore.get();
-                            if (snapshot != null) {
-                                Key inMemory = snapshot.getKeys().get(canonicalId);
-                                if (inMemory != null && StringUtils.isNotBlank(inMemory.getKey())) {
-                                    deletedSecret = inMemory.getKey();
-                                }
+            String deletedSecret = null;
+            if (spec.isKey()) {
+                String existing = resourceService.getResource(descriptor, EtagHeader.ANY, false);
+                if (existing != null) {
+                    try {
+                        JsonNode node = ProxyUtil.BLOB_MAPPER.readTree(existing);
+                        Key key = ProxyUtil.BLOB_MAPPER.treeToValue(node, Key.class);
+                        secretFieldProcessor.decryptFields(key, descriptor);
+                        deletedSecret = key.getKey();
+                    } catch (Exception e) {
+                        // Corrupt blob or decrypt failure. Fall back to the in-memory snapshot
+                        // so the DELETE ordering invariant (apiKeyStore.removeKey BEFORE the
+                        // new merged Config becomes visible) is preserved — otherwise the live
+                        // secret remains authenticatable until the next full rebuild.
+                        log.warn("Could not extract key secret from blob, falling back to "
+                                + "in-memory snapshot: {}", e.getMessage());
+                        String canonicalId = "keys/" + descriptor.getBucketName() + "/" + descriptor.getName();
+                        Config snapshot = mergedConfigStore.get();
+                        if (snapshot != null) {
+                            Key inMemory = snapshot.getKeys().get(canonicalId);
+                            if (inMemory != null && StringUtils.isNotBlank(inMemory.getKey())) {
+                                deletedSecret = inMemory.getKey();
                             }
-                            if (deletedSecret == null) {
-                                throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
-                                        "Stored key entity is unreadable and no in-memory snapshot is available; "
-                                                + "delete aborted to preserve auth-store ordering");
-                            }
+                        }
+                        if (deletedSecret == null) {
+                            throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                    "Stored key entity is unreadable and no in-memory snapshot is available; "
+                                            + "delete aborted to preserve auth-store ordering");
                         }
                     }
                 }
-                boolean deleted = resourceService.deleteResource(descriptor, etag, false);
-                if (!deleted) {
-                    throw new HttpException(HttpStatus.NOT_FOUND,
-                            "Resource not found: " + descriptor.getUrl());
-                }
-                if (deletedSecret != null) {
-                    apiKeyStore.removeKey(deletedSecret);
-                }
-                mergedConfigStore.applyEntityDelete(typeOf(descriptor), MergedConfigStore.canonicalId(descriptor));
-                return true;
             }
-        }).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
+            boolean deleted = resourceService.deleteResource(descriptor, etag, false);
+            if (!deleted) {
+                throw new HttpException(HttpStatus.NOT_FOUND,
+                        "Resource not found: " + descriptor.getUrl());
+            }
+            if (deletedSecret != null) {
+                apiKeyStore.removeKey(deletedSecret);
+            }
+            mergedConfigStore.applyEntityDelete(typeOf(descriptor), MergedConfigStore.canonicalId(descriptor));
+            return true;
+        })).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
 
         return Future.succeededFuture();
     }
