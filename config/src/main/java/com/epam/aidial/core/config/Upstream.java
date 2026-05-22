@@ -31,4 +31,7 @@ public class Upstream {
     private int weight = 1;
     @JsonAlias({"tier", "dial:tier"})
     private int tier = 0;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonAlias({"id", "dial:id"})
+    private String id;
 }

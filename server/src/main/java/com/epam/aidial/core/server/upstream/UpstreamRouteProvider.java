@@ -10,6 +10,8 @@ import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
@@ -54,13 +56,36 @@ public class UpstreamRouteProvider {
     }
 
     public UpstreamRoute get(Deployment deployment, CacheBreakpointContext breakpointContext) {
-        return get(deployment, breakpointContext, Deployment::getEndpoint);
+        return get(deployment, breakpointContext, Deployment::getEndpoint, null);
+    }
+
+    public UpstreamRoute get(Deployment deployment, CacheBreakpointContext breakpointContext, String upstreamId) {
+        return get(deployment, breakpointContext, Deployment::getEndpoint, upstreamId);
     }
 
     public UpstreamRoute get(Deployment deployment, CacheBreakpointContext breakpointContext,
                              Function<Deployment, String> endpointSupplier) {
+        return get(deployment, breakpointContext, endpointSupplier, null);
+    }
+
+    public UpstreamRoute get(Deployment deployment, CacheBreakpointContext breakpointContext,
+                             Function<Deployment, String> endpointSupplier, String upstreamId) {
         String key = getKey(deployment);
         List<Upstream> upstreams = getUpstreams(deployment, endpointSupplier);
+        if (upstreamId != null && !upstreamId.isBlank()) {
+            Upstream selected = null;
+            for (Upstream upstream : upstreams) {
+                if (upstreamId.equals(upstream.getId())) {
+                    selected = upstream;
+                    break;
+                }
+            }
+            if (selected == null) {
+                throw new HttpException(HttpStatus.BAD_REQUEST, "Unknown upstream id " + upstreamId);
+            }
+            upstreams = List.of(selected);
+            key = key + ":upstream:" + upstreamId;
+        }
         UpstreamCacheContext context = null;
         if (deployment instanceof Model model && breakpointContext != null) {
             CachedUpstreamEntry entry = upstreamCacheService.getCacheEntry(breakpointContext, model);

@@ -135,4 +135,54 @@ public class UpstreamRouteProviderTest {
 
         assertEquals(upstream1, result);
     }
+
+    @Test
+    public void testGet_UpstreamId_Match() {
+        Model model = new Model();
+        model.setName("model");
+        Upstream upstream1 = new Upstream();
+        upstream1.setId("alpha");
+        upstream1.setEndpoint("ep1");
+        Upstream upstream2 = new Upstream();
+        upstream2.setId("beta");
+        upstream2.setEndpoint("ep2");
+        model.setUpstreams(List.of(upstream1, upstream2));
+
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
+        UpstreamRoute route = provider.get(model, null, "beta");
+        Upstream result = route.next();
+
+        assertEquals(upstream2, result);
+        assertThrows(HttpException.class, route::next);
+    }
+
+    @Test
+    public void testGet_UpstreamId_Unknown() {
+        Model model = new Model();
+        model.setName("model");
+        Upstream upstream1 = new Upstream();
+        upstream1.setId("alpha");
+        upstream1.setEndpoint("ep1");
+        model.setUpstreams(List.of(upstream1));
+
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
+        HttpException ex = assertThrows(HttpException.class, () -> provider.get(model, null, "missing"));
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
+        assertEquals("Unknown upstream id missing", ex.getMessage());
+    }
+
+    @Test
+    public void testGet_UpstreamId_BlankIgnored() {
+        Model model = new Model();
+        model.setName("model");
+        Upstream upstream1 = new Upstream();
+        upstream1.setEndpoint("ep1");
+        Upstream upstream2 = new Upstream();
+        upstream2.setEndpoint("ep2");
+        model.setUpstreams(List.of(upstream1, upstream2));
+
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
+        UpstreamRoute route = provider.get(model, null, "   ");
+        assertNotNull(route.next());
+    }
 }

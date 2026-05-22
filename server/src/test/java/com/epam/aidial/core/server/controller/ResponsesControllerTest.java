@@ -214,7 +214,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0, null);
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setSourceDeployment("test-deployment");
         apiKeyData.setPerRequestKey(PER_REQUEST_KEY);
@@ -369,7 +369,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0, null);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\"}");
@@ -420,7 +420,7 @@ public class ResponsesControllerTest {
         when(proxy.getTokenStatsTracker().updateModelStats(context))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null, (String) null)).thenReturn(upstreamRoute);
         when(proxy.getClient().request(any()))
                 .thenReturn(Future.succeededFuture(proxyRequest));
         when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
