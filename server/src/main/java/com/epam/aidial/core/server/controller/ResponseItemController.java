@@ -11,11 +11,9 @@ import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -52,8 +50,7 @@ public class ResponseItemController implements Controller {
     }
 
     private ResponseMapping loadMapping() {
-        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(dialResponseId);
-        ResponseMapping mapping = proxy.getResponseMappingService().getMapping(descriptor);
+        ResponseMapping mapping = proxy.getResponseMappingService().getMapping(dialResponseId);
         if (mapping == null) {
             throw notFoundException();
         }
@@ -109,9 +106,8 @@ public class ResponseItemController implements Controller {
                 .compose(body -> rewriteId(body, upstreamResponseId))
                 .compose(rewritten -> {
                     if (operation.shouldDeleteMapping(proxyResponse.statusCode())) {
-                        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(dialResponseId);
                         return proxy.getTaskExecutor().submit(() -> {
-                            proxy.getResponseMappingService().deleteMapping(descriptor);
+                            proxy.getResponseMappingService().deleteMapping(dialResponseId);
                             return rewritten;
                         });
                     }

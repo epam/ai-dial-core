@@ -30,7 +30,6 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -228,10 +227,9 @@ public class ResponsesController extends BaseDeploymentPostController {
             return;
         }
 
-        String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
         BufferingReadStream responseStream = createResponseStream(proxyResponse, () -> {
             CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-            ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context, dialId);
+            ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context);
             return new ResponsesSseListener(List.of(attachmentsFn, replaceIdFn));
         });
 
@@ -284,11 +282,23 @@ public class ResponsesController extends BaseDeploymentPostController {
             JsonNode idNode = object.path("id");
             if (!idNode.isNull()) {
                 String upstreamId = idNode.asText();
-                String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
-                ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(dialId);
-                object.put("id", dialId);
-                return saveIdMappingForBackgroundRequest(proxy, context, descriptor, upstreamId)
-                        .map(ignore -> Buffer.buffer(JsonUtil.serialize(object)));
+                if (!context.isBackground()) {
+                    String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
+                    object.put("id", dialId);
+                    return Future.succeededFuture(Buffer.buffer(JsonUtil.serialize(object)));
+                }
+                Upstream upstream = context.getUpstreamRoute().get();
+                ResponseMapping mapping = ResponseMapping.builder()
+                        .upstreamResponseId(upstreamId)
+                        .upstreamKey(upstream.toStickyKey())
+                        .deploymentName(context.getDeployment().getName())
+                        .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
+                        .build();
+                return rewriteId(proxy, context, mapping)
+                        .map(dialId -> {
+                            object.put("id", dialId);
+                            return Buffer.buffer(JsonUtil.serialize(object));
+                        });
             }
         }
 
@@ -367,23 +377,9 @@ public class ResponsesController extends BaseDeploymentPostController {
         }
     }
 
-    private static Future<Void> saveIdMappingForBackgroundRequest(
-            Proxy proxy, ProxyContext context, ResourceDescriptor descriptor, String upstreamId) {
-        if (!context.isBackground()) {
-            return Future.succeededFuture();
-        }
-
-        Upstream upstream = context.getUpstreamRoute().get();
-        ResponseMapping mapping = ResponseMapping.builder()
-                .upstreamResponseId(upstreamId)
-                .upstreamKey(upstream.toStickyKey())
-                .deploymentName(context.getDeployment().getName())
-                .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
-                .build();
-        return proxy.getTaskExecutor().submit(() -> {
-            proxy.getResponseMappingService().saveMapping(descriptor, mapping);
-            return null;
-        });
+    private static Future<String> rewriteId(Proxy proxy, ProxyContext context, ResponseMapping mapping) {
+        return proxy.getTaskExecutor()
+                .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping));
     }
 
 }

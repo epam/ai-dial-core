@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -19,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -29,6 +31,7 @@ public class ResponseMappingService {
     private static final long DEFAULT_TTL = 30L * 24 * 60 * 60 * 1000;
     private static final long MAX_START_OFFSET = 4 * 60 * 60 * 1000;
 
+    private final Supplier<String> generator;
     private final ResourceService resourceService;
 
     public void init(Vertx vertx, AsyncTaskExecutor taskExecutor) {
@@ -36,17 +39,22 @@ public class ResponseMappingService {
         vertx.setPeriodic(offset, DEFAULT_CHECK_PERIOD, ignored -> taskExecutor.submit(this::cleanExpiredMappings));
     }
 
-    public void saveMapping(ResourceDescriptor descriptor, ResponseMapping mapping) {
+    public String saveMapping(ProxyContext context, ResponseMapping mapping) {
+        String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), generator.get());
+        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(dialId);
         resourceService.putResource(descriptor, ProxyUtil.convertToString(mapping), EtagHeader.NEW_ONLY);
+        return dialId;
     }
 
     @Nullable
-    public ResponseMapping getMapping(ResourceDescriptor descriptor) {
+    public ResponseMapping getMapping(String dialId) {
+        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(dialId);
         String json = resourceService.getResource(descriptor);
         return ProxyUtil.convertToObject(json, ResponseMapping.class);
     }
 
-    public void deleteMapping(ResourceDescriptor descriptor) {
+    public void deleteMapping(String dialId) {
+        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(dialId);
         resourceService.deleteResource(descriptor, EtagHeader.ANY);
     }
 

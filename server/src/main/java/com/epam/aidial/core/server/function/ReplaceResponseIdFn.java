@@ -6,24 +6,23 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 
 public class ReplaceResponseIdFn extends BaseResponseFunction {
 
-    private final String dialId;
+    private String dialId;
     private String upstreamId;
-
-    public ReplaceResponseIdFn(Proxy proxy, ProxyContext context, String dialId) {
-        this(proxy, context, dialId, null);
-    }
 
     public ReplaceResponseIdFn(Proxy proxy, ProxyContext context, String dialId, String upstreamId) {
         super(proxy, context);
         this.dialId = dialId;
         this.upstreamId = upstreamId;
+    }
+
+    public ReplaceResponseIdFn(Proxy proxy, ProxyContext context) {
+        super(proxy, context);
     }
 
     @Override
@@ -40,26 +39,24 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
 
         String currentId = idNode.asText();
 
-        Future<JsonNode> result;
         if (upstreamId == null) {
             upstreamId = currentId;
-            result = saveIdMapping().map(tree);
-        } else {
-            result = Future.succeededFuture(tree);
+            return saveIdMapping(response, tree);
         }
 
         if (upstreamId.equals(currentId)) {
             response.put("id", dialId);
         }
 
-        return result;
+        return Future.succeededFuture(tree);
     }
 
-    private Future<Void> saveIdMapping() {
+    private Future<JsonNode> saveIdMapping(ObjectNode response, JsonNode tree) {
         if (!context.isBackground()) {
-            return Future.succeededFuture();
+            dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
+            response.put("id", dialId);
+            return Future.succeededFuture(tree);
         }
-
         Upstream upstream = context.getUpstreamRoute().get();
         ResponseMapping mapping = ResponseMapping.builder()
                 .upstreamResponseId(upstreamId)
@@ -67,10 +64,12 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
                 .deploymentName(context.getDeployment().getName())
                 .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
                 .build();
-        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(dialId);
-        return proxy.getTaskExecutor().submit(() -> {
-            proxy.getResponseMappingService().saveMapping(descriptor, mapping);
-            return null;
-        });
+        return proxy.getTaskExecutor()
+                .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
+                .map(generatedDialId -> {
+                    dialId = generatedDialId;
+                    response.put("id", generatedDialId);
+                    return tree;
+                });
     }
 }

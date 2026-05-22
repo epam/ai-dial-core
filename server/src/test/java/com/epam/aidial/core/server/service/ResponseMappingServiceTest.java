@@ -21,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.function.Supplier;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -37,6 +38,9 @@ public class ResponseMappingServiceTest {
     private static final long DEFAULT_TTL = 30L * 24 * 60 * 60 * 1000;
 
     @Mock
+    private Supplier<String> generator;
+
+    @Mock
     private ResourceService resourceService;
 
     @Mock
@@ -49,7 +53,7 @@ public class ResponseMappingServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ResponseMappingService(resourceService);
+        service = new ResponseMappingService(generator, resourceService);
     }
 
     private void triggerCleanup() {

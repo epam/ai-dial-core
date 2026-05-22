@@ -11,7 +11,6 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -91,7 +90,7 @@ public class ResponseItemControllerTest {
                 .initiatorBucket("Users/other-user/")
                 .build();
 
-        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getUserId()).thenReturn("test-user");
         when(context.getResponse()).thenReturn(response);
@@ -111,7 +110,7 @@ public class ResponseItemControllerTest {
 
     @Test
     public void testMappingNotFound(Vertx vertx, VertxTestContext testContext) throws Throwable {
-        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(null);
+        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(null);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getResponse()).thenReturn(response);
         when(response.ended()).thenReturn(false);
@@ -147,7 +146,7 @@ public class ResponseItemControllerTest {
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-id-123\",\"status\":\"completed\"}");
 
-        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
         when(upstreamRoute.get("endpoint")).thenReturn(upstream);
@@ -181,7 +180,7 @@ public class ResponseItemControllerTest {
         JsonNode sentJson = ProxyUtil.MAPPER.readTree(bodyCaptor.getValue().getBytes());
         assertEquals("dial_test-deployment_123", sentJson.path("id").asText());
 
-        verify(proxy.getResponseMappingService(), never()).deleteMapping(any(ResourceDescriptor.class));
+        verify(proxy.getResponseMappingService(), never()).deleteMapping(anyString());
     }
 
     @Test
@@ -202,7 +201,7 @@ public class ResponseItemControllerTest {
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-id-123\",\"status\":\"cancelled\"}");
 
-        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
         when(upstreamRoute.get("endpoint")).thenReturn(upstream);
@@ -249,7 +248,7 @@ public class ResponseItemControllerTest {
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
-        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
         when(upstreamRoute.get("endpoint")).thenReturn(upstream);
@@ -272,7 +271,7 @@ public class ResponseItemControllerTest {
 
         await(testContext);
 
-        verify(proxy.getResponseMappingService()).deleteMapping(any(ResourceDescriptor.class));
+        verify(proxy.getResponseMappingService()).deleteMapping(anyString());
     }
 
     @Test
@@ -292,7 +291,7 @@ public class ResponseItemControllerTest {
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
-        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
         when(upstreamRoute.get("endpoint")).thenReturn(upstream);
@@ -315,7 +314,7 @@ public class ResponseItemControllerTest {
 
         await(testContext);
 
-        verify(proxy.getResponseMappingService(), never()).deleteMapping(any(ResourceDescriptor.class));
+        verify(proxy.getResponseMappingService(), never()).deleteMapping(anyString());
     }
 
     @Test
@@ -329,7 +328,7 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("no-responses-deployment");
 
-        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "no-responses-deployment")).thenReturn(deployment);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getUserId()).thenReturn("test-user");
@@ -356,7 +355,7 @@ public class ResponseItemControllerTest {
         deployment.setResponsesEndpoint("http://adapter/responses");
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
 
-        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
         when(upstreamRoute.get("missing-upstream-key")).thenReturn(null);
@@ -389,7 +388,7 @@ public class ResponseItemControllerTest {
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
-        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
         when(upstreamRoute.get("endpoint")).thenReturn(upstream);
@@ -415,7 +414,7 @@ public class ResponseItemControllerTest {
         ArgumentCaptor<Buffer> bodyCaptor = ArgumentCaptor.forClass(Buffer.class);
         verify(response).end(bodyCaptor.capture());
         assertEquals(0, bodyCaptor.getValue().length());
-        verify(proxy.getResponseMappingService(), never()).deleteMapping(any(ResourceDescriptor.class));
+        verify(proxy.getResponseMappingService(), never()).deleteMapping(anyString());
     }
 
     @Test
@@ -446,7 +445,7 @@ public class ResponseItemControllerTest {
         List<Buffer> writtenChunks = new ArrayList<>();
         AtomicReference<Buffer> endChunkRef = new AtomicReference<>();
 
-        when(proxy.getResponseMappingService().getMapping(any(ResourceDescriptor.class))).thenReturn(mapping);
+        when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
         when(upstreamRoute.get("endpoint")).thenReturn(upstream);

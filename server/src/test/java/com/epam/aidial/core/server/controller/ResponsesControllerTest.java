@@ -15,12 +15,12 @@ import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -73,6 +73,7 @@ import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -555,7 +556,8 @@ public class ResponsesControllerTest {
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getTokenStats(context))
                 .thenReturn(Future.succeededFuture(new TokenUsage()));
-        when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
+        ResponseMappingService responseMappingService = proxy.getResponseMappingService();
+        lenient().when(responseMappingService.saveMapping(any(), any())).thenReturn(expectedDialId);
 
         when(context.getUserId()).thenReturn("test-user");
         doAnswer(invocation -> {
@@ -581,7 +583,7 @@ public class ResponsesControllerTest {
 
         await(textContext);
 
-        verify(proxy.getResponseMappingService()).saveMapping(eq(ResponseIdUtil.getDescriptor(expectedDialId)), eq(expectedMapping));
+        verify(responseMappingService).saveMapping(eq(context), eq(expectedMapping));
         ArgumentCaptor<Buffer> bodyCaptor = ArgumentCaptor.forClass(Buffer.class);
         verify(response).end(bodyCaptor.capture());
         JsonNode sentJson = ProxyUtil.MAPPER.readTree(bodyCaptor.getValue().getBytes());
