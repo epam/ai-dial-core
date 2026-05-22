@@ -21,7 +21,6 @@ import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
-import com.epam.aidial.core.server.service.AdminWriteLockService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ConsentService;
@@ -134,7 +133,6 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final PublicationService publicationService;
     private final AccessService accessService;
     private final LockService lockService;
-    private final AdminWriteLockService adminWriteLockService;
     private final ResourceOperationService resourceOperationService;
     private final RuleService ruleService;
     private final NotificationService notificationService;

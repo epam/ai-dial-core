@@ -85,9 +85,9 @@ public class AdminWriteSerializationTest extends ResourceBaseTest {
     @SneakyThrows
     private void runBlockedByAdminWriteLock(Supplier<Response> writeCall) {
         LockService lockService = dial.getProxy().getLockService();
-        // AdminWriteLockService acquires both PUBLIC and PLATFORM bucket locks; holding either one is
-        // sufficient to block the controller's acquire(). PLATFORM_LOCATION matches the test's write
-        // targets (`/v1/interceptors/platform/...`, `/v1/admin/apply` for platform-bucket entities).
+        // Admin writes acquire both PUBLIC and PLATFORM bucket locks via LockService.underBucketLocks;
+        // holding either one is sufficient to block the controller. PLATFORM_LOCATION matches the
+        // test's write targets (`/v1/interceptors/platform/...`, `/v1/admin/apply` for platform-bucket entities).
         String contendingKey = BlobStorageUtil.toStoragePath(
                 lockService.getPrefix(), ResourceDescriptor.PLATFORM_LOCATION);
         LockService.Lock held = lockService.lock(contendingKey);
