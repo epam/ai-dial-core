@@ -71,7 +71,7 @@ public class ResponsesApiRequest implements RequestObject {
     }
 
     @Override
-    public boolean isBackground() {
-        return tree.path("background").asBoolean(false);
+    public boolean isStore() {
+        return tree.path("store").asBoolean(true);
     }
 }

@@ -52,7 +52,7 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
     }
 
     private Future<JsonNode> saveIdMapping(ObjectNode response, JsonNode tree) {
-        if (!context.isBackground()) {
+        if (!context.isStoreResponse()) {
             dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
             response.put("id", dialId);
             return Future.succeededFuture(tree);

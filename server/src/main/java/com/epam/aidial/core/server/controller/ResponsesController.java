@@ -153,7 +153,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         ApiKeyData.initFromContext(proxyApiKeyData, context);
 
         context.setStreamingRequest(request.isStreaming());
-        context.setBackground(request.isBackground());
+        context.setStoreResponse(request.isStore());
         ProxyUtil.processChain(request, enhancementFunctions);
         // Enhancement functions update the api key, and it should be saved after that
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
@@ -282,7 +282,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             JsonNode idNode = object.path("id");
             if (!idNode.isNull()) {
                 String upstreamId = idNode.asText();
-                if (!context.isBackground()) {
+                if (!context.isStoreResponse()) {
                     String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
                     object.put("id", dialId);
                     return Future.succeededFuture(Buffer.buffer(JsonUtil.serialize(object)));

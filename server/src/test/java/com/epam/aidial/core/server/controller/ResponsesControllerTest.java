@@ -73,7 +73,6 @@ import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -557,7 +556,7 @@ public class ResponsesControllerTest {
         when(proxy.getTokenStatsTracker().getTokenStats(context))
                 .thenReturn(Future.succeededFuture(new TokenUsage()));
         ResponseMappingService responseMappingService = proxy.getResponseMappingService();
-        lenient().when(responseMappingService.saveMapping(any(), any())).thenReturn(expectedDialId);
+        when(responseMappingService.saveMapping(any(), any())).thenReturn(expectedDialId);
 
         when(context.getUserId()).thenReturn("test-user");
         doAnswer(invocation -> {
@@ -576,8 +575,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getUpstreamRoute();
         doCallRealMethod().when(context).setProxyResponse(any());
         doCallRealMethod().when(context).getProxyResponse();
-        doCallRealMethod().when(context).setBackground(anyBoolean());
-        doCallRealMethod().when(context).isBackground();
+        doCallRealMethod().when(context).setStoreResponse(anyBoolean());
+        doCallRealMethod().when(context).isStoreResponse();
 
         controller.handle();
 
@@ -664,7 +663,8 @@ public class ResponsesControllerTest {
         when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
-        when(proxy.getGenerator().get()).thenReturn("fixed-uuid-1234");
+        when(context.getUserId()).thenReturn("test-user");
+        when(proxy.getResponseMappingService().saveMapping(any(), any())).thenReturn(expectedDialId);
 
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getTokenStats(context))
@@ -686,8 +686,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).setProxyResponse(any());
         doCallRealMethod().when(context).setStreamingRequest(anyBoolean());
         doCallRealMethod().when(context).isStreamingRequest();
-        doCallRealMethod().when(context).setBackground(anyBoolean());
-        doCallRealMethod().when(context).isBackground();
+        doCallRealMethod().when(context).setStoreResponse(anyBoolean());
+        doCallRealMethod().when(context).isStoreResponse();
 
         controller.handle();
 

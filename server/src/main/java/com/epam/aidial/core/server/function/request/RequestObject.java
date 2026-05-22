@@ -81,11 +81,11 @@ public interface RequestObject {
     byte[] serialize() throws JsonProcessingException;
 
     /**
-     * Indicates whether this request is a background request.
+     * Indicates whether the response should be stored server-side.
      *
-     * @return {@code true} if this is a background request; {@code false} otherwise
+     * @return {@code true} if the response should be stored; {@code false} otherwise
      */
-    default boolean isBackground() {
+    default boolean isStore() {
         return false;
     }
 }
