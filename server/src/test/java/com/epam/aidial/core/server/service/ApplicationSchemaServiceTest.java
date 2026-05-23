@@ -675,6 +675,46 @@ public class ApplicationSchemaServiceTest {
     }
 
     @Test
+    public void getPrompts_returnsListOfPrompts_whenSchemaHasDialResourcePrompts() {
+        customProperties.put("toolset", Map.of("name", "my-prompt", "dial_id", "prompts/bucket/my-prompt"));
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        application.setApplicationProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        when(resourceService.hasResource(any())).thenReturn(true);
+        when(encryptionService.decrypt(anyString())).thenReturn("/Users/123/");
+
+        List<ResourceDescriptor> result = service.getPrompts(application);
+
+        Assertions.assertEquals(1, result.size());
+        Assertions.assertEquals("my-prompt", result.getFirst().getName());
+    }
+
+    @Test
+    public void getPrompts_whenPromptUrlIsFolder() {
+        customProperties.put("toolset", Map.of("name", "my-prompt", "dial_id", "prompts/bucket/my-folder/"));
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        application.setApplicationProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        when(encryptionService.decrypt(anyString())).thenReturn("/Users/123/");
+
+        List<ResourceDescriptor> result = service.getPrompts(application);
+
+        Assertions.assertEquals(1, result.size());
+        Assertions.assertEquals("my-folder", result.getFirst().getName());
+    }
+
+    @Test
+    public void getPrompts_returnsEmptyList_whenSchemaIsNull() {
+        application.setApplicationTypeSchemaId(null);
+
+        List<ResourceDescriptor> result = service.getPrompts(application);
+
+        Assertions.assertTrue(result.isEmpty());
+    }
+
+    @Test
     public void testGetToolsets_ToolsetExistsNotDialResourceFormat() {
         customProperties.put("toolset", Map.of("name", "my-toolset", "dial_id", "mytoolset"));
         when(configStore.get()).thenReturn(config);

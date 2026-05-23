@@ -60,6 +60,16 @@ public class CollectResponseChatCompletionAttachmentsFn extends CollectResponseA
                     }
                 }
             }
+            ArrayNode annotations = (ArrayNode) customContent.get("annotations");
+            if (annotations != null) {
+                for (int j = 0; j < annotations.size(); j++) {
+                    JsonNode attachment = annotations.get(j).path("body").path("source").path("attachment");
+                    String url = ChatUtil.readCustomAttachment(attachment);
+                    if (url != null) {
+                        result.add(url);
+                    }
+                }
+            }
         }
 
         return result;

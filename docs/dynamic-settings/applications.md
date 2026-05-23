@@ -46,6 +46,7 @@ An object containing parameters for each [application](#applications).
 * `editorUrl`: A string with URL of the application's custom builder UI. Application builder allows DIAL Chat end-users to create instances of apps using a [UI wizards](https://docs.dialx.ai/tutorials/user-guide#application-builder).
 * `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.         
 * `interceptors`: A list of local interceptors to be triggered for the given application. Refer to [Interceptors](./interceptors.md) to learn more.
+* `mcp`: MCP configuration. Refer to [MCP](#applicationsapplication_namemcp) to learn more.
 * `features`: A list of features supported by the application. Refer to [Features](#applicationsapplication_namefeatures) for more details.
 * `routes`: A list of registered routes in the application. Refer to [applications.<application_name>.routes](#applicationsapplication_nameroutes) for more details.
 
@@ -85,6 +86,13 @@ An object containing parameters for each [application](#applications).
                 "paramFloat": 0.25
             },
             "interceptors": ["interceptor1", "interceptor2", "interceptor3"],
+            "mcp": {
+                "endpoint": "http://host/mcp",
+                "transport": "http",
+                "allowedTools": ["tool1", "tolol2"],
+                "configDelivery": "meta",
+                "forwardPerRequestKey": true
+            },
             "routes": {
                 "vector_store_query": {
                     "paths": ["/v1/vector_store(/[^/]+)*$"],
@@ -165,6 +173,31 @@ The following features are supported:
     "accessibleByPerRequestKey": true,
     "contentPartsSupported": false
     },
+```
+
+#### applications.<application_name>.mcp
+
+Use `mcp` to specify configuration parameters for Model Context Protocol (MCP) interface for the application.
+
+Supported configuration parameters: 
+
+* `endpoint`: The application's MCP endpoint DIAL Core will use to communicate with application.
+* `transport`: Transport used by MCP server for transmitting MCP messages between client and server. `http` by default.
+* `allowedTools`: A list of available tools in the MCP server.
+* `configDelivery`: Determines how application properties are sent to the MCP server. Choose `Header` to deliver application properties in Http header. Choose `Meta` to include application properties in `_meta` field within the MCP message payload.
+* `forwardPerRequestKey`: Set this flag to `true` if you want a per request API key to be forwarded to the MCP Server endpoint allowing it to access files in the DIAL storage.
+
+**Example**:
+
+```json
+"mcp": 
+{
+    "endpoint": "http://host/mcp",
+    "transport": "http",
+    "allowedTools": ["tool1", "tool2"],
+    "configDelivery": "meta",
+    "forwardPerRequestKey": true
+}
 ```
 
 #### applications.<application_name>.routes

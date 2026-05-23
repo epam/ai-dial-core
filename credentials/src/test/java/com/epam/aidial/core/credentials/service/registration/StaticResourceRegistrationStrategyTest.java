@@ -187,4 +187,41 @@ class StaticResourceRegistrationStrategyTest {
         verify(authorizationServerMetadataService).getAuthorizationServerMetadata(
                 resourceId, resourceEndpoint, protectedResourceMetadata, false);
     }
+
+    @Test
+    void testRegister_propagatesTokenEndpointAuthMethodFromSettings() {
+        ResourceAuthSettings resourceAuthSettings = ResourceAuthSettings.builder()
+                .clientId("staticClientId")
+                .clientSecret("staticClientSecret")
+                .redirectUri("https://static.redirect.uri")
+                .authorizationEndpoint("https://static.auth.endpoint")
+                .tokenEndpoint("https://static.token.endpoint")
+                .codeChallengeMethod("S256")
+                .scopesSupported(List.of("scope1"))
+                .tokenEndpointAuthMethod("client_secret_basic")
+                .build();
+
+        ClientRegistration result = resourceRegistrationStrategy.register(
+                "staticResource", "https://test.endpoint.com", resourceAuthSettings);
+
+        assertEquals("client_secret_basic", result.getTokenEndpointAuthMethod());
+    }
+
+    @Test
+    void testRegister_nullTokenEndpointAuthMethodInSettings() {
+        ResourceAuthSettings resourceAuthSettings = ResourceAuthSettings.builder()
+                .clientId("staticClientId")
+                .clientSecret("staticClientSecret")
+                .redirectUri("https://static.redirect.uri")
+                .authorizationEndpoint("https://static.auth.endpoint")
+                .tokenEndpoint("https://static.token.endpoint")
+                .codeChallengeMethod("S256")
+                .scopesSupported(List.of("scope1"))
+                .build();
+
+        ClientRegistration result = resourceRegistrationStrategy.register(
+                "staticResource", "https://test.endpoint.com", resourceAuthSettings);
+
+        assertNull(result.getTokenEndpointAuthMethod());
+    }
 }

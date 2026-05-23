@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,9 +27,60 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ToolSetApiTest extends ResourceBaseTest {
+
+    private static TestWebServer.Handler mcpToolsHandler(String toolsResponse) {
+        return mcpToolsHandler(toolsResponse, "application/json");
+    }
+
+    private static TestWebServer.Handler mcpToolsHandler(String toolsResponse, String contentType) {
+        return request -> {
+            String body = request.getBody().readString(StandardCharsets.UTF_8);
+            if ("GET".equals(request.getMethod())) {
+                // SSE stream connection - return 405 to signal no streaming support
+                return new MockResponse().setResponseCode(405);
+            }
+            if (body.contains("\"method\":\"initialize\"") || body.contains("\"method\": \"initialize\"")) {
+                String id = extractJsonRpcId(body);
+                String initResponse = """
+                        {"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":"test-server","version":"1.0"}}}
+                        """.formatted(id);
+                return new MockResponse()
+                        .setBody(initResponse)
+                        .setHeader("Content-Type", "application/json");
+            } else if (body.contains("\"method\":\"notifications/initialized\"")
+                    || body.contains("\"method\": \"notifications/initialized\"")) {
+                return new MockResponse().setResponseCode(202)
+                        .setHeader("Content-Type", "application/json");
+            } else if (body.contains("\"method\":\"tools/list\"") || body.contains("\"method\": \"tools/list\"")) {
+                String id = extractJsonRpcId(body);
+                String adjustedResponse = toolsResponse.replaceFirst("\"id\"\\s*:\\s*\\d+", "\"id\":" + id);
+                return new MockResponse()
+                        .setBody(adjustedResponse)
+                        .setHeader("Content-Type", contentType);
+            }
+            return new MockResponse().setResponseCode(400).setBody("Unknown method");
+        };
+    }
+
+    private static String extractJsonRpcId(String body) {
+        try {
+            JsonNode node = ProxyUtil.MAPPER.readTree(body);
+            JsonNode idNode = node.get("id");
+            if (idNode == null) {
+                return "null";
+            }
+            if (idNode.isTextual()) {
+                return "\"" + idNode.asText() + "\"";
+            }
+            return idNode.toString();
+        } catch (Exception e) {
+            return "1";
+        }
+    }
 
     private static final String MCP_TOOL_CALL_REQUEST = """
                 {
@@ -1667,6 +1719,199 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testOauthSignInWithClientSecretBasic() {
+        // Snowflake-managed MCP (and any RFC 6749 §2.3.1-strict authorization server) requires
+        // HTTP Basic auth at the token endpoint. DCR advertises this via
+        // token_endpoint_auth_method=client_secret_basic; DIAL must honor it on token exchange.
+        String tokenResponse = """
+                {
+                    "access_token": "test-access-token",
+                    "refresh_token": "test-refresh-token",
+                    "expires_in": 3600
+                }
+                """;
+        java.util.concurrent.atomic.AtomicReference<String> authHeaderRef = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<String> bodyRef = new java.util.concurrent.atomic.AtomicReference<>();
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+            server.map(HttpMethod.POST, "/token", request -> {
+                authHeaderRef.set(request.getHeader("Authorization"));
+                bodyRef.set(request.getBody().readUtf8());
+                String expected = "Basic " + java.util.Base64.getEncoder().encodeToString(
+                        "my-client-id:my-client-secret".getBytes(StandardCharsets.UTF_8));
+                if (expected.equals(authHeaderRef.get())) {
+                    return new MockResponse().setBody(tokenResponse).setHeader("Content-Type", "application/json");
+                }
+                return new MockResponse().setResponseCode(400)
+                        .setBody("{\"error\":\"invalid_client\"}")
+                        .setHeader("Content-Type", "application/json");
+            });
+
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-basic@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "client_secret": "my-client-secret",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token",
+                            "token_endpoint_auth_method": "client_secret_basic"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset-basic@",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            String expectedHeader = "Basic " + java.util.Base64.getEncoder().encodeToString(
+                    "my-client-id:my-client-secret".getBytes(StandardCharsets.UTF_8));
+            assertEquals(expectedHeader, authHeaderRef.get(),
+                    "client_secret_basic must produce an Authorization: Basic header per RFC 6749 §2.3.1");
+            assertFalse(bodyRef.get().contains("client_id="),
+                    "client_id must not appear in body for client_secret_basic, got: " + bodyRef.get());
+            assertFalse(bodyRef.get().contains("client_secret="),
+                    "client_secret must not appear in body for client_secret_basic, got: " + bodyRef.get());
+
+            // Persisted setting is readable via GET (round-trip)
+            response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-basic@",
+                    null, null, "authorization", "admin");
+            assertEquals(200, response.status());
+            JsonNode authSettings = ProxyUtil.MAPPER.readTree(response.body()).get("auth_settings");
+            assertEquals("client_secret_basic", authSettings.get("token_endpoint_auth_method").asText());
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    void testOauthSignInWithoutTokenEndpointAuthMethod_defaultsToBasicPerSpec() {
+        // Toolsets with token_endpoint_auth_method unset (legacy data or operator omitted the
+        // field) default to client_secret_basic per RFC 6749 §2.3.1 — BASIC is MUST-support for
+        // compliant authorization servers; POST is NOT RECOMMENDED. OAuth 2.1 deprecates POST.
+        String tokenResponse = """
+                {
+                    "access_token": "test-access-token",
+                    "refresh_token": "test-refresh-token",
+                    "expires_in": 3600
+                }
+                """;
+        java.util.concurrent.atomic.AtomicReference<String> authHeaderRef = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<String> bodyRef = new java.util.concurrent.atomic.AtomicReference<>();
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+            server.map(HttpMethod.POST, "/token", request -> {
+                authHeaderRef.set(request.getHeader("Authorization"));
+                bodyRef.set(request.getBody().readUtf8());
+                return new MockResponse().setBody(tokenResponse).setHeader("Content-Type", "application/json");
+            });
+
+            // No token_endpoint_auth_method in payload — simulates a pre-existing toolset.
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-legacy@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "client_secret": "my-client-secret",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset-legacy@",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            String expectedAuth = "Basic " + Base64.getEncoder().encodeToString(
+                    "my-client-id:my-client-secret".getBytes(StandardCharsets.UTF_8));
+            assertEquals(expectedAuth, authHeaderRef.get(),
+                    "null token_endpoint_auth_method must default to client_secret_basic");
+            assertFalse(bodyRef.get().contains("client_id="),
+                    "client_id must not be in body when defaulting to basic, got: " + bodyRef.get());
+            assertFalse(bodyRef.get().contains("client_secret="),
+                    "client_secret must not be in body when defaulting to basic, got: " + bodyRef.get());
+        }
+    }
+
+    @Test
+    void testOauthUpdate_PreservesTokenEndpointAuthMethodWhenOmitted() {
+        // A PATCH-style PUT that omits token_endpoint_auth_method must NOT silently downgrade a
+        // toolset previously configured for client_secret_basic — otherwise the Snowflake regression
+        // this PR fixes would reappear on the very next admin save.
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+
+            Response create = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-preserve@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "client_secret": "my-client-secret",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token",
+                            "token_endpoint_auth_method": "client_secret_basic"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, create.status());
+
+            Response update = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-preserve@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, update.status());
+
+            Response get = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-preserve@",
+                    null, null, "authorization", "admin");
+            assertEquals(200, get.status());
+            JsonNode authSettings = ProxyUtil.MAPPER.readTree(get.body()).get("auth_settings");
+            assertEquals("client_secret_basic", authSettings.get("token_endpoint_auth_method").asText(),
+                    "token_endpoint_auth_method must be preserved when omitted on update");
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
     void testStoredOauthToolsetSendsPlaintextClientSecretOnRefresh() {
         // Resource-stored toolsets persist authSettings.clientSecret encrypted at rest. The MCP
         // proxy controller used to forward toolset.getAuthSettings() to the credential refresh
@@ -1715,6 +1960,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                             .setBody(MCP_TOOL_CALL_RESPONSE)
                             .setHeader("Content-Type", "application/json"));
 
+            // Explicit POST so refresh sends client_secret in the body — this test verifies the
+            // stored secret is decrypted before being forwarded, not the default auth method.
             Response response = send(HttpMethod.PUT,
                     "/v1/toolsets/4X25dj1mja51jykqxsXnCH/notion-toolset@", null, """
                             {
@@ -1727,7 +1974,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                                     "client_secret": "%s",
                                     "redirect_uri": "http://admin/callback",
                                     "authorization_endpoint": "http://localhost:9876/authorize",
-                                    "token_endpoint": "http://localhost:9876/token"
+                                    "token_endpoint": "http://localhost:9876/token",
+                                    "token_endpoint_auth_method": "client_secret_post"
                                 }
                             }
                             """.formatted(plaintextClientSecret), "authorization", "admin");
@@ -1815,29 +2063,26 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
     @Test
     void testGetAllTools_AdminAccess() throws JsonProcessingException {
-        String mcpResponse = """
+        String mcpToolsListResponse = """
                 {
                    "jsonrpc": "2.0",
-                   "id": 1,
+                   "id": 2,
                    "result": {
                      "tools": [
-                       {"name": "branch", "title": "Manage branches"},
-                       {"name": "tag", "title": "Manage tags"},
-                       {"name": "remote", "title": "Manage remotes"}
+                       {"name": "branch", "description": "Manage branches"},
+                       {"name": "tag", "description": "Manage tags"},
+                       {"name": "remote", "description": "Manage remotes"}
                      ]
                    }
                  }
                 """;
-        TestWebServer.Handler handler = request -> new MockResponse()
-                .setBody(mcpResponse).setHeader("Content-Type", "application/json");
-        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+        try (TestWebServer ignore = new TestWebServer(9876, mcpToolsHandler(mcpToolsListResponse))) {
             Response resp = send(HttpMethod.GET, "/v1/toolset/git/tools",
                     null, null, "authorization", "admin");
 
             assertEquals(200, resp.status());
             var json = ProxyUtil.MAPPER.readTree(resp.body());
-            ArrayNode tools = Optional.ofNullable(json.get("result"))
-                    .map(res -> res.get("tools"))
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
                     .map(node -> (ArrayNode) node)
                     .orElse(ProxyUtil.MAPPER.createArrayNode());
             assertEquals(3, tools.size());
@@ -1849,9 +2094,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
     @Test
     void testGetAllTools_RegularUserForbidden() {
-        TestWebServer.Handler handler = request -> new MockResponse()
-                .setBody("{}").setHeader("Content-Type", "application/json");
-        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+        try (TestWebServer ignore = new TestWebServer(9876, mcpToolsHandler("{}"))) {
             Response resp = send(HttpMethod.GET, "/v1/toolset/git/tools");
 
             assertEquals(403, resp.status());
@@ -1860,29 +2103,26 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
     @Test
     void testGetAllowedTools_JsonResponse() throws JsonProcessingException {
-        String mcpResponse = """
+        String mcpToolsListResponse = """
                 {
                    "jsonrpc": "2.0",
-                   "id": 1,
+                   "id": 2,
                    "result": {
                      "tools": [
-                       {"name": "branch", "title": "Manage branches"},
-                       {"name": "tag", "title": "Manage tags"},
-                       {"name": "remote", "title": "Manage remotes"}
+                       {"name": "branch", "description": "Manage branches"},
+                       {"name": "tag", "description": "Manage tags"},
+                       {"name": "remote", "description": "Manage remotes"}
                      ]
                    }
                  }
                 """;
-        TestWebServer.Handler handler = request -> new MockResponse()
-                .setBody(mcpResponse).setHeader("Content-Type", "application/json");
-        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+        try (TestWebServer ignore = new TestWebServer(9876, mcpToolsHandler(mcpToolsListResponse))) {
             // "git" toolset has allowedTools: ["branch", "remote"]
             Response resp = send(HttpMethod.GET, "/v1/toolset/git/allowed-tools");
 
             assertEquals(200, resp.status());
             var json = ProxyUtil.MAPPER.readTree(resp.body());
-            ArrayNode tools = Optional.ofNullable(json.get("result"))
-                    .map(res -> res.get("tools"))
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
                     .map(node -> (ArrayNode) node)
                     .orElse(ProxyUtil.MAPPER.createArrayNode());
             assertEquals(2, tools.size());
@@ -1894,20 +2134,18 @@ public class ToolSetApiTest extends ResourceBaseTest {
     @SuppressWarnings("checkstyle:LineLength")
     @Test
     void testGetAllowedTools_SseResponse() throws JsonProcessingException {
-        String mcpResponse = """
-                event: message
-                data: {"jsonrpc": "2.0","id": 1,"result": {"tools": [{"name": "branch", "title": "Manage branches"},{"name": "tag", "title": "Manage tags"},{"name": "remote", "title": "Manage remotes"}]}}\n
-                """;
-        TestWebServer.Handler handler = request -> new MockResponse()
-                .setBody(mcpResponse).setHeader("Content-Type", "text/event-stream");
-        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+        String sseResponse = "event: message\n"
+                + "data: {\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"tools\":["
+                + "{\"name\":\"branch\",\"description\":\"Manage branches\"},"
+                + "{\"name\":\"tag\",\"description\":\"Manage tags\"},"
+                + "{\"name\":\"remote\",\"description\":\"Manage remotes\"}]}}\n\n";
+        try (TestWebServer ignore = new TestWebServer(9876, mcpToolsHandler(sseResponse, "text/event-stream"))) {
             // "git" toolset has allowedTools: ["branch", "remote"]
             Response resp = send(HttpMethod.GET, "/v1/toolset/git/allowed-tools");
 
             assertEquals(200, resp.status());
             var json = ProxyUtil.MAPPER.readTree(resp.body());
-            ArrayNode tools = Optional.ofNullable(json.get("result"))
-                    .map(res -> res.get("tools"))
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
                     .map(node -> (ArrayNode) node)
                     .orElse(ProxyUtil.MAPPER.createArrayNode());
             assertEquals(2, tools.size());
@@ -1919,28 +2157,25 @@ public class ToolSetApiTest extends ResourceBaseTest {
     @DialConfigLocation("dial-config/filter-toolsets.json")
     @Test
     void testGetAllowedTools_EmptyFilter() throws JsonProcessingException {
-        String mcpResponse = """
+        String mcpToolsListResponse = """
                 {
                    "jsonrpc": "2.0",
-                   "id": 1,
+                   "id": 2,
                    "result": {
                      "tools": [
-                       {"name": "tool1", "title": "Tool 1"},
-                       {"name": "tool2", "title": "Tool 2"}
+                       {"name": "tool1", "description": "Tool 1"},
+                       {"name": "tool2", "description": "Tool 2"}
                      ]
                    }
                  }
                 """;
-        TestWebServer.Handler handler = request -> new MockResponse()
-                .setBody(mcpResponse).setHeader("Content-Type", "application/json");
-        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+        try (TestWebServer ignore = new TestWebServer(9876, mcpToolsHandler(mcpToolsListResponse))) {
             // "my toolset 1" has no allowedTools filter (empty list)
             Response resp = send(HttpMethod.GET, "/v1/toolset/git/allowed-tools");
 
             assertEquals(200, resp.status());
             var json = ProxyUtil.MAPPER.readTree(resp.body());
-            ArrayNode tools = Optional.ofNullable(json.get("result"))
-                    .map(res -> res.get("tools"))
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
                     .map(node -> (ArrayNode) node)
                     .orElse(ProxyUtil.MAPPER.createArrayNode());
             assertEquals(2, tools.size());
@@ -1967,29 +2202,26 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 """);
         verify(response, 200);
 
-        String mcpResponse = """
+        String mcpToolsListResponse = """
                 {
                    "jsonrpc": "2.0",
-                   "id": 1,
+                   "id": 2,
                    "result": {
                      "tools": [
-                       {"name": "tool1", "title": "Tool 1"},
-                       {"name": "tool2", "title": "Tool 2"}
+                       {"name": "tool1", "description": "Tool 1"},
+                       {"name": "tool2", "description": "Tool 2"}
                      ]
                    }
                  }
                 """;
-        TestWebServer.Handler handler = request -> new MockResponse()
-                .setBody(mcpResponse).setHeader("Content-Type", "application/json");
-        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+        try (TestWebServer ignore = new TestWebServer(9876, mcpToolsHandler(mcpToolsListResponse))) {
             // owner should have WRITE access and can access /tools (unfiltered)
             Response resp = send(HttpMethod.GET,
                     "/v1/toolset/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-tools-test/tools");
 
             assertEquals(200, resp.status());
             var json = ProxyUtil.MAPPER.readTree(resp.body());
-            ArrayNode tools = Optional.ofNullable(json.get("result"))
-                    .map(res -> res.get("tools"))
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
                     .map(node -> (ArrayNode) node)
                     .orElse(ProxyUtil.MAPPER.createArrayNode());
             assertEquals(2, tools.size());
@@ -2000,13 +2232,145 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
             assertEquals(200, resp.status());
             json = ProxyUtil.MAPPER.readTree(resp.body());
-            tools = Optional.ofNullable(json.get("result"))
-                    .map(res -> res.get("tools"))
+            tools = Optional.ofNullable(json.get("tools"))
                     .map(node -> (ArrayNode) node)
                     .orElse(ProxyUtil.MAPPER.createArrayNode());
             assertEquals(1, tools.size());
             assertEquals("tool1", tools.get(0).get("name").asText());
         }
+    }
+
+    @Test
+    void testGetAllTools_Pagination() throws JsonProcessingException {
+        String page1Response = """
+                {
+                  "jsonrpc": "2.0",
+                  "id": 1,
+                  "result": {
+                    "tools": [
+                      {"name": "branch", "description": "Manage branches"},
+                      {"name": "tag", "description": "Manage tags"}
+                    ],
+                    "nextCursor": "page2"
+                  }
+                }
+                """;
+        String page2Response = """
+                {
+                  "jsonrpc": "2.0",
+                  "id": 1,
+                  "result": {
+                    "tools": [
+                      {"name": "remote", "description": "Manage remotes"}
+                    ]
+                  }
+                }
+                """;
+        try (TestWebServer ignore = new TestWebServer(9876, mcpPaginatedToolsHandler(page1Response, page2Response))) {
+            Response resp = send(HttpMethod.GET, "/v1/toolset/git/tools", null, null, "authorization", "admin");
+
+            assertEquals(200, resp.status());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            assertEquals(2, tools.size());
+            assertEquals("branch", tools.get(0).get("name").asText());
+            assertEquals("tag", tools.get(1).get("name").asText());
+            assertEquals("page2", json.get("nextCursor").asText());
+
+            resp = send(HttpMethod.GET, "/v1/toolset/git/tools?nextCursor=page2",
+                    null, null, "authorization", "admin");
+
+            assertEquals(200, resp.status());
+            json = ProxyUtil.MAPPER.readTree(resp.body());
+            tools = Optional.ofNullable(json.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            assertEquals(1, tools.size());
+            assertEquals("remote", tools.get(0).get("name").asText());
+            assertTrue(json.get("nextCursor") == null || json.get("nextCursor").isNull());
+        }
+    }
+
+    @Test
+    void testGetAllowedTools_AutoPagination() throws JsonProcessingException {
+        // git toolset has allowedTools: ["branch", "remote"]; page1 has branch+tag, page2 has remote
+        String page1Response = """
+                {
+                  "jsonrpc": "2.0",
+                  "id": 1,
+                  "result": {
+                    "tools": [
+                      {"name": "branch", "description": "Manage branches"},
+                      {"name": "tag", "description": "Manage tags"}
+                    ],
+                    "nextCursor": "page2"
+                  }
+                }
+                """;
+        String page2Response = """
+                {
+                  "jsonrpc": "2.0",
+                  "id": 1,
+                  "result": {
+                    "tools": [
+                      {"name": "remote", "description": "Manage remotes"}
+                    ]
+                  }
+                }
+                """;
+        try (TestWebServer ignore = new TestWebServer(9876, mcpPaginatedToolsHandler(page1Response, page2Response))) {
+            Response resp = send(HttpMethod.GET, "/v1/toolset/git/allowed-tools");
+
+            assertEquals(200, resp.status());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            // "tag" filtered out, "branch" and "remote" (from page 2) included
+            assertEquals(2, tools.size());
+            assertEquals("branch", tools.get(0).get("name").asText());
+            assertEquals("remote", tools.get(1).get("name").asText());
+            assertTrue(json.get("nextCursor") == null || json.get("nextCursor").isNull());
+        }
+    }
+
+    private static String extractCursor(String body) {
+        try {
+            JsonNode node = ProxyUtil.MAPPER.readTree(body);
+            JsonNode cursor = node.path("params").path("cursor");
+            return cursor.isMissingNode() || cursor.isNull() ? null : cursor.asText();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static TestWebServer.Handler mcpPaginatedToolsHandler(
+            String firstPageResponse, String subsequentPageResponse) {
+        return request -> {
+            String body = request.getBody().readString(StandardCharsets.UTF_8);
+            if ("GET".equals(request.getMethod())) {
+                return new MockResponse().setResponseCode(405);
+            }
+            if (body.contains("\"method\":\"initialize\"") || body.contains("\"method\": \"initialize\"")) {
+                String id = extractJsonRpcId(body);
+                String initResponse = """
+                        {"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":"test-server","version":"1.0"}}}
+                        """.formatted(id);
+                return new MockResponse().setBody(initResponse).setHeader("Content-Type", "application/json");
+            } else if (body.contains("\"method\":\"notifications/initialized\"")
+                    || body.contains("\"method\": \"notifications/initialized\"")) {
+                return new MockResponse().setResponseCode(202).setHeader("Content-Type", "application/json");
+            } else if (body.contains("\"method\":\"tools/list\"") || body.contains("\"method\": \"tools/list\"")) {
+                String cursor = extractCursor(body);
+                String id = extractJsonRpcId(body);
+                String template = cursor == null ? firstPageResponse : subsequentPageResponse;
+                String response = template.replaceFirst("\"id\"\\s*:\\s*\\d+", "\"id\":" + id);
+                return new MockResponse().setBody(response).setHeader("Content-Type", "application/json");
+            }
+            return new MockResponse().setResponseCode(400).setBody("Unknown method");
+        };
     }
 
     @Test

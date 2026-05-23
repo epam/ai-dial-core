@@ -214,6 +214,11 @@ public class AccessService {
                 result.put(resource, autoSharedData.accessTypes());
                 continue;
             }
+            autoSharedData = apiKeyData.getAttachedPrompts().get(resourceUrl);
+            if (autoSharedData != null) {
+                result.put(resource, autoSharedData.accessTypes());
+                continue;
+            }
             autoSharedData = apiKeyData.getAttachedDeployments().get(resourceUrl);
             if (autoSharedData != null) {
                 result.put(resource, autoSharedData.accessTypes());
