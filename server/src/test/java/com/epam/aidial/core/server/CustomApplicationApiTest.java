@@ -588,13 +588,9 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                              "max_retry_attempts" : 1,
                              "routes" : {
                                "index-search" : {
-                                 "name" : null,
-                                 "userRoles" : null,
-                                 "response" : null,
                                  "rewritePath" : true,
                                  "paths" : [ "/v1/index(/[^/]+)*$" ],
                                  "methods" : [ "DELETE", "POST", "PUT" ],
-                                 "upstreams" : null,
                                  "maxRetryAttempts" : 1,
                                  "order" : 2147483647,
                                  "permissions" : [ ],
@@ -753,13 +749,9 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "max_retry_attempts" : 1,
                             "routes" : {
                               "index-search" : {
-                                "name" : null,
-                                "userRoles" : null,
-                                "response" : null,
                                 "rewritePath" : true,
                                 "paths" : [ "/v1/index(/[^/]+)*$" ],
                                 "methods" : [ "DELETE", "POST", "PUT" ],
-                                "upstreams" : null,
                                 "maxRetryAttempts" : 1,
                                 "order" : 2147483647,
                                 "permissions" : [ ],
@@ -1311,13 +1303,9 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      "viewer_url" : "https://mydial.somewhere.com/custom_application_schemas/viewer",
                      "routes" : {
                        "data_sync" : {
-                         "name" : null,
-                         "userRoles" : null,
-                         "response" : null,
                          "rewritePath" : true,
                          "paths" : [ "/v1/index/search" ],
                          "methods" : [ "POST" ],
-                         "upstreams" : null,
                          "maxRetryAttempts" : 1,
                          "order" : 5,
                          "permissions" : [ "WRITE" ],

@@ -414,7 +414,7 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
         body = ProxyUtil.MAPPER.readTree(response.body());
         routes = body.get("routes");
         Assertions.assertNotNull(routes, "routes must still be present for read-only user");
-        Assertions.assertTrue(routes.get("data_sync").get("upstreams").isNull(),
+        Assertions.assertTrue(routes.get("data_sync").path("upstreams").isMissingNode(),
                 "upstreams must be null for read-only user");
     }
 

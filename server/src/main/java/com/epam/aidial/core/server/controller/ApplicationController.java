@@ -223,7 +223,7 @@ public class ApplicationController {
                     return accessService.hasWriteAccess(resource, context);
                 }
             } catch (Exception e) {
-                // appName is a config-based deployment name, fall through to admin check
+                // appName is not DIAL resource url, fall through to admin check
             }
         }
         return accessService.hasAdminAccess(context);
