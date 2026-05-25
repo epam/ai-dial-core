@@ -26,6 +26,9 @@ public final class EntityReader {
 
     private static final String SETTINGS_SINGLETON_NAME = "global";
 
+    /** Controls which renderer method and pagination field to use in {@link #doGet}. */
+    private enum ListContext { NONE, METADATA, FILE_CONFIG }
+
     private EntityReader() {
     }
 
@@ -41,7 +44,7 @@ public final class EntityReader {
             spec.commandLine().getErr().println(e.getMessage());
             return 2;
         }
-        return doGet(root, spec, resolved, path, null, false, type);
+        return doGet(root, spec, resolved, path, null, ListContext.NONE, type);
     }
 
     public static int readSingleton(DialCli root, CommandSpec spec, String type) {
@@ -55,7 +58,7 @@ public final class EntityReader {
             return 2;
         }
         String path = "/v1/" + type + "/" + bucket + "/" + SETTINGS_SINGLETON_NAME;
-        return doGet(root, spec, resolved, path, null, false, type);
+        return doGet(root, spec, resolved, path, null, ListContext.NONE, type);
     }
 
     public static int listEntities(DialCli root, CommandSpec spec, String type) {
@@ -68,11 +71,51 @@ public final class EntityReader {
             spec.commandLine().getErr().println("Unsupported entity type: " + type);
             return 2;
         }
-        String path = "/v1/" + type + "/" + bucket + "/";
-        return doGet(root, spec, resolved, path, "limit=100", true, type);
+        // Listings moved to /v1/metadata/... (ResourceFolderMetadata shape) in U.0
+        String path = "/v1/metadata/" + type + "/" + bucket + "/";
+        return doGet(root, spec, resolved, path, "limit=100", ListContext.METADATA, type);
     }
 
-    private static int doGet(DialCli root, CommandSpec spec, EnvResolver.ResolvedEnv resolved, String path, String query, boolean isList, String type) {
+    // ---- File-config surface (U.1: /v1/admin/config/file/*) ----
+
+    public static int readConfigFileEntity(DialCli root, CommandSpec spec, String type, String identifier) {
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
+        if (resolved == null) {
+            return 2;
+        }
+        String name;
+        try {
+            name = simpleNameFromIdentifier(type, identifier);
+        } catch (IllegalArgumentException e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 2;
+        }
+        String path = "/v1/admin/config/file/" + type + "/" + name;
+        return doGet(root, spec, resolved, path, null, ListContext.NONE, type);
+    }
+
+    public static int listConfigFileEntities(DialCli root, CommandSpec spec, String type) {
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
+        if (resolved == null) {
+            return 2;
+        }
+        String path = "/v1/admin/config/file/" + type;
+        return doGet(root, spec, resolved, path, null, ListContext.FILE_CONFIG, type);
+    }
+
+    public static int readConfigFileSingleton(DialCli root, CommandSpec spec) {
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
+        if (resolved == null) {
+            return 2;
+        }
+        String path = "/v1/admin/config/file/settings/global";
+        return doGet(root, spec, resolved, path, null, ListContext.NONE, "settings");
+    }
+
+    // ---- Internal helpers ----
+
+    private static int doGet(DialCli root, CommandSpec spec, EnvResolver.ResolvedEnv resolved,
+                             String path, String query, ListContext listCtx, String type) {
         CliHttpClient.Response resp;
         try {
             resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).get(path, query);
@@ -87,17 +130,20 @@ public final class EntityReader {
         try {
             JsonNode node = JSON.readTree(resp.body());
             EntityRenderer renderer = EntityRenderer.of(OutputFormatResolver.resolve(root));
-            if (isList) {
+            if (listCtx != ListContext.NONE) {
                 JsonNode items = node.get("items");
                 if (items == null || !items.isArray()) {
                     spec.commandLine().getErr().println("Unexpected listing response shape: missing 'items' array.");
                     return 1;
                 }
-                JsonNode hasMore = node.get("hasMore");
-                if (hasMore != null && hasMore.asBoolean()) {
+                JsonNode nextToken = node.get("nextToken");
+                if (nextToken != null && !nextToken.isNull()) {
                     spec.commandLine().getErr().println("[warn] Result truncated at 100 items.");
                 }
-                spec.commandLine().getOut().println(renderer.renderList(items, type));
+                String rendered = listCtx == ListContext.FILE_CONFIG
+                        ? renderer.renderFileList(items, type)
+                        : renderer.renderMetadataList(items, type);
+                spec.commandLine().getOut().println(rendered);
             } else {
                 spec.commandLine().getOut().println(renderer.renderSingle(node, type));
             }
@@ -122,6 +168,23 @@ public final class EntityReader {
                             + "'. Use a plain name or full canonical id '" + type + "/" + bucket + "/<name>'.");
         }
         return "/v1/" + type + "/" + bucket + "/" + identifier;
+    }
+
+    private static String simpleNameFromIdentifier(String type, String identifier) {
+        if (!identifier.contains("/")) {
+            return identifier;
+        }
+        // Accept canonical id (e.g. "models/public/gpt-4") — strip to simple name
+        String prefix = type + "/";
+        if (identifier.startsWith(prefix)) {
+            String rest = identifier.substring(prefix.length());
+            int slash = rest.indexOf('/');
+            if (slash >= 0) {
+                return rest.substring(slash + 1);
+            }
+        }
+        throw new IllegalArgumentException(
+                "Ambiguous identifier '" + identifier + "'. Use a plain name for file-config lookup.");
     }
 
 

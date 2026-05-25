@@ -164,11 +164,11 @@ class ModelCommandTest {
     @Test
     void modelListTableHappyPath(@TempDir Path tmp) throws Exception {
         Path config = writeProfileAndKey(tmp);
-        respond("/v1/models/public/", 200, """
+        respond("/v1/metadata/models/public/", 200, """
                 {"items":[
-                  {"name":"gpt-4","endpoint":"https://e1"},
-                  {"name":"claude-sonnet","endpoint":"https://e2"}
-                ],"hasMore":false}
+                  {"url":"models/public/gpt-4"},
+                  {"url":"models/public/claude-sonnet"}
+                ]}
                 """);
 
         Result r = run(config, apiKeyFile(tmp), "model", "list");
@@ -176,20 +176,19 @@ class ModelCommandTest {
         assertEquals(0, r.exitCode, r.err);
         assertTrue(r.out.contains("gpt-4"), r.out);
         assertTrue(r.out.contains("claude-sonnet"), r.out);
-        assertTrue(r.out.contains("https://e1"), r.out);
     }
 
     @Test
     void modelListJsonOutput(@TempDir Path tmp) throws Exception {
         Path config = writeProfileAndKey(tmp);
-        respond("/v1/models/public/", 200,
-                "{\"items\":[{\"name\":\"gpt-4\"}],\"hasMore\":false}");
+        respond("/v1/metadata/models/public/", 200,
+                "{\"items\":[{\"url\":\"models/public/gpt-4\"}]}");
 
         Result r = run(config, apiKeyFile(tmp), "-o", "json", "model", "list");
 
         assertEquals(0, r.exitCode, r.err);
-        assertTrue(r.out.contains("\"name\""), r.out);
-        assertTrue(r.out.contains("\"gpt-4\""), r.out);
+        assertTrue(r.out.contains("\"url\""), r.out);
+        assertTrue(r.out.contains("gpt-4"), r.out);
     }
 
     @Test
@@ -217,8 +216,8 @@ class ModelCommandTest {
     @Test
     void getModelsAliasDispatchesToList(@TempDir Path tmp) throws Exception {
         Path config = writeProfileAndKey(tmp);
-        respond("/v1/models/public/", 200,
-                "{\"items\":[{\"name\":\"gpt-4\",\"endpoint\":\"https://e\"}],\"hasMore\":false}");
+        respond("/v1/metadata/models/public/", 200,
+                "{\"items\":[{\"url\":\"models/public/gpt-4\"}]}");
 
         Result r = run(config, apiKeyFile(tmp), "get", "models");
 
@@ -250,22 +249,21 @@ class ModelCommandTest {
     @Test
     void modelListEmptyItems(@TempDir Path tmp) throws Exception {
         Path config = writeProfileAndKey(tmp);
-        respond("/v1/models/public/", 200, "{\"items\":[],\"hasMore\":false}");
+        respond("/v1/metadata/models/public/", 200, "{\"items\":[]}");
 
         Result r = run(config, apiKeyFile(tmp), "model", "list");
 
         assertEquals(0, r.exitCode, r.err);
         assertTrue(r.out.contains("NAME"), r.out);
-        assertTrue(r.out.contains("ENDPOINT"), r.out);
     }
 
     @Test
     void modelListSendsLimitQueryParam(@TempDir Path tmp) throws Exception {
         Path config = writeProfileAndKey(tmp);
         java.util.concurrent.atomic.AtomicReference<String> capturedQuery = new java.util.concurrent.atomic.AtomicReference<>();
-        server.createContext("/v1/models/public/", exchange -> {
+        server.createContext("/v1/metadata/models/public/", exchange -> {
             capturedQuery.set(exchange.getRequestURI().getQuery());
-            send(exchange, 200, "{\"items\":[],\"hasMore\":false}");
+            send(exchange, 200, "{\"items\":[]}");
         });
 
         Result r = run(config, apiKeyFile(tmp), "model", "list");

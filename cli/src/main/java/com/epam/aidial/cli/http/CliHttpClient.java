@@ -65,10 +65,10 @@ public class CliHttpClient {
     }
 
     public Response put(String path, String body, String ifMatch) {
-        return put(path, null, body, ifMatch);
+        return put(path, null, body, ifMatch, null);
     }
 
-    public Response put(String path, String query, String body, String ifMatch) {
+    public Response put(String path, String query, String body, String ifMatch, String ifNoneMatch) {
         URI uri = buildUri(path, query);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .header("Api-Key", apiKey)
@@ -78,6 +78,9 @@ public class CliHttpClient {
                 .PUT(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
         if (ifMatch != null && !ifMatch.isBlank()) {
             builder.header("If-Match", ifMatch);
+        }
+        if (ifNoneMatch != null && !ifNoneMatch.isBlank()) {
+            builder.header("If-None-Match", ifNoneMatch);
         }
         return sendForString(builder.build());
     }

@@ -30,11 +30,12 @@ public final class EntityWriter {
 
     /**
      * Controller-projected fields the server adds on GET responses (design 03 §4 + §1.5) but
-     * rejects on write — `name` is synthesized from the URL, `status` / `source` /
+     * rejects on write — `name` is synthesized from the URL, `status` /
      * `validationWarnings` are projection metadata, never persisted. Stripping them lets a
      * GET → merge → PUT round-trip succeed without a {@code "Unrecognized field"} 400.
+     * Note: `source` was retired in U.1 and is no longer present in server responses.
      */
-    private static final String[] PROJECTION_FIELDS = {"name", "status", "source", "validationWarnings"};
+    private static final String[] PROJECTION_FIELDS = {"name", "status", "validationWarnings"};
 
     private static final String TEMPLATE_AUTO = "auto";
 
@@ -82,12 +83,19 @@ public final class EntityWriter {
             return 0;
         }
         String path = "/v1/" + type + "/" + bucket + "/" + name;
+        CliHttpClient http = new CliHttpClient(resolved.apiUrl(), resolved.apiKey());
         CliHttpClient.Response resp;
         try {
-            resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).post(path, body);
+            // PUT with If-None-Match: * — create-only gate (replaces POST after U.0)
+            resp = http.put(path, null, body, null, "*");
         } catch (CliHttpClient.NetworkException e) {
             spec.commandLine().getErr().println(e.getMessage());
             return 1;
+        }
+        // Server returns 412 (not 409) when If-None-Match: * fails — preserve exit-code 5 contract
+        if (resp.status() == 412) {
+            spec.commandLine().getErr().println("Already exists: " + canonicalId);
+            return 5;
         }
         if (resp.status() >= 300) {
             spec.commandLine().getErr().println(EntityReader.formatHttpError(resp.status(), resp.body(), path));

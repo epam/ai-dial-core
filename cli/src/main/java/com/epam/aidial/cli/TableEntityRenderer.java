@@ -8,30 +8,48 @@ import java.util.Map;
 
 final class TableEntityRenderer implements EntityRenderer {
 
-    private static final TableShape DEFAULT_SHAPE = new TableShape(
-            new String[]{"NAME", "SOURCE", "STATUS"},
-            new String[]{"name", "source", "status"});
+    // Single-entity shapes — source field retired in U.1
+    private static final TableShape DEFAULT_SINGLE_SHAPE = new TableShape(
+            new String[]{"NAME", "STATUS"},
+            new String[]{"name", "status"});
 
-    private static final Map<String, TableShape> TYPE_TABLE_SHAPE = Map.of(
+    private static final Map<String, TableShape> SINGLE_TYPE_SHAPES = Map.of(
             "models", new TableShape(
-                    new String[]{"NAME", "SOURCE", "STATUS", "ENDPOINT"},
-                    new String[]{"name", "source", "status", "endpoint"})
+                    new String[]{"NAME", "STATUS", "ENDPOINT"},
+                    new String[]{"name", "status", "endpoint"})
     );
+
+    // Metadata listing items (ResourceItemMetadata) carry url as the canonical id
+    private static final TableShape METADATA_LIST_SHAPE = new TableShape(
+            new String[]{"NAME"},
+            new String[]{"url"});
+
+    // File-config listing items carry name (simple map key from aidial.config.json)
+    private static final TableShape FILE_LIST_SHAPE = new TableShape(
+            new String[]{"NAME"},
+            new String[]{"name"});
 
     @Override
     public String renderSingle(JsonNode node, String type) {
-        return renderTable(List.of(node), type);
+        TableShape shape = SINGLE_TYPE_SHAPES.getOrDefault(type, DEFAULT_SINGLE_SHAPE);
+        return renderTable(List.of(node), shape);
     }
 
     @Override
-    public String renderList(JsonNode items, String type) {
+    public String renderMetadataList(JsonNode items, String type) {
         List<JsonNode> rows = new ArrayList<>();
         items.forEach(rows::add);
-        return renderTable(rows, type);
+        return renderTable(rows, METADATA_LIST_SHAPE);
     }
 
-    private static String renderTable(List<JsonNode> rows, String type) {
-        TableShape shape = TYPE_TABLE_SHAPE.getOrDefault(type, DEFAULT_SHAPE);
+    @Override
+    public String renderFileList(JsonNode items, String type) {
+        List<JsonNode> rows = new ArrayList<>();
+        items.forEach(rows::add);
+        return renderTable(rows, FILE_LIST_SHAPE);
+    }
+
+    private static String renderTable(List<JsonNode> rows, TableShape shape) {
         String[] headers = shape.headers();
         String[] fields = shape.fields();
         int[] widths = new int[headers.length];

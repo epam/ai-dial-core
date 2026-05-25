@@ -37,10 +37,14 @@ public class ToolsetCommand {
         CommandSpec spec;
         @Parameters(index = "0", description = "Toolset name or canonical id (toolsets/<bucket>/<name>).")
         String name;
+        @Option(names = "--source", description = "Config source: API (default) or FILE.", defaultValue = "API")
+        ConfigSource source;
 
         @Override
         public Integer call() {
-            return EntityReader.readEntity(cmd.parent, spec, TYPE, name);
+            return source == ConfigSource.FILE
+                    ? EntityReader.readConfigFileEntity(cmd.parent, spec, TYPE, name)
+                    : EntityReader.readEntity(cmd.parent, spec, TYPE, name);
         }
     }
 
@@ -50,14 +54,18 @@ public class ToolsetCommand {
         ToolsetCommand cmd;
         @Spec
         CommandSpec spec;
+        @Option(names = "--source", description = "Config source: API (default) or FILE.", defaultValue = "API")
+        ConfigSource source;
 
         @Override
         public Integer call() {
-            return EntityReader.listEntities(cmd.parent, spec, TYPE);
+            return source == ConfigSource.FILE
+                    ? EntityReader.listConfigFileEntities(cmd.parent, spec, TYPE)
+                    : EntityReader.listEntities(cmd.parent, spec, TYPE);
         }
     }
 
-    @Command(name = "add", description = "Create a toolset (POST). Fails with exit 5 if it already exists.")
+    @Command(name = "add", description = "Create a toolset (PUT with If-None-Match: *). Fails with exit 5 if it already exists.")
     static class Add implements Callable<Integer> {
         @ParentCommand
         ToolsetCommand cmd;

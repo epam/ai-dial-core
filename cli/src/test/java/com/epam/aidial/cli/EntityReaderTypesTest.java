@@ -69,8 +69,8 @@ class EntityReaderTypesTest {
     @Test
     void applicationListUsesPublicBucket(@TempDir Path tmp) throws Exception {
         Path config = setup(tmp);
-        respond("/v1/applications/public/", 200,
-                "{\"items\":[{\"name\":\"my-app\"}],\"hasMore\":false}");
+        respond("/v1/metadata/applications/public/", 200,
+                "{\"items\":[{\"url\":\"applications/public/my-app\"}]}");
 
         Result r = run(config, tmp, "application", "list");
 
@@ -82,8 +82,8 @@ class EntityReaderTypesTest {
     @Test
     void interceptorListUsesPlatformBucket(@TempDir Path tmp) throws Exception {
         Path config = setup(tmp);
-        respond("/v1/interceptors/platform/", 200,
-                "{\"items\":[{\"name\":\"guardrail\"}],\"hasMore\":false}");
+        respond("/v1/metadata/interceptors/platform/", 200,
+                "{\"items\":[{\"url\":\"interceptors/platform/guardrail\"}]}");
 
         Result r = run(config, tmp, "interceptor", "list");
 
@@ -105,13 +105,13 @@ class EntityReaderTypesTest {
     @Test
     void keyListJsonOutput(@TempDir Path tmp) throws Exception {
         Path config = setup(tmp);
-        respond("/v1/keys/platform/", 200,
-                "{\"items\":[{\"name\":\"prod-key\"}],\"hasMore\":false}");
+        respond("/v1/metadata/keys/platform/", 200,
+                "{\"items\":[{\"url\":\"keys/platform/prod-key\"}]}");
 
         Result r = run(config, tmp, "-o", "json", "key", "list");
 
         assertEquals(0, r.exitCode, r.err);
-        assertTrue(r.out.contains("\"prod-key\""), r.out);
+        assertTrue(r.out.contains("prod-key"), r.out);
     }
 
     @Test
@@ -141,8 +141,8 @@ class EntityReaderTypesTest {
     @Test
     void getRolesAliasDispatches(@TempDir Path tmp) throws Exception {
         Path config = setup(tmp);
-        respond("/v1/roles/platform/", 200,
-                "{\"items\":[{\"name\":\"admin\"},{\"name\":\"viewer\"}],\"hasMore\":false}");
+        respond("/v1/metadata/roles/platform/", 200,
+                "{\"items\":[{\"url\":\"roles/platform/admin\"},{\"url\":\"roles/platform/viewer\"}]}");
 
         Result r = run(config, tmp, "get", "roles");
 
@@ -165,8 +165,8 @@ class EntityReaderTypesTest {
     @Test
     void schemaListUsesPublicBucket(@TempDir Path tmp) throws Exception {
         Path config = setup(tmp);
-        respond("/v1/schemas/public/", 200,
-                "{\"items\":[{\"name\":\"my-schema\"}],\"hasMore\":false}");
+        respond("/v1/metadata/schemas/public/", 200,
+                "{\"items\":[{\"url\":\"schemas/public/my-schema\"}]}");
 
         Result r = run(config, tmp, "schema", "list");
 
@@ -199,8 +199,8 @@ class EntityReaderTypesTest {
     @Test
     void listWarnsWhenHasMoreIsTrue(@TempDir Path tmp) throws Exception {
         Path config = setup(tmp);
-        respond("/v1/keys/platform/", 200,
-                "{\"items\":[{\"name\":\"k1\"}],\"hasMore\":true}");
+        respond("/v1/metadata/keys/platform/", 200,
+                "{\"items\":[{\"url\":\"keys/platform/k1\"}],\"nextToken\":\"abc\"}");
 
         Result r = run(config, tmp, "key", "list");
 
@@ -212,7 +212,7 @@ class EntityReaderTypesTest {
     @Test
     void routeListWhenEmpty(@TempDir Path tmp) throws Exception {
         Path config = setup(tmp);
-        respond("/v1/routes/platform/", 200, "{\"items\":[],\"hasMore\":false}");
+        respond("/v1/metadata/routes/platform/", 200, "{\"items\":[]}");
 
         Result r = run(config, tmp, "route", "list");
 

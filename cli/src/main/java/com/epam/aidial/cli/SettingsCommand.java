@@ -34,10 +34,14 @@ public class SettingsCommand {
         SettingsCommand cmd;
         @Spec
         CommandSpec spec;
+        @Option(names = "--source", description = "Config source: API (default) or FILE.", defaultValue = "API")
+        ConfigSource source;
 
         @Override
         public Integer call() {
-            return EntityReader.readSingleton(cmd.parent, spec, TYPE);
+            return source == ConfigSource.FILE
+                    ? EntityReader.readConfigFileSingleton(cmd.parent, spec)
+                    : EntityReader.readSingleton(cmd.parent, spec, TYPE);
         }
     }
 
