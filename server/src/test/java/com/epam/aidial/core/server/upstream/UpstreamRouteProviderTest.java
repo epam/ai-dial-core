@@ -102,7 +102,7 @@ public class UpstreamRouteProviderTest {
 
         UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
-        CachedUpstreamEntry entry = new CachedUpstreamEntry("upstream2", "prefix", null);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("upstream2", null, "prefix", null);
         when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
 
         UpstreamRoute route1 = provider.get(model, cacheBreakpointContext);
@@ -127,7 +127,7 @@ public class UpstreamRouteProviderTest {
 
         UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
-        CachedUpstreamEntry entry = new CachedUpstreamEntry("test", "prefix", null);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("test", null, "prefix", null);
         when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
 
         UpstreamRoute route1 = provider.get(model, cacheBreakpointContext);
@@ -184,5 +184,32 @@ public class UpstreamRouteProviderTest {
         UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         UpstreamRoute route = provider.get(model, null, "   ");
         assertNotNull(route.next());
+    }
+
+    @Test
+    public void testGet_CachedUpstreamMatchedById() {
+        Model model = new Model();
+        model.setName("model");
+        Upstream upstream1 = new Upstream();
+        upstream1.setId("alpha");
+        upstream1.setEndpoint("shared-endpoint");
+        upstream1.setTier(0);
+        upstream1.setWeight(2);
+        Upstream upstream2 = new Upstream();
+        upstream2.setId("beta");
+        upstream2.setEndpoint("shared-endpoint");
+        upstream2.setTier(0);
+        upstream2.setWeight(2);
+        model.setUpstreams(List.of(upstream1, upstream2));
+
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.CACHE_PRIORITY);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("shared-endpoint", "beta", "prefix", null);
+        when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
+
+        UpstreamRoute route = provider.get(model, cacheBreakpointContext);
+        Upstream result = route.next();
+
+        assertEquals(upstream2, result);
     }
 }

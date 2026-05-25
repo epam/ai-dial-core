@@ -121,18 +121,30 @@ public class UpstreamRouteProvider {
             throw new IllegalArgumentException("max retry attempts must be positive integer");
         }
         if (context != null && context.getEntry() != null) {
-            String endpoint = context.getEntry().endpoint();
+            String cachedId = context.getEntry().id();
+            String cachedEndpoint = context.getEntry().endpoint();
             Upstream originalUpstream = null;
-            for (Upstream upstream : upstreams) {
-                if (upstream.getEndpoint().equals(endpoint)) {
-                    originalUpstream = upstream;
-                    break;
+            if (cachedId != null) {
+                for (Upstream upstream : upstreams) {
+                    if (cachedId.equals(upstream.getId())) {
+                        originalUpstream = upstream;
+                        break;
+                    }
+                }
+            }
+            // fallback to upstream endpoint if id is not set
+            if (originalUpstream == null && cachedEndpoint != null) {
+                for (Upstream upstream : upstreams) {
+                    if (cachedEndpoint.equals(upstream.getEndpoint())) {
+                        originalUpstream = upstream;
+                        break;
+                    }
                 }
             }
             if (originalUpstream != null) {
                 context.setOriginalUpstream(originalUpstream);
             } else {
-                log.warn("cached upstream doesn't exist any longer in config: {}", endpoint);
+                log.warn("cached upstream doesn't exist any longer in config: id={}, endpoint={}", cachedId, cachedEndpoint);
             }
         }
         return new UpstreamRoute(taskExecutor, upstreamCacheService, wrapper.balancer, result, context);
