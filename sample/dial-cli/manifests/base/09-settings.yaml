@@ -4,7 +4,7 @@ name: global
 spec:
   # Singleton — there's exactly one Settings document at /v1/settings/platform/global.
   # Apply uses upsert semantics; first apply replaces file-sourced fields,
-  # `dial-cli settings reset --env local` releases API control back to the
+  # `dial-cli settings delete --env local` releases API control back to the
   # config file (or schema defaults). See 06-cli-user-guide.md §2.4.
   globalInterceptors: ["interceptors/platform/example-interceptor"]
   retriableErrorCodes: [502, 503]

@@ -98,10 +98,14 @@ sample/dial-cli/
 cd sample/dial-cli                                      # both aliases above assume this
 export DIAL_LOCAL_API_KEY=<your-admin-key>
 
-# Inspect runtime state (file-sourced entities show source: file).
+# Inspect runtime state — API-managed entries only.
 dial-cli env current                                    # → local
 dial-cli get models
 dial-cli get roles
+
+# Inspect file-sourced entries (--source FILE reads /v1/admin/config/file/{type}).
+dial-cli get models --source FILE
+dial-cli get roles --source FILE
 
 # Apply the whole base/ tree in one shot — directory walk picks up every
 # .yaml / .yml / .json file under the path.
@@ -343,9 +347,12 @@ Full surface in `06-cli-user-guide.md §2`.
 ### Read
 
 ```shell
-dial-cli get models                                         # kubectl-style alias
+dial-cli get models                                         # kubectl-style alias (API-managed)
 dial-cli get roles
 dial-cli get keys
+
+dial-cli get models --source FILE                           # file-sourced entries only
+dial-cli model get gpt-4 --source FILE                      # single file-sourced model
 
 dial-cli model get models/public/example-chat-model -o yaml # full body, secrets masked
 dial-cli role get roles/platform/example-user
@@ -396,13 +403,13 @@ dial-cli apply -f manifests/base/ --dry-run
 dial-cli model delete models/public/example-chat-model
 dial-cli model delete models/public/example-chat-model --if-match "<etag>"
 dial-cli role delete roles/platform/example-user
-dial-cli settings reset                                     # release API control
+dial-cli settings delete                                    # release API control (reverts to file/default)
 ```
 
 ### Promote / diff between environments
 
 ```shell
-dial-cli diff --source local --target staging
+dial-cli model diff --source local --target staging
 dial-cli model diff --source local --target staging \
   --name models/public/example-chat-model
 
