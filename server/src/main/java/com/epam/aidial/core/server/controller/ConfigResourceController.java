@@ -81,6 +81,12 @@ public class ConfigResourceController implements Controller {
     private final String bucket;
     private final String path;
 
+    // Cross-pod serialization for admin writes acquires both PUBLIC and PLATFORM bucket locks
+    // via LockService.underBucketLocks — the cross-bucket interleaving prevention from 02-architecture.md §4.4.
+    private static final List<String> ADMIN_BUCKET_LOCATIONS = List.of(
+            ResourceDescriptor.PUBLIC_LOCATION,
+            ResourceDescriptor.PLATFORM_LOCATION);
+
     public ConfigResourceController(ProxyContext context,
                                     ConfigAuthorizationService authorizationService,
                                     MergedConfigStore mergedConfigStore,
@@ -378,7 +384,7 @@ public class ConfigResourceController implements Controller {
             GlobalSettings settings = treeToEntity(requestNode, GlobalSettings.class);
             String blobBody = serializeForBlob(settings);
             String author = context.getUserDisplayName();
-            return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
+            return taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
                 // RFC 7232 conditional headers must be honored on the singleton too: read prior
                 // metadata, validate If-None-Match/If-Match, then persist with ANY so the blob
                 // layer doesn't re-validate against a stale snapshot.
@@ -406,7 +412,7 @@ public class ConfigResourceController implements Controller {
                 ResourceDescriptor.PLATFORM_LOCATION, SETTINGS_SINGLETON_NAME);
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
 
-        taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
+        taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
             // Idempotent on bare DELETE — deleteResource returns false when the blob is absent and
             // both outcomes collapse to 204 since the post-state (no API blob) is identical.
             // If-Match passes through to deleteResource which throws 412 on mismatch.
@@ -436,7 +442,7 @@ public class ConfigResourceController implements Controller {
 
         context.getRequest().body().compose(body -> {
             JsonNode requestNode = parseJsonBody(body);
-            return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
+            return taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
                 // The admin-write lock alone serializes all writes to admin-only types
                 // cluster-wide (these types are never written by non-admin paths), so the
                 // per-resource lock is redundant here. See 02-architecture.md §4.4.
@@ -537,7 +543,7 @@ public class ConfigResourceController implements Controller {
         ResourceDescriptor descriptor = spec.descriptor();
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
 
-        taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
+        taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
             // Pre-read + delete must run under the same lock so the secret extracted for
             // apiKeyStore.removeKey matches the secret in the blob being deleted (no race
             // with a concurrent PUT swapping the key). The admin-write lock alone provides

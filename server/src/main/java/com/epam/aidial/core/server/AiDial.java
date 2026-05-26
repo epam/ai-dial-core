@@ -207,7 +207,7 @@ public class AiDial {
                     .getBoolean("softValidation", false);
             MergedConfigStore mergedConfigStore = new MergedConfigStore(
                     vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                    secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId);
+                    secretFieldProcessor, onInvalidEntity, softValidation, podId);
             FileConfigStore fileConfigStore = new FileConfigStore(
                     vertx, settings("config"), null,
                     List.of(cfg -> mergedConfigStore.requestRebuild()));
