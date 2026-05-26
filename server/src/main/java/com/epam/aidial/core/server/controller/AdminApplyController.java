@@ -468,7 +468,8 @@ public class AdminApplyController {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.APPLICATION, ResourceDescriptor.PUBLIC_BUCKET,
                 ResourceDescriptor.PUBLIC_LOCATION, entry.name());
-        applicationService.putApplication(descriptor, EtagHeader.ANY, null, application);
+        // Bulk admin apply is always admin context — preserve forwardAuthToken if the manifest set it.
+        applicationService.putApplication(descriptor, EtagHeader.ANY, null, application, true);
         return new EntityResult(id, "applied", null);
     }
 
@@ -477,7 +478,7 @@ public class AdminApplyController {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.TOOL_SET, ResourceDescriptor.PUBLIC_BUCKET,
                 ResourceDescriptor.PUBLIC_LOCATION, entry.name());
-        toolSetService.putToolSet(descriptor, EtagHeader.ANY, null, toolSet);
+        toolSetService.putToolSet(descriptor, EtagHeader.ANY, null, toolSet, true);
         return new EntityResult(id, "applied", null);
     }
 

@@ -14,6 +14,8 @@ Effective permissions:
 
 **Admin has no access to user buckets** — locked by design, out of scope for this proposal. Admin management of shared `files` / `prompts` / `conversations` targets `public/` instances only; user-owned instances remain owner-managed.
 
+**`forwardAuthToken` admin-only write (slice U.3).** `Application.forwardAuthToken` / `ToolSet.forwardAuthToken` is stripped to `false` by default on every write — pre-existing security policy. Slice U.3 allows admin writes to `public/` (per-entity `PUT` + bulk `apply`) to preserve `forwardAuthToken: true` when supplied. User-bucket writes, publication-approval re-writes, and non-admin writes continue to strip.
+
 A static `(entityType, bucket)` allowlist (`models → public`, `keys → platform`, etc.) rejects structurally-permitted-but-semantically-invalid combinations (e.g. `GET /v1/keys/public/foo`) with `404 Not Found` — same response shape as a genuinely-missing entity so unauthenticated probes can't distinguish the two.
 
 ### File-config inspection surface
