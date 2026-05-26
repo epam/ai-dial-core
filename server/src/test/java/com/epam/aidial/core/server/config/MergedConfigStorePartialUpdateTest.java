@@ -10,12 +10,10 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
-import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import io.vertx.core.Vertx;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -27,7 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -35,8 +32,6 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -60,14 +55,6 @@ public class MergedConfigStorePartialUpdateTest {
     private SecretFieldProcessor secretFieldProcessor;
     @Mock
     private FileConfigStore fileConfigStore;
-    @Mock
-    private LockService lockService;
-
-    @BeforeEach
-    public void setUpLockService() {
-        lenient().when(lockService.underBucketLocks(any(), any()))
-                .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
-    }
 
     @Test
     public void interceptorDeleteCascadesToModelInvalidEntities() {
@@ -210,7 +197,7 @@ public class MergedConfigStorePartialUpdateTest {
         when(fileConfigStore.get()).thenReturn(seeded);
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, onInvalidEntity);
+                secretFieldProcessor, onInvalidEntity);
         store.init(fileConfigStore);
         return store;
     }

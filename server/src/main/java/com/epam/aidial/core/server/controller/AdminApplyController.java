@@ -85,6 +85,12 @@ public class AdminApplyController {
     private final ToolSetService toolSetService;
     private final LockService lockService;
 
+    // Cross-pod serialization for admin writes acquires both PUBLIC and PLATFORM bucket locks
+    // via LockService.underBucketLocks — the cross-bucket interleaving prevention from 02-architecture.md §4.4.
+    private static final List<String> ADMIN_BUCKET_LOCATIONS = List.of(
+            ResourceDescriptor.PUBLIC_LOCATION,
+            ResourceDescriptor.PLATFORM_LOCATION);
+
     public AdminApplyController(ProxyContext context,
                                 ConfigAuthorizationService authorizationService,
                                 MergedConfigStore mergedConfigStore,
@@ -165,7 +171,7 @@ public class AdminApplyController {
             entries.add(new ManifestEntry(kind, name, spec));
         }
 
-        taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS,
+        taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS,
                 () -> applyBatch(precheck, entries)))
                 .onSuccess(result -> context.respond(result.status(), result.body()))
                 .onFailure(error -> {
