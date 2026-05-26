@@ -4,9 +4,11 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
+import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -14,10 +16,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -38,12 +42,22 @@ public class MergedConfigStoreTest {
     private SecretFieldProcessor secretFieldProcessor;
     @Mock
     private FileConfigStore fileConfigStore;
+    @Mock
+    private LockService lockService;
+
+    @BeforeEach
+    public void setUpLockService() {
+        // Pass-through mock: invoke the supplied action without any actual locking. Real distributed
+        // serialization is covered by integration tests; these unit tests assert orthogonal logic.
+        lenient().when(lockService.underBucketLocks(any(), any()))
+                .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
+    }
 
     @Test
     public void testRequestRebuildIsNoOpBeforeInit() {
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, MergedConfigStore.MODE_ABORT);
+                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT);
 
         store.requestRebuild();
         store.requestRebuild();
@@ -60,7 +74,7 @@ public class MergedConfigStoreTest {
 
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, MergedConfigStore.MODE_ABORT);
+                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT);
         store.init(fileConfigStore);
 
         store.requestRebuild();
@@ -140,7 +154,7 @@ public class MergedConfigStoreTest {
     private Consumer<ResourceEvent> registerAndCaptureListener(String thisPodId) {
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, MergedConfigStore.MODE_ABORT, false, thisPodId);
+                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT, false, thisPodId);
         store.init(fileConfigStore);
 
         ArgumentCaptor<Consumer<ResourceEvent>> captor = ArgumentCaptor.forClass(Consumer.class);

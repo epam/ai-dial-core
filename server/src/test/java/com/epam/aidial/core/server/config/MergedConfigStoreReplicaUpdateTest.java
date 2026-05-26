@@ -10,8 +10,10 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.Vertx;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -25,6 +27,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -33,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -62,6 +66,14 @@ public class MergedConfigStoreReplicaUpdateTest {
     private SecretFieldProcessor secretFieldProcessor;
     @Mock
     private FileConfigStore fileConfigStore;
+    @Mock
+    private LockService lockService;
+
+    @BeforeEach
+    public void setUpLockService() {
+        lenient().when(lockService.underBucketLocks(any(), any()))
+                .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
+    }
 
     @Test
     public void selfPodEventIsFiltered() {
@@ -227,7 +239,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         when(fileConfigStore.get()).thenReturn(seeded);
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, onInvalidEntity, false, POD_ID);
+                secretFieldProcessor, lockService, onInvalidEntity, false, POD_ID);
         store.init(fileConfigStore);
         return store;
     }
