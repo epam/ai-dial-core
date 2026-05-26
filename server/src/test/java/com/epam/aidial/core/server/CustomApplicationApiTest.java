@@ -596,7 +596,6 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                  "methods" : [ "DELETE", "POST", "PUT" ],
                                  "upstreams" : [ {
                                    "endpoint" : "http://localhost:4848",
-                                   "extraData" : null,
                                    "weight" : 1,
                                    "tier" : 0
                                  } ],
@@ -766,7 +765,6 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "methods" : [ "DELETE", "POST", "PUT" ],
                                 "upstreams" : [ {
                                   "endpoint" : "http://localhost:4848",
-                                  "extraData" : null,
                                   "weight" : 1,
                                   "tier" : 0
                                 } ],
@@ -1329,7 +1327,6 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                          "methods" : [ "POST" ],
                          "upstreams" : [ {
                            "endpoint" : "http://localhost:4848",
-                           "extraData" : null,
                            "weight" : 1,
                            "tier" : 0
                          } ],

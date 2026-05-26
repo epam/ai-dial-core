@@ -31,7 +31,6 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -165,29 +164,26 @@ public class ConfigResourceController implements Controller {
     private Future<?> handleGet() throws JsonProcessingException {
         Config config = context.getConfig();
         boolean admin = authorizationService.isAdmin(context);
-        boolean revealSecrets = "true".equals(context.getRequest().getParam("reveal_secrets"));
-        if (revealSecrets && !authorizationService.isSecurityAdmin(context)) {
-            context.respond(HttpStatus.FORBIDDEN, "reveal_secrets requires security-admin role");
-            return Future.succeededFuture();
-        }
         // Per-entity GET is blob-only (slice U.1): only canonical-ID lookups resolve here.
         // File-sourced entries are inspected via /v1/admin/config/file/{type}[/{name}].
+        // Slice U.4: secret fields drop on response via @JsonProperty(WRITE_ONLY) — there is no
+        // ?reveal_secrets=true reveal flow and no security-admin tier.
         return switch (resourceType()) {
             case MODEL -> handleSingleGet(
                     config.getModels(), ResourceTypes.MODEL,
-                    (key, model) -> projectItem(model, key, revealSecrets));
+                    (key, model) -> projectItem(model, key));
             case INTERCEPTOR -> handleSingleGet(
                     config.getInterceptors(), ResourceTypes.INTERCEPTOR,
-                    (key, interceptor) -> projectItem(interceptor, key, revealSecrets));
+                    (key, interceptor) -> projectItem(interceptor, key));
             case ROLE -> handleSingleGet(
                     config.getRoles(), ResourceTypes.ROLE,
-                    (key, role) -> projectItem(role, key, revealSecrets));
+                    (key, role) -> projectItem(role, key));
             case PROJECT_KEY -> handleSingleGet(
                     config.getKeys(), ResourceTypes.PROJECT_KEY,
-                    (key, value) -> projectItem(value, key, revealSecrets));
+                    (key, value) -> projectItem(value, key));
             case ROUTE -> handleSingleGet(
                     config.getRoutes(), ResourceTypes.ROUTE,
-                    (key, route) -> projectItem(route, key, revealSecrets));
+                    (key, route) -> projectItem(route, key));
             case APP_TYPE_SCHEMA -> handleSchemaGet(config, admin);
             case GLOBAL_SETTINGS -> handleSettingsGet(config);
             default -> respondMethodNotAllowed();
@@ -463,16 +459,6 @@ public class ConfigResourceController implements Controller {
                 // PRECONDITION_FAILED. Bare PUT (no conditional header) passes through and the
                 // write proceeds as an upsert.
                 etag.validate(existing == null ? null : existing.getEtag());
-                // Sentinel rejection runs only on the create arm. On update, a "***" sentinel
-                // in an encrypted field is honored by mergePreservingOmittedSecrets as a signal
-                // to keep the prior ciphertext — see SecretFieldProcessor.
-                if (existing == null && spec.hasEncryptedFields()) {
-                    try {
-                        secretFieldProcessor.validateNoMaskSentinel(requestNode, spec.entityClass());
-                    } catch (IllegalArgumentException e) {
-                        throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
-                    }
-                }
 
                 String blobBody;
                 Key keyEntity = null;
@@ -754,12 +740,11 @@ public class ConfigResourceController implements Controller {
         return body;
     }
 
-    private ObjectNode projectItem(Object item, String name, boolean revealSecrets) {
-        // BLOB_MAPPER pass-through emits stored values verbatim — when in-memory Config holds the
-        // post-rebuild plaintext, this surfaces the secret (security-admin reveal flow). The default
-        // MAPPER applies the masking serializer modifier and emits "***" instead.
-        ObjectMapper mapper = revealSecrets ? ProxyUtil.BLOB_MAPPER : ProxyUtil.MAPPER;
-        ObjectNode node = mapper.valueToTree(item);
+    private ObjectNode projectItem(Object item, String name) {
+        // Default MAPPER respects @JsonProperty(WRITE_ONLY) on @EncryptedField fields, so secrets
+        // simply drop from the response. There is no plaintext-reveal path (slice U.4 retired
+        // the ?reveal_secrets=true / security-admin reveal flow).
+        ObjectNode node = ProxyUtil.MAPPER.valueToTree(item);
         node.put("name", name);
         node.put("status", "valid");
         return node;
@@ -784,10 +769,10 @@ public class ConfigResourceController implements Controller {
         ObjectNode node = ProxyUtil.MAPPER.createObjectNode();
         Class<?> entityClass = entityClassFor(entityType);
         // Invalid blobs may not have been decrypted (decryption_error reason) so the raw payload may
-        // contain ENC[...] envelopes — masking is unconditional here regardless of revealSecrets.
+        // still contain ENC[...] envelopes. Drop encrypted fields entirely so ciphertext never leaks.
         ObjectNode payload = entityClass == null
                 ? (record.getPayload() instanceof ObjectNode raw ? raw.deepCopy() : null)
-                : SecretFieldProcessor.maskInPayload(record.getPayload(), entityClass);
+                : SecretFieldProcessor.stripEncryptedFields(record.getPayload(), entityClass);
         if (payload != null) {
             node.setAll(payload);
         }

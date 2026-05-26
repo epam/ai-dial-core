@@ -20,12 +20,10 @@ A static `(entityType, bucket)` allowlist (`models → public`, `keys → platfo
 
 ### File-config inspection surface
 
-The per-entity Configuration API (`/v1/{type}/{bucket}/{name}`) is blob-only — file-sourced entries from `aidial.config.json` are not addressable there. Operators who need to inspect file-sourced configuration use a separate read-only surface: `GET /v1/admin/config/file/{type}` and `GET /v1/admin/config/file/{type}/{name}`. Authz:
+The per-entity Configuration API (`/v1/{type}/{bucket}/{name}`) is blob-only — file-sourced entries from `aidial.config.json` are not addressable there. Operators who need to inspect file-sourced configuration use a separate read-only surface: `GET /v1/admin/config/file/{type}` and `GET /v1/admin/config/file/{type}/{name}`. Authz (post-U.4):
 
 - **All types except `keys`** — admin role, same gate as the rest of `/v1/admin/*`.
-- **`keys`** — **security-admin role required**. Non-security-admin callers receive `403`.
-
-The `keys` carve-out is locked because file-sourced `Config.keys` uses the legacy format where the map key *equals the secret value* (OQ-12 — kept permanently dual-format so existing customer config files are not broken). Listing or addressing those entries via URL therefore exposes secrets to anyone who can read the response — admin role alone is not enough. Security-admin is the same operator-vetted tier already gating `?reveal_secrets=true` for plaintext secret reads (see *Secrets at rest* below); reusing it keeps the secret-exposure surface coherent. No `PUT` / `DELETE` on file entries — `aidial.config.json` remains the operator-managed source of truth.
+- **`keys`** — **denied for every caller**, including admin. File-sourced `Config.keys` uses the legacy format where the map key *equals the secret value* (OQ-12), so the names themselves are secret-equivalent. Slice U.4 retired the `security-admin` tier that previously distinguished "may read secret-equivalent names" from plain admin; the surface denies `keys` unconditionally. Operators with strict need read `aidial.config.json` directly off the deployment. No `PUT` / `DELETE` on file entries — the config file remains the operator-managed source of truth.
 
 ### Public vs Owner views
 
@@ -47,22 +45,21 @@ API-managed entities store secret fields encrypted via the existing `CredentialE
 - **No new infrastructure.** This reuses crypto DIAL Core already runs for `clientSecret`, `codeVerifier`, and other operationally-sensitive fields today.
 - **Field-level, not document-level.** Fields are tagged with `@EncryptedField` (`Key.key`, `Upstream.key`, `Upstream.extraData`). The annotation is the gate; a field without it is never encrypted. Toolset OAuth credentials (`ResourceAuthSettings.clientSecret` and `codeVerifier`) are encrypted through the existing bespoke `ResourceAuthSettingsEncryptionService` path and follow the same masking and preserve-on-omit contract.
 
-**API write-only by default:**
+**API write-only by default (post-U.4):**
 
 | Operation | Behavior |
 |---|---|
-| `GET` *(and future `export` — deferred per Defer.1)* | Secret value masked as `"***"` |
-| `PUT … If-None-Match: *` (create — field absent / `null`) | Stored as `null` |
-| `PUT … If-None-Match: *` (create — field with `"***"`) | Rejected `400` — the mask sentinel is not a valid create-time secret |
-| `PUT … If-None-Match: *` (create — real value) | Encrypted and stored |
-| `PUT` (update — field absent / `null` / `"***"`) | **Preserve-on-omit** — existing ciphertext kept |
-| `PUT` (update — real value) | Encrypted and stored |
+| `GET` | Secret field absent from the response (`@JsonProperty(WRITE_ONLY)` — no `"***"` sentinel, no plaintext-reveal path). |
+| `PUT` (create — field absent / `null`) | Stored as `null`. |
+| `PUT` (create — real value, including literal `"***"`) | Encrypted and stored. The mask sentinel is no longer a special-cased rejection. |
+| `PUT` (update — field absent / `null`) | **Preserve-on-omit** — existing ciphertext kept. |
+| `PUT` (update — real value) | Encrypted and stored. |
 | `promote` | Secrets skipped — set per environment |
 | `validate` | Secret fields ignored |
 
 Preserve-on-omit is server-side behavior, not a CLI ergonomic — every client (CLI, Admin Backend, MCP, direct curl) gets it for free.
 
-**Optional reveal** — operators with a separate `security-admin` role can request plaintext via `?reveal_secrets=true`. If the role isn't configured on the environment, the feature is simply unavailable. The same `security-admin` tier gates the file-config `/keys` endpoints (`/v1/admin/config/file/keys[/...]`) — see *File-config inspection surface* above.
+**Reveal flow retired.** Slice U.4 (2026-05-25) postpones the `?reveal_secrets=true` query parameter and the `security-admin` role per DIAL-team review-call decision. There is no plaintext-read path on the API in the MVP. Operators inspect secret values via the underlying KMS / blob layer. The design draft (full §2.6) is preserved for re-introduction in a later phase.
 
 **Backward compatibility with config files** — file-sourced entities continue to carry plaintext secrets. `MergedConfigStore` transparently handles four formats: plaintext (file/dev), `ENC[...]` (this proposal), `${SECRET:...}` (future vault references — Phase 5+), and the existing bare-Base64 `ResourceAuthSettings` payloads on toolsets.
 

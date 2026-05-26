@@ -1062,7 +1062,6 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                           "methods" : [ "DELETE", "POST", "PUT" ],
                           "upstreams" : [ {
                             "endpoint" : "http://localhost:4848",
-                            "extraData" : null,
                             "weight" : 1,
                             "tier" : 0
                           } ],

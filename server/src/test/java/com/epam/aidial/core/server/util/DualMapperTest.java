@@ -10,19 +10,17 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Verifies the dual-mapper invariants for slice 2S.10:
- * {@link ProxyUtil#MAPPER} masks {@code @EncryptedField} values as {@code "***"} (and preserves
- * {@code @JsonProperty(WRITE_ONLY)} for null values), while {@link ProxyUtil#BLOB_MAPPER} emits
- * the raw value verbatim — including {@code ENC[...]} envelopes round-tripped through blob
- * storage.
+ * Verifies the dual-mapper invariants after slice U.4 retired the {@code "***"} masking sentinel:
+ * {@link ProxyUtil#MAPPER} drops {@code @EncryptedField} fields on serialization (via
+ * {@code @JsonProperty(WRITE_ONLY)}), and {@link ProxyUtil#BLOB_MAPPER} emits the raw value
+ * verbatim — including {@code ENC[...]} envelopes round-tripped through blob storage.
  */
 class DualMapperTest {
 
     @Test
-    void apiMapperMasksKeyKey() throws Exception {
+    void apiMapperDropsKeyKey() throws Exception {
         Key k = new Key();
         k.setKey("plain-secret");
         k.setProject("p");
@@ -30,12 +28,12 @@ class DualMapperTest {
         String json = ProxyUtil.MAPPER.writeValueAsString(k);
         JsonNode node = ProxyUtil.MAPPER.readTree(json);
 
-        assertEquals("***", node.get("key").asText());
+        assertFalse(node.has("key"), () -> "key must be absent on response: " + json);
         assertEquals("p", node.get("project").asText());
     }
 
     @Test
-    void apiMapperMasksUpstreamKeyAndExtraData() throws Exception {
+    void apiMapperDropsUpstreamKeyAndExtraData() throws Exception {
         Upstream up = new Upstream();
         up.setEndpoint("http://x");
         up.setKey("plain-key");
@@ -45,14 +43,12 @@ class DualMapperTest {
         JsonNode node = ProxyUtil.MAPPER.readTree(json);
 
         assertEquals("http://x", node.get("endpoint").asText());
-        assertEquals("***", node.get("key").asText());
-        assertEquals("***", node.get("extraData").asText());
+        assertFalse(node.has("key"), () -> "key must be absent: " + json);
+        assertFalse(node.has("extraData"), () -> "extraData must be absent: " + json);
     }
 
     @Test
-    void apiMapperPreservesWriteOnlyForNullKey() throws Exception {
-        // Upstream.key carries @JsonProperty(WRITE_ONLY); when null, the masking modifier
-        // mirrors the WRITE_ONLY shape and skips emission entirely.
+    void apiMapperDropsNullSecrets() throws Exception {
         Upstream up = new Upstream();
         up.setEndpoint("http://x");
 
@@ -60,19 +56,7 @@ class DualMapperTest {
         JsonNode node = ProxyUtil.MAPPER.readTree(json);
 
         assertFalse(node.has("key"), () -> "key must be absent when null: " + json);
-    }
-
-    @Test
-    void apiMapperEmitsNullForUnsetExtraData() throws Exception {
-        // Upstream.extraData has no @JsonProperty(WRITE_ONLY), so null serializes as null.
-        Upstream up = new Upstream();
-        up.setEndpoint("http://x");
-
-        String json = ProxyUtil.MAPPER.writeValueAsString(up);
-        JsonNode node = ProxyUtil.MAPPER.readTree(json);
-
-        assertTrue(node.has("extraData"));
-        assertTrue(node.get("extraData").isNull());
+        assertFalse(node.has("extraData"), () -> "extraData must be absent when null: " + json);
     }
 
     @Test
@@ -104,7 +88,7 @@ class DualMapperTest {
     }
 
     @Test
-    void apiMapperMasksUpstreamKeysInsideModel() throws Exception {
+    void apiMapperDropsUpstreamSecretsInsideModel() throws Exception {
         Upstream up = new Upstream();
         up.setEndpoint("http://x");
         up.setKey("plain");
@@ -116,7 +100,7 @@ class DualMapperTest {
         JsonNode node = ProxyUtil.MAPPER.readTree(json);
         JsonNode upstream = node.get("upstreams").get(0);
 
-        assertEquals("***", upstream.get("key").asText());
-        assertEquals("***", upstream.get("extraData").asText());
+        assertFalse(upstream.has("key"), () -> "upstream key must be absent: " + upstream);
+        assertFalse(upstream.has("extraData"), () -> "upstream extraData must be absent: " + upstream);
     }
 }

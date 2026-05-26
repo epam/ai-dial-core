@@ -1,17 +1,8 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.config.GlobalSettings;
-import com.epam.aidial.core.config.Interceptor;
-import com.epam.aidial.core.config.Key;
-import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.Role;
-import com.epam.aidial.core.config.Route;
-import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
-import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -43,18 +34,15 @@ public class AdminValidateController implements Controller {
     private final ConfigAuthorizationService authorizationService;
     private final MergedConfigStore mergedConfigStore;
     private final AsyncTaskExecutor taskExecutor;
-    private final SecretFieldProcessor secretFieldProcessor;
 
     public AdminValidateController(ProxyContext context,
                                    ConfigAuthorizationService authorizationService,
                                    MergedConfigStore mergedConfigStore,
-                                   AsyncTaskExecutor taskExecutor,
-                                   SecretFieldProcessor secretFieldProcessor) {
+                                   AsyncTaskExecutor taskExecutor) {
         this.context = context;
         this.authorizationService = authorizationService;
         this.mergedConfigStore = mergedConfigStore;
         this.taskExecutor = taskExecutor;
-        this.secretFieldProcessor = secretFieldProcessor;
     }
 
     @Override
@@ -152,8 +140,6 @@ public class AdminValidateController implements Controller {
                         AdminApplyController.validateOnly(entry, scratch, softValidation);
                 if (!"valid".equals(validation.status())) {
                     error = validation.error();
-                } else {
-                    error = sentinelCheck(entry);
                 }
             }
             if (error == null) {
@@ -177,43 +163,6 @@ public class AdminValidateController implements Controller {
             return buildValidateResponse(HttpStatus.UNPROCESSABLE_ENTITY, finalResults);
         }
         return buildValidateResponse(HttpStatus.OK, results);
-    }
-
-    /**
-     * Mask-sentinel ({@code "***"}) check on the spec node. Apply does not perform this check
-     * (encryption-on-write masks for response, not for input rejection); validate does, because
-     * validate's whole purpose is catch-all client feedback — including "you're echoing a
-     * masked secret back."
-     */
-    private String sentinelCheck(AdminApplyController.ManifestEntry entry) {
-        if (entry.spec() == null) {
-            return null;
-        }
-        Class<?> entityClass = specClass(entry.kind());
-        if (entityClass == null) {
-            return null;
-        }
-        try {
-            secretFieldProcessor.validateNoMaskSentinel(entry.spec(), entityClass);
-            return null;
-        } catch (IllegalArgumentException e) {
-            return e.getMessage();
-        }
-    }
-
-    private static Class<?> specClass(String kind) {
-        return switch (kind) {
-            case "Model" -> Model.class;
-            case "Application" -> Application.class;
-            case "ToolSet" -> ToolSet.class;
-            case "Interceptor" -> Interceptor.class;
-            case "Role" -> Role.class;
-            case "Route" -> Route.class;
-            case "Key" -> Key.class;
-            case "Settings" -> GlobalSettings.class;
-            // Schema spec is a free-form JsonNode; unknown kinds have no typed class.
-            default -> null;
-        };
     }
 
     private ValidateResponse buildValidateResponse(HttpStatus status,

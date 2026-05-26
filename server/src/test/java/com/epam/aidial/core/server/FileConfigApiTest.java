@@ -14,9 +14,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * HTTP integration tests for slice U.1: the {@code /v1/admin/config/file/{type}[/{name}]}
  * read-only surface for file-sourced configuration entries.
  *
- * <p>Authorization: admin role for every supported type EXCEPT {@code keys}, which requires
- * the security-admin tier — file-sourced {@code Config.keys} keeps the legacy map-key-as-secret
- * format per OQ-12, so even leaking key names via URL/listing exposes secrets.
+ * <p>Authorization (post-U.4): admin role for every supported type EXCEPT {@code keys}, which is
+ * denied for every caller — file-sourced {@code Config.keys} keeps the legacy map-key-as-secret
+ * format per OQ-12, and the security-admin tier that previously gated the carve-out has been
+ * retired. Operators with strict need read {@code aidial.config.json} directly.
  */
 public class FileConfigApiTest extends ResourceBaseTest {
 
@@ -91,76 +92,17 @@ public class FileConfigApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testKeysRequireSecurityAdmin() {
-        // Plain admin is rejected — file keys map keys equal secrets per OQ-12.
+    void testKeysAlwaysForbiddenOnFileConfigSurface() {
+        // U.4: the file-config /keys endpoint is denied for every caller, including admin. File map
+        // keys equal secrets per OQ-12; the security-admin tier that previously distinguished
+        // "may read secret-equivalent names" from plain admin has been retired. Operators with
+        // strict need read aidial.config.json directly off the deployment.
         verify(send(HttpMethod.GET, "/v1/admin/config/file/keys", null, "",
                 "authorization", "admin"), 403);
         verify(send(HttpMethod.GET, "/v1/admin/config/file/keys/proxyKey1", null, "",
                 "authorization", "admin"), 403);
-    }
-
-    @Test
-    @SneakyThrows
-    void testKeysListAllowedForSecurityAdmin() {
-        Response response = send(HttpMethod.GET, "/v1/admin/config/file/keys", null, "",
-                "authorization", "security-admin");
-        verify(response, 200);
-        JsonNode items = ProxyUtil.MAPPER.readTree(response.body()).get("items");
-        assertTrue(items.isArray() && !items.isEmpty(),
-                () -> "Expected non-empty file keys listing: " + response.body());
-        // Regression guard on the OQ-12 security property: file-sourced keys keep the legacy
-        // map-key-as-secret format, so "name" in this listing IS the plaintext secret. The
-        // security-admin gate above is what protects it. If the listing is ever changed to
-        // sanitize the name (e.g., emit a digest or opaque id), this assertion must change in
-        // lockstep — silent drift in either direction would be a security-relevant regression.
-        boolean foundPlaintextKeyName = false;
-        for (JsonNode item : items) {
-            if ("proxyKey1".equals(item.get("name").asText())) {
-                foundPlaintextKeyName = true;
-                break;
-            }
-        }
-        assertTrue(foundPlaintextKeyName,
-                () -> "Expected file map key 'proxyKey1' (plaintext secret) in listing: " + response.body());
-    }
-
-    @Test
-    @SneakyThrows
-    void testKeysGetAllowedForSecurityAdminAndSecretMasked() {
-        Response response = send(HttpMethod.GET, "/v1/admin/config/file/keys/proxyKey1", null, "",
-                "authorization", "security-admin");
-        verify(response, 200);
-        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals("proxyKey1", body.get("name").asText());
-        assertEquals("valid", body.get("status").asText());
-        assertEquals("***", body.get("key").asText(),
-                () -> "Secret must be masked without reveal_secrets: " + response.body());
-    }
-
-    @Test
-    @SneakyThrows
-    void testKeysGetRevealSecretsUnmasksForSecurityAdmin() {
-        // ?reveal_secrets=true switches to BLOB_MAPPER, which surfaces the in-memory plaintext value.
-        // For file-sourced keys (map-key-as-secret per OQ-12), this is the map key itself.
-        Response response = send(HttpMethod.GET, "/v1/admin/config/file/keys/proxyKey1",
-                "reveal_secrets=true", "", "authorization", "security-admin");
-        verify(response, 200);
-        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals("proxyKey1", body.get("name").asText());
-        // The secret is masked or unmasked depending on the in-memory Key.key value populated by
-        // ConfigPostProcessor — at minimum it must NOT be the masking sentinel "***".
-        assertFalse("***".equals(body.get("key").asText()),
-                () -> "Secret must be unmasked with reveal_secrets=true: " + response.body());
-    }
-
-    @Test
-    void testRevealSecretsRequiresSecurityAdmin() {
-        // Plain admin asking for reveal_secrets gets 403 — same gate that protects per-entity GET.
-        // For the keys path the security-admin check fires first (keys requires security-admin),
-        // so use models to exercise the reveal_secrets gate independently.
-        Response response = send(HttpMethod.GET, "/v1/admin/config/file/models/test-model-v1",
-                "reveal_secrets=true", "", "authorization", "admin");
-        verify(response, 403);
+        verify(send(HttpMethod.GET, "/v1/admin/config/file/keys", null, "",
+                "authorization", "user"), 403);
     }
 
     @Test

@@ -46,7 +46,6 @@ public class AccessService {
     private final ShareService shareService;
     private final RuleService ruleService;
     private final List<Rule> adminRules;
-    private final List<Rule> securityAdminRules;
 
     private final List<String> createCodeAppRoles;
 
@@ -74,7 +73,6 @@ public class AccessService {
         this.ruleService = ruleService;
         this.applicationSchemaService = applicationSchemaService;
         this.adminRules = adminRules(settings);
-        this.securityAdminRules = securityAdminRules(settings);
         this.createCodeAppRoles = getCreateCodeAppRoles(settings);
     }
 
@@ -382,16 +380,6 @@ public class AccessService {
     }
 
     /**
-     * Returns {@code true} when the caller carries the security-admin role used to gate
-     * {@code ?reveal_secrets=true} reveals on Configuration API reads. Mirrors the {@code hasAdminAccess}
-     * shape — apps (per-request keys) cannot reveal regardless of the role tag they carry.
-     */
-    public boolean hasSecurityAdminAccess(ProxyContext context) {
-        return context.getApiKeyData().getPerRequestKey() == null
-                && RuleMatcher.match(context, securityAdminRules);
-    }
-
-    /**
      * Returns {@code true} when {@code bucket} equals the caller's encrypted initiator bucket.
      * Returns {@code false} (does not throw) when no initiator can be resolved — that case is
      * treated as "not the owner" so the surrounding authz dispatch produces 403 rather than 500.
@@ -438,19 +426,6 @@ public class AccessService {
     private static List<Rule> adminRules(JsonObject settings) {
         String rules = settings.getJsonObject("admin").getJsonArray("rules").toString();
         List<Rule> list = ProxyUtil.convertToObject(rules, Rule.LIST_TYPE);
-        return (list == null) ? List.of() : list;
-    }
-
-    private static List<Rule> securityAdminRules(JsonObject settings) {
-        JsonObject securityAdmin = settings.getJsonObject("securityAdmin");
-        if (securityAdmin == null) {
-            return List.of();
-        }
-        JsonArray rules = securityAdmin.getJsonArray("rules");
-        if (rules == null) {
-            return List.of();
-        }
-        List<Rule> list = ProxyUtil.convertToObject(rules.toString(), Rule.LIST_TYPE);
         return (list == null) ? List.of() : list;
     }
 

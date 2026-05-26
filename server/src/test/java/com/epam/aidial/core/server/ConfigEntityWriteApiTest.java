@@ -48,14 +48,6 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
             }
             """;
 
-    private static final String KEY_BODY_SENTINEL = """
-            {
-              "key": "***",
-              "project": "projA",
-              "roles": ["admin"]
-            }
-            """;
-
     private static final String KEY_BODY_NO_KEY = """
             {
               "project": "projA",
@@ -263,14 +255,6 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testKeyPut400OnSentinelKey() {
-        Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-sentinel",
-                null, KEY_BODY_SENTINEL, "authorization", "admin", "If-None-Match", "*");
-        verify(put, 400);
-        assertTrue(put.body().contains("***"), () -> "Expected sentinel mention in error: " + put.body());
-    }
-
-    @Test
     void testKeyPut400OnBlankKey() {
         Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-blank",
                 null, KEY_BODY_NO_KEY, "authorization", "admin", "If-None-Match", "*");
@@ -334,9 +318,8 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
                 body, "authorization", "admin", "If-None-Match", "*"), 200);
 
         // PUT body omits "key": a 200 response proves preserve-on-omit pulled the encrypted secret
-        // from the existing blob — otherwise the post-merge blank-key check would 400. A reveal-
-        // secrets GET would need a dual admin+security-admin fixture (admin to read platform/, plus
-        // security-admin to unmask), which ResourceBaseTest.createClaims doesn't currently produce.
+        // from the existing blob — otherwise the post-merge blank-key check would 400. The secret
+        // value itself is not asserted because U.4 retired the plaintext-reveal path.
         Response put = send(HttpMethod.PUT, "/v1/keys/platform/test-key-preserve", null,
                 KEY_BODY_PROJECT_B_NO_KEY, "authorization", "admin");
         verify(put, 200);

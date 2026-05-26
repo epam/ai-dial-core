@@ -279,58 +279,9 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                 "authorization", "admin"), 404);
     }
 
-    @Test
-    @SneakyThrows
-    void testV07SentinelInModelSpec() {
-        String body = """
-                {
-                  "precheck": false,
-                  "manifests": [
-                    {
-                      "kind": "Model",
-                      "name": "validate-sentinel-model",
-                      "spec": {
-                        "type": "chat",
-                        "upstreams": [
-                          {"endpoint": "http://localhost:7001", "key": "***"}
-                        ]
-                      }
-                    }
-                  ]
-                }
-                """;
-        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
-        verify(response, 200);
-        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
-        assertEquals(1, parsed.get("failed").asInt());
-        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
-        verify(send(HttpMethod.GET, "/v1/models/public/validate-sentinel-model", null, "",
-                "authorization", "admin"), 404);
-    }
-
-    @Test
-    @SneakyThrows
-    void testV08SentinelInKeySpec() {
-        String body = """
-                {
-                  "precheck": false,
-                  "manifests": [
-                    {
-                      "kind": "Key",
-                      "name": "validate-sentinel-key",
-                      "spec": {"key": "***", "project": "EPM-RTC-VALIDATE", "role": "default"}
-                    }
-                  ]
-                }
-                """;
-        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
-        verify(response, 200);
-        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
-        assertEquals(1, parsed.get("failed").asInt());
-        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
-    }
+    // Slice U.4 (2026-05-25) retired the "***" mask sentinel and its rejection-on-validate. A
+    // literal "***" in a spec body is now treated as a real value (re-encrypted on write). The
+    // previous V07/V08 tests asserted the rejection contract and have been removed.
 
     @Test
     @SneakyThrows

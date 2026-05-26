@@ -40,10 +40,11 @@ import javax.annotation.Nullable;
 @UtilityClass
 @Slf4j
 public class ProxyUtil {
+    // Default response mapper. No introspector override here: @JsonProperty(WRITE_ONLY) on every
+    // @EncryptedField is honored, dropping the field from serialized output. BLOB_MAPPER below
+    // overrides to READ_WRITE so the blob-write path can persist the ciphertext.
     public static final JsonMapper MAPPER = JsonMapper.builder()
             .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
-            .annotationIntrospector(new EncryptedFieldAnnotationIntrospector())
-            .addModule(new SimpleModule().setSerializerModifier(new EncryptedFieldMaskModifier()))
             .build();
 
     public static final JsonMapper BLOB_MAPPER = JsonMapper.builder()

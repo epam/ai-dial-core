@@ -11,8 +11,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * HTTP integration tests for slice 1S.3: GET reads on the {@code keys} platform-bucket type.
  *
- * <p>Phase 1 has no {@code ?reveal_secrets=true} surface — the secret value is masked with the
- * locked sentinel {@code "***"} for every read (design 04 §2.5–§2.6, polish round 1).
+ * <p>Slice U.4 (2026-05-25) retired the {@code security-admin} role and the {@code "***"} mask
+ * sentinel. The file-config surface now denies the {@code keys} type to every caller — file map
+ * keys equal secrets (OQ-12), and there is no operator role separating "admin" from "may read
+ * secret-equivalent names." Operators with strict need read {@code aidial.config.json} directly.
  *
  * <p>U.0 (2026-05-20): per-bucket listings live on the sibling {@code /v1/metadata/...} route and
  * are blob-only — file-sourced keys do not appear in metadata listings.
@@ -30,22 +32,12 @@ public class ConfigKeyTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testFileKeyRequiresSecurityAdminOnFileConfigEndpoint() {
-        // U.1: file-config /keys requires security-admin (file map keys equal secrets per OQ-12).
-        Response forbidden = send(HttpMethod.GET, "/v1/admin/config/file/keys/proxyKey1", null, "",
+    void testFileKeysDeniedOnFileConfigEndpoint() {
+        // U.4: file-config /keys denied for every caller (admin or otherwise). File map keys equal
+        // secrets per OQ-12; the security-admin tier that previously gated this carve-out is gone.
+        Response response = send(HttpMethod.GET, "/v1/admin/config/file/keys/proxyKey1", null, "",
                 "authorization", "admin");
-        verify(forbidden, 403);
-
-        Response allowed = send(HttpMethod.GET, "/v1/admin/config/file/keys/proxyKey1", null, "",
-                "authorization", "security-admin");
-        verify(allowed, 200);
-        JsonNode body = ProxyUtil.MAPPER.readTree(allowed.body());
-        assertEquals("proxyKey1", body.get("name").asText());
-        assertEquals("valid", body.get("status").asText());
-        // Secret remains masked under the default response mapper; ?reveal_secrets=true unmasks.
-        assertEquals("***", body.get("key").asText(),
-                () -> "Secret must be masked without reveal_secrets: " + allowed.body());
-        assertEquals("EPM-RTC-GPT", body.get("project").asText());
+        verify(response, 403);
     }
 
     @Test

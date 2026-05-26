@@ -21,7 +21,6 @@ public class SecretFieldProcessor {
     public static final String ENC_PREFIX = "ENC[";
     public static final String ENC_SUFFIX = "]";
     public static final String SECRET_REF_PREFIX = "${SECRET:";
-    public static final String MASK_SENTINEL = "***";
 
     private static final ConcurrentHashMap<Class<?>, List<Field>> FIELDS_CACHE = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Class<?>, Boolean> HAS_ENCRYPTED_FIELD_CACHE = new ConcurrentHashMap<>();
@@ -62,48 +61,26 @@ public class SecretFieldProcessor {
         return value;
     }
 
-    public void validateNoMaskSentinel(JsonNode requestNode, Class<?> entityClass) {
-        if (requestNode == null || !requestNode.isObject()) {
-            return;
-        }
-        for (Field field : declaredFieldsIncludingInherited(entityClass)) {
-            String name = field.getName();
-            if (field.isAnnotationPresent(EncryptedField.class)) {
-                JsonNode child = requestNode.get(name);
-                if (child != null && !child.isNull() && MASK_SENTINEL.equals(child.asText())) {
-                    throw new IllegalArgumentException("Secret field '" + name
-                            + "' contains the mask sentinel '***'. Provide a real secret value or omit the field.");
-                }
-            }
-            Class<?> nested = elementClassWithEncryptedField(field);
-            if (nested != null) {
-                JsonNode arr = requestNode.get(name);
-                if (arr != null && arr.isArray()) {
-                    for (JsonNode item : arr) {
-                        validateNoMaskSentinel(item, nested);
-                    }
-                }
-            }
-        }
-    }
-
-    public static ObjectNode maskInPayload(JsonNode payload, Class<?> entityClass) {
+    /**
+     * Strip every {@link EncryptedField}-annotated value (and any nested array elements that carry
+     * the annotation) from {@code payload}. Used to project invalid-entity payloads on the admin
+     * GET surface — the raw blob may still hold {@code ENC[...]} ciphertext (decryption_error
+     * reason) and dropping the fields entirely keeps ciphertext out of the response.
+     */
+    public static ObjectNode stripEncryptedFields(JsonNode payload, Class<?> entityClass) {
         if (!(payload instanceof ObjectNode object)) {
             return null;
         }
-        ObjectNode masked = object.deepCopy();
-        applyMask(masked, entityClass);
-        return masked;
+        ObjectNode stripped = object.deepCopy();
+        applyStrip(stripped, entityClass);
+        return stripped;
     }
 
-    private static void applyMask(ObjectNode target, Class<?> entityClass) {
+    private static void applyStrip(ObjectNode target, Class<?> entityClass) {
         for (Field field : declaredFieldsIncludingInherited(entityClass)) {
             String name = field.getName();
             if (field.isAnnotationPresent(EncryptedField.class)) {
-                JsonNode current = target.get(name);
-                if (current != null && !current.isNull()) {
-                    target.put(name, MASK_SENTINEL);
-                }
+                target.remove(name);
             }
             Class<?> nestedType = elementClassWithEncryptedField(field);
             if (nestedType != null) {
@@ -111,7 +88,7 @@ public class SecretFieldProcessor {
                 if (arr != null && arr.isArray()) {
                     for (JsonNode item : arr) {
                         if (item instanceof ObjectNode itemObj) {
-                            applyMask(itemObj, nestedType);
+                            applyStrip(itemObj, nestedType);
                         }
                     }
                 }
@@ -138,9 +115,11 @@ public class SecretFieldProcessor {
             String name = field.getName();
             if (field.isAnnotationPresent(EncryptedField.class)) {
                 JsonNode current = target.get(name);
-                boolean omitted = current == null || current.isNull()
-                        || (current.isTextual() && MASK_SENTINEL.equals(current.asText()));
-                if (omitted) {
+                // Preserve-on-omit: a null or absent secret in the request body keeps the prior
+                // ciphertext from the stored blob. Without the retired "***" mask sentinel, only
+                // null / missing signals "omitted" — a literal string in the request is treated as
+                // a real value and re-encrypted.
+                if (current == null || current.isNull()) {
                     JsonNode existing = source.get(name);
                     if (existing != null && !existing.isNull()) {
                         target.set(name, existing.deepCopy());

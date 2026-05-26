@@ -40,10 +40,6 @@ public class FileConfigControllerTest {
     void singleGetReturns404WhenFileConfigNotYetInitialised() {
         when(context.getRequest()).thenReturn(request);
         when(request.method()).thenReturn(HttpMethod.GET);
-        // Stub both auth probes explicitly: this test exercises the "plain admin" branch
-        // (non-key types accept admin OR security-admin), so make isSecurityAdmin=false the
-        // contract under test rather than relying on Mockito's default-false return.
-        when(authorizationService.isSecurityAdmin(context)).thenReturn(false);
         when(authorizationService.isAdmin(context)).thenReturn(true);
         when(mergedConfigStore.getFileSourcedConfig()).thenReturn(null);
 
@@ -59,7 +55,6 @@ public class FileConfigControllerTest {
         // Envelope shape must be {"items":[]} — a bare [] array body would break every client.
         when(context.getRequest()).thenReturn(request);
         when(request.method()).thenReturn(HttpMethod.GET);
-        when(authorizationService.isSecurityAdmin(context)).thenReturn(false);
         when(authorizationService.isAdmin(context)).thenReturn(true);
         when(mergedConfigStore.getFileSourcedConfig()).thenReturn(null);
 

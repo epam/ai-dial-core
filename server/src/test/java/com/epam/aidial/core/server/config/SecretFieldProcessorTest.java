@@ -21,6 +21,7 @@ import java.util.Base64;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -160,34 +161,6 @@ class SecretFieldProcessorTest {
     }
 
     @Test
-    void validateNoMaskSentinel_throwsOnTopLevelMask() throws Exception {
-        ObjectNode node = (ObjectNode) M.readTree("{\"key\": \"***\"}");
-
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> processor.validateNoMaskSentinel(node, Key.class));
-        assertEquals("Secret field 'key' contains the mask sentinel '***'. "
-                + "Provide a real secret value or omit the field.", ex.getMessage());
-    }
-
-    @Test
-    void validateNoMaskSentinel_throwsOnNestedUpstreamMask() throws Exception {
-        ObjectNode node = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"x\",\"key\":\"***\"}]}");
-
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> processor.validateNoMaskSentinel(node, Model.class));
-        assertEquals("Secret field 'key' contains the mask sentinel '***'. "
-                + "Provide a real secret value or omit the field.", ex.getMessage());
-    }
-
-    @Test
-    void validateNoMaskSentinel_acceptsRealValue() throws Exception {
-        ObjectNode node = (ObjectNode) M.readTree("{\"key\": \"real-secret\"}");
-        // No exception expected.
-        processor.validateNoMaskSentinel(node, Key.class);
-    }
-
-    @Test
     void mergePreservingOmittedSecrets_copiesCiphertextWhenAbsent() throws Exception {
         ObjectNode existing = (ObjectNode) M.readTree("{\"key\": \"ENC[abc]\", \"role\": \"r\"}");
         ObjectNode request = (ObjectNode) M.readTree("{\"role\": \"r2\"}");
@@ -199,13 +172,15 @@ class SecretFieldProcessorTest {
     }
 
     @Test
-    void mergePreservingOmittedSecrets_replacesMaskSentinel() throws Exception {
+    void mergePreservingOmittedSecrets_treatsMaskAsLiteralValue() throws Exception {
+        // Slice U.4: the "***" sentinel was retired. A textual "***" in the request body is a real
+        // value (re-encrypted on write), not a signal to preserve. Only null / missing preserves.
         ObjectNode existing = (ObjectNode) M.readTree("{\"key\": \"ENC[abc]\"}");
         ObjectNode request = (ObjectNode) M.readTree("{\"key\": \"***\"}");
 
         ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Key.class);
 
-        assertEquals("ENC[abc]", merged.get("key").asText());
+        assertEquals("***", merged.get("key").asText());
     }
 
     @Test
@@ -227,31 +202,31 @@ class SecretFieldProcessorTest {
     }
 
     @Test
-    void maskInPayload_replacesPlaintextSecretAtTopLevel() throws Exception {
+    void stripEncryptedFields_dropsSecretAtTopLevel() throws Exception {
         ObjectNode payload = (ObjectNode) M.readTree("{\"key\": \"super-secret\", \"role\": \"r\"}");
 
-        ObjectNode masked = SecretFieldProcessor.maskInPayload(payload, Key.class);
+        ObjectNode stripped = SecretFieldProcessor.stripEncryptedFields(payload, Key.class);
 
-        assertEquals("***", masked.get("key").asText());
-        assertEquals("r", masked.get("role").asText());
+        assertFalse(stripped.has("key"), () -> "key must be removed: " + stripped);
+        assertEquals("r", stripped.get("role").asText());
         assertEquals("super-secret", payload.get("key").asText(), "input must not be mutated");
     }
 
     @Test
-    void maskInPayload_recursesIntoUpstreams() throws Exception {
+    void stripEncryptedFields_recursesIntoUpstreams() throws Exception {
         ObjectNode payload = (ObjectNode) M.readTree(
                 "{\"name\":\"m\",\"upstreams\":[{\"endpoint\":\"e\",\"key\":\"sk-leak\",\"extraData\":\"{\\\"region\\\":\\\"us\\\"}\"}]}");
 
-        ObjectNode masked = SecretFieldProcessor.maskInPayload(payload, Model.class);
+        ObjectNode stripped = SecretFieldProcessor.stripEncryptedFields(payload, Model.class);
 
-        ObjectNode up = (ObjectNode) masked.get("upstreams").get(0);
-        assertEquals("***", up.get("key").asText());
-        assertEquals("***", up.get("extraData").asText());
+        ObjectNode up = (ObjectNode) stripped.get("upstreams").get(0);
+        assertFalse(up.has("key"), () -> "upstream key must be removed: " + up);
+        assertFalse(up.has("extraData"), () -> "upstream extraData must be removed: " + up);
         assertEquals("e", up.get("endpoint").asText());
     }
 
     @Test
-    void maskInPayload_returnsNullForNonObject() {
-        assertNull(SecretFieldProcessor.maskInPayload(null, Key.class));
+    void stripEncryptedFields_returnsNullForNonObject() {
+        assertNull(SecretFieldProcessor.stripEncryptedFields(null, Key.class));
     }
 }
