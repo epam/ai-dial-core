@@ -12,11 +12,9 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.http.HttpClientResponse;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import javax.annotation.Nullable;
@@ -39,24 +37,13 @@ import javax.annotation.Nullable;
  * </pre>
  */
 @Slf4j
-@RequiredArgsConstructor
 public class UpstreamRoute {
 
-    private final AsyncTaskExecutor taskExecutor;
-
-    private final UpstreamCacheService upstreamCacheService;
-
     private final TieredBalancer balancer;
-
     /**
      * The maximum number of attempts the route may retry
      */
     private final int maxRetryAttempts;
-
-    @Nullable
-    private final UpstreamCacheContext upstreamCacheContext;
-
-    private final Map<String, Upstream> stickyUpstreams;
 
     /**
      * Current upstream
@@ -69,6 +56,22 @@ public class UpstreamRoute {
     private int attemptCount;
 
     private final Set<Upstream> usedUpstreams = new HashSet<>();
+
+    @Nullable
+    private final UpstreamCacheContext upstreamCacheContext;
+
+    private final UpstreamCacheService upstreamCacheService;
+
+    private final AsyncTaskExecutor taskExecutor;
+
+    public UpstreamRoute(AsyncTaskExecutor taskExecutor, UpstreamCacheService upstreamCacheService,
+                         TieredBalancer balancer, int maxRetryAttempts, UpstreamCacheContext upstreamCacheContext) {
+        this.balancer = balancer;
+        this.maxRetryAttempts = maxRetryAttempts;
+        this.upstreamCacheContext = upstreamCacheContext;
+        this.taskExecutor = taskExecutor;
+        this.upstreamCacheService = upstreamCacheService;
+    }
 
     /**
      * Checks if upstream present (not null) and usage does not exceed max value
@@ -111,10 +114,6 @@ public class UpstreamRoute {
     @Nullable
     public Upstream get() {
         return upstream;
-    }
-
-    public Upstream get(String stickyKey) {
-        return stickyUpstreams.get(stickyKey);
     }
 
     public void fail(HttpStatus status) {

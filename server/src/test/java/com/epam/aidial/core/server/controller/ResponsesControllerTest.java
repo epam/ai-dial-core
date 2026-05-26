@@ -228,7 +228,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0, "endpoint");
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setSourceDeployment("test-deployment");
         apiKeyData.setPerRequestKey(PER_REQUEST_KEY);
@@ -380,7 +380,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0, "endpoint");
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\"}");
@@ -512,7 +512,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0, "endpoint");
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\",\"background\":true}");
@@ -545,7 +545,7 @@ public class ResponsesControllerTest {
         when(proxy.getRateLimiter().limit(context, deployment))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null, (String) null)).thenReturn(upstreamRoute);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
@@ -599,7 +599,7 @@ public class ResponsesControllerTest {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
-        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0, null);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0, "endpoint");
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         String upstreamId = "upstream-resp-stream";
@@ -656,7 +656,7 @@ public class ResponsesControllerTest {
         when(proxy.getRateLimiter().limit(context, deployment))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null, (String) null)).thenReturn(upstreamRoute);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
@@ -705,6 +705,50 @@ public class ResponsesControllerTest {
         String completedEvent = endCaptor.getValue().toString();
         assertTrue(completedEvent.contains(expectedDialId));
         assertFalse(completedEvent.contains(upstreamId));
+    }
+
+    @Test
+    public void testUpstreamWithoutIdRejected(Vertx vertx, VertxTestContext textContext) throws Throwable {
+        Application deployment = new Application();
+        deployment.setName("test");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, 0, 0, null);
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
+
+        when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"model\":\"test\"}")));
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(upstreamRoute.next()).thenReturn(upstream);
+        when(upstreamRoute.get()).thenReturn(upstream);
+        when(context.getRequest()).thenReturn(request);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+        when(context.respond(any(HttpStatus.class), anyString()))
+                .thenAnswer(invocation -> complete(textContext));
+        when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
+        when(proxy.getRateLimiter().limit(context, deployment))
+                .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(proxy.getUpstreamRouteProvider().get(deployment, null, (String) null)).thenReturn(upstreamRoute);
+        when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
+                .thenReturn(deployment);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
+        when(apiKeyStore.invalidatePerRequestApiKey(any())).thenReturn(Future.succeededFuture(Boolean.TRUE));
+        doCallRealMethod().when(context).setDeployment(any());
+        doCallRealMethod().when(context).getDeployment();
+        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).setUpstreamRoute(any());
+        doCallRealMethod().when(context).getUpstreamRoute();
+
+        controller.handle();
+
+        await(textContext);
+
+        verify(context).respond(HttpStatus.SERVICE_UNAVAILABLE, "Upstream is missing required id");
     }
 
     private static Future<?> complete(VertxTestContext textContext) {

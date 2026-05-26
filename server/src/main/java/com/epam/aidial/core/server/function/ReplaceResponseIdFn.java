@@ -60,7 +60,7 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
         Upstream upstream = context.getUpstreamRoute().get();
         ResponseMapping mapping = ResponseMapping.builder()
                 .upstreamResponseId(upstreamId)
-                .upstreamKey(upstream.toStickyKey())
+                .upstreamKey(upstream.getId())
                 .deploymentName(context.getDeployment().getName())
                 .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
                 .build();

@@ -14,18 +14,15 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 /**
  * This class caches load balancers for deployments and routes.
@@ -98,21 +95,15 @@ public class UpstreamRouteProvider {
             context.setEntry(entry);
             context.setPrefixToHash(breakpointContext.prefixToHash());
         }
-        boolean requireStickyUpstreams = StringUtils.isNotBlank(deployment.getResponsesEndpoint());
-        return get(key, upstreams, deployment.getMaxRetryAttempts(), context, requireStickyUpstreams);
+        return get(key, upstreams, deployment.getMaxRetryAttempts(), context);
     }
 
     public UpstreamRoute get(Route route) {
         String key = getKey(route);
-        return get(key, route.getUpstreams(), route.getMaxRetryAttempts(), null, false);
+        return get(key, route.getUpstreams(), route.getMaxRetryAttempts(), null);
     }
 
-    private UpstreamRoute get(
-            String key,
-            List<Upstream> upstreams,
-            int maxRetryAttempts,
-            UpstreamCacheContext context,
-            boolean requireStickyUpstreams) {
+    private UpstreamRoute get(String key, List<Upstream> upstreams, int maxRetryAttempts, UpstreamCacheContext context) {
         BalancerWrapper wrapper = balancers.compute(key, (k, cur) -> {
             BalancerWrapper result;
             if (cur != null && isUpstreamsTheSame(cur.upstreams, upstreams)
@@ -156,18 +147,7 @@ public class UpstreamRouteProvider {
                 log.warn("cached upstream doesn't exist any longer in config: id={}, endpoint={}", cachedId, cachedEndpoint);
             }
         }
-        Map<String, Upstream> stickyUpstreams = requireStickyUpstreams
-                ? collectStickyUpstreams(upstreams)
-                : Map.of();
-
-        return new UpstreamRoute(taskExecutor, upstreamCacheService, wrapper.balancer, result, context, stickyUpstreams);
-    }
-
-    private static Map<String, Upstream> collectStickyUpstreams(List<Upstream> upstreams) {
-        return upstreams.stream()
-                .collect(Collectors.toUnmodifiableMap(
-                        Upstream::toStickyKey,
-                        Function.identity()));
+        return new UpstreamRoute(taskExecutor, upstreamCacheService, wrapper.balancer, result, context);
     }
 
     private List<Upstream> getUpstreams(Deployment deployment, Function<Deployment, String> endpointSupplier) {
@@ -176,9 +156,11 @@ public class UpstreamRouteProvider {
         }
 
         Upstream upstream = new Upstream();
-        upstream.setEndpoint(endpointSupplier.apply(deployment));
+        String endpoint = endpointSupplier.apply(deployment);
+        upstream.setEndpoint(endpoint);
         upstream.setResponsesEndpoint(deployment.getResponsesEndpoint());
         upstream.setKey("whatever");
+        upstream.setId(endpoint);
         return List.of(upstream);
     }
 

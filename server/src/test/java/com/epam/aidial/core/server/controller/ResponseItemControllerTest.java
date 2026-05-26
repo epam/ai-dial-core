@@ -148,8 +148,8 @@ public class ResponseItemControllerTest {
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
-        when(upstreamRoute.get("endpoint")).thenReturn(upstream);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null, "endpoint")).thenReturn(upstreamRoute);
+        when(upstreamRoute.next()).thenReturn(upstream);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
@@ -203,8 +203,8 @@ public class ResponseItemControllerTest {
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
-        when(upstreamRoute.get("endpoint")).thenReturn(upstream);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null, "endpoint")).thenReturn(upstreamRoute);
+        when(upstreamRoute.next()).thenReturn(upstream);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
@@ -250,8 +250,8 @@ public class ResponseItemControllerTest {
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
-        when(upstreamRoute.get("endpoint")).thenReturn(upstream);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null, "endpoint")).thenReturn(upstreamRoute);
+        when(upstreamRoute.next()).thenReturn(upstream);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
@@ -293,8 +293,8 @@ public class ResponseItemControllerTest {
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
-        when(upstreamRoute.get("endpoint")).thenReturn(upstream);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null, "endpoint")).thenReturn(upstreamRoute);
+        when(upstreamRoute.next()).thenReturn(upstream);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
@@ -353,22 +353,26 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
-        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
-        when(upstreamRoute.get("missing-upstream-key")).thenReturn(null);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null, "missing-upstream-key"))
+                .thenThrow(new HttpException(HttpStatus.BAD_REQUEST, "Unknown upstream id missing-upstream-key"));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getUserId()).thenReturn("test-user");
-        when(context.respond(any(HttpStatus.class), anyString())).thenAnswer(invocation -> complete(testContext));
+        when(context.getResponse()).thenReturn(response);
+        when(response.ended()).thenReturn(false);
+        when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> complete(testContext));
 
         controller("dial_test-deployment_y", GET).handle();
 
         await(testContext);
 
-        verify(context).respond(HttpStatus.SERVICE_UNAVAILABLE,
-                "Upstream for response_id is no longer available");
+        verify(context).respond(
+                argThat((Throwable e) -> e instanceof HttpException
+                        && ((HttpException) e).getStatus() == HttpStatus.BAD_REQUEST
+                        && "Unknown upstream id missing-upstream-key".equals(e.getMessage())),
+                anyString());
     }
 
     @Test
@@ -390,8 +394,8 @@ public class ResponseItemControllerTest {
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
-        when(upstreamRoute.get("endpoint")).thenReturn(upstream);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null, "endpoint")).thenReturn(upstreamRoute);
+        when(upstreamRoute.next()).thenReturn(upstream);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
@@ -447,8 +451,8 @@ public class ResponseItemControllerTest {
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getUpstreamRouteProvider().get(deployment, null)).thenReturn(upstreamRoute);
-        when(upstreamRoute.get("endpoint")).thenReturn(upstream);
+        when(proxy.getUpstreamRouteProvider().get(deployment, null, "endpoint")).thenReturn(upstreamRoute);
+        when(upstreamRoute.next()).thenReturn(upstream);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(context.getRequest()).thenReturn(serverRequest);

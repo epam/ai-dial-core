@@ -174,6 +174,11 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     private void sendRequest() {
         if (nextUpstream()) {
+            Upstream upstream = context.getUpstreamRoute().get();
+            if (upstream.getId() == null || upstream.getId().isBlank()) {
+                respond(HttpStatus.SERVICE_UNAVAILABLE, "Upstream is missing required id");
+                return;
+            }
             createProxyRequest(Deployment::getResponsesEndpoint)
                     .onSuccess(this::handleProxyRequest)
                     .onFailure(this::handleProxyConnectionError);
@@ -290,7 +295,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 Upstream upstream = context.getUpstreamRoute().get();
                 ResponseMapping mapping = ResponseMapping.builder()
                         .upstreamResponseId(upstreamId)
-                        .upstreamKey(upstream.toStickyKey())
+                        .upstreamKey(upstream.getId())
                         .deploymentName(context.getDeployment().getName())
                         .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
                         .build();
