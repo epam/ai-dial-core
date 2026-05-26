@@ -1054,18 +1054,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "max_retry_attempts" : 1,
                       "routes" : {
                         "index-search" : {
-                          "name" : null,
-                          "userRoles" : null,
-                          "response" : null,
                           "rewritePath" : true,
                           "paths" : [ "/v1/index(/[^/]+)*$" ],
                           "methods" : [ "DELETE", "POST", "PUT" ],
-                          "upstreams" : [ {
-                            "endpoint" : "http://localhost:4848",
-                            "extraData" : null,
-                            "weight" : 1,
-                            "tier" : 0
-                          } ],
                           "maxRetryAttempts" : 1,
                           "order" : 2147483647,
                           "permissions" : [ ],
