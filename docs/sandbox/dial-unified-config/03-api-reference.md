@@ -50,14 +50,14 @@ PUT    /v1/settings/platform/global                   # Replace global settings 
 DELETE /v1/settings/platform/global                   # Clear the API blob (idempotent, 204)
 
 # Cross-entity operator endpoints — every /v1/admin/* path requires admin role
-# (gated by ConfigAuthorizationService.isAdmin(ctx); 403 otherwise) except /v1/admin/config/file/keys
-# which requires the security-admin tier (see §"File-config inspection surface" below).
+# (gated by ConfigAuthorizationService.isAdmin(ctx); 403 otherwise).
 POST   /v1/admin/apply                                # Apply set of resource manifests (declarative bulk)
 POST   /v1/admin/validate                             # Validate manifests without applying
 
 # File-config inspection (slice U.1, 2026-05-21) — read-only surface for file-sourced entries
-# Authz: admin role for every type EXCEPT keys, which requires security-admin (file Config.keys
-# map keys equal secrets per OQ-12).
+# Authz: admin role for every type EXCEPT keys, which is denied entirely (slice U.4) — file
+# Config.keys map keys equal secrets per OQ-12 and the security-admin tier that previously
+# gated this carve-out has been retired.
 GET    /v1/admin/config/file/{entityType}             # List file-sourced entries of that type
 GET    /v1/admin/config/file/{entityType}/{name}      # Get single file-sourced entry
 
@@ -114,7 +114,7 @@ Validation is performed by `ResourceDescriptorFactory`, which enforces type, buc
 
 **No `source` field on per-entity GET (slice U.1).** The previously-projected `source: "api" | "file" | "default"` field on the singleton GET — and the analogous `source: "api" | "file"` on every other per-entity GET / invalid-entity GET response — is **retired entirely**. The URL itself discloses the source: per-entity URLs (`/v1/{type}/{bucket}/{name}`) reflect the blob; file-config URLs (`/v1/admin/config/file/{type}[/{name}]`) reflect the file. Runtime resolution (`findDeployment`, chat-completion routing, `RateLimiter`, etc.) continues to consume the union via the merged `Config` map — only the operator-facing API surface is single-source. The `ETag` returned via the HTTP header is computed over the response body.
 
-**File-config inspection surface.** Operators inspect file-sourced entries via a dedicated read-only surface — `GET /v1/admin/config/file/{type}` (list) and `GET /v1/admin/config/file/{type}/{name}` (single). Authorization: admin role for every supported type EXCEPT `keys`, which requires the existing security-admin tier — file-sourced `Config.keys` keeps the legacy map-key-as-secret format per [OQ-12](08-open-questions-and-references.md), so leaking key names via URL or listing exposes secrets to anyone with admin role. The `keys` carve-out reuses the same security-admin tier that already gates `?reveal_secrets=true` for plaintext secret reads (see [`04-security-and-audit.md`](04-security-and-audit.md) §2.6). For the singleton, `GET /v1/admin/config/file/settings/global` returns the file-defined and schema-default values regardless of whether an API blob exists on the per-entity endpoint — this surface is the file-side window, independent of the blob's presence. No `PUT` / `DELETE` on file entries — `aidial.config.json` remains operator-managed; file write workflows continue through the existing config-file mechanism.
+**File-config inspection surface.** Operators inspect file-sourced entries via a dedicated read-only surface — `GET /v1/admin/config/file/{type}` (list) and `GET /v1/admin/config/file/{type}/{name}` (single). Authorization (post-U.4): admin role for every supported type EXCEPT `keys`, which is denied for every caller including admin. File-sourced `Config.keys` keeps the legacy map-key-as-secret format per [OQ-12](08-open-questions-and-references.md), so the names themselves are secret-equivalent. Slice U.4 retired the `security-admin` tier that previously distinguished "may read secret-equivalent names" from plain admin; the surface now denies `keys` unconditionally — operators with strict need read `aidial.config.json` directly off the deployment. For the singleton, `GET /v1/admin/config/file/settings/global` returns the file-defined and schema-default values regardless of whether an API blob exists on the per-entity endpoint — this surface is the file-side window, independent of the blob's presence. No `PUT` / `DELETE` on file entries — `aidial.config.json` remains operator-managed; file write workflows continue through the existing config-file mechanism.
 
 **Listing on the singleton — `GET /v1/metadata/settings/platform/` returns `405 Method Not Allowed`.** The listing path for the singleton type is not meaningful (there is exactly one entity at the fixed name `global`). The controller returns `405 Method Not Allowed` with `Allow: GET` — the metadata surface is read-only; the singleton's write verbs (`PUT`, `DELETE`) live on the entity URL `/v1/settings/platform/global`, not on the metadata URL. Per RFC 9110 §15.5.6 the `Allow` header lists verbs valid on the **requested** resource, so emitting `PUT`/`DELETE` here would mislead a caller. Admin MCP and CLI clients should use the per-entity GET rather than listing — see [`09-admin-mcp-spec.md`](09-admin-mcp-spec.md) §6.1.
 
@@ -216,13 +216,13 @@ Uses the same ETag pattern as the existing Resource API (RFC 7232 conditional he
 
 ### 3.1 Secret field handling on PUT
 
-`PUT` is full-replace by default — fields absent from the request body revert to the entity's defaults. Secret fields are the **explicit exception**: an absent / `null` / `"***"` secret field on `PUT` preserves the value already stored when the entity already exists. The fields that follow this preserve-on-omit semantics are:
+`PUT` is full-replace by default — fields absent from the request body revert to the entity's defaults. Secret fields are the **explicit exception**: an absent or `null` secret field on `PUT` preserves the value already stored when the entity already exists. (Slice U.4 retired the `"***"` mask sentinel — a literal `"***"` in the request body is now treated as a real string value, not a preserve signal.) The fields that follow this preserve-on-omit semantics are:
 
 - `Key.key`
 - `Upstream.key`
 - `Upstream.extraData`
 
-**All other fields follow standard full-replace semantics.** Clients that want to keep a non-secret field at its current value must include it in the `PUT` body explicitly — the server does not infer "preserve" for non-secret fields. On a create (`PUT … If-None-Match: *` against a non-existent URL), there is no prior value to preserve — a body whose secret field is `"***"` is rejected as `400 Bad Request` (the mask sentinel is not a valid create-time secret). See [`04-security-and-audit.md`](04-security-and-audit.md) §2.5 for the full create-vs-update matrix and the `"***"` sentinel rules, and §2.4 for the `@EncryptedField` annotation that gates which fields participate.
+**All other fields follow standard full-replace semantics.** Clients that want to keep a non-secret field at its current value must include it in the `PUT` body explicitly — the server does not infer "preserve" for non-secret fields. On a create (`PUT … If-None-Match: *` against a non-existent URL), there is no prior value to preserve — a body that contains a literal `"***"` in a secret field stores that string as the secret value (U.4 retired the sentinel rejection). See [`04-security-and-audit.md`](04-security-and-audit.md) §2.5 for the full create-vs-update matrix and §2.4 for the `@EncryptedField` annotation that gates which fields participate.
 
 ## 4. Response Format for Lists
 
