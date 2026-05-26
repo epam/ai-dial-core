@@ -308,6 +308,10 @@ public class ResourceController extends AccessControlBaseController {
         });
 
         String author = context.getUserDisplayName();
+        // forwardAuthToken is a security-sensitive field — by default the service strips it on every write.
+        // Admin writes to public/ are the only path that may set it; user-bucket writes (and admin writes
+        // to user buckets, blocked elsewhere) continue to be stripped. See docs U.3 / 04 §1.
+        boolean adminPublicWrite = descriptor.isPublic() && accessService.hasAdminAccess(context);
         Future<ResourceItemMetadata> responseFuture;
         if (descriptor.getType() == ResourceTypes.APPLICATION) {
             responseFuture = requestFuture.compose(pair -> {
@@ -318,7 +322,7 @@ public class ResourceController extends AccessControlBaseController {
                 }
                 return taskExecutor.submit(() -> {
                     validateCustomApplication(application);
-                    return applicationService.putApplication(descriptor, etag, author, application).getKey();
+                    return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite).getKey();
                 });
             });
         } else if (descriptor.getType() == ResourceTypes.TOOL_SET) {
@@ -328,7 +332,7 @@ public class ResourceController extends AccessControlBaseController {
                 if (toolSet == null) {
                     throw new HttpException(BAD_REQUEST, "ToolSet can't be empty");
                 }
-                return taskExecutor.submit(() -> toolSetService.putToolSet(descriptor, etag, author, toolSet).getKey());
+                return taskExecutor.submit(() -> toolSetService.putToolSet(descriptor, etag, author, toolSet, adminPublicWrite).getKey());
             });
         } else {
             responseFuture = requestFuture.compose(pair -> {

@@ -162,8 +162,9 @@ public class ApplicationService {
         return application;
     }
 
-    public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author, Application application) {
-        prepareApplication(resource, application);
+    public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
+                                                                   Application application, boolean preserveForwardAuthToken) {
+        prepareApplication(resource, application, preserveForwardAuthToken);
 
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
@@ -494,7 +495,7 @@ public class ApplicationService {
         return controller.getApplicationLogs(application.getFunction());
     }
 
-    private void prepareApplication(ResourceDescriptor resource, Application application) {
+    private void prepareApplication(ResourceDescriptor resource, Application application, boolean preserveForwardAuthToken) {
         verifyApplication(resource);
         URI applicationSchemaId = application.getApplicationTypeSchemaId();
         if (applicationSchemaId != null) {
@@ -511,7 +512,9 @@ public class ApplicationService {
 
         application.setName(resource.getUrl());
         application.setUserRoles(null);
-        application.setForwardAuthToken(false);
+        if (!preserveForwardAuthToken) {
+            application.setForwardAuthToken(false);
+        }
 
         if (application.getReference() == null) {
             application.setReference(ProxyUtil.generateReference());
