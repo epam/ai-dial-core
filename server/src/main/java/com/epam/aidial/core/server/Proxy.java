@@ -91,6 +91,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_API_KEY = "API-KEY";
     public static final String HEADER_JOB_TITLE = "X-JOB-TITLE";
     public static final String HEADER_CONVERSATION_ID = "X-CONVERSATION-ID";
+    public static final String HEADER_UPSTREAM_ID = "X-UPSTREAM-ID";
     public static final String HEADER_UPSTREAM_ENDPOINT = "X-UPSTREAM-ENDPOINT";
     public static final String HEADER_UPSTREAM_KEY = "X-UPSTREAM-KEY";
     public static final String HEADER_UPSTREAM_EXTRA_DATA = "X-UPSTREAM-EXTRA-DATA";

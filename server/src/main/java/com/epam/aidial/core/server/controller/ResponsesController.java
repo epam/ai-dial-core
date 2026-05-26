@@ -148,8 +148,9 @@ public class ResponsesController extends BaseDeploymentPostController {
         context.setRequestBody(Buffer.buffer(request.serialize()));
 
         Deployment deployment = context.getDeployment();
+        String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
-                .get(deployment, context.getCacheBreakpointContext());
+                .get(deployment, context.getCacheBreakpointContext(), upstreamId);
 
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);

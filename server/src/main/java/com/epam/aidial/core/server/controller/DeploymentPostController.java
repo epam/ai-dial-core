@@ -235,7 +235,14 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             return;
         }
 
-        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext());
+        String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
+        UpstreamRoute upstreamRoute;
+        try {
+            upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext(), upstreamId);
+        } catch (HttpException e) {
+            respond(e.getStatus(), e.getMessage());
+            return;
+        }
         context.setUpstreamRoute(upstreamRoute);
 
         sendRequest();

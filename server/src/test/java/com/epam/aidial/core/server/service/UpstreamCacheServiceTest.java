@@ -81,7 +81,7 @@ public class UpstreamCacheServiceTest {
     public void testUpdateEntry() {
         service = new UpstreamCacheService(redissonClient, lockService, System::currentTimeMillis, null);
 
-        service.updateEntry("hash", new CachedUpstreamEntry("http://localhost:8080/chat", "prefix.body.messages[1]", null), new Model(), null);
+        service.updateEntry("hash", new CachedUpstreamEntry("http://localhost:8080/chat", null, "prefix.body.messages[1]", null), new Model(), null);
 
         assertTrue(redissonClient.getKeys().getKeys().iterator().hasNext());
     }
@@ -357,7 +357,7 @@ public class UpstreamCacheServiceTest {
         CacheBreakpointContext context = service.buildCacheBreakpointContext(request, CachePolicy.AVAILABILITY_PRIORITY, model);
         Map<String, String> prefixToHash = context.prefixToHash();
         for (var breakpoint : context.breakpoints()) {
-            CachedUpstreamEntry cachedUpstreamEntry = new CachedUpstreamEntry("http://host/chat", breakpoint, null);
+            CachedUpstreamEntry cachedUpstreamEntry = new CachedUpstreamEntry("http://host/chat", null, breakpoint, null);
             service.updateEntry(prefixToHash.get(breakpoint), cachedUpstreamEntry, model, null);
         }
 
