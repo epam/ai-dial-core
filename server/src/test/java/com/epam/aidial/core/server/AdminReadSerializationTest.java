@@ -15,11 +15,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * Sibling to {@link AdminWriteSerializationTest}: the full-rebuild blob scan (reload / rebuildNow /
- * debounced timer) acquires the same {@code underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, ...)}
- * the writers use, so a concurrent admin write on another pod cannot leak partial-batch blob state
- * into a replica's {@code MergedConfigStore} (PR #1529 thread r3302786719, design 02 §4.4). Holding
- * the platform-bucket lock from the test must block {@code POST /v1/ops/config/reload} until release.
+ * Sibling to {@link AdminWriteSerializationTest}: rebuild / replica-event / reload read paths
+ * acquire the same {@code underBucketLocks(ADMIN_BUCKET_LOCATIONS, ...)} the writers use, so a
+ * concurrent admin write on another pod cannot leak partial-batch blob state into a replica's
+ * {@code MergedConfigStore}. Holding the platform-bucket lock from the test must block
+ * {@code POST /v1/ops/config/reload} until release.
  */
 public class AdminReadSerializationTest extends ResourceBaseTest {
 

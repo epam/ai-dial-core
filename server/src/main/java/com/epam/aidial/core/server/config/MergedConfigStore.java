@@ -16,6 +16,7 @@ import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -77,12 +78,29 @@ public final class MergedConfigStore implements ConfigStore {
             ResourceTypes.PROJECT_KEY,
             ResourceTypes.ROUTE);
 
+    /**
+     * Bucket locations the admin write/read paths serialize on cluster-wide via
+     * {@link LockService#underBucketLocks}. Held by:
+     * <ul>
+     *   <li>Write controllers ({@code ConfigResourceController}, {@code AdminApplyController}) around blob puts/deletes.
+     *   <li>This store's {@link #init}/{@link #reload}/{@link #rebuildNow}/timer-fired rebuild
+     *       and {@link #applyReplicaEvent} so a replica's blob scan cannot witness partial-batch
+     *       state during a writer pod's in-flight multi-blob apply (cross-pod dirty read).
+     * </ul>
+     * Same constant referenced by the write controllers to keep the lock-key set identical;
+     * mismatched key sets would silently fail to serialize across the boundary.
+     */
+    public static final List<String> ADMIN_BUCKET_LOCATIONS = List.of(
+            ResourceDescriptor.PUBLIC_LOCATION,
+            ResourceDescriptor.PLATFORM_LOCATION);
+
     private final Vertx vertx;
     private final AsyncTaskExecutor taskExecutor;
     private final ResourceService resourceService;
     private final ApiKeyStore apiKeyStore;
     private final EntityLocationStrategy locationStrategy;
     private final SecretFieldProcessor secretFieldProcessor;
+    private final LockService lockService;
     private final String onInvalidEntity;
     private final boolean softValidation;
     private final String thisPodId;
@@ -102,23 +120,26 @@ public final class MergedConfigStore implements ConfigStore {
     public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
                              SecretFieldProcessor secretFieldProcessor,
+                             LockService lockService,
                              String onInvalidEntity) {
         this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
-                onInvalidEntity, false, "");
+                lockService, onInvalidEntity, false, "");
     }
 
     public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
                              SecretFieldProcessor secretFieldProcessor,
+                             LockService lockService,
                              String onInvalidEntity,
                              boolean softValidation) {
         this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
-                onInvalidEntity, softValidation, "");
+                lockService, onInvalidEntity, softValidation, "");
     }
 
     public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
                              SecretFieldProcessor secretFieldProcessor,
+                             LockService lockService,
                              String onInvalidEntity,
                              boolean softValidation,
                              String thisPodId) {
@@ -128,6 +149,7 @@ public final class MergedConfigStore implements ConfigStore {
         this.apiKeyStore = apiKeyStore;
         this.locationStrategy = locationStrategy;
         this.secretFieldProcessor = secretFieldProcessor;
+        this.lockService = lockService;
         this.onInvalidEntity = MODE_SKIP.equalsIgnoreCase(onInvalidEntity) ? MODE_SKIP : MODE_ABORT;
         this.softValidation = softValidation;
         this.thisPodId = thisPodId == null ? "" : thisPodId;
@@ -172,15 +194,21 @@ public final class MergedConfigStore implements ConfigStore {
      * file store's {@code onReloadCallbacks} hook.
      */
     public void init(FileConfigStore fileConfigStore) {
-        rebuildLock.lock();
-        try {
-            this.fileConfigStore = fileConfigStore;
-            rebuild();
-            initialized = true;
-            resourceService.subscribeAllResources(this::onResourceEvent);
-        } finally {
-            rebuildLock.unlock();
-        }
+        // Distributed bucket lock around the initial rebuild prevents a fresh-starting pod from
+        // scanning blob storage while a peer pod's admin write is mid-batch — without it, the new
+        // pod's seeded Config can witness a half-written batch (some entities present, others not).
+        lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
+            rebuildLock.lock();
+            try {
+                this.fileConfigStore = fileConfigStore;
+                rebuild();
+                initialized = true;
+                resourceService.subscribeAllResources(this::onResourceEvent);
+            } finally {
+                rebuildLock.unlock();
+            }
+            return null;
+        });
     }
 
     /**
@@ -209,10 +237,14 @@ public final class MergedConfigStore implements ConfigStore {
             return;
         }
         ResourceEvent.Action action = event.getAction();
-        taskExecutor.submit(() -> {
+        // Distributed bucket lock so the replica's getResource + apply* sequence cannot interleave
+        // with a peer (writer) pod's mid-batch blob puts. Without this, a pub/sub event for entity
+        // A can fetch A's blob and apply it while the writer is still mid-batch on B/C — producing
+        // a torn local Config until subsequent events arrive.
+        taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
             applyReplicaEvent(descriptor, action);
             return null;
-        }).onFailure(error -> {
+        })).onFailure(error -> {
             log.warn("Replica event dispatch failed for {}; falling back to full rebuild",
                     descriptor.getUrl(), error);
             requestRebuild();
@@ -311,17 +343,22 @@ public final class MergedConfigStore implements ConfigStore {
 
     @Override
     public Config reload() {
-        rebuildLock.lock();
-        try {
-            fileConfigStore.reload();
-            // fileConfigStore.reload() fires onReloadCallbacks → requestRebuild(), which schedules a
-            // 500ms debounce timer. Cancel it: the rebuild() below produces the authoritative merged
-            // config and a debounced rerun would be a redundant addProjectKeys + listResources sweep.
-            cancelPendingRebuild();
-            return rebuild();
-        } finally {
-            rebuildLock.unlock();
-        }
+        // Distributed bucket lock so the admin-triggered reload cannot scan blob storage while a
+        // peer pod's apply* is mid-batch — same partial-state hazard as init() and the timer-fired
+        // rebuild path.
+        return lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
+            rebuildLock.lock();
+            try {
+                fileConfigStore.reload();
+                // fileConfigStore.reload() fires onReloadCallbacks → requestRebuild(), which schedules a
+                // 500ms debounce timer. Cancel it: the rebuild() below produces the authoritative merged
+                // config and a debounced rerun would be a redundant addProjectKeys + listResources sweep.
+                cancelPendingRebuild();
+                return rebuild();
+            } finally {
+                rebuildLock.unlock();
+            }
+        });
     }
 
     /**
@@ -395,36 +432,46 @@ public final class MergedConfigStore implements ConfigStore {
         if (!pendingRebuildTimerId.compareAndSet(firingId, NO_PENDING_TIMER)) {
             return;
         }
-        taskExecutor.submit(() -> {
+        // Distributed bucket lock so the debounced scan cannot read partial-batch blob state while
+        // a peer pod's apply* is mid-batch. underBucketLocks runs synchronously on the supplied
+        // thread; submit() puts us on a virtual thread per AsyncTaskExecutor's contract — Redis
+        // blocking is fine there.
+        taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
             rebuildLock.lock();
             try {
                 return rebuild();
             } finally {
                 rebuildLock.unlock();
             }
-        }).onFailure(error -> log.warn("Failed to rebuild merged config", error));
+        })).onFailure(error -> log.warn("Failed to rebuild merged config", error));
     }
 
     /**
-     * Synchronous, debounce-bypassing rebuild for the API write path on the writer pod
-     * (design 02 §4). Cancels any pending debounced rebuild then runs the merge inline
-     * on the calling thread; does NOT re-read the file (the API write does not touch
-     * on-disk config). Only call after {@link #init} has completed and from off-the-event-loop
-     * threads (e.g., inside {@code taskExecutor.submit(...)}).
+     * Synchronous, debounce-bypassing full rebuild. Cancels any pending debounced rebuild then
+     * runs the merge inline on the calling thread; does NOT re-read the file. Only call after
+     * {@link #init} has completed and from off-the-event-loop threads (e.g., inside
+     * {@code taskExecutor.submit(...)}).
      *
-     * <p>Keys-controller ordering invariant (3S.2): on DELETE, the correct sequence is
-     * delete blob → {@code apiKeyStore.removeKey(secret)} → {@code rebuildNow()}, ensuring
-     * the key is absent from {@link com.epam.aidial.core.server.security.ApiKeyStore} before
-     * the new {@link Config} becomes visible.
+     * <p><strong>Lock contract.</strong> Acquires {@link #ADMIN_BUCKET_LOCATIONS} internally
+     * (see design 02 §4.4). Callers <strong>must not</strong> hold those bucket locks
+     * already — {@link LockService#lock} is not reentrant at the Redis layer and would deadlock.
+     * The write controllers do NOT call this method; partial-update via {@link #applyEntityWrite}
+     * / {@link #applyBatch} is the writer-pod path (slice 4S.4). This method is currently used
+     * only by unit tests and the historical 3S.2 keys-controller flow (replaced by the
+     * partial-update path).
      */
     public Config rebuildNow() {
-        rebuildLock.lock();
-        try {
-            cancelPendingRebuild();
-            return rebuild();
-        } finally {
-            rebuildLock.unlock();
-        }
+        // Distributed bucket lock: same partial-state hazard as init/reload/timer — a full blob
+        // scan on this pod must not interleave with a peer pod's in-flight multi-blob apply.
+        return lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
+            rebuildLock.lock();
+            try {
+                cancelPendingRebuild();
+                return rebuild();
+            } finally {
+                rebuildLock.unlock();
+            }
+        });
     }
 
     private void cancelPendingRebuild() {
@@ -444,6 +491,12 @@ public final class MergedConfigStore implements ConfigStore {
      * <p>For {@code INTERCEPTOR} writes the previously-broken models in {@code invalidEntities} are
      * resurrected when the new interceptor satisfies their references. For other types no transitive
      * effect runs.
+     *
+     * <p><strong>Lock contract.</strong> Caller must already hold {@link #ADMIN_BUCKET_LOCATIONS}
+     * via {@link LockService#underBucketLocks} — this method acquires only the inner
+     * {@link #rebuildLock} for intra-pod serialization (design 02 §4.4). The production entry
+     * points are the admin write controllers and {@link #applyReplicaEvent}, both of which
+     * wrap their call sequence in the outer bucket locks.
      */
     public Config applyEntityWrite(ResourceTypes type, String canonicalId, Object decryptedEntity) {
         rebuildLock.lock();
@@ -458,6 +511,9 @@ public final class MergedConfigStore implements ConfigStore {
      * Partial-update fast path for DELETE (slice 4S.4). {@code INTERCEPTOR} delete cascades
      * cross-reference revalidation across the model map and routes newly-orphaned models through
      * the {@code invalidEntities} sibling store. Other types have no transitive effect.
+     *
+     * <p><strong>Lock contract.</strong> Same as {@link #applyEntityWrite}: caller must already
+     * hold {@link #ADMIN_BUCKET_LOCATIONS} (design 02 §4.4).
      */
     public Config applyEntityDelete(ResourceTypes type, String canonicalId) {
         rebuildLock.lock();
@@ -478,6 +534,10 @@ public final class MergedConfigStore implements ConfigStore {
      * from cloning the map per entry. Per-entry failures roll back the entity slot at
      * {@code (type, canonicalId)} so subsequent entries observe the pre-change state, matching
      * single-entity atomicity.
+     *
+     * <p><strong>Lock contract.</strong> Caller must already hold {@link #ADMIN_BUCKET_LOCATIONS}
+     * (design 02 §4.4). Production entry point is {@link AdminApplyController#process}, which
+     * wraps the entire batch including blob writes and this call in {@code underBucketLocks}.
      */
     public Map<String, String> applyBatch(List<EntityChange> changes) {
         Map<String, String> failures = new LinkedHashMap<>();
@@ -574,6 +634,9 @@ public final class MergedConfigStore implements ConfigStore {
      * Settings singleton overlay write (slice 4S.4). Applies {@code globalInterceptors} +
      * {@code retriableErrorCodes} fields from the supplied {@link GlobalSettings}, flips
      * {@code settingsFromApi} to {@code true}.
+     *
+     * <p><strong>Lock contract.</strong> Same as {@link #applyEntityWrite}: caller must already
+     * hold {@link #ADMIN_BUCKET_LOCATIONS} (design 02 §4.4).
      */
     public Config applySettingsWrite(GlobalSettings settings) {
         rebuildLock.lock();
@@ -595,6 +658,9 @@ public final class MergedConfigStore implements ConfigStore {
      * Settings singleton overlay delete (slice 4S.4). Restores {@code globalInterceptors} +
      * {@code retriableErrorCodes} from the file-derived {@link Config} and flips
      * {@code settingsFromApi} to {@code false}.
+     *
+     * <p><strong>Lock contract.</strong> Same as {@link #applyEntityWrite}: caller must already
+     * hold {@link #ADMIN_BUCKET_LOCATIONS} (design 02 §4.4).
      */
     public Config applySettingsDelete() {
         rebuildLock.lock();
