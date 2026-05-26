@@ -37,7 +37,7 @@ public class RouteCommand {
         CommandSpec spec;
         @Parameters(index = "0", description = "Route name or canonical id (routes/<bucket>/<name>).")
         String name;
-        @Option(names = "--source", description = "Config source: API (default) or FILE.", defaultValue = "API")
+        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
         ConfigSource source;
 
         @Override
@@ -54,7 +54,7 @@ public class RouteCommand {
         RouteCommand cmd;
         @Spec
         CommandSpec spec;
-        @Option(names = "--source", description = "Config source: API (default) or FILE.", defaultValue = "API")
+        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
         ConfigSource source;
 
         @Override

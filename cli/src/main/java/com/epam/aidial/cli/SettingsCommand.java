@@ -34,7 +34,7 @@ public class SettingsCommand {
         SettingsCommand cmd;
         @Spec
         CommandSpec spec;
-        @Option(names = "--source", description = "Config source: API (default) or FILE.", defaultValue = "API")
+        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
         ConfigSource source;
 
         @Override

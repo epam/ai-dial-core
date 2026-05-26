@@ -37,7 +37,7 @@ public class RoleCommand {
         CommandSpec spec;
         @Parameters(index = "0", description = "Role name or canonical id (roles/<bucket>/<name>).")
         String name;
-        @Option(names = "--source", description = "Config source: API (default) or FILE.", defaultValue = "API")
+        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
         ConfigSource source;
 
         @Override
@@ -54,7 +54,7 @@ public class RoleCommand {
         RoleCommand cmd;
         @Spec
         CommandSpec spec;
-        @Option(names = "--source", description = "Config source: API (default) or FILE.", defaultValue = "API")
+        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
         ConfigSource source;
 
         @Override

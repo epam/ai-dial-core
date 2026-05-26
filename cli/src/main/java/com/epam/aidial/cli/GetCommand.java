@@ -19,7 +19,7 @@ public class GetCommand implements Callable<Integer> {
     CommandSpec spec;
     @Parameters(arity = "1", description = "Resource type (e.g. models, roles, keys).")
     String resourceType;
-    @Option(names = "--source", description = "Config source: API (default) or FILE.", defaultValue = "API")
+    @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
     ConfigSource source;
 
     private static final Set<String> LIST_TYPES = Set.of(

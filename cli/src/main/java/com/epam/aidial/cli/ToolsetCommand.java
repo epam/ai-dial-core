@@ -37,7 +37,7 @@ public class ToolsetCommand {
         CommandSpec spec;
         @Parameters(index = "0", description = "Toolset name or canonical id (toolsets/<bucket>/<name>).")
         String name;
-        @Option(names = "--source", description = "Config source: API (default) or FILE.", defaultValue = "API")
+        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
         ConfigSource source;
 
         @Override
@@ -54,7 +54,7 @@ public class ToolsetCommand {
         ToolsetCommand cmd;
         @Spec
         CommandSpec spec;
-        @Option(names = "--source", description = "Config source: API (default) or FILE.", defaultValue = "API")
+        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
         ConfigSource source;
 
         @Override

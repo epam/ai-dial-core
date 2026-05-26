@@ -37,7 +37,7 @@ public class ApplicationCommand {
         CommandSpec spec;
         @Parameters(index = "0", description = "Application name or canonical id (applications/<bucket>/<name>).")
         String name;
-        @Option(names = "--source", description = "Config source: API (default) or FILE.", defaultValue = "API")
+        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
         ConfigSource source;
 
         @Override
@@ -54,7 +54,7 @@ public class ApplicationCommand {
         ApplicationCommand cmd;
         @Spec
         CommandSpec spec;
-        @Option(names = "--source", description = "Config source: API (default) or FILE.", defaultValue = "API")
+        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
         ConfigSource source;
 
         @Override
