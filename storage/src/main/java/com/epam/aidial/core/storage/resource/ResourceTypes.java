@@ -22,7 +22,8 @@ public enum ResourceTypes implements ResourceType {
     TOOL_SET("toolsets", true, Long.MAX_VALUE),
     CREDENTIALS("credentials", true, TimeUnit.MINUTES.toMillis(5)),
     ENCRYPTION_KEYS("encryption_keys", true, TimeUnit.MINUTES.toMillis(5)),
-    CLIENT_CHANNEL("client_channels", true, TimeUnit.HOURS.toMillis(24));
+    CLIENT_CHANNEL("client_channels", true, TimeUnit.HOURS.toMillis(24)),
+    RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5));
 
     private final String group;
     private final boolean requireCompression;
@@ -46,6 +47,7 @@ public enum ResourceTypes implements ResourceType {
             case "toolsets" -> TOOL_SET;
             case "credentials" -> CREDENTIALS;
             case "encryption_keys" -> ENCRYPTION_KEYS;
+            case "response_mappings" -> RESPONSE_MAPPING;
             default -> throw new IllegalArgumentException("Unsupported resource type: " + group);
         };
     }

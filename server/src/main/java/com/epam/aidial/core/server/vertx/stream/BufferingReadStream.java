@@ -18,6 +18,7 @@ import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.List;
 import java.util.Objects;
 import javax.annotation.Nullable;
 
@@ -213,16 +214,15 @@ public class BufferingReadStream implements ReadStream<Buffer> {
 
     @Slf4j
     public static class BaseEventListener implements SseEventListener {
-        @Nullable
-        private final BaseResponseFunction function;
+        private final List<BaseResponseFunction> functions;
         // a chain of futures supplied by SSE parser
         private Future<Void> streamHandlerChain = Future.succeededFuture();
         private Handler<Buffer> chunkHandler;
         private Handler<Void> chunkEndHandler;
         private volatile Buffer lastChunk;
 
-        public BaseEventListener(BaseResponseFunction function) {
-            this.function = function;
+        public BaseEventListener(List<BaseResponseFunction> functions) {
+            this.functions = functions;
         }
 
         @Override
@@ -257,13 +257,16 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         @SneakyThrows
         private Future<Void> handle(SseEvent event) {
             Future<JsonNode> result;
-            if (function == null || skipEvent(event)) {
+            if (functions.isEmpty() || skipEvent(event)) {
                 result = Future.succeededFuture();
             } else {
                 String data = event.getData();
                 try {
                     JsonNode tree = ProxyUtil.MAPPER.readTree(data);
-                    result = function.apply(tree);
+                    result = Future.succeededFuture(tree);
+                    for (BaseResponseFunction fn : functions) {
+                        result = result.compose(fn);
+                    }
                 } catch (Throwable error) {
                     log.warn("Error occurred at JSON data parsing of SSE data and function calling", error);
                     result = Future.failedFuture(error);

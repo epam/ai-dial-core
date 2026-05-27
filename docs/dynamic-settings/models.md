@@ -39,7 +39,13 @@ An object containing parameters for each [model](#models).
 * `createdAt`: The date of the model creation.
 * `updatedAt`: The date of the last model update.
 * `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.
-* `responsesEndpoint`: Endpoint of the model adapter that supports the OpenAI Responses API. Currently only OpenAI adapters support this. When set, DIAL Core routes `POST /openai/v1/responses` requests to this endpoint. Only basic Responses API behaviour is supported: background requests, `previous_request_id`, conversations, prompts, and files are not supported.
+* `responsesEndpoint`: Endpoint of the model adapter that supports the OpenAI Responses API. Currently only OpenAI adapters support this. When set, DIAL Core proxies the following Responses API operations to this endpoint:
+  * `POST /openai/v1/responses` — create a response (streaming and non-streaming, including background mode).
+  * `GET /openai/v1/responses/{id}` — retrieve a response by its DIAL-assigned ID; supports streaming via SSE.
+  * `DELETE /openai/v1/responses/{id}` — delete a response and remove its stored ID mapping.
+  * `POST /openai/v1/responses/{id}/cancel` — cancel an in-progress background response.
+
+  DIAL Core rewrites upstream response IDs to stable `resp_dial_*` identifiers and uses sticky routing to ensure follow-up requests are forwarded to the same upstream instance that handled the original request. `previous_response_id`, conversations, prompts, and files are not supported.
 * `responsesDefaults`: Default parameters applied if a request doesn't contain them in an OpenAI Responses API call. Works the same way as `defaults` for the chat completions API.
 * `interceptors`: A list of interceptors to be triggered for the given model. Refer to [Interceptors](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/6.interceptors.md) to learn more.
 * `fieldsHashingOrder`: A list of chat completion request components that defines an order in which they are used to compute a hash of the request. The components of the request are identified by strings `prefix.body.tools` and `prefix.body.messages`. The default value of the parameter is ["prefix.body.tools", "prefix.body.messages"], meaning the hash is first computed for the tools definitions, then extended with the hash of the messages. It reflects the relative order of tools and messages components when they are converted to tokens and fed into a typical LLM. The hash is used uniquely identify prefixes of the request that are marked by [cache breakpoints](https://docs.dialx.ai/tutorials/developers/prompt-caching). It enables DIAL Core to redirect independent requests that are sharing the same prefix to the same upstream endpoint. This is essential to enable context caching feature of LLM since their caching scope is limited to a simple upstream endpoint.
@@ -226,6 +232,7 @@ Upstreams configurations. Use to configure [load balancing](https://docs.dialx.a
 
 * `endpoint`: The upstream backend URL for the chat completions API. Passed to the model adapter in the `X-UPSTREAM-ENDPOINT` header.
 * `responsesEndpoint`: The upstream backend URL for the Responses API. Passed to the model adapter in the `X-UPSTREAM-ENDPOINT` header when routing Responses API requests.
+* `id`: A stable identifier for this upstream. Clients can set the `X-UPSTREAM-ID` request header to this value to pin a request to a specific upstream (supported in chat completions and Responses API). When the Responses API is enabled (via the model-level `responsesEndpoint`), `id` is required — it is used to route Responses API follow-up requests (retrieve, cancel, delete) back to the same upstream that handled the initial request.
 * `key`: API key, token, or credential passed to the upstream.
 * `weight`: Weight for upstream endpoint; positive number represents an endpoint capacity, zero or negative disables this endpoint from routing. Higher = more traffic share. Default value: 1.
 * `tier`: Specifies tier group for the endpoint. Only positive numbers allowed. All requests will be routed to the endpoints with the highest tier (the lowest tier value), other endpoints (with lower tier/higher tier value) may be used only if the highest tier endpoints are unavailable. Default value: 0 - highest tier. Refer to [load balancing](https://docs.dialx.ai/platform/core/load-balancer) to learn more.

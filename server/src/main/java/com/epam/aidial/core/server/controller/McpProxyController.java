@@ -259,14 +259,13 @@ public class McpProxyController implements Controller {
         BufferingReadStream.BaseEventListener eventListener = null;
         if (requireToolFiltering()) {
             FilterAllowedToolsFn fn = new FilterAllowedToolsFn(proxy, context);
-            eventListener = new BufferingReadStream.BaseEventListener(fn);
+            eventListener = new BufferingReadStream.BaseEventListener(List.of(fn));
         }
 
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024), eventListener);
 
         context.setProxyResponse(proxyResponse);
-        context.setResponseStream(proxyResponseStream);
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
@@ -274,7 +273,7 @@ public class McpProxyController implements Controller {
         proxyResponseStream.pipe()
                 .endOnFailure(false)
                 .to(response)
-                .onSuccess(ignored -> handleResponse())
+                .onSuccess(ignored -> handleResponse(proxyResponseStream))
                 .onFailure(this::handleResponseError);
     }
 
@@ -291,8 +290,8 @@ public class McpProxyController implements Controller {
     /**
      * Called when proxy sent response from the origin to the client.
      */
-    private void handleResponse() {
-        Buffer proxyResponseBody = context.getResponseStream().getContent();
+    private void handleResponse(BufferingReadStream responseStream) {
+        Buffer proxyResponseBody = responseStream.getContent();
         context.setResponseBody(proxyResponseBody);
         finalizeRequest();
         logStore.save(context);

@@ -181,7 +181,6 @@ class RouteRequestBodyHandler {
                 ProxyUtil.contentLength(proxyResponse, 1024));
 
         context.setProxyResponse(proxyResponse);
-        context.setResponseStream(proxyResponseStream);
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
@@ -190,15 +189,14 @@ class RouteRequestBodyHandler {
                 .endOnFailure(false)
                 .endOnSuccess(false)
                 .to(response)
-                .onSuccess(ignored -> handleResponse())
+                .onSuccess(ignored -> handleResponse(proxyResponseStream))
                 .onFailure(this::handleResponseError);
     }
 
     /**
      * Called when proxy sent response from the origin to the client.
      */
-    private void handleResponse() {
-        BufferingReadStream responseStream = context.getResponseStream();
+    private void handleResponse(BufferingReadStream responseStream) {
         Buffer proxyResponseBody = responseStream.getContent();
         context.setResponseBody(proxyResponseBody);
         controller.handleProxyResponseBody(proxyResponseBody).onComplete(result -> {

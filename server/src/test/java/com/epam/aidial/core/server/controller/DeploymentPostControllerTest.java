@@ -403,7 +403,6 @@ public class DeploymentPostControllerTest {
 
     @Test
     public void testHandleResponse_Model() {
-        when(context.getResponseStream()).thenReturn(mock(BufferingReadStream.class, RETURNS_DEEP_STUBS));
         Model model = new Model();
         when(context.getDeployment()).thenReturn(model);
         HttpServerResponse response = mock(HttpServerResponse.class);
@@ -430,7 +429,6 @@ public class DeploymentPostControllerTest {
 
     @Test
     public void testHandleResponse_App() {
-        when(context.getResponseStream()).thenReturn(mock(BufferingReadStream.class, RETURNS_DEEP_STUBS));
         Application app = new Application();
         when(context.getDeployment()).thenReturn(app);
 

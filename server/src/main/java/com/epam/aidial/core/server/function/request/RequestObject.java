@@ -79,4 +79,13 @@ public interface RequestObject {
      * @throws JsonProcessingException if the request cannot be serialized
      */
     byte[] serialize() throws JsonProcessingException;
+
+    /**
+     * Indicates whether the response should be stored server-side.
+     *
+     * @return {@code true} if the response should be stored; {@code false} otherwise
+     */
+    default boolean isStore() {
+        return false;
+    }
 }
