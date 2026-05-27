@@ -11,10 +11,4 @@ bin/
 src/main/resources/version
 ### Mac OS ###
 .DS_Store
-### Eclipse / JDTLS ###
-.classpath
-.factorypath
-.project
-.settings/
-### Personal Claude commands (not shared) ###
-.claude/commands/review-unified-config.md
+/credentials/out/

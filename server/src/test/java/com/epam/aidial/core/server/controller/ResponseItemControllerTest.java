@@ -139,7 +139,7 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
-        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
+        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
@@ -194,7 +194,7 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
-        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
+        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
@@ -242,7 +242,7 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
-        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
+        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
@@ -285,7 +285,7 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
-        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
+        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
@@ -386,7 +386,7 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
-        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
+        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
@@ -432,7 +432,7 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
-        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
+        Upstream upstream = new Upstream(null, "endpoint", "api-key", null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);

@@ -23,13 +23,7 @@ public enum ResourceTypes implements ResourceType {
     CREDENTIALS("credentials", true, TimeUnit.MINUTES.toMillis(5)),
     ENCRYPTION_KEYS("encryption_keys", true, TimeUnit.MINUTES.toMillis(5)),
     CLIENT_CHANNEL("client_channels", true, TimeUnit.HOURS.toMillis(24)),
-    MODEL("models", true, Long.MAX_VALUE),
-    APP_TYPE_SCHEMA("app_type_schemas", "schemas", true, Long.MAX_VALUE),
-    INTERCEPTOR("interceptors", true, Long.MAX_VALUE),
-    ROLE("roles", true, Long.MAX_VALUE),
-    PROJECT_KEY("project_keys", "keys", true, Long.MAX_VALUE),
-    ROUTE("routes", true, Long.MAX_VALUE),
-    GLOBAL_SETTINGS("settings", true, Long.MAX_VALUE);
+    RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5));
 
     private final String group;
     private final String urlSegment;
@@ -59,13 +53,7 @@ public enum ResourceTypes implements ResourceType {
             case "toolsets" -> TOOL_SET;
             case "credentials" -> CREDENTIALS;
             case "encryption_keys" -> ENCRYPTION_KEYS;
-            case "models" -> MODEL;
-            case "app_type_schemas", "schemas" -> APP_TYPE_SCHEMA;
-            case "interceptors" -> INTERCEPTOR;
-            case "roles" -> ROLE;
-            case "project_keys", "keys" -> PROJECT_KEY;
-            case "routes" -> ROUTE;
-            case "settings" -> GLOBAL_SETTINGS;
+            case "response_mappings" -> RESPONSE_MAPPING;
             default -> throw new IllegalArgumentException("Unsupported resource type: " + group);
         };
     }
