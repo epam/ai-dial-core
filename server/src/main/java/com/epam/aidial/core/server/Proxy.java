@@ -157,6 +157,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AsyncTaskExecutor taskExecutor;
     private final String version;
     private final ResponseMappingService responseMappingService;
+    // Generates the unique portion of a DIAL response ID
     private final Supplier<String> generator;
 
     @Override
