@@ -755,6 +755,110 @@ class TemplateResolutionTest {
     }
 
     @Test
+    void addWithStringParamSubstitutedInTemplate(@TempDir Path tmp) throws Exception {
+        String templates = """
+                azure-chat:
+                  fields:
+                    endpoint: "https://${params.deployment}.openai.azure.com/openai"
+                """;
+        Path config = writeProfile(tmp, templates, "");
+        Path file = tmp.resolve("m.yaml");
+        Files.writeString(file, "type: chat");
+
+        AtomicReference<String> capturedBody = new AtomicReference<>();
+        AtomicInteger hits = new AtomicInteger();
+        recordPut("/v1/models/public/gpt-4o", 200, "{}", capturedBody, hits);
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add",
+                "--name", "models/public/gpt-4o",
+                "--from-file", file.toString(),
+                "--template", "azure-chat",
+                "--param", "deployment=my-deployment");
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals(1, hits.get());
+        assertTrue(capturedBody.get().contains("\"endpoint\":\"https://my-deployment.openai.azure.com/openai\""),
+                capturedBody.get());
+        assertFalse(capturedBody.get().contains("${"), "no unresolved placeholders: " + capturedBody.get());
+    }
+
+    @Test
+    void addWithMultipleParamsSubstituted(@TempDir Path tmp) throws Exception {
+        String templates = """
+                simple:
+                  fields:
+                    endpoint: "https://${params.host}/${params.path}"
+                """;
+        Path config = writeProfile(tmp, templates, "");
+        Path file = tmp.resolve("m.yaml");
+        Files.writeString(file, "type: chat");
+
+        AtomicReference<String> capturedBody = new AtomicReference<>();
+        AtomicInteger hits = new AtomicInteger();
+        recordPut("/v1/models/public/m1", 200, "{}", capturedBody, hits);
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add",
+                "--name", "models/public/m1",
+                "--from-file", file.toString(),
+                "--template", "simple",
+                "--param", "host=api.example.com",
+                "--param", "path=v1/completions");
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals(1, hits.get());
+        assertTrue(capturedBody.get().contains("\"endpoint\":\"https://api.example.com/v1/completions\""),
+                capturedBody.get());
+        assertFalse(capturedBody.get().contains("${"), "no unresolved placeholders: " + capturedBody.get());
+    }
+
+    @Test
+    void addWithParamValueContainingEqualsSign(@TempDir Path tmp) throws Exception {
+        // Only the first '=' separates key from value; subsequent '=' characters are part of the value.
+        String templates = """
+                with-token:
+                  fields:
+                    auth: "${params.token}"
+                """;
+        Path config = writeProfile(tmp, templates, "");
+        Path file = tmp.resolve("m.yaml");
+        Files.writeString(file, "type: chat");
+
+        AtomicReference<String> capturedBody = new AtomicReference<>();
+        AtomicInteger hits = new AtomicInteger();
+        recordPut("/v1/models/public/m1", 200, "{}", capturedBody, hits);
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add",
+                "--name", "models/public/m1",
+                "--from-file", file.toString(),
+                "--template", "with-token",
+                "--param", "token=abc=def==");
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals(1, hits.get());
+        assertTrue(capturedBody.get().contains("\"auth\":\"abc=def==\""), capturedBody.get());
+    }
+
+    @Test
+    void addWithInvalidParamFormatReturnsValidationError(@TempDir Path tmp) throws Exception {
+        Path config = writeProfile(tmp, "", "");
+        Path file = tmp.resolve("m.yaml");
+        Files.writeString(file, "type: chat");
+
+        Result r = run(config, apiKeyFile(tmp),
+                "model", "add",
+                "--name", "models/public/m1",
+                "--from-file", file.toString(),
+                "--param", "badparam");
+
+        assertEquals(2, r.exitCode);
+        assertTrue(r.err.contains("key=value"), r.err);
+        assertTrue(r.err.contains("badparam"), r.err);
+    }
+
+    @Test
     void validateWithTemplateHappyPath(@TempDir Path tmp) throws Exception {
         String templates = """
                 bedrock-chat:

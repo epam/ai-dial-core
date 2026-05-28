@@ -14,6 +14,7 @@ import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.ParentCommand;
 import picocli.CommandLine.Spec;
+import picocli.CommandLine.UseDefaultConverter;
 
 import java.io.PrintWriter;
 import java.nio.file.Path;
@@ -49,8 +50,9 @@ public class ApplyCommand implements Callable<Integer> {
     Path overlay;
 
     @Option(names = "--param",
-            description = "Template parameter override 'key=value' (repeatable). CLI overrides per-manifest 'params'.")
-    List<String> params;
+            description = "Template parameter override 'key=value' (repeatable). CLI overrides per-manifest 'params'.",
+            converter = {UseDefaultConverter.class, ParamValueConverter.class})
+    Map<String, Object> params = new HashMap<>();
 
     @Override
     public Integer call() {
@@ -79,13 +81,7 @@ public class ApplyCommand implements Callable<Integer> {
 
         EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(parent);
 
-        Map<String, Object> cliParams;
-        try {
-            cliParams = EntityWriter.parseParams(params);
-        } catch (IllegalArgumentException e) {
-            err.println(e.getMessage());
-            return 2;
-        }
+        Map<String, Object> cliParams = params;
 
         // GETs for Bundle `patch:` entries hit the target env even on --dry-run so the
         // printed envelope reflects the actual apply payload (the patch → merged-spec

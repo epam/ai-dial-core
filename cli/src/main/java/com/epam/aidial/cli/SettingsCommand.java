@@ -5,8 +5,11 @@ import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.ParentCommand;
 import picocli.CommandLine.Spec;
+import picocli.CommandLine.UseDefaultConverter;
 
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Callable;
 
 @Command(
@@ -91,8 +94,8 @@ public class SettingsCommand {
         Path fromFile;
         @Option(names = "--template", description = "Template name from CLI profile to apply.")
         String template;
-        @Option(names = "--param", description = "Template parameter 'key=value' (repeatable).")
-        java.util.List<String> params;
+        @Option(names = "--param", description = "Template parameter 'key=value' (repeatable).", converter = {UseDefaultConverter.class, ParamValueConverter.class})
+        Map<String, Object> params = new HashMap<>();
 
         @Override
         public Integer call() {
@@ -114,8 +117,8 @@ public class SettingsCommand {
         @Option(names = "--template",
                 description = "Template name from CLI profile, or 'auto' to reverse-match against the source entity.")
         String template;
-        @Option(names = "--param", description = "Template parameter 'key=value' (repeatable).")
-        java.util.List<String> params;
+        @Option(names = "--param", description = "Template parameter 'key=value' (repeatable).", converter = {UseDefaultConverter.class, ParamValueConverter.class})
+        Map<String, Object> params = new HashMap<>();
 
         @Override
         public Integer call() {

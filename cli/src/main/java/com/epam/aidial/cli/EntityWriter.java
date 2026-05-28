@@ -43,11 +43,10 @@ public final class EntityWriter {
     }
 
     public static int addEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
-                                String canonicalId, Path fromFile, String templateName, List<String> paramFlags) {
+                                String canonicalId, Path fromFile, String templateName, Map<String, Object> params) {
         String name = requireCanonicalId(type, bucket, canonicalId);
         EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         Map<String, Object> entityCtx = entityContext(name, kind);
-        Map<String, Object> params = parseParams(paramFlags);
         TemplateContext tpl = new TemplateContext(templateName, params, resolved.vars(), entityCtx, resolved.templates());
         String body = loadSpecOrFail(fromFile, kind, canonicalId, spec.commandLine().getErr(), tpl);
         if (root.dryRun) {
@@ -112,11 +111,10 @@ public final class EntityWriter {
 
     public static int promoteEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
                                     String canonicalId, String sourceEnv, String targetEnv,
-                                    String templateName, List<String> paramFlags) {
+                                    String templateName, Map<String, Object> params) {
         String simpleName = requireCanonicalId(type, bucket, canonicalId);
         EnvResolver.ResolvedEnv source = EnvResolver.resolveEnv(root, sourceEnv);
         EnvResolver.ResolvedEnv target = EnvResolver.resolveEnv(root, targetEnv);
-        Map<String, Object> params = parseParams(paramFlags);
         String path = "/v1/" + type + "/" + bucket + "/" + simpleName;
         CliHttpClient.Response getResp = new CliHttpClient(source.apiUrl(), source.apiKey()).get(path);
         if (getResp.status() >= 300) {
@@ -208,11 +206,10 @@ public final class EntityWriter {
     }
 
     public static int validateEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
-                                     String canonicalId, Path fromFile, String templateName, List<String> paramFlags) {
+                                     String canonicalId, Path fromFile, String templateName, Map<String, Object> params) {
         String simpleName = requireCanonicalId(type, bucket, canonicalId);
         EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         Map<String, Object> entityCtx = entityContext(simpleName, kind);
-        Map<String, Object> params = parseParams(paramFlags);
         TemplateContext tpl = new TemplateContext(templateName, params, resolved.vars(), entityCtx, resolved.templates());
         String specJson = loadSpecOrFail(fromFile, kind, canonicalId, spec.commandLine().getErr(), tpl);
         ObjectNode envelope = JSON.createObjectNode();
@@ -426,40 +423,6 @@ public final class EntityWriter {
             ctx.put("type", kind);
         }
         return ctx;
-    }
-
-    static Map<String, Object> parseParams(List<String> paramFlags) {
-        Map<String, Object> out = new HashMap<>();
-        if (paramFlags == null) {
-            return out;
-        }
-        for (String pair : paramFlags) {
-            int eq = pair.indexOf('=');
-            if (eq <= 0) {
-                throw CliException.validation("--param must be 'key=value'; got '" + pair + "'.");
-            }
-            String key = pair.substring(0, eq).trim();
-            String rawValue = pair.substring(eq + 1);
-            out.put(key, parseParamValue(rawValue));
-        }
-        return out;
-    }
-
-    private static Object parseParamValue(String raw) {
-        // Comma-separated list: 'a,b,c' → List<String>.
-        if (raw.startsWith("[") && raw.endsWith("]")) {
-            String inner = raw.substring(1, raw.length() - 1);
-            if (inner.isBlank()) {
-                return List.of();
-            }
-            String[] parts = inner.split(",", -1);
-            List<String> items = new java.util.ArrayList<>(parts.length);
-            for (String p : parts) {
-                items.add(p.trim());
-            }
-            return items;
-        }
-        return raw;
     }
 
     /**
