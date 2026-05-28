@@ -1292,7 +1292,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                        "auto_caching" : false,
                        "parallel_tool_calls" : true,
                        "assistant_attachments_in_request": false,
-                       "mcp" : false
+                       "mcp" : true
                      },
                      "defaults" : { },
                      "responses_defaults" : { },
