@@ -12,7 +12,7 @@ class DialCliSmokeTest {
 
     @Test
     void exposesSkeletonSubcommands() {
-        CommandLine cmd = new CommandLine(new DialCli());
+        CommandLine cmd = DialCliFactory.build();
         Set<String> subcommands = cmd.getSubcommands().keySet();
 
         assertTrue(subcommands.contains("env"), "expected `env` subcommand, got " + subcommands);
@@ -21,7 +21,7 @@ class DialCliSmokeTest {
 
     @Test
     void exposesAllPerTypeReadCommands() {
-        CommandLine cmd = new CommandLine(new DialCli());
+        CommandLine cmd = DialCliFactory.build();
         Set<String> subcommands = cmd.getSubcommands().keySet();
 
         Set<String> expected = Set.of(
@@ -33,7 +33,7 @@ class DialCliSmokeTest {
 
     @Test
     void perTypeCommandsExposeGetAndList() {
-        CommandLine root = new CommandLine(new DialCli());
+        CommandLine root = DialCliFactory.build();
         for (String type : new String[]{"model", "application", "toolset",
                 "interceptor", "role", "key", "route", "schema"}) {
             CommandLine typeCmd = root.getSubcommands().get(type);
@@ -45,7 +45,7 @@ class DialCliSmokeTest {
 
     @Test
     void settingsExposesGetOnly() {
-        CommandLine root = new CommandLine(new DialCli());
+        CommandLine root = DialCliFactory.build();
         Set<String> children = root.getSubcommands().get("settings").getSubcommands().keySet();
 
         assertTrue(children.contains("get"), "settings missing `get`, has " + children);
@@ -55,7 +55,7 @@ class DialCliSmokeTest {
 
     @Test
     void envSubcommandExposesPhase1Children() {
-        CommandLine env = new CommandLine(new DialCli()).getSubcommands().get("env");
+        CommandLine env = DialCliFactory.build().getSubcommands().get("env");
         Set<String> children = env.getSubcommands().keySet();
 
         assertTrue(children.containsAll(Set.of("list", "current", "use", "check")),
@@ -79,7 +79,7 @@ class DialCliSmokeTest {
 
     @Test
     void versionExitsZeroAndPrintsVersionLine() {
-        CommandLine cmd = new CommandLine(new DialCli());
+        CommandLine cmd = DialCliFactory.build();
         java.io.StringWriter out = new java.io.StringWriter();
         cmd.setOut(new java.io.PrintWriter(out));
         cmd.setErr(new java.io.PrintWriter(java.io.OutputStream.nullOutputStream()));
@@ -92,7 +92,7 @@ class DialCliSmokeTest {
     }
 
     private static void assertHelpExitsZero(String... args) {
-        CommandLine cmd = new CommandLine(new DialCli());
+        CommandLine cmd = DialCliFactory.build();
         cmd.setOut(new java.io.PrintWriter(java.io.OutputStream.nullOutputStream()));
         cmd.setErr(new java.io.PrintWriter(java.io.OutputStream.nullOutputStream()));
         String[] effective = (args.length == 0) ? new String[]{"--help"} : args;

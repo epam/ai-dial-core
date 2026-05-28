@@ -16,8 +16,7 @@ class CompletionCommandTest {
     private static Result run(String... args) {
         StringWriter out = new StringWriter();
         StringWriter err = new StringWriter();
-        CommandLine cli = new CommandLine(new DialCli())
-                .setExecutionExceptionHandler(new DialExceptionHandler());
+        CommandLine cli = DialCliFactory.build();
         cli.setOut(new PrintWriter(out));
         cli.setErr(new PrintWriter(err));
         return new Result(cli.execute(args), out.toString(), err.toString());

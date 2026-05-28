@@ -64,8 +64,7 @@ class ApplyCommandTest {
     private Result run(Path config, Path keyFile, String... args) {
         StringWriter out = new StringWriter();
         StringWriter err = new StringWriter();
-        CommandLine cli = new CommandLine(new DialCli())
-                .setExecutionExceptionHandler(new DialExceptionHandler());
+        CommandLine cli = DialCliFactory.build();
         cli.setOut(new PrintWriter(out));
         cli.setErr(new PrintWriter(err));
         String[] full = new String[4 + args.length];
