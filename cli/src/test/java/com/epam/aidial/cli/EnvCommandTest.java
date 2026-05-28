@@ -41,7 +41,8 @@ class EnvCommandTest {
     private static Result run(Path config, String... extraArgs) {
         StringWriter out = new StringWriter();
         StringWriter err = new StringWriter();
-        CommandLine cli = new CommandLine(new DialCli());
+        CommandLine cli = new CommandLine(new DialCli())
+                .setExecutionExceptionHandler(new DialExceptionHandler());
         cli.setOut(new PrintWriter(out));
         cli.setErr(new PrintWriter(err));
         String[] args = new String[2 + extraArgs.length];
@@ -160,7 +161,8 @@ class EnvCommandTest {
 
         StringWriter out = new StringWriter();
         StringWriter err = new StringWriter();
-        CommandLine cli = new CommandLine(new DialCli());
+        CommandLine cli = new CommandLine(new DialCli())
+                .setExecutionExceptionHandler(new DialExceptionHandler());
         cli.setOut(new PrintWriter(out));
         cli.setErr(new PrintWriter(err));
         injectResolver(cli, Map.of("DIAL_DEV_API_KEY", "secret"));
@@ -180,7 +182,8 @@ class EnvCommandTest {
 
         StringWriter out = new StringWriter();
         StringWriter err = new StringWriter();
-        CommandLine cli = new CommandLine(new DialCli());
+        CommandLine cli = new CommandLine(new DialCli())
+                .setExecutionExceptionHandler(new DialExceptionHandler());
         cli.setOut(new PrintWriter(out));
         cli.setErr(new PrintWriter(err));
         injectResolver(cli, Map.of());

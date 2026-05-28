@@ -44,62 +44,29 @@ public final class EntityWriter {
 
     public static int addEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
                                 String canonicalId, Path fromFile, String templateName, List<String> paramFlags) {
-        String name;
-        try {
-            name = requireCanonicalId(type, bucket, canonicalId);
-        } catch (IllegalArgumentException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 2;
-        }
+        String name = requireCanonicalId(type, bucket, canonicalId);
         EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
         if (resolved == null) {
             return 2;
         }
         Map<String, Object> entityCtx = entityContext(name, kind);
-        Map<String, Object> params;
-        try {
-            params = parseParams(paramFlags);
-        } catch (IllegalArgumentException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 2;
-        }
-        String body;
-        try {
-            TemplateContext tpl = new TemplateContext(templateName, params,
-                    resolved.vars(), entityCtx, resolved.templates());
-            body = loadSpecOrFail(fromFile, kind, canonicalId, spec.commandLine().getErr(), tpl);
-        } catch (TemplateException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 2;
-        } catch (NoSuchFileException e) {
-            spec.commandLine().getErr().println("File not found: " + fromFile);
-            return 2;
-        } catch (IOException e) {
-            spec.commandLine().getErr().println("Failed to read " + fromFile + ": " + e.getMessage());
-            return 2;
-        }
+        Map<String, Object> params = parseParams(paramFlags);
+        TemplateContext tpl = new TemplateContext(templateName, params, resolved.vars(), entityCtx, resolved.templates());
+        String body = loadSpecOrFail(fromFile, kind, canonicalId, spec.commandLine().getErr(), tpl);
         if (root.dryRun) {
             spec.commandLine().getOut().println(body);
             return 0;
         }
         String path = "/v1/" + type + "/" + bucket + "/" + name;
         CliHttpClient http = new CliHttpClient(resolved.apiUrl(), resolved.apiKey());
-        CliHttpClient.Response resp;
-        try {
-            // PUT with If-None-Match: * — create-only gate (replaces POST after U.0)
-            resp = http.put(path, null, body, null, "*");
-        } catch (CliHttpClient.NetworkException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 1;
-        }
+        // PUT with If-None-Match: * — create-only gate (replaces POST after U.0)
+        CliHttpClient.Response resp = http.put(path, null, body, null, "*");
         // Server returns 412 (not 409) when If-None-Match: * fails — preserve exit-code 5 contract
         if (resp.status() == 412) {
-            spec.commandLine().getErr().println("Already exists: " + canonicalId);
-            return 5;
+            throw CliException.alreadyExists(canonicalId);
         }
         if (resp.status() >= 300) {
-            spec.commandLine().getErr().println(EntityReader.formatHttpError(resp.status(), resp.body(), path));
-            return CliHttpClient.toExitCode(resp.status());
+            throw CliException.httpError(resp.status(), resp.body(), path);
         }
         spec.commandLine().getOut().println("Created " + canonicalId);
         return 0;
@@ -107,69 +74,43 @@ public final class EntityWriter {
 
     public static int updateEntity(DialCli root, CommandSpec spec, String type, String bucket,
                                    String canonicalId, List<String> sets, String ifMatch) {
-        String name;
-        try {
-            name = requireCanonicalId(type, bucket, canonicalId);
-        } catch (IllegalArgumentException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 2;
-        }
+        String name = requireCanonicalId(type, bucket, canonicalId);
         EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
         if (resolved == null) {
             return 2;
         }
         String path = "/v1/" + type + "/" + bucket + "/" + name;
         CliHttpClient http = new CliHttpClient(resolved.apiUrl(), resolved.apiKey());
-        CliHttpClient.Response getResp;
-        try {
-            getResp = http.get(path);
-        } catch (CliHttpClient.NetworkException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 1;
-        }
+        CliHttpClient.Response getResp = http.get(path);
         if (getResp.status() >= 300) {
-            spec.commandLine().getErr().println(EntityReader.formatHttpError(getResp.status(), getResp.body(), path));
-            return CliHttpClient.toExitCode(getResp.status());
+            throw CliException.httpError(getResp.status(), getResp.body(), path);
         }
         ObjectNode merged;
         try {
             JsonNode current = JSON.readTree(getResp.body());
             if (!current.isObject()) {
-                spec.commandLine().getErr().println("GET response is not a JSON object: " + getResp.body());
-                return 1;
+                throw CliException.network("GET response is not a JSON object: " + getResp.body());
             }
             merged = (ObjectNode) current;
-            merged.remove(java.util.Arrays.asList(PROJECTION_FIELDS));
-            applySets(merged, sets);
-        } catch (IllegalArgumentException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 2;
         } catch (JsonProcessingException e) {
-            spec.commandLine().getErr().println("Failed to parse GET response: " + e.getMessage());
-            return 1;
+            throw CliException.network("Failed to parse GET response: " + e.getMessage());
         }
+        merged.remove(java.util.Arrays.asList(PROJECTION_FIELDS));
+        applySets(merged, sets);
         String body;
         try {
             body = JSON.writeValueAsString(merged);
         } catch (JsonProcessingException e) {
-            spec.commandLine().getErr().println("Failed to serialize merged body: " + e.getMessage());
-            return 1;
+            throw CliException.network("Failed to serialize merged body: " + e.getMessage());
         }
         if (root.dryRun) {
             spec.commandLine().getOut().println(body);
             return 0;
         }
         String etag = (ifMatch != null && !ifMatch.isBlank()) ? ifMatch : getResp.etag();
-        CliHttpClient.Response putResp;
-        try {
-            putResp = http.put(path, body, etag);
-        } catch (CliHttpClient.NetworkException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 1;
-        }
+        CliHttpClient.Response putResp = http.put(path, body, etag);
         if (putResp.status() >= 300) {
-            spec.commandLine().getErr().println(EntityReader.formatHttpError(putResp.status(), putResp.body(), path));
-            return CliHttpClient.toExitCode(putResp.status());
+            throw CliException.httpError(putResp.status(), putResp.body(), path);
         }
         spec.commandLine().getOut().println("Updated " + canonicalId);
         return 0;
@@ -178,13 +119,7 @@ public final class EntityWriter {
     public static int promoteEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
                                     String canonicalId, String sourceEnv, String targetEnv,
                                     String templateName, List<String> paramFlags) {
-        String simpleName;
-        try {
-            simpleName = requireCanonicalId(type, bucket, canonicalId);
-        } catch (IllegalArgumentException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 2;
-        }
+        String simpleName = requireCanonicalId(type, bucket, canonicalId);
         EnvResolver.ResolvedEnv source = EnvResolver.resolveEnv(root, spec, sourceEnv);
         if (source == null) {
             return 2;
@@ -193,64 +128,42 @@ public final class EntityWriter {
         if (target == null) {
             return 2;
         }
-        Map<String, Object> params;
-        try {
-            params = parseParams(paramFlags);
-        } catch (IllegalArgumentException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 2;
-        }
+        Map<String, Object> params = parseParams(paramFlags);
         String path = "/v1/" + type + "/" + bucket + "/" + simpleName;
-        CliHttpClient.Response getResp;
-        try {
-            getResp = new CliHttpClient(source.apiUrl(), source.apiKey()).get(path);
-        } catch (CliHttpClient.NetworkException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 1;
-        }
+        CliHttpClient.Response getResp = new CliHttpClient(source.apiUrl(), source.apiKey()).get(path);
         if (getResp.status() >= 300) {
-            spec.commandLine().getErr().println("Source " + source.envName() + ": "
-                    + EntityReader.formatHttpError(getResp.status(), getResp.body(), path));
-            return CliHttpClient.toExitCode(getResp.status());
+            throw new CliException("Source " + source.envName() + ": "
+                    + EntityReader.formatHttpError(getResp.status(), getResp.body(), path),
+                    CliHttpClient.toExitCode(getResp.status()));
         }
         JsonNode sourceSpec;
         try {
             sourceSpec = JSON.readTree(getResp.body());
         } catch (JsonProcessingException e) {
-            spec.commandLine().getErr().println("Failed to parse source " + source.envName() + " response: " + e.getMessage());
-            return 1;
+            throw CliException.network("Failed to parse source " + source.envName() + " response: " + e.getMessage());
         }
         Map<String, Object> entityCtx = entityContext(simpleName, kind);
         String effectiveTemplate = templateName;
         if (TEMPLATE_AUTO.equals(templateName)) {
             Map<String, Object> templates = source.templates();
             if (templates == null || templates.isEmpty()) {
-                spec.commandLine().getErr().println(
+                throw CliException.validation(
                         "No templates defined in profile; cannot use --template auto. Use --template <name> with an explicit name or omit --template for as-is copy.");
-                return 2;
             }
             List<String> matches = autoMatchTemplates(sourceSpec, source, params, entityCtx);
             if (matches.isEmpty()) {
-                spec.commandLine().getErr().println(
+                throw CliException.validation(
                         "No template matches the source entity. Available: " + String.join(", ", templates.keySet())
                                 + ". Use --template <name> explicitly.");
-                return 2;
             }
             if (matches.size() > 1) {
-                spec.commandLine().getErr().println(
+                throw CliException.validation(
                         "Multiple templates match: " + String.join(", ", matches)
                                 + ". Use --template <name> explicitly.");
-                return 2;
             }
             effectiveTemplate = matches.get(0);
         }
-        JsonNode mergedSpec;
-        try {
-            mergedSpec = applyPromoteTemplate(sourceSpec, effectiveTemplate, target, params, entityCtx);
-        } catch (TemplateException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 2;
-        }
+        JsonNode mergedSpec = applyPromoteTemplate(sourceSpec, effectiveTemplate, target, params, entityCtx);
         warnSourceHostnames(spec.commandLine().getErr(), canonicalId, mergedSpec, source);
         ObjectNode envelope = JSON.createObjectNode();
         ObjectNode manifest = JSON.createObjectNode();
@@ -263,24 +176,18 @@ public final class EntityWriter {
         try {
             body = JSON.writeValueAsString(envelope);
         } catch (JsonProcessingException e) {
-            spec.commandLine().getErr().println("Failed to serialize apply envelope: " + e.getMessage());
-            return 1;
+            throw CliException.network("Failed to serialize apply envelope: " + e.getMessage());
         }
         if (root.dryRun) {
             spec.commandLine().getOut().println(body);
             return 0;
         }
-        CliHttpClient.Response applyResp;
-        try {
-            applyResp = new CliHttpClient(target.apiUrl(), target.apiKey()).post("/v1/admin/apply", body);
-        } catch (CliHttpClient.NetworkException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 1;
-        }
+        CliHttpClient.Response applyResp =
+                new CliHttpClient(target.apiUrl(), target.apiKey()).post("/v1/admin/apply", body);
         if (applyResp.status() != 200 && applyResp.status() != 422) {
-            spec.commandLine().getErr().println("Target " + target.envName() + ": "
-                    + EntityReader.formatHttpError(applyResp.status(), applyResp.body(), "/v1/admin/apply"));
-            return CliHttpClient.toExitCode(applyResp.status());
+            throw new CliException("Target " + target.envName() + ": "
+                    + EntityReader.formatHttpError(applyResp.status(), applyResp.body(), "/v1/admin/apply"),
+                    CliHttpClient.toExitCode(applyResp.status()));
         }
         try {
             JsonNode parsed = JSON.readTree(applyResp.body());
@@ -308,47 +215,21 @@ public final class EntityWriter {
             }
             return 2;
         } catch (JsonProcessingException e) {
-            spec.commandLine().getErr().println("Failed to parse apply response: " + e.getMessage());
-            return 1;
+            throw CliException.network("Failed to parse apply response: " + e.getMessage());
         }
     }
 
     public static int validateEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
                                      String canonicalId, Path fromFile, String templateName, List<String> paramFlags) {
-        String simpleName;
-        try {
-            simpleName = requireCanonicalId(type, bucket, canonicalId);
-        } catch (IllegalArgumentException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 2;
-        }
+        String simpleName = requireCanonicalId(type, bucket, canonicalId);
         EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
         if (resolved == null) {
             return 2;
         }
         Map<String, Object> entityCtx = entityContext(simpleName, kind);
-        Map<String, Object> params;
-        try {
-            params = parseParams(paramFlags);
-        } catch (IllegalArgumentException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 2;
-        }
-        String specJson;
-        try {
-            TemplateContext tpl = new TemplateContext(templateName, params,
-                    resolved.vars(), entityCtx, resolved.templates());
-            specJson = loadSpecOrFail(fromFile, kind, canonicalId, spec.commandLine().getErr(), tpl);
-        } catch (TemplateException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 2;
-        } catch (NoSuchFileException e) {
-            spec.commandLine().getErr().println("File not found: " + fromFile);
-            return 2;
-        } catch (IOException e) {
-            spec.commandLine().getErr().println("Failed to read " + fromFile + ": " + e.getMessage());
-            return 2;
-        }
+        Map<String, Object> params = parseParams(paramFlags);
+        TemplateContext tpl = new TemplateContext(templateName, params, resolved.vars(), entityCtx, resolved.templates());
+        String specJson = loadSpecOrFail(fromFile, kind, canonicalId, spec.commandLine().getErr(), tpl);
         ObjectNode envelope = JSON.createObjectNode();
         ObjectNode manifest = JSON.createObjectNode();
         manifest.put("kind", kind);
@@ -356,8 +237,7 @@ public final class EntityWriter {
         try {
             manifest.set("spec", JSON.readTree(specJson));
         } catch (JsonProcessingException e) {
-            spec.commandLine().getErr().println("Failed to parse spec body: " + e.getMessage());
-            return 2;
+            throw CliException.validation("Failed to parse spec body: " + e.getMessage());
         }
         envelope.putArray("manifests").add(manifest);
         envelope.put("precheck", true);
@@ -365,23 +245,16 @@ public final class EntityWriter {
         try {
             body = JSON.writeValueAsString(envelope);
         } catch (JsonProcessingException e) {
-            spec.commandLine().getErr().println("Failed to serialize validate envelope: " + e.getMessage());
-            return 1;
+            throw CliException.network("Failed to serialize validate envelope: " + e.getMessage());
         }
         if (root.dryRun) {
             spec.commandLine().getOut().println(body);
             return 0;
         }
-        CliHttpClient.Response resp;
-        try {
-            resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).post("/v1/admin/validate", body);
-        } catch (CliHttpClient.NetworkException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 1;
-        }
+        CliHttpClient.Response resp =
+                new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).post("/v1/admin/validate", body);
         if (resp.status() != 200 && resp.status() != 422) {
-            spec.commandLine().getErr().println(EntityReader.formatHttpError(resp.status(), resp.body(), "/v1/admin/validate"));
-            return CliHttpClient.toExitCode(resp.status());
+            throw CliException.httpError(resp.status(), resp.body(), "/v1/admin/validate");
         }
         try {
             JsonNode parsed = JSON.readTree(resp.body());
@@ -400,20 +273,13 @@ public final class EntityWriter {
             }
             return 2;
         } catch (JsonProcessingException e) {
-            spec.commandLine().getErr().println("Failed to parse validate response: " + e.getMessage());
-            return 1;
+            throw CliException.network("Failed to parse validate response: " + e.getMessage());
         }
     }
 
     public static int deleteEntity(DialCli root, CommandSpec spec, String type, String bucket,
                                    String canonicalId, String ifMatch) {
-        String name;
-        try {
-            name = requireCanonicalId(type, bucket, canonicalId);
-        } catch (IllegalArgumentException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 2;
-        }
+        String name = requireCanonicalId(type, bucket, canonicalId);
         if (root.dryRun) {
             spec.commandLine().getOut().println("Would delete " + canonicalId);
             return 0;
@@ -423,16 +289,9 @@ public final class EntityWriter {
             return 2;
         }
         String path = "/v1/" + type + "/" + bucket + "/" + name;
-        CliHttpClient.Response resp;
-        try {
-            resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).delete(path, ifMatch);
-        } catch (CliHttpClient.NetworkException e) {
-            spec.commandLine().getErr().println(e.getMessage());
-            return 1;
-        }
+        CliHttpClient.Response resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).delete(path, ifMatch);
         if (resp.status() >= 300) {
-            spec.commandLine().getErr().println(EntityReader.formatHttpError(resp.status(), resp.body(), path));
-            return CliHttpClient.toExitCode(resp.status());
+            throw CliException.httpError(resp.status(), resp.body(), path);
         }
         spec.commandLine().getOut().println("Deleted " + canonicalId);
         return 0;
@@ -445,7 +304,7 @@ public final class EntityWriter {
         for (String pair : sets) {
             int eq = pair.indexOf('=');
             if (eq <= 0) {
-                throw new IllegalArgumentException("--set must be 'path=value'; got '" + pair + "'.");
+                throw CliException.validation("--set must be 'path=value'; got '" + pair + "'.");
             }
             String pathExpr = pair.substring(0, eq);
             String rawValue = pair.substring(eq + 1);
@@ -453,7 +312,7 @@ public final class EntityWriter {
             String[] segments = pathExpr.split("\\.", -1);
             for (String segment : segments) {
                 if (segment.isEmpty()) {
-                    throw new IllegalArgumentException("--set path must not contain empty segments; got '" + pathExpr + "'.");
+                    throw CliException.validation("--set path must not contain empty segments; got '" + pathExpr + "'.");
                 }
             }
             ObjectNode cursor = target;
@@ -464,7 +323,7 @@ public final class EntityWriter {
                 } else if (next instanceof ObjectNode existing) {
                     cursor = existing;
                 } else {
-                    throw new IllegalArgumentException("--set path '" + pathExpr
+                    throw CliException.validation("--set path '" + pathExpr
                             + "' would overwrite a non-object value at '" + segments[i] + "'.");
                 }
             }
@@ -483,12 +342,12 @@ public final class EntityWriter {
     private static String requireCanonicalId(String type, String bucket, String identifier) {
         String prefix = type + "/" + bucket + "/";
         if (!identifier.startsWith(prefix) || identifier.length() == prefix.length()) {
-            throw new IllegalArgumentException(
+            throw CliException.validation(
                     "--name must be a canonical id '" + type + "/" + bucket + "/<name>'; got '" + identifier + "'.");
         }
         String name = identifier.substring(prefix.length());
         if (name.contains("/")) {
-            throw new IllegalArgumentException(
+            throw CliException.validation(
                     "--name must not contain '/' after the bucket; got '" + identifier + "'.");
         }
         return name;
@@ -507,10 +366,17 @@ public final class EntityWriter {
      * {@code ${...}} placeholders are substituted.
      */
     private static String loadSpecOrFail(Path file, String expectedKind, String canonicalId,
-                                         PrintWriter err, TemplateContext tpl) throws IOException {
+                                         PrintWriter err, TemplateContext tpl) {
         String filename = file.getFileName().toString().toLowerCase();
         boolean yaml = filename.endsWith(".yaml") || filename.endsWith(".yml");
-        String raw = Files.readString(file, StandardCharsets.UTF_8);
+        String raw;
+        try {
+            raw = Files.readString(file, StandardCharsets.UTF_8);
+        } catch (NoSuchFileException e) {
+            throw CliException.validation("File not found: " + file);
+        } catch (IOException e) {
+            throw CliException.validation("Failed to read " + file + ": " + e.getMessage());
+        }
         if (yaml) {
             raw = ControlFlowExpander.rewriteYaml(raw);
         }
@@ -518,10 +384,10 @@ public final class EntityWriter {
         try {
             root = yaml ? YAML.readTree(raw) : JSON.readTree(raw);
         } catch (JsonProcessingException e) {
-            throw new IOException("invalid " + (yaml ? "YAML" : "JSON") + ": " + e.getMessage(), e);
+            throw CliException.validation("invalid " + (yaml ? "YAML" : "JSON") + ": " + e.getMessage());
         }
         if (root == null || root.isMissingNode() || root.isNull()) {
-            throw new IOException("file is empty");
+            throw CliException.validation("file is empty");
         }
         JsonNode rawSpec;
         String envelopeTemplate = tpl.templateName();
@@ -529,11 +395,11 @@ public final class EntityWriter {
         if (root.isObject() && root.has("kind") && root.has("spec") && root.get("spec").isObject()) {
             JsonNode kindNode = root.get("kind");
             if (!kindNode.isTextual() || kindNode.asText().isBlank()) {
-                throw new IOException("manifest envelope has empty 'kind'");
+                throw CliException.validation("manifest envelope has empty 'kind'");
             }
             String declared = kindNode.asText();
             if (!declared.equals(expectedKind)) {
-                throw new IOException("manifest 'kind' is '" + declared + "', expected '" + expectedKind + "'");
+                throw CliException.validation("manifest 'kind' is '" + declared + "', expected '" + expectedKind + "'");
             }
             JsonNode envName = root.get("name");
             if (envName != null && envName.isTextual() && !envName.asText().isBlank()
@@ -564,7 +430,11 @@ public final class EntityWriter {
         TemplateContext effective = new TemplateContext(envelopeTemplate, envelopeParams,
                 tpl.vars(), tpl.entityCtx(), tpl.templates());
         JsonNode resolved = TemplateResolver.resolve(rawSpec, effective);
-        return JSON.writeValueAsString(resolved);
+        try {
+            return JSON.writeValueAsString(resolved);
+        } catch (JsonProcessingException e) {
+            throw CliException.network("Failed to serialize resolved spec: " + e.getMessage());
+        }
     }
 
     static Map<String, Object> entityContext(String simpleName, String kind) {
@@ -584,7 +454,7 @@ public final class EntityWriter {
         for (String pair : paramFlags) {
             int eq = pair.indexOf('=');
             if (eq <= 0) {
-                throw new IllegalArgumentException("--param must be 'key=value'; got '" + pair + "'.");
+                throw CliException.validation("--param must be 'key=value'; got '" + pair + "'.");
             }
             String key = pair.substring(0, eq).trim();
             String rawValue = pair.substring(eq + 1);
@@ -630,7 +500,7 @@ public final class EntityWriter {
             try {
                 TemplateContext tpl = new TemplateContext(name, params, source.vars(), entityCtx, templates);
                 resolvedFields = TemplateResolver.resolveTemplate(tpl);
-            } catch (TemplateException e) {
+            } catch (Exception e) {
                 continue;
             }
             // Template ⊆ spec iff merge-patching it onto spec is a no-op.
@@ -650,7 +520,12 @@ public final class EntityWriter {
         }
         TemplateContext tpl = new TemplateContext(templateName, params,
                 target.vars(), entityCtx, target.templates());
-        JsonNode resolvedTemplate = TemplateResolver.resolveTemplate(tpl);
+        JsonNode resolvedTemplate;
+        try {
+            resolvedTemplate = TemplateResolver.resolveTemplate(tpl);
+        } catch (TemplateException e) {
+            throw CliException.validation(e.getMessage());
+        }
         // Template-wins merge (design 05 §4 step 4) — inverse of TemplateResolver.resolve's spec-wins (§3.5).
         return TemplateResolver.deepMerge(sourceSpec, resolvedTemplate);
     }

@@ -1,5 +1,7 @@
 package com.epam.aidial.cli.http;
 
+import com.epam.aidial.cli.CliException;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -147,9 +149,9 @@ public class CliHttpClient {
 
     public record Response(int status, String body, String etag) { }
 
-    public static class NetworkException extends RuntimeException {
+    public static class NetworkException extends CliException {
         public NetworkException(String message, Throwable cause) {
-            super(message, cause);
+            super(message, 1, cause);
         }
     }
 }
