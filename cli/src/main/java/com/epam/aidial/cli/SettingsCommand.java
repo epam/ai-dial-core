@@ -64,7 +64,8 @@ public class SettingsCommand {
 
         @Override
         public Integer call() {
-            return EntityWriter.updateEntity(cmd.parent, spec, TYPE, BUCKET, CANONICAL_ID, sets, ifMatch);
+            EntityWriter.updateEntity(cmd.parent, spec, TYPE, BUCKET, CANONICAL_ID, sets, ifMatch);
+            return 0;
         }
     }
 
@@ -80,7 +81,8 @@ public class SettingsCommand {
 
         @Override
         public Integer call() {
-            return EntityWriter.deleteEntity(cmd.parent, spec, TYPE, BUCKET, CANONICAL_ID, ifMatch);
+            EntityWriter.deleteEntity(cmd.parent, spec, TYPE, BUCKET, CANONICAL_ID, ifMatch);
+            return 0;
         }
     }
 

@@ -41,7 +41,7 @@ public final class EntityWriter {
     private EntityWriter() {
     }
 
-    public static int addEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
+    public static void addEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
                                 String canonicalId, Path fromFile, String templateName, Map<String, Object> params) {
         String name = requireCanonicalId(type, bucket, canonicalId);
         EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
@@ -50,7 +50,7 @@ public final class EntityWriter {
         String body = loadSpecOrFail(fromFile, kind, canonicalId, spec.commandLine().getErr(), tpl);
         if (root.dryRun) {
             spec.commandLine().getOut().println(body);
-            return 0;
+            return;
         }
         String path = "/v1/" + type + "/" + bucket + "/" + name;
         CliHttpClient http = new CliHttpClient(resolved.apiUrl(), resolved.apiKey());
@@ -64,10 +64,9 @@ public final class EntityWriter {
             throw CliException.httpError(resp.status(), resp.body(), path);
         }
         spec.commandLine().getOut().println("Created " + canonicalId);
-        return 0;
     }
 
-    public static int updateEntity(DialCli root, CommandSpec spec, String type, String bucket,
+    public static void updateEntity(DialCli root, CommandSpec spec, String type, String bucket,
                                    String canonicalId, Map<String, JsonNode> sets, String ifMatch) {
         String name = requireCanonicalId(type, bucket, canonicalId);
         EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
@@ -97,7 +96,7 @@ public final class EntityWriter {
         }
         if (root.dryRun) {
             spec.commandLine().getOut().println(body);
-            return 0;
+            return;
         }
         String etag = (ifMatch != null && !ifMatch.isBlank()) ? ifMatch : getResp.etag();
         CliHttpClient.Response putResp = http.put(path, body, etag);
@@ -105,7 +104,6 @@ public final class EntityWriter {
             throw CliException.httpError(putResp.status(), putResp.body(), path);
         }
         spec.commandLine().getOut().println("Updated " + canonicalId);
-        return 0;
     }
 
     public static int promoteEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
@@ -258,12 +256,12 @@ public final class EntityWriter {
         }
     }
 
-    public static int deleteEntity(DialCli root, CommandSpec spec, String type, String bucket,
+    public static void deleteEntity(DialCli root, CommandSpec spec, String type, String bucket,
                                    String canonicalId, String ifMatch) {
         String name = requireCanonicalId(type, bucket, canonicalId);
         if (root.dryRun) {
             spec.commandLine().getOut().println("Would delete " + canonicalId);
-            return 0;
+            return;
         }
         EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         String path = "/v1/" + type + "/" + bucket + "/" + name;
@@ -272,7 +270,6 @@ public final class EntityWriter {
             throw CliException.httpError(resp.status(), resp.body(), path);
         }
         spec.commandLine().getOut().println("Deleted " + canonicalId);
-        return 0;
     }
 
     private static String requireCanonicalId(String type, String bucket, String identifier) {

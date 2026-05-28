@@ -88,7 +88,8 @@ public class InterceptorCommand {
 
         @Override
         public Integer call() {
-            return EntityWriter.addEntity(cmd.parent, spec, TYPE, KIND, BUCKET, name, fromFile, template, params);
+            EntityWriter.addEntity(cmd.parent, spec, TYPE, KIND, BUCKET, name, fromFile, template, params);
+            return 0;
         }
     }
 
@@ -109,7 +110,8 @@ public class InterceptorCommand {
 
         @Override
         public Integer call() {
-            return EntityWriter.updateEntity(cmd.parent, spec, TYPE, BUCKET, name, sets, ifMatch);
+            EntityWriter.updateEntity(cmd.parent, spec, TYPE, BUCKET, name, sets, ifMatch);
+            return 0;
         }
     }
 
@@ -126,7 +128,8 @@ public class InterceptorCommand {
 
         @Override
         public Integer call() {
-            return EntityWriter.deleteEntity(cmd.parent, spec, TYPE, BUCKET, name, ifMatch);
+            EntityWriter.deleteEntity(cmd.parent, spec, TYPE, BUCKET, name, ifMatch);
+            return 0;
         }
     }
 

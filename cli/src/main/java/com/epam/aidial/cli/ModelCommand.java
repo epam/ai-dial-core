@@ -87,7 +87,8 @@ public class ModelCommand {
 
         @Override
         public Integer call() {
-            return EntityWriter.addEntity(model.parent, spec, TYPE, KIND, BUCKET, name, fromFile, template, params);
+            EntityWriter.addEntity(model.parent, spec, TYPE, KIND, BUCKET, name, fromFile, template, params);
+            return 0;
         }
     }
 
@@ -108,7 +109,8 @@ public class ModelCommand {
 
         @Override
         public Integer call() {
-            return EntityWriter.updateEntity(model.parent, spec, TYPE, BUCKET, name, sets, ifMatch);
+            EntityWriter.updateEntity(model.parent, spec, TYPE, BUCKET, name, sets, ifMatch);
+            return 0;
         }
     }
 
@@ -125,7 +127,8 @@ public class ModelCommand {
 
         @Override
         public Integer call() {
-            return EntityWriter.deleteEntity(model.parent, spec, TYPE, BUCKET, name, ifMatch);
+            EntityWriter.deleteEntity(model.parent, spec, TYPE, BUCKET, name, ifMatch);
+            return 0;
         }
     }
 
