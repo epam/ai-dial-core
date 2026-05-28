@@ -307,6 +307,10 @@
           ]
         }
       },
+      "dial:applicationTypeMcp": {
+        "dial:endpoint": "http://localhost:4848/mcp",
+        "dial:transport": "HTTP"
+      },
       "properties": {
         "property1": {
           "title": "Property 1",
