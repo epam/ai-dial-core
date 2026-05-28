@@ -1,5 +1,6 @@
 package com.epam.aidial.cli;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
@@ -55,8 +56,9 @@ public class SettingsCommand {
         SettingsCommand cmd;
         @Spec
         CommandSpec spec;
-        @Option(names = "--set", description = "Field override 'path=value' (repeatable). Dotted paths nest; values are JSON-coerced.")
-        java.util.List<String> sets;
+        @Option(names = "--set", description = "Field override 'dot.path=value' (repeatable). Keys are dot-paths; values are JSON-coerced.",
+                converter = {UseDefaultConverter.class, JsonNodeValueConverter.class})
+        Map<String, JsonNode> sets;
         @Option(names = "--if-match", description = "ETag for optimistic concurrency. Defaults to the GET response's ETag.")
         String ifMatch;
 

@@ -9,7 +9,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.TextNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import picocli.CommandLine.Model.CommandSpec;
 
@@ -69,7 +68,7 @@ public final class EntityWriter {
     }
 
     public static int updateEntity(DialCli root, CommandSpec spec, String type, String bucket,
-                                   String canonicalId, List<String> sets, String ifMatch) {
+                                   String canonicalId, Map<String, JsonNode> sets, String ifMatch) {
         String name = requireCanonicalId(type, bucket, canonicalId);
         EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         String path = "/v1/" + type + "/" + bucket + "/" + name;
@@ -89,7 +88,7 @@ public final class EntityWriter {
             throw CliException.network("Failed to parse GET response: " + e.getMessage());
         }
         merged.remove(java.util.Arrays.asList(PROJECTION_FIELDS));
-        applySets(merged, sets);
+        JsonPatcher.apply(merged, sets);
         String body;
         try {
             body = JSON.writeValueAsString(merged);
@@ -274,48 +273,6 @@ public final class EntityWriter {
         }
         spec.commandLine().getOut().println("Deleted " + canonicalId);
         return 0;
-    }
-
-    private static void applySets(ObjectNode target, List<String> sets) {
-        if (sets == null) {
-            return;
-        }
-        for (String pair : sets) {
-            int eq = pair.indexOf('=');
-            if (eq <= 0) {
-                throw CliException.validation("--set must be 'path=value'; got '" + pair + "'.");
-            }
-            String pathExpr = pair.substring(0, eq);
-            String rawValue = pair.substring(eq + 1);
-            JsonNode value = parseSetValue(rawValue);
-            String[] segments = pathExpr.split("\\.", -1);
-            for (String segment : segments) {
-                if (segment.isEmpty()) {
-                    throw CliException.validation("--set path must not contain empty segments; got '" + pathExpr + "'.");
-                }
-            }
-            ObjectNode cursor = target;
-            for (int i = 0; i < segments.length - 1; i++) {
-                JsonNode next = cursor.get(segments[i]);
-                if (next == null || next.isNull()) {
-                    cursor = cursor.putObject(segments[i]);
-                } else if (next instanceof ObjectNode existing) {
-                    cursor = existing;
-                } else {
-                    throw CliException.validation("--set path '" + pathExpr
-                            + "' would overwrite a non-object value at '" + segments[i] + "'.");
-                }
-            }
-            cursor.set(segments[segments.length - 1], value);
-        }
-    }
-
-    private static JsonNode parseSetValue(String raw) {
-        try {
-            return JSON.readTree(raw);
-        } catch (JsonProcessingException e) {
-            return TextNode.valueOf(raw);
-        }
     }
 
     private static String requireCanonicalId(String type, String bucket, String identifier) {
