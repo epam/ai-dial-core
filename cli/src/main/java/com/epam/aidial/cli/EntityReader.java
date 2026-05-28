@@ -33,10 +33,7 @@ public final class EntityReader {
     }
 
     public static int readEntity(DialCli root, CommandSpec spec, String type, String identifier) {
-        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
-        if (resolved == null) {
-            return 2;
-        }
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         String path;
         try {
             path = identifierToPath(type, identifier);
@@ -48,10 +45,7 @@ public final class EntityReader {
     }
 
     public static int readSingleton(DialCli root, CommandSpec spec, String type) {
-        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
-        if (resolved == null) {
-            return 2;
-        }
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         String bucket = TYPE_DEFAULT_BUCKET.get(type);
         if (bucket == null) {
             spec.commandLine().getErr().println("Unsupported entity type: " + type);
@@ -62,10 +56,7 @@ public final class EntityReader {
     }
 
     public static int listEntities(DialCli root, CommandSpec spec, String type) {
-        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
-        if (resolved == null) {
-            return 2;
-        }
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         String bucket = TYPE_DEFAULT_BUCKET.get(type);
         if (bucket == null) {
             spec.commandLine().getErr().println("Unsupported entity type: " + type);
@@ -79,10 +70,7 @@ public final class EntityReader {
     // ---- File-config surface (U.1: /v1/admin/config/file/*) ----
 
     public static int readConfigFileEntity(DialCli root, CommandSpec spec, String type, String identifier) {
-        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
-        if (resolved == null) {
-            return 2;
-        }
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         String name;
         try {
             name = simpleNameFromIdentifier(type, identifier);
@@ -95,19 +83,13 @@ public final class EntityReader {
     }
 
     public static int listConfigFileEntities(DialCli root, CommandSpec spec, String type) {
-        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
-        if (resolved == null) {
-            return 2;
-        }
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         String path = "/v1/admin/config/file/" + type;
         return doGet(root, spec, resolved, path, null, ListContext.FILE_CONFIG, type);
     }
 
     public static int readConfigFileSingleton(DialCli root, CommandSpec spec) {
-        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
-        if (resolved == null) {
-            return 2;
-        }
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         String path = "/v1/admin/config/file/settings/global";
         return doGet(root, spec, resolved, path, null, ListContext.NONE, "settings");
     }

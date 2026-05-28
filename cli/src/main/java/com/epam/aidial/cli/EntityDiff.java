@@ -16,14 +16,8 @@ public final class EntityDiff {
 
     static int run(DialCli root, CommandSpec spec, String type, String bucket, String canonicalPrefix,
                    String sourceEnv, String targetEnv, String name) {
-        EnvResolver.ResolvedEnv source = EnvResolver.resolveEnv(root, spec, sourceEnv);
-        if (source == null) {
-            return 2;
-        }
-        EnvResolver.ResolvedEnv target = EnvResolver.resolveEnv(root, spec, targetEnv);
-        if (target == null) {
-            return 2;
-        }
+        EnvResolver.ResolvedEnv source = EnvResolver.resolveEnv(root, sourceEnv);
+        EnvResolver.ResolvedEnv target = EnvResolver.resolveEnv(root, targetEnv);
         String path;
         String query;
         boolean isList;
@@ -54,14 +48,8 @@ public final class EntityDiff {
     }
 
     static int runSingleton(DialCli root, CommandSpec spec, String singletonPath, String sourceEnv, String targetEnv) {
-        EnvResolver.ResolvedEnv source = EnvResolver.resolveEnv(root, spec, sourceEnv);
-        if (source == null) {
-            return 2;
-        }
-        EnvResolver.ResolvedEnv target = EnvResolver.resolveEnv(root, spec, targetEnv);
-        if (target == null) {
-            return 2;
-        }
+        EnvResolver.ResolvedEnv source = EnvResolver.resolveEnv(root, sourceEnv);
+        EnvResolver.ResolvedEnv target = EnvResolver.resolveEnv(root, targetEnv);
         JsonNode sourceTree = fetchOrAbsent(spec, source, singletonPath, null, false);
         if (sourceTree == null) {
             return 1;

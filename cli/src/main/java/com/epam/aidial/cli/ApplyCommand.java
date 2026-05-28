@@ -77,10 +77,7 @@ public class ApplyCommand implements Callable<Integer> {
             }
         }
 
-        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(parent, spec);
-        if (resolved == null) {
-            return 2;
-        }
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(parent);
 
         Map<String, Object> cliParams;
         try {

@@ -45,10 +45,7 @@ public final class EntityWriter {
     public static int addEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
                                 String canonicalId, Path fromFile, String templateName, List<String> paramFlags) {
         String name = requireCanonicalId(type, bucket, canonicalId);
-        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
-        if (resolved == null) {
-            return 2;
-        }
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         Map<String, Object> entityCtx = entityContext(name, kind);
         Map<String, Object> params = parseParams(paramFlags);
         TemplateContext tpl = new TemplateContext(templateName, params, resolved.vars(), entityCtx, resolved.templates());
@@ -75,10 +72,7 @@ public final class EntityWriter {
     public static int updateEntity(DialCli root, CommandSpec spec, String type, String bucket,
                                    String canonicalId, List<String> sets, String ifMatch) {
         String name = requireCanonicalId(type, bucket, canonicalId);
-        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
-        if (resolved == null) {
-            return 2;
-        }
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         String path = "/v1/" + type + "/" + bucket + "/" + name;
         CliHttpClient http = new CliHttpClient(resolved.apiUrl(), resolved.apiKey());
         CliHttpClient.Response getResp = http.get(path);
@@ -120,14 +114,8 @@ public final class EntityWriter {
                                     String canonicalId, String sourceEnv, String targetEnv,
                                     String templateName, List<String> paramFlags) {
         String simpleName = requireCanonicalId(type, bucket, canonicalId);
-        EnvResolver.ResolvedEnv source = EnvResolver.resolveEnv(root, spec, sourceEnv);
-        if (source == null) {
-            return 2;
-        }
-        EnvResolver.ResolvedEnv target = EnvResolver.resolveEnv(root, spec, targetEnv);
-        if (target == null) {
-            return 2;
-        }
+        EnvResolver.ResolvedEnv source = EnvResolver.resolveEnv(root, sourceEnv);
+        EnvResolver.ResolvedEnv target = EnvResolver.resolveEnv(root, targetEnv);
         Map<String, Object> params = parseParams(paramFlags);
         String path = "/v1/" + type + "/" + bucket + "/" + simpleName;
         CliHttpClient.Response getResp = new CliHttpClient(source.apiUrl(), source.apiKey()).get(path);
@@ -222,10 +210,7 @@ public final class EntityWriter {
     public static int validateEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
                                      String canonicalId, Path fromFile, String templateName, List<String> paramFlags) {
         String simpleName = requireCanonicalId(type, bucket, canonicalId);
-        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
-        if (resolved == null) {
-            return 2;
-        }
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         Map<String, Object> entityCtx = entityContext(simpleName, kind);
         Map<String, Object> params = parseParams(paramFlags);
         TemplateContext tpl = new TemplateContext(templateName, params, resolved.vars(), entityCtx, resolved.templates());
@@ -284,10 +269,7 @@ public final class EntityWriter {
             spec.commandLine().getOut().println("Would delete " + canonicalId);
             return 0;
         }
-        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root, spec);
-        if (resolved == null) {
-            return 2;
-        }
+        EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         String path = "/v1/" + type + "/" + bucket + "/" + name;
         CliHttpClient.Response resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).delete(path, ifMatch);
         if (resp.status() >= 300) {
