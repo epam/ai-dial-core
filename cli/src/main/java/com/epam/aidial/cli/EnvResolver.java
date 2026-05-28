@@ -2,7 +2,6 @@ package com.epam.aidial.cli;
 
 import com.epam.aidial.cli.auth.ApiKeyResolver;
 import com.epam.aidial.cli.auth.CliAuthException;
-import com.epam.aidial.cli.config.CliConfigException;
 import com.epam.aidial.cli.config.CliProfile;
 import com.epam.aidial.cli.config.Environment;
 import com.epam.aidial.cli.config.ProfileLoader;
@@ -16,12 +15,7 @@ public final class EnvResolver {
     }
 
     static ResolvedEnv resolveEnv(DialCli root, String explicitEnv) {
-        CliProfile profile;
-        try {
-            profile = ProfileLoader.load(root.configPath);
-        } catch (CliConfigException e) {
-            throw CliException.validation(e.getMessage());
-        }
+        CliProfile profile = ProfileLoader.load(root.configPath);
         String envName = (explicitEnv != null && !explicitEnv.isBlank()) ? explicitEnv : root.env;
         if (envName == null || envName.isBlank()) {
             envName = (profile.getDefaults() != null) ? profile.getDefaults().getEnv() : null;

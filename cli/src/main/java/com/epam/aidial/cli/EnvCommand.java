@@ -1,7 +1,6 @@
 package com.epam.aidial.cli;
 
 import com.epam.aidial.cli.auth.ApiKeyResolver;
-import com.epam.aidial.cli.config.CliConfigException;
 import com.epam.aidial.cli.config.CliProfile;
 import com.epam.aidial.cli.config.Defaults;
 import com.epam.aidial.cli.config.Environment;
@@ -103,12 +102,7 @@ public class EnvCommand {
                 }
                 return 2;
             }
-            try {
-                ProfileLoader.saveDefaultEnv(root.configPath, name);
-            } catch (CliConfigException e) {
-                spec.commandLine().getErr().println(e.getMessage());
-                return 2;
-            }
+            ProfileLoader.saveDefaultEnv(root.configPath, name);
             spec.commandLine().getOut().println("Switched to environment '" + name + "'.");
             return 0;
         }
