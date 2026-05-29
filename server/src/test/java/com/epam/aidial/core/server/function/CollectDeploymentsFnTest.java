@@ -14,6 +14,9 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -147,5 +150,21 @@ public class CollectDeploymentsFnTest {
 
         List<String> autoSharedResources = attachedResourceCredentials.keySet().stream().toList();
         Assertions.assertEquals("credentials/encryptedBucket/toolsets/encryptedBucket/my%20tool", autoSharedResources.getFirst());
+    }
+
+    @Test
+    void testApply_MissingDependentDeployment_ConvertsToForbiddenHttpException() {
+        Application application = new Application();
+        when(context.getDeployment()).thenReturn(application);
+        when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
+        when(applicationSchemaService.getDeployments(application))
+                .thenThrow(new ApplicationTypeResourceException(
+                        "Resource listed as dependent to the application is not found",
+                        "tools/bucket/missing-tool"));
+
+        HttpException ex = Assertions.assertThrows(HttpException.class, () -> fn.apply(EMPTY_REQUEST));
+        Assertions.assertEquals(HttpStatus.FORBIDDEN, ex.getStatus());
+        Assertions.assertTrue(ex.getMessage().contains("Resource listed as dependent to the application is not found"));
+        Assertions.assertTrue(ex.getMessage().contains("tools/bucket/missing-tool"));
     }
 }
