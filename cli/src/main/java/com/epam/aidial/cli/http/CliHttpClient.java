@@ -10,6 +10,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Map;
 
 public class CliHttpClient {
 
@@ -66,41 +67,26 @@ public class CliHttpClient {
         return sendForString(req);
     }
 
-    public Response put(String path, String body, String ifMatch) {
-        return put(path, null, body, ifMatch, null);
-    }
-
-    public Response put(String path, String query, String body, String ifMatch, String ifNoneMatch) {
-        URI uri = buildUri(path, query);
+    public Response put(String path, String body, Map<String, String> headers) {
+        URI uri = buildUri(path, null);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .header("Api-Key", apiKey)
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json")
                 .timeout(Duration.ofSeconds(30))
                 .PUT(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
-        if (ifMatch != null && !ifMatch.isBlank()) {
-            builder.header("If-Match", ifMatch);
-        }
-        if (ifNoneMatch != null && !ifNoneMatch.isBlank()) {
-            builder.header("If-None-Match", ifNoneMatch);
-        }
+        addHeaders(builder, headers);
         return sendForString(builder.build());
     }
 
-    public Response delete(String path, String ifMatch) {
-        return delete(path, null, ifMatch);
-    }
-
-    public Response delete(String path, String query, String ifMatch) {
-        URI uri = buildUri(path, query);
+    public Response delete(String path, Map<String, String> headers) {
+        URI uri = buildUri(path, null);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .header("Api-Key", apiKey)
                 .header("Accept", "application/json")
                 .timeout(Duration.ofSeconds(30))
                 .DELETE();
-        if (ifMatch != null && !ifMatch.isBlank()) {
-            builder.header("If-Match", ifMatch);
-        }
+        addHeaders(builder, headers);
         return sendForString(builder.build());
     }
 
@@ -123,6 +109,12 @@ public class CliHttpClient {
             Thread.currentThread().interrupt();
             throw new NetworkException("Interrupted contacting " + apiUrl, e);
         }
+    }
+
+    private void addHeaders(HttpRequest.Builder builder, Map<String, String> headers) {
+        headers.entrySet().stream()
+                .filter(e -> e.getValue() != null && !e.getValue().isBlank())
+                .forEach(e -> builder.header(e.getKey(), e.getValue()));
     }
 
     public static int toExitCode(int status) {

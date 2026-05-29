@@ -9,9 +9,11 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class CliHttpClientTest {
@@ -144,7 +146,7 @@ class CliHttpClientTest {
         });
 
         CliHttpClient.Response r = new CliHttpClient(baseUrl, "the-key").put(
-                "/v1/models/public/m", "{\"endpoint\":\"http://x\"}", "\"old\"");
+                "/v1/models/public/m", "{\"endpoint\":\"http://x\"}", Map.of("If-Match", "\"old\""));
 
         assertEquals(200, r.status());
         assertEquals("\"new\"", r.etag());
@@ -166,7 +168,7 @@ class CliHttpClientTest {
             send(exchange, 204, "");
         });
 
-        CliHttpClient.Response r = new CliHttpClient(baseUrl, "the-key").delete("/v1/models/public/m", "\"v1\"");
+        CliHttpClient.Response r = new CliHttpClient(baseUrl, "the-key").delete("/v1/models/public/m", Map.of("If-Match", "\"v1\""));
 
         assertEquals(204, r.status());
         assertEquals("DELETE", method.get());
@@ -175,33 +177,37 @@ class CliHttpClientTest {
     }
 
     @Test
-    void deleteOmitsIfMatchHeaderWhenNullOrBlank() {
+    void deleteOmitsHeadersWithNullOrBlankValues() {
         AtomicReference<String> ifMatch = new AtomicReference<>("present");
         server.createContext("/v1/models/public/m", exchange -> {
             ifMatch.set(exchange.getRequestHeaders().getFirst("If-Match"));
             send(exchange, 204, "");
         });
 
-        new CliHttpClient(baseUrl, "k").delete("/v1/models/public/m", null);
-        assertEquals(null, ifMatch.get());
+        Map<String, String> nullValue = new java.util.HashMap<>();
+        nullValue.put("If-Match", null);
+        new CliHttpClient(baseUrl, "k").delete("/v1/models/public/m", nullValue);
+        assertNull(ifMatch.get());
 
-        new CliHttpClient(baseUrl, "k").delete("/v1/models/public/m", "  ");
-        assertEquals(null, ifMatch.get());
+        new CliHttpClient(baseUrl, "k").delete("/v1/models/public/m", Map.of("If-Match", "  "));
+        assertNull(ifMatch.get());
     }
 
     @Test
-    void putOmitsIfMatchHeaderWhenNullOrBlank() {
+    void putOmitsHeadersWithNullOrBlankValues() {
         AtomicReference<String> ifMatch = new AtomicReference<>("present");
         server.createContext("/v1/models/public/m", exchange -> {
             ifMatch.set(exchange.getRequestHeaders().getFirst("If-Match"));
             send(exchange, 200, "{}");
         });
 
-        new CliHttpClient(baseUrl, "k").put("/v1/models/public/m", "{}", null);
-        assertEquals(null, ifMatch.get());
+        Map<String, String> nullValue = new java.util.HashMap<>();
+        nullValue.put("If-Match", null);
+        new CliHttpClient(baseUrl, "k").put("/v1/models/public/m", "{}", nullValue);
+        assertNull(ifMatch.get());
 
-        new CliHttpClient(baseUrl, "k").put("/v1/models/public/m", "{}", "  ");
-        assertEquals(null, ifMatch.get());
+        new CliHttpClient(baseUrl, "k").put("/v1/models/public/m", "{}", Map.of("If-Match", "  "));
+        assertNull(ifMatch.get());
     }
 
     @Test

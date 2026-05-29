@@ -42,7 +42,7 @@ public final class EntityWriter {
     }
 
     public static void addEntity(DialCli root, CommandSpec spec, String type, String kind, String bucket,
-                                String canonicalId, Path fromFile, String templateName, Map<String, Object> params) {
+                                 String canonicalId, Path fromFile, String templateName, Map<String, Object> params) {
         String name = requireCanonicalId(type, bucket, canonicalId);
         EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         Map<String, Object> entityCtx = entityContext(name, kind);
@@ -55,7 +55,7 @@ public final class EntityWriter {
         String path = "/v1/" + type + "/" + bucket + "/" + name;
         CliHttpClient http = new CliHttpClient(resolved.apiUrl(), resolved.apiKey());
         // PUT with If-None-Match: * — create-only gate (replaces POST after U.0)
-        CliHttpClient.Response resp = http.put(path, null, body, null, "*");
+        CliHttpClient.Response resp = http.put(path, body, Map.of("If-None-Match", "*"));
         // Server returns 412 (not 409) when If-None-Match: * fails — preserve exit-code 5 contract
         if (resp.status() == 412) {
             throw CliException.alreadyExists(canonicalId);
@@ -67,7 +67,7 @@ public final class EntityWriter {
     }
 
     public static void updateEntity(DialCli root, CommandSpec spec, String type, String bucket,
-                                   String canonicalId, Map<String, JsonNode> sets, String ifMatch) {
+                                    String canonicalId, Map<String, JsonNode> sets, String ifMatch) {
         String name = requireCanonicalId(type, bucket, canonicalId);
         EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         String path = "/v1/" + type + "/" + bucket + "/" + name;
@@ -99,7 +99,9 @@ public final class EntityWriter {
             return;
         }
         String etag = (ifMatch != null && !ifMatch.isBlank()) ? ifMatch : getResp.etag();
-        CliHttpClient.Response putResp = http.put(path, body, etag);
+        Map<String, String> headers = new HashMap<>();
+        headers.put("If-Match", etag);
+        CliHttpClient.Response putResp = http.put(path, body, headers);
         if (putResp.status() >= 300) {
             throw CliException.httpError(putResp.status(), putResp.body(), path);
         }
@@ -257,7 +259,7 @@ public final class EntityWriter {
     }
 
     public static void deleteEntity(DialCli root, CommandSpec spec, String type, String bucket,
-                                   String canonicalId, String ifMatch) {
+                                    String canonicalId, String ifMatch) {
         String name = requireCanonicalId(type, bucket, canonicalId);
         if (root.dryRun) {
             spec.commandLine().getOut().println("Would delete " + canonicalId);
@@ -265,7 +267,9 @@ public final class EntityWriter {
         }
         EnvResolver.ResolvedEnv resolved = EnvResolver.resolveEnv(root);
         String path = "/v1/" + type + "/" + bucket + "/" + name;
-        CliHttpClient.Response resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).delete(path, ifMatch);
+        Map<String, String> headers = new HashMap<>();
+        headers.put("If-Match", ifMatch);
+        CliHttpClient.Response resp = new CliHttpClient(resolved.apiUrl(), resolved.apiKey()).delete(path, headers);
         if (resp.status() >= 300) {
             throw CliException.httpError(resp.status(), resp.body(), path);
         }
