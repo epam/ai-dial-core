@@ -16,6 +16,7 @@ import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -77,12 +78,31 @@ public final class MergedConfigStore implements ConfigStore {
             ResourceTypes.PROJECT_KEY,
             ResourceTypes.ROUTE);
 
+    /**
+     * Bucket locations the admin write/read paths serialize on cluster-wide via
+     * {@link LockService#underBucketLocks}. The write controllers
+     * ({@code ConfigResourceController}, {@code AdminApplyController}) hold these around blob
+     * puts/deletes; this store holds them around the full-rebuild blob scan in
+     * {@link #reload}/{@link #rebuildNow}/the debounced timer-fire so a peer pod's mid-batch
+     * apply cannot leak partial state into the scan (design 02 §4.4 cross-pod dirty read).
+     *
+     * <p>The constant is shared so reader and writer lock-key sets stay byte-identical — divergent
+     * sets would silently fail to serialize across the boundary. {@link #init} (startup) and the
+     * replica fast path ({@link #applyReplicaEvent}) deliberately do NOT take these locks; the
+     * {@code apply*} methods take only the inner {@link #rebuildLock} because their controller
+     * callers already hold the outer locks.
+     */
+    public static final List<String> ADMIN_BUCKET_LOCATIONS = List.of(
+            ResourceDescriptor.PUBLIC_LOCATION,
+            ResourceDescriptor.PLATFORM_LOCATION);
+
     private final Vertx vertx;
     private final AsyncTaskExecutor taskExecutor;
     private final ResourceService resourceService;
     private final ApiKeyStore apiKeyStore;
     private final EntityLocationStrategy locationStrategy;
     private final SecretFieldProcessor secretFieldProcessor;
+    private final LockService lockService;
     private final String onInvalidEntity;
     private final boolean softValidation;
     private final String thisPodId;
@@ -102,23 +122,26 @@ public final class MergedConfigStore implements ConfigStore {
     public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
                              SecretFieldProcessor secretFieldProcessor,
+                             LockService lockService,
                              String onInvalidEntity) {
         this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
-                onInvalidEntity, false, "");
+                lockService, onInvalidEntity, false, "");
     }
 
     public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
                              SecretFieldProcessor secretFieldProcessor,
+                             LockService lockService,
                              String onInvalidEntity,
                              boolean softValidation) {
         this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
-                onInvalidEntity, softValidation, "");
+                lockService, onInvalidEntity, softValidation, "");
     }
 
     public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
                              SecretFieldProcessor secretFieldProcessor,
+                             LockService lockService,
                              String onInvalidEntity,
                              boolean softValidation,
                              String thisPodId) {
@@ -128,6 +151,7 @@ public final class MergedConfigStore implements ConfigStore {
         this.apiKeyStore = apiKeyStore;
         this.locationStrategy = locationStrategy;
         this.secretFieldProcessor = secretFieldProcessor;
+        this.lockService = lockService;
         this.onInvalidEntity = MODE_SKIP.equalsIgnoreCase(onInvalidEntity) ? MODE_SKIP : MODE_ABORT;
         this.softValidation = softValidation;
         this.thisPodId = thisPodId == null ? "" : thisPodId;
@@ -311,17 +335,22 @@ public final class MergedConfigStore implements ConfigStore {
 
     @Override
     public Config reload() {
-        rebuildLock.lock();
-        try {
-            fileConfigStore.reload();
-            // fileConfigStore.reload() fires onReloadCallbacks → requestRebuild(), which schedules a
-            // 500ms debounce timer. Cancel it: the rebuild() below produces the authoritative merged
-            // config and a debounced rerun would be a redundant addProjectKeys + listResources sweep.
-            cancelPendingRebuild();
-            return rebuild();
-        } finally {
-            rebuildLock.unlock();
-        }
+        // Distributed bucket lock so the admin-triggered reload cannot scan blob storage while a
+        // peer pod's apply* is mid-batch (design 02 §4.4). Runs on a virtual thread via
+        // ConfigController's taskExecutor, so the blocking Redis lock is safe here.
+        return lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
+            rebuildLock.lock();
+            try {
+                fileConfigStore.reload();
+                // fileConfigStore.reload() fires onReloadCallbacks → requestRebuild(), which schedules a
+                // 500ms debounce timer. Cancel it: the rebuild() below produces the authoritative merged
+                // config and a debounced rerun would be a redundant addProjectKeys + listResources sweep.
+                cancelPendingRebuild();
+                return rebuild();
+            } finally {
+                rebuildLock.unlock();
+            }
+        });
     }
 
     /**
@@ -395,14 +424,17 @@ public final class MergedConfigStore implements ConfigStore {
         if (!pendingRebuildTimerId.compareAndSet(firingId, NO_PENDING_TIMER)) {
             return;
         }
-        taskExecutor.submit(() -> {
+        // Distributed bucket lock so the debounced scan cannot read partial-batch blob state while a
+        // peer pod's apply* is mid-batch (design 02 §4.4). underBucketLocks blocks on Redis, but we
+        // are on a virtual thread (taskExecutor) so that is fine.
+        taskExecutor.submit(() -> lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
             rebuildLock.lock();
             try {
                 return rebuild();
             } finally {
                 rebuildLock.unlock();
             }
-        }).onFailure(error -> log.warn("Failed to rebuild merged config", error));
+        })).onFailure(error -> log.warn("Failed to rebuild merged config", error));
     }
 
     /**
@@ -418,13 +450,17 @@ public final class MergedConfigStore implements ConfigStore {
      * the new {@link Config} becomes visible.
      */
     public Config rebuildNow() {
-        rebuildLock.lock();
-        try {
-            cancelPendingRebuild();
-            return rebuild();
-        } finally {
-            rebuildLock.unlock();
-        }
+        // Distributed bucket lock: same partial-state hazard as reload/timer — a full blob scan on
+        // this pod must not interleave with a peer pod's in-flight multi-blob apply (design 02 §4.4).
+        return lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
+            rebuildLock.lock();
+            try {
+                cancelPendingRebuild();
+                return rebuild();
+            } finally {
+                rebuildLock.unlock();
+            }
+        });
     }
 
     private void cancelPendingRebuild() {
