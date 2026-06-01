@@ -56,13 +56,6 @@ public class AutoShareDeploymentFn extends BaseRequestFunction<RequestObject> {
         } catch (Exception ex) {
             throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage());
         }
-        Deployment deployment = proxy.getDeploymentService().findDeployment(context, initialDeployment);
-        if (deployment instanceof Application app && app.hasApplicationTypeSchemaId()) {
-            shareApplicationFiles(app);
-            shareApplicationPrompts(app);
-            shareApplicationDeployments(app);
-        }
-        return false;
     }
 
     @Nullable
