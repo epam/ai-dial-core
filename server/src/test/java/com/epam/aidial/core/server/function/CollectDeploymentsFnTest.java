@@ -153,7 +153,7 @@ public class CollectDeploymentsFnTest {
     }
 
     @Test
-    void testApply_MissingDependentDeployment_ConvertsToForbiddenHttpException() {
+    void testApply_MissingDependentDeployment_FailedDependency() {
         Application application = new Application();
         when(context.getDeployment()).thenReturn(application);
         when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
@@ -163,7 +163,7 @@ public class CollectDeploymentsFnTest {
                         "tools/bucket/missing-tool"));
 
         HttpException ex = Assertions.assertThrows(HttpException.class, () -> fn.apply(EMPTY_REQUEST));
-        Assertions.assertEquals(HttpStatus.FORBIDDEN, ex.getStatus());
+        Assertions.assertEquals(HttpStatus.FAILED_DEPENDENCY, ex.getStatus());
         Assertions.assertTrue(ex.getMessage().contains("Resource listed as dependent to the application is not found"));
         Assertions.assertTrue(ex.getMessage().contains("tools/bucket/missing-tool"));
     }

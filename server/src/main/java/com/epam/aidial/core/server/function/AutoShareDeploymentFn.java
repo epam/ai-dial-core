@@ -52,7 +52,7 @@ public class AutoShareDeploymentFn extends BaseRequestFunction<RequestObject> {
         } catch (HttpException ex) {
             throw ex;
         } catch (ApplicationTypeResourceException ex) {
-            throw new HttpException(HttpStatus.FORBIDDEN, ex.getMessage() + " : " + ex.getResourceUri());
+            throw new HttpException(HttpStatus.FAILED_DEPENDENCY, ex.getMessage() + " : " + ex.getResourceUri());
         } catch (Exception ex) {
             throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage());
         }
