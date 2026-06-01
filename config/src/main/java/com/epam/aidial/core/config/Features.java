@@ -69,7 +69,4 @@ public class Features {
 
     @JsonAlias({"customTemperatureSupported", "custom_temperature_supported"})
     private Boolean customTemperatureSupported;
-
-    @JsonAlias({"reasoningEffortsSupported", "reasoning_efforts_supported"})
-    private Boolean reasoningEffortsSupported;
 }

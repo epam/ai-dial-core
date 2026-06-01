@@ -33,7 +33,6 @@ public class FeaturesData {
     private boolean maxTokensSupported = true;
     private boolean maxCompletionTokensSupported = false;
     private boolean customTemperatureSupported = true;
-    private boolean reasoningEffortsSupported = false;
 
     @JsonIgnore
     public static FeaturesData createFeatures(Features features) {
@@ -110,10 +109,6 @@ public class FeaturesData {
 
         if (features.getCustomTemperatureSupported() != null) {
             data.setCustomTemperatureSupported(features.getCustomTemperatureSupported());
-        }
-
-        if (features.getReasoningEffortsSupported() != null) {
-            data.setReasoningEffortsSupported(features.getReasoningEffortsSupported());
         }
 
         return data;
