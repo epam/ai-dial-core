@@ -30,6 +30,9 @@ public class FeaturesData {
     private boolean parallelToolCalls = true;
     private boolean assistantAttachmentsInRequest = false;
     private boolean mcp = false;
+    private boolean maxTokensSupported = true;
+    private boolean maxCompletionTokensSupported = false;
+    private boolean customTemperatureSupported = true;
 
     @JsonIgnore
     public static FeaturesData createFeatures(Features features) {
@@ -94,6 +97,18 @@ public class FeaturesData {
 
         if (features.getAssistantAttachmentsInRequestSupported() != null) {
             data.setAssistantAttachmentsInRequest(features.getAssistantAttachmentsInRequestSupported());
+        }
+
+        if (features.getMaxTokensSupported() != null) {
+            data.setMaxTokensSupported(features.getMaxTokensSupported());
+        }
+
+        if (features.getMaxCompletionTokensSupported() != null) {
+            data.setMaxCompletionTokensSupported(features.getMaxCompletionTokensSupported());
+        }
+
+        if (features.getCustomTemperatureSupported() != null) {
+            data.setCustomTemperatureSupported(features.getCustomTemperatureSupported());
         }
 
         return data;

@@ -197,6 +197,9 @@ Some models adapters expose specialized HTTP endpoints for tokenization, rate es
 * `folderAttachmentsSupported`: A boolean parameter to enable/disable attaching folders (batching multiple files). Default is `false`.
 * `accessibleByPerRequestKey`: A boolean parameter to enable/disable access to the model with a [per-request API key](https://docs.dialx.ai/platform/core/per-request-keys). Default is `true`.
 * `contentPartsSupported`: A boolean parameter that indicates whether the deployment supports requests with content parts. Default is `false`.
+* `maxTokensSupported`: A boolean parameter that indicates whether the upstream accepts the legacy `max_tokens` parameter in chat completions requests. Default is `true`.
+* `maxCompletionTokensSupported`: A boolean parameter that indicates whether the upstream accepts `max_completion_tokens` parameter in chat completions requests. Default is `false`.
+* `customTemperatureSupported`: A boolean parameter that indicates whether arbitrary `temperature` values are accepted. If `false`, only the API default (usually `1`) should be used and the client is recommended not to send the `temperature` parameter. Default is `true`.
 * `cacheSupported`: A boolean parameter that indicates whether the deployment supports [LLM caching](https://docs.dialx.ai/tutorials/developers/prompt-caching). Default is `false`.
 * `autoCachingSupported`: A boolean parameter that indicates whether the deployment supports [automatic caching](https://docs.dialx.ai/tutorials/developers/prompt-caching), where it's possible. Default is `false`.
 * `parallelToolCallsSupported`: A boolean parameter that indicates whether the deployment supports `parallel_tool_calls` parameter in a chat completion request. Default is `true`.
@@ -213,6 +216,9 @@ Some models adapters expose specialized HTTP endpoints for tokenization, rate es
                 "tokenizeEndpoint": "http://host/tokinize",
                 "truncatePromptEndpoint": "http://host/truncate",
                 "configurationEndpoint": "http://host/configure",
+                "maxTokensSupported": true,
+                "maxCompletionTokensSupported": false,
+                "customTemperatureSupported": true,
                 "systemPromptSupported": false,
                 "toolsSupported": false,
                 "seedSupported":false,
