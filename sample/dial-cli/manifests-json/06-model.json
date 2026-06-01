@@ -17,8 +17,7 @@
     ],
     "features": {
       "systemPromptSupported": true,
-      "toolsSupported": true,
-      "streamingSupported": true
+      "toolsSupported": true
     },
     "userRoles": ["example-user"]
   }

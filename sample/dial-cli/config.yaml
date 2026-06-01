@@ -43,7 +43,6 @@ templates:
       features:
         systemPromptSupported: true
         toolsSupported: true
-        streamingSupported: true
 
   # Mixin — conditionally forward the caller's auth header. Demonstrates `!if`.
   # Note: the `!if` expression is unquoted; quoting the whole expression makes
