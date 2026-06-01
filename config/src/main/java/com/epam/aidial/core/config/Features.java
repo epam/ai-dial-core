@@ -58,4 +58,14 @@ public class Features {
     private Boolean assistantAttachmentsInRequestSupported;
     @JsonAlias({"supportCommentInRateResponse", "support_comment_in_rate_response"})
     private Boolean supportCommentInRateResponse;
+
+    // Feature flags that control which chat-completions parameters the upstream accepts.
+    @JsonAlias({"maxTokensSupported", "max_tokens_supported"})
+    private Boolean maxTokensSupported;
+
+    @JsonAlias({"maxCompletionTokensSupported", "max_completion_tokens_supported"})
+    private Boolean maxCompletionTokensSupported;
+
+    @JsonAlias({"customTemperatureSupported", "custom_temperature_supported"})
+    private Boolean customTemperatureSupported;
 }

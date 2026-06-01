@@ -541,7 +541,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "auto_caching" : false,
                                 "parallel_tool_calls" : true,
                                 "assistant_attachments_in_request": false,
-                                "mcp" : false
+                                "mcp" : false,
+                                "max_tokens_supported": true,
+                                "max_completion_tokens_supported": false,
+                                "custom_temperature_supported": true
                                 },
                             "defaults":{},
                             "responses_defaults":{},
@@ -580,7 +583,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                "auto_caching" : false,
                                "parallel_tool_calls" : true,
                                "assistant_attachments_in_request": false,
-                               "mcp" : false
+                               "mcp" : false,
+                                "max_tokens_supported": true,
+                                "max_completion_tokens_supported": false,
+                                "custom_temperature_supported": true
                              },
                              "defaults" : { },
                              "responses_defaults" : { },
@@ -653,7 +659,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "auto_caching" : false,
                         "parallel_tool_calls" : true,
                         "assistant_attachments_in_request": false,
-                        "mcp" : false
+                        "mcp" : false,
+                                "max_tokens_supported": true,
+                                "max_completion_tokens_supported": false,
+                                "custom_temperature_supported": true
                     },
                     "defaults":{},
                     "responses_defaults":{},
@@ -701,7 +710,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "auto_caching" : false,
                                 "parallel_tool_calls" : true,
                                 "assistant_attachments_in_request": false,
-                                "mcp" : false
+                                "mcp" : false,
+                                "max_tokens_supported": true,
+                                "max_completion_tokens_supported": false,
+                                "custom_temperature_supported": true
                                 },
                             "defaults":{},
                             "responses_defaults":{},
@@ -741,7 +753,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "auto_caching" : false,
                               "parallel_tool_calls" : true,
                               "assistant_attachments_in_request": false,
-                              "mcp" : false
+                              "mcp" : false,
+                                "max_tokens_supported": true,
+                                "max_completion_tokens_supported": false,
+                                "custom_temperature_supported": true
                             },
                             "defaults" : { },
                             "responses_defaults" : { },
@@ -790,7 +805,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "auto_caching" : false,
                               "parallel_tool_calls" : true,
                               "assistant_attachments_in_request": false,
-                              "mcp" : false
+                              "mcp" : false,
+                                "max_tokens_supported": true,
+                                "max_completion_tokens_supported": false,
+                                "custom_temperature_supported": true
                             },
                             "defaults" : { },
                             "responses_defaults" : { },
@@ -1292,7 +1310,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                        "auto_caching" : false,
                        "parallel_tool_calls" : true,
                        "assistant_attachments_in_request": false,
-                       "mcp" : true
+                       "mcp" : true,
+                       "max_tokens_supported": true,
+                       "max_completion_tokens_supported": false,
+                       "custom_temperature_supported": true
                      },
                      "defaults" : { },
                      "responses_defaults" : { },
