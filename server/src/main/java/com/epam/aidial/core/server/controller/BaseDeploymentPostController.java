@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -100,6 +101,10 @@ public class BaseDeploymentPostController {
     }
 
     protected void finalizeRequest() {
+        if (context.isBackgroundJob() && !context.isStreamingRequest()) {
+            return;
+        }
+
         proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
@@ -176,7 +181,12 @@ public class BaseDeploymentPostController {
                     tokenUsage = new TokenUsage();
                 }
                 context.setTokenUsage(tokenUsage);
-                tokenUsageFuture = proxy.getRateLimiter().increase(context, context.getDeployment())
+                tokenUsageFuture = proxy.getRateLimiter().increase(
+                                context.getDeployment(), BucketBuilder.buildInitiatorBucket(context),
+                        context.getTokenUsage(),
+                        context.getRequestBody(),
+                        context.getResponseBody()
+                        )
                         .transform(result -> {
                             if (result.failed()) {
                                 log.warn("Failed to increase limit", result.cause());

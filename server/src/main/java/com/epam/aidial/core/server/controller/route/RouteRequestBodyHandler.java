@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -174,7 +175,12 @@ class RouteRequestBodyHandler {
 
         if (responseStatusCode == 200) {
             context.getUpstreamRoute().succeed();
-            proxy.getRateLimiter().increase(context, context.getRoute()).onFailure(error -> log.warn("Failed to increase limit", error));
+            proxy.getRateLimiter().increase(
+                    null, BucketBuilder.buildInitiatorBucket(context),
+                    context.getTokenUsage(),
+                    context.getRequestBody(),
+                    context.getResponseBody()
+            ).onFailure(error -> log.warn("Failed to increase limit", error));
         }
 
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,

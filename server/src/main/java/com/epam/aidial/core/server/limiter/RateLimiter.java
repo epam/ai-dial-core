@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.limiter;
 
 import com.epam.aidial.core.config.CostLimit;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.RoleBasedEntity;
@@ -19,6 +20,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.Future;
+import io.vertx.core.buffer.Buffer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -39,42 +41,40 @@ public class RateLimiter {
 
     private final ResourceService resourceService;
 
-    public Future<Void> increase(ProxyContext context, RoleBasedEntity roleBasedEntity) {
+    public Future<Void> increase(
+            Deployment deployment,
+            String bucketLocation,
+            TokenUsage tokenUsage,
+            Buffer requestBody,
+            Buffer responseBody) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
                 return Future.succeededFuture();
             }
 
-            TokenUsage usage = context.getTokenUsage();
-
-            // Calculate and update cost limits
-            BigDecimal cost = ModelCostCalculator.calculate(context);
+            BigDecimal cost = ModelCostCalculator.calculate(deployment, tokenUsage, requestBody, responseBody);
             Future<Void> costFuture;
             if (cost != null && cost.compareTo(BigDecimal.ZERO) > 0) {
-                // Store the cost in the token usage for reference
-                if (usage != null) {
-                    usage.setCost(cost);
-                    usage.setAggCost(cost);
+                if (tokenUsage != null) {
+                    tokenUsage.setCost(cost);
+                    tokenUsage.setAggCost(cost);
                 }
 
-                // Update cost limits
                 String costsPath = getPathToCosts();
-                ResourceDescriptor costResourceDescription = getResourceDescription(context, costsPath);
+                ResourceDescriptor costResourceDescription = getResourceDescription(bucketLocation, costsPath);
                 costFuture = taskExecutor.submit(() -> updateCostLimit(costResourceDescription, cost));
             } else {
                 costFuture = Future.succeededFuture();
             }
 
-            // Check if we should update token limits
             Future<Void> tokenFuture;
-            if (usage == null || usage.getTotalTokens() <= 0) {
+            if (tokenUsage == null || tokenUsage.getTotalTokens() <= 0) {
                 tokenFuture = Future.succeededFuture();
             } else {
-                // Update token limits
-                String tokensPath = getPathToTokens(roleBasedEntity.getName());
-                ResourceDescriptor tokenResourceDescription = getResourceDescription(context, tokensPath);
-                tokenFuture = taskExecutor.submit(() -> updateTokenLimit(tokenResourceDescription, usage.getTotalTokens()));
+                String tokensPath = getPathToTokens(deployment.getName());
+                ResourceDescriptor tokenResourceDescription = getResourceDescription(bucketLocation, tokensPath);
+                tokenFuture = taskExecutor.submit(() -> updateTokenLimit(tokenResourceDescription, tokenUsage.getTotalTokens()));
             }
 
             // Wait for both updates to complete if both exist
@@ -217,12 +217,15 @@ public class RateLimiter {
         return limitStats;
     }
 
-    private ResourceDescriptor getResourceDescription(ProxyContext context, String path) {
+    private ResourceDescriptor getResourceDescription(String bucketLocation, String path) {
         // use bucket location of request's initiator,
         // e.g. user -> core -> application -> core -> model, limits must be applied to the user by JWT
         // e.g. service -> core -> application -> core -> model, limits must be applied to service by API key
-        String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
         return ResourceDescriptorFactory.fromEncoded(ResourceTypes.LIMIT, bucketLocation, bucketLocation, path);
+    }
+
+    private ResourceDescriptor getResourceDescription(ProxyContext context, String path) {
+        return getResourceDescription(BucketBuilder.buildInitiatorBucket(context), path);
     }
 
     private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity) {

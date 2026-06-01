@@ -48,6 +48,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.BackgroundJobService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.ExternalServiceService;
@@ -315,6 +316,11 @@ public class AiDial {
             complexResourceSweepService = new ComplexResourceSweepService(timerService, storage, redis, lockService,
                     complexResourceService, encryptionService, complexResourceSweepSettings);
 
+            BackgroundJobService backgroundJobService = new BackgroundJobService(
+                    resourceService, apiKeyStore, tokenStatsTracker, rateLimiter, configStore,
+                    upstreamRouteProvider, client, clientOptions, taskExecutor, lockService, generator);
+            backgroundJobService.init(vertx);
+
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
@@ -324,7 +330,7 @@ public class AiDial {
                     toolSetService, securedResourceService, toolSetRepairService, applicationSchemaService, authorizationHeaderProvider,
                     resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
-                    responseMappingService, complexResourceService, generator);
+                    responseMappingService, complexResourceService, backgroundJobService, generator);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

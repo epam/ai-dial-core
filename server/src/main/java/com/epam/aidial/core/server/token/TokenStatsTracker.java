@@ -94,6 +94,31 @@ public class TokenStatsTracker {
         });
     }
 
+    /** Updates the token stats for a span identified by traceId/spanId — used when completing background jobs. */
+    public Future<Void> updateStats(String traceId, String spanId, TokenUsage tokenUsage) {
+        ResourceDescriptor resource = toResource(traceId);
+        return taskExecutor.submit(() -> {
+            resourceService.computeResource(resource, json -> {
+                TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
+                if (traceContext == null) {
+                    return null;
+                }
+                traceContext.updateStats(spanId, tokenUsage);
+                return ProxyUtil.convertToString(traceContext);
+            });
+            return null;
+        });
+    }
+
+    /** Deletes the root trace context — called when the root span of a background job completes. */
+    public Future<Void> endRootSpan(String traceId) {
+        ResourceDescriptor resource = toResource(traceId);
+        return taskExecutor.submit(() -> {
+            resourceService.deleteResource(resource, EtagHeader.ANY);
+            return null;
+        });
+    }
+
     @Data
     public static class TraceContext {
         Map<String, TokenStats> spans = new HashMap<>();

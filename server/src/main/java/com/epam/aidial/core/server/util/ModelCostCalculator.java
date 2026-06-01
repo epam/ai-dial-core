@@ -4,7 +4,6 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
-import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -22,8 +21,7 @@ import java.util.Scanner;
 @UtilityClass
 public class ModelCostCalculator {
 
-    public static BigDecimal calculate(ProxyContext context) {
-        Deployment deployment = context.getDeployment();
+    public static BigDecimal calculate(Deployment deployment, TokenUsage tokenUsage, Buffer requestBody, Buffer responseBody) {
         if (!(deployment instanceof Model model)) {
             return null;
         }
@@ -34,9 +32,9 @@ public class ModelCostCalculator {
         }
 
         return switch (pricing.getUnit()) {
-            case "token" -> calculate(context.getTokenUsage(), pricing.getPrompt(), pricing.getCompletion());
+            case "token" -> calculate(tokenUsage, pricing.getPrompt(), pricing.getCompletion());
             case "char_without_whitespace" ->
-                    calculate(model.getType(), context.getRequestBody(), context.getResponseBody(), pricing.getPrompt(), pricing.getCompletion());
+                    calculate(model.getType(), requestBody, responseBody, pricing.getPrompt(), pricing.getCompletion());
             default -> null;
         };
     }
@@ -61,6 +59,10 @@ public class ModelCostCalculator {
     }
 
     private static BigDecimal calculate(ModelType modelType, Buffer requestBody, Buffer responseBody, String promptRate, String completionRate) {
+        if (requestBody == null || responseBody == null) {
+            log.error("Can't calculate model cost due to missing request or response body.");
+            return null;
+        }
         RequestLengthResult requestLengthResult = getRequestContentLength(modelType, requestBody);
         int responseLength = getResponseContentLength(modelType, responseBody, requestLengthResult.stream());
         BigDecimal cost = null;

@@ -184,6 +184,8 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         context.setStreamingRequest(request.isStreaming());
         context.setStoreResponse(request.isStore());
+        // background=true only makes sense when store=true (we need a mapping for job tracking)
+        context.setBackgroundJob(request.isBackground() && request.isStore());
         ProxyUtil.processChain(request, enhancementFunctions);
         // Enhancement functions update the api key, and it should be saved after that
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
@@ -329,9 +331,17 @@ public class ResponsesController extends BaseDeploymentPostController {
                         .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
                         .build();
                 return rewriteId(proxy, context, mapping)
-                        .map(dialId -> {
-                            object.put("id", dialId);
-                            return Buffer.buffer(JsonUtil.serialize(object));
+                        .compose(dialId -> {
+                            Future<Void> jobFuture = context.isBackgroundJob()
+                                    ? proxy.getTaskExecutor().submit(() -> {
+                                        proxy.getBackgroundJobService().saveJob(context, dialId, mapping);
+                                        return null;
+                                    })
+                                    : Future.succeededFuture();
+                            return jobFuture.map(ignored -> {
+                                object.put("id", dialId);
+                                return Buffer.buffer(JsonUtil.serialize(object));
+                            });
                         });
             }
         }

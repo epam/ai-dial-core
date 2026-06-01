@@ -449,6 +449,7 @@ public class DeploymentPostControllerTest {
     public void testHandleResponse_Model() {
         Model model = new Model();
         when(context.getDeployment()).thenReturn(model);
+        when(context.getUserId()).thenReturn("test-user");
         HttpServerResponse response = mock(HttpServerResponse.class);
         when(context.getResponse()).thenReturn(response);
         when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
@@ -458,13 +459,13 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(ProxyContext.class), eq(model))).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(eq(model), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(tokenStatsTracker.updateModelStats(context)).thenReturn(Future.succeededFuture());
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter).increase(eq(context), eq(model));
+        verify(rateLimiter).increase(eq(model), any(), any(), any(), any());
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(eq(context));
         verify(tokenStatsTracker).endSpan(eq(context));
@@ -488,7 +489,7 @@ public class DeploymentPostControllerTest {
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter, never()).increase(eq(context), eq(app));
+        verify(rateLimiter, never()).increase(eq(app), any(), any(), any(), any());
         verify(tokenStatsTracker).getTokenStats(eq(context));
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(eq(context));

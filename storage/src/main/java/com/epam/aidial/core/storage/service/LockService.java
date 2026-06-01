@@ -3,6 +3,7 @@ package com.epam.aidial.core.storage.service;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RFuture;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
@@ -191,6 +192,34 @@ public class LockService {
             log.error("Lock service failed to unlock: {}", id, e);
             return false;
         }
+    }
+
+    public RFuture<Long> tryClaimOrRenewAsync(String key, String ownerId, long ttlMs) {
+        return script.evalAsync(RScript.Mode.READ_WRITE,
+                """
+                        local current = redis.call('get', KEYS[1])
+                        if current == false then
+                            redis.call('set', KEYS[1], ARGV[1], 'px', ARGV[2])
+                            return 0
+                        elseif current == ARGV[1] then
+                            redis.call('pexpire', KEYS[1], ARGV[2])
+                            return 0
+                        else
+                            local ttl = redis.call('pttl', KEYS[1])
+                            return ttl > 0 and ttl or tonumber(ARGV[2])
+                        end
+                        """, RScript.ReturnType.INTEGER, List.of(id(key)), ownerId, String.valueOf(ttlMs));
+    }
+
+    public RFuture<Boolean> releaseClaimAsync(String key, String ownerId) {
+        return script.evalAsync(RScript.Mode.READ_WRITE,
+                """
+                        if redis.call('get', KEYS[1]) == ARGV[1] then
+                            redis.call('del', KEYS[1])
+                            return true
+                        end
+                        return false
+                        """, RScript.ReturnType.BOOLEAN, List.of(id(key)), ownerId);
     }
 
     private static String id(String key) {

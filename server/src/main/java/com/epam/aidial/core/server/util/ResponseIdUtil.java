@@ -8,6 +8,8 @@ import lombok.experimental.UtilityClass;
 public class ResponseIdUtil {
     public static final String BUCKET = "response_mappings";
     public static final String BUCKET_LOCATION = BUCKET + "/";
+    public static final String BACKGROUND_JOB_BUCKET = "background_jobs";
+    public static final String BACKGROUND_JOB_BUCKET_LOCATION = BACKGROUND_JOB_BUCKET + "/";
     public static final String RESPONSE_ID_PREFIX = "dial_";
 
     public String createResponseId(String deploymentName, String uuid) {
@@ -15,6 +17,15 @@ public class ResponseIdUtil {
     }
 
     public ResourceDescriptor getDescriptor(String dialResponseId) {
+        return toDescriptor(dialResponseId, ResourceTypes.RESPONSE_MAPPING, BUCKET, BUCKET_LOCATION);
+    }
+
+    public ResourceDescriptor getBackgroundJobDescriptor(String jobId) {
+        return ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.BACKGROUND_JOB, BACKGROUND_JOB_BUCKET, BACKGROUND_JOB_BUCKET_LOCATION, jobId);
+    }
+
+    private ResourceDescriptor toDescriptor(String dialResponseId, ResourceTypes type, String bucket, String bucketLocation) {
         if (!dialResponseId.startsWith(RESPONSE_ID_PREFIX)) {
             throw new IllegalArgumentException("Invalid response id: " + dialResponseId);
         }
@@ -25,6 +36,6 @@ public class ResponseIdUtil {
         String deploymentName = dialResponseId.substring(RESPONSE_ID_PREFIX.length(), underscore);
         String uuid = dialResponseId.substring(underscore + 1);
         String relativePath = deploymentName + "/" + uuid;
-        return ResourceDescriptorFactory.fromDecoded(ResourceTypes.RESPONSE_MAPPING, BUCKET, BUCKET_LOCATION, relativePath);
+        return ResourceDescriptorFactory.fromDecoded(type, bucket, bucketLocation, relativePath);
     }
 }

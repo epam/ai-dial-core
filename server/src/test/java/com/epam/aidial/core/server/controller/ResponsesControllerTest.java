@@ -312,7 +312,7 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getRateLimiter().limit(context, deployment))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
-        when(proxy.getRateLimiter().increase(context, deployment))
+        when(proxy.getRateLimiter().increase(eq(deployment), any(), any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().updateModelStats(context))
                 .thenReturn(Future.succeededFuture());
@@ -428,7 +428,7 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getRateLimiter().limit(context, deployment))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
-        when(proxy.getRateLimiter().increase(context, deployment))
+        when(proxy.getRateLimiter().increase(eq(deployment), any(), any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().updateModelStats(context))
                 .thenReturn(Future.succeededFuture());

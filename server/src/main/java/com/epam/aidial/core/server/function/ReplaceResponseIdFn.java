@@ -65,7 +65,13 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
                 .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
                 .build();
         return proxy.getTaskExecutor()
-                .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
+                .submit(() -> {
+                    String generatedDialId = proxy.getResponseMappingService().saveMapping(context, mapping);
+                    if (context.isBackgroundJob()) {
+                        proxy.getBackgroundJobService().saveJob(context, generatedDialId, mapping);
+                    }
+                    return generatedDialId;
+                })
                 .map(generatedDialId -> {
                     dialId = generatedDialId;
                     response.put("id", generatedDialId);

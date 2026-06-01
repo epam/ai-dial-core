@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AuthBucket;
 import com.epam.aidial.core.server.security.EncryptionService;
 import lombok.experimental.UtilityClass;
@@ -33,15 +34,22 @@ public class BucketBuilder {
     }
 
     public static String buildInitiatorBucket(ProxyContext context) {
-        String userId = context.getUserId();
-        String apiKeyId = context.getProject();
+        return buildInitiatorBucket(context.getUserId(), context.getProject());
+    }
 
+    public static String buildInitiatorBucket(ApiKeyData apiKeyData) {
+        String userId = apiKeyData.getExtractedClaims() != null ? apiKeyData.getExtractedClaims().userId() : null;
+        String project = apiKeyData.getOriginalKey() != null ? apiKeyData.getOriginalKey().getProject() : null;
+        return buildInitiatorBucket(userId, project);
+    }
+
+    private static String buildInitiatorBucket(String userId, String project) {
         if (userId != null) {
             return USER_BUCKET_PATTERN.formatted(userId);
         }
 
-        if (apiKeyId != null) {
-            return API_KEY_BUCKET_PATTERN.formatted(apiKeyId);
+        if (project != null) {
+            return API_KEY_BUCKET_PATTERN.formatted(project);
         }
 
         throw new IllegalArgumentException("Can't find user bucket. Either user sub or api-key project must be provided");
