@@ -451,9 +451,13 @@ dial-cli env check --env local                              # config-only valida
   `06-model.yaml` and `08-application.yaml` point at non-existent hosts.
   Replace them with your real adapter / dev endpoint before chat-completion
   works against this model.
-- Secret fields (`upstreams[].key`, `Key.key`) in the base manifests are
-  placeholders. The `secrets-demo.yaml` shows the env-var-driven pattern; in
-  real workflows source secrets from env / vault per `06-cli-user-guide.md §2.1`.
+- Secret fields (`upstreams[].key`, `Key.key`) in the base manifests use
+  `${SECRET:VAR}` placeholders — the CLI fails loudly if the env var is unset.
+  Before applying any Key manifest set the matching variable:
+  `export DIAL_CI_KEY=<key>` (`04-key.yaml`),
+  `export DIAL_ROLLOUT_KEY=<key>` (bundle), `export DIAL_BATCH_KEY=<key>`
+  (`00-batch-array.json`). `secrets-demo.yaml` shows the full env-var pattern;
+  in real workflows source secrets from vault per `06-cli-user-guide.md §2.1`.
 - The docker alias mounts `$PWD` **read-only**, so `dial-cli env use` won't
   persist back to `config.yaml` from inside the container. Drop the `:ro` if
   you want to test that path; safer to leave it on for alpha CI.

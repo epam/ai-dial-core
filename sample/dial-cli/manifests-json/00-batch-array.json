@@ -17,7 +17,8 @@
     "spec": {
       "project": "BatchDemo",
       "roles": ["example-batch-role"],
-      "secured": false
+      "secured": false,
+      "key": "${SECRET:DIAL_BATCH_KEY}"
     }
   }
 ]

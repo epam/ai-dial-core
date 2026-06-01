@@ -5,5 +5,6 @@ spec:
   project: "ExampleCI"
   roles: ["example-user"]
   secured: false
-  # Omit `key` to let the server generate `sk-<uuid>` (per OQ-12 dual-format).
-  # Read it back via:  dial-cli key get keys/platform/example-ci-key --reveal-secrets
+  # Key.key is required — the server rejects a blank value (400 Bad Request).
+  # Set DIAL_CI_KEY before applying:  export DIAL_CI_KEY=<your-api-key>
+  key: "${SECRET:DIAL_CI_KEY}"

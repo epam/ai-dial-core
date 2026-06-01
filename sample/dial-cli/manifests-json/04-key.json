@@ -4,6 +4,7 @@
   "spec": {
     "project": "ExampleCI",
     "roles": ["example-user"],
-    "secured": false
+    "secured": false,
+    "key": "${SECRET:DIAL_CI_KEY}"
   }
 }

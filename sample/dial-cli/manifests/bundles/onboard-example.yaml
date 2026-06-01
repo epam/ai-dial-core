@@ -59,9 +59,11 @@ entities:
 
   # Issue a dedicated CI key bound to the example-user role. Full `spec:`
   # because the key is a fresh entity per rollout, not a shared one.
+  # Set DIAL_ROLLOUT_KEY before applying:  export DIAL_ROLLOUT_KEY=<your-api-key>
   - kind: Key
     name: "keys/platform/${params.model_name}-ci"
     spec:
       project: "ExampleRollout"
       roles: ["example-user"]
       secured: false
+      key: "${SECRET:DIAL_ROLLOUT_KEY}"
