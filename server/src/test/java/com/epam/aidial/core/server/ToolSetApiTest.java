@@ -66,6 +66,16 @@ public class ToolSetApiTest extends ResourceBaseTest {
         };
     }
 
+    private static TestWebServer.Handler mcpAuthErrorHandler(int statusCode) {
+        return request -> {
+            if ("GET".equals(request.getMethod())) {
+                return new MockResponse().setResponseCode(405);
+            }
+            // MCP server rejects authorization during the initialize handshake
+            return new MockResponse().setResponseCode(statusCode);
+        };
+    }
+
     private static String extractJsonRpcId(String body) {
         try {
             JsonNode node = ProxyUtil.MAPPER.readTree(body);
@@ -2208,6 +2218,28 @@ public class ToolSetApiTest extends ResourceBaseTest {
         Response resp = send(HttpMethod.GET, "/v1/toolset/unknown-toolset/tools",
                 null, null, "authorization", "admin");
         assertEquals(404, resp.status());
+    }
+
+    @Test
+    void testGetAllTools_Unauthorized() {
+        try (TestWebServer ignore = new TestWebServer(9876, mcpAuthErrorHandler(401))) {
+            Response resp = send(HttpMethod.GET, "/v1/toolset/git/tools",
+                    null, null, "authorization", "admin");
+
+            assertEquals(401, resp.status());
+            assertTrue(resp.body().contains("Please sign in to the toolset"), resp.body());
+        }
+    }
+
+    @Test
+    void testGetAllTools_Forbidden() {
+        try (TestWebServer ignore = new TestWebServer(9876, mcpAuthErrorHandler(403))) {
+            Response resp = send(HttpMethod.GET, "/v1/toolset/git/tools",
+                    null, null, "authorization", "admin");
+
+            assertEquals(403, resp.status());
+            assertTrue(resp.body().contains("Please sign in to the toolset"), resp.body());
+        }
     }
 
     @Test
