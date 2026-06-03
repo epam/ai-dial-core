@@ -50,7 +50,7 @@ public class EnvCommand {
                 out.println("No environments configured.");
                 return 0;
             }
-            String current = resolveCurrent(root, profile);
+            String current = resolveDefault(profile);
             for (String name : new TreeMap<>(environments).keySet()) {
                 String marker = name.equals(current) ? "* " : "  ";
                 out.println(marker + name);
@@ -70,7 +70,7 @@ public class EnvCommand {
         public Integer call() {
             DialCli root = env.parent;
             CliProfile profile = ProfileLoader.load(root.configPath);
-            String current = resolveCurrent(root, profile);
+            String current = resolveDefault(profile);
             if (current == null) {
                 spec.commandLine().getErr().println("No environment selected.");
                 return 2;
@@ -149,6 +149,10 @@ public class EnvCommand {
         if (root.env != null && !root.env.isBlank()) {
             return root.env;
         }
+        return resolveDefault(profile);
+    }
+
+    static String resolveDefault(CliProfile profile) {
         Defaults defaults = profile.getDefaults();
         if (defaults != null && defaults.getEnv() != null && !defaults.getEnv().isBlank()) {
             return defaults.getEnv();

@@ -77,14 +77,14 @@ class EnvCommandTest {
     }
 
     @Test
-    void listShowsOverrideAsCurrent(@TempDir Path tmp) throws Exception {
+    void listIgnoresEnvOverrideAndShowsProfileDefault(@TempDir Path tmp) throws Exception {
         Path file = writeProfile(tmp, TWO_ENVS);
 
         Result r = run(file, "--env", "prod", "env", "list");
 
         assertEquals(0, r.exitCode);
-        assertTrue(r.out.contains("* prod"), r.out);
-        assertTrue(r.out.contains("  dev"), r.out);
+        assertTrue(r.out.contains("* dev"), r.out);
+        assertTrue(r.out.contains("  prod"), r.out);
     }
 
     @Test
@@ -98,13 +98,13 @@ class EnvCommandTest {
     }
 
     @Test
-    void currentRespectsOverride(@TempDir Path tmp) throws Exception {
+    void currentIgnoresEnvOverrideAndShowsProfileDefault(@TempDir Path tmp) throws Exception {
         Path file = writeProfile(tmp, TWO_ENVS);
 
         Result r = run(file, "--env", "prod", "env", "current");
 
         assertEquals(0, r.exitCode);
-        assertEquals("prod", r.out.strip());
+        assertEquals("dev", r.out.strip());
     }
 
     @Test
