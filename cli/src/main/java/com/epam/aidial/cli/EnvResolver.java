@@ -3,6 +3,7 @@ package com.epam.aidial.cli;
 import com.epam.aidial.cli.auth.ApiKeyResolver;
 import com.epam.aidial.cli.auth.CliAuthException;
 import com.epam.aidial.cli.config.CliProfile;
+import com.epam.aidial.cli.config.Defaults;
 import com.epam.aidial.cli.config.Environment;
 import com.epam.aidial.cli.config.ProfileLoader;
 
@@ -16,10 +17,8 @@ public final class EnvResolver {
 
     static ResolvedEnv resolveEnv(DialCli root, String explicitEnv) {
         CliProfile profile = ProfileLoader.load(root.configPath);
-        String envName = (explicitEnv != null && !explicitEnv.isBlank()) ? explicitEnv : root.env;
-        if (envName == null || envName.isBlank()) {
-            envName = (profile.getDefaults() != null) ? profile.getDefaults().getEnv() : null;
-        }
+        boolean crossEnv = explicitEnv != null && !explicitEnv.isBlank();
+        String envName = crossEnv ? explicitEnv : resolveCurrent(root, profile);
         if (envName == null || envName.isBlank()) {
             throw CliException.validation(
                     "No environment selected. Pass --env or set defaults.env via 'dial-cli env use'.");
@@ -29,7 +28,7 @@ public final class EnvResolver {
         if (env == null) {
             throw CliException.validation("Environment '" + envName + "' not found in profile.");
         }
-        boolean useApiUrlOverride = explicitEnv == null && root.apiUrl != null && !root.apiUrl.isBlank();
+        boolean useApiUrlOverride = !crossEnv && root.apiUrl != null && !root.apiUrl.isBlank();
         String apiUrl = useApiUrlOverride ? root.apiUrl : env.getApiUrl();
         if (apiUrl == null || apiUrl.isBlank()) {
             throw CliException.validation(
@@ -46,6 +45,21 @@ public final class EnvResolver {
         } catch (CliAuthException e) {
             throw CliException.validation(e.getMessage());
         }
+    }
+
+    static String resolveCurrent(DialCli root, CliProfile profile) {
+        if (root.env != null && !root.env.isBlank()) {
+            return root.env;
+        }
+        return resolveDefault(profile);
+    }
+
+    static String resolveDefault(CliProfile profile) {
+        Defaults defaults = profile.getDefaults();
+        if (defaults != null && defaults.getEnv() != null && !defaults.getEnv().isBlank()) {
+            return defaults.getEnv();
+        }
+        return null;
     }
 
     record ResolvedEnv(String envName, String apiUrl, String apiKey,

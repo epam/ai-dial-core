@@ -2,7 +2,6 @@ package com.epam.aidial.cli;
 
 import com.epam.aidial.cli.auth.ApiKeyResolver;
 import com.epam.aidial.cli.config.CliProfile;
-import com.epam.aidial.cli.config.Defaults;
 import com.epam.aidial.cli.config.Environment;
 import com.epam.aidial.cli.config.ProfileLoader;
 import picocli.CommandLine.Command;
@@ -50,7 +49,7 @@ public class EnvCommand {
                 out.println("No environments configured.");
                 return 0;
             }
-            String current = resolveDefault(profile);
+            String current = EnvResolver.resolveDefault(profile);
             for (String name : new TreeMap<>(environments).keySet()) {
                 String marker = name.equals(current) ? "* " : "  ";
                 out.println(marker + name);
@@ -70,7 +69,7 @@ public class EnvCommand {
         public Integer call() {
             DialCli root = env.parent;
             CliProfile profile = ProfileLoader.load(root.configPath);
-            String current = resolveDefault(profile);
+            String current = EnvResolver.resolveDefault(profile);
             if (current == null) {
                 spec.commandLine().getErr().println("No environment selected.");
                 return 2;
@@ -121,7 +120,7 @@ public class EnvCommand {
         public Integer call() {
             DialCli root = env.parent;
             CliProfile profile = ProfileLoader.load(root.configPath);
-            String name = resolveCurrent(root, profile);
+            String name = EnvResolver.resolveCurrent(root, profile);
             if (name == null) {
                 spec.commandLine().getErr().println("No environment selected.");
                 return 2;
@@ -145,18 +144,4 @@ public class EnvCommand {
         }
     }
 
-    static String resolveCurrent(DialCli root, CliProfile profile) {
-        if (root.env != null && !root.env.isBlank()) {
-            return root.env;
-        }
-        return resolveDefault(profile);
-    }
-
-    static String resolveDefault(CliProfile profile) {
-        Defaults defaults = profile.getDefaults();
-        if (defaults != null && defaults.getEnv() != null && !defaults.getEnv().isBlank()) {
-            return defaults.getEnv();
-        }
-        return null;
-    }
 }
