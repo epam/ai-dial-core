@@ -239,6 +239,9 @@ public final class FileConfigStore implements ConfigStore {
         if (modelFeatures.getAutoCachingSupported() == null) {
             modelFeatures.setAutoCachingSupported(features.getAutoCachingSupported());
         }
+        if (modelFeatures.getReasoningEffortsSupported() == null) {
+            modelFeatures.setReasoningEffortsSupported(features.getReasoningEffortsSupported());
+        }
     }
 
     private JsonMapper buildJsonMapper(JsonObject settings) {
