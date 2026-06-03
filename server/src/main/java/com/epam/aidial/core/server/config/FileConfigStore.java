@@ -186,61 +186,6 @@ public final class FileConfigStore implements ConfigStore {
         }
     }
 
-    private static void setMissingFeatures(Deployment model, Features features) {
-        if (features == null) {
-            return;
-        }
-
-        Features modelFeatures = model.getFeatures();
-        if (modelFeatures == null) {
-            model.setFeatures(features);
-            return;
-        }
-
-        if (modelFeatures.getRateEndpoint() == null) {
-            modelFeatures.setRateEndpoint(features.getRateEndpoint());
-        }
-        if (modelFeatures.getTokenizeEndpoint() == null) {
-            modelFeatures.setTokenizeEndpoint(features.getTokenizeEndpoint());
-        }
-        if (modelFeatures.getTruncatePromptEndpoint() == null) {
-            modelFeatures.setTruncatePromptEndpoint(features.getTruncatePromptEndpoint());
-        }
-        if (modelFeatures.getSystemPromptSupported() == null) {
-            modelFeatures.setSystemPromptSupported(features.getSystemPromptSupported());
-        }
-        if (modelFeatures.getToolsSupported() == null) {
-            modelFeatures.setToolsSupported(features.getToolsSupported());
-        }
-        if (modelFeatures.getSeedSupported() == null) {
-            modelFeatures.setSeedSupported(features.getSeedSupported());
-        }
-        if (modelFeatures.getUrlAttachmentsSupported() == null) {
-            modelFeatures.setUrlAttachmentsSupported(features.getUrlAttachmentsSupported());
-        }
-        if (modelFeatures.getFolderAttachmentsSupported() == null) {
-            modelFeatures.setFolderAttachmentsSupported(features.getFolderAttachmentsSupported());
-        }
-        if (modelFeatures.getAllowResume() == null) {
-            modelFeatures.setAllowResume(features.getAllowResume());
-        }
-        if (modelFeatures.getAccessibleByPerRequestKey() == null) {
-            modelFeatures.setAccessibleByPerRequestKey(features.getAccessibleByPerRequestKey());
-        }
-        if (modelFeatures.getContentPartsSupported() == null) {
-            modelFeatures.setContentPartsSupported(features.getContentPartsSupported());
-        }
-        if (modelFeatures.getTemperatureSupported() == null) {
-            modelFeatures.setTemperatureSupported(features.getTemperatureSupported());
-        }
-        if (modelFeatures.getCacheSupported() == null) {
-            modelFeatures.setCacheSupported(features.getCacheSupported());
-        }
-        if (modelFeatures.getAutoCachingSupported() == null) {
-            modelFeatures.setAutoCachingSupported(features.getAutoCachingSupported());
-        }
-    }
-
     private JsonMapper buildJsonMapper(JsonObject settings) {
         JsonMapper mapper = JsonMapper.builder()
                 .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
