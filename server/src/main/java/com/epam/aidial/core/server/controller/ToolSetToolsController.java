@@ -36,10 +36,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
+import io.modelcontextprotocol.client.transport.McpHttpClientTransportAuthorizationException;
 import io.modelcontextprotocol.json.schema.JsonSchemaValidator;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 
 import java.net.http.HttpRequest;
 import java.time.Duration;
@@ -169,6 +171,14 @@ public class ToolSetToolsController implements Controller {
                 processAdminToolsResult(client.listTools(cursor));
             }
         } catch (Exception e) {
+            McpHttpClientTransportAuthorizationException authError =
+                    ExceptionUtils.throwableOfType(e, McpHttpClientTransportAuthorizationException.class);
+            if (authError != null) {
+                log.warn("Authorization error when fetching tools from MCP server for toolset: {}", toolSetId, e);
+                HttpStatus status = HttpStatus.fromStatusCode(authError.getResponseInfo().statusCode(), HttpStatus.UNAUTHORIZED);
+                throw new HttpException(status, "Authorization required to fetch tools from toolset '"
+                        + toolSetId + "'. Please sign in to the toolset.");
+            }
             log.error("Failed to fetch tools from MCP server for toolset: {}", toolSetId, e);
             throw new HttpException(HttpStatus.BAD_GATEWAY, "Failed to fetch tools from MCP server");
         }

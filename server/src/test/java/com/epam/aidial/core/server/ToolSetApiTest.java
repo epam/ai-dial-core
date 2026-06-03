@@ -66,6 +66,16 @@ public class ToolSetApiTest extends ResourceBaseTest {
         };
     }
 
+    private static TestWebServer.Handler mcpAuthErrorHandler(int statusCode) {
+        return request -> {
+            if ("GET".equals(request.getMethod())) {
+                return new MockResponse().setResponseCode(405);
+            }
+            // MCP server rejects authorization during the initialize handshake
+            return new MockResponse().setResponseCode(statusCode);
+        };
+    }
+
     private static String extractJsonRpcId(String body) {
         try {
             JsonNode node = ProxyUtil.MAPPER.readTree(body);
