@@ -4,7 +4,9 @@ import com.fasterxml.jackson.core.JsonPointer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import java.util.Arrays;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public final class JsonPatcher {
 
@@ -23,7 +25,10 @@ public final class JsonPatcher {
                     throw CliException.validation("--set path must not contain empty segments; got '" + pathExpr + "'.");
                 }
             }
-            JsonPointer pointer = JsonPointer.compile("/" + pathExpr.replace(".", "/"));
+            String pointerStr = Arrays.stream(pathExpr.split("\\.", -1))
+                    .map(s -> s.replace("~", "~0").replace("/", "~1"))
+                    .collect(Collectors.joining("/", "/", ""));
+            JsonPointer pointer = JsonPointer.compile(pointerStr);
             JsonPointer head = pointer.head();
             ObjectNode parent;
             if (head == null || head.matches()) {
@@ -36,7 +41,11 @@ public final class JsonPatcher {
                             + "' would overwrite a non-object value at an intermediate segment.");
                 }
             }
-            parent.set(pointer.last().getMatchingProperty(), value);
+            if (value == null || value.isNull()) {
+                parent.remove(pointer.last().getMatchingProperty());
+            } else {
+                parent.set(pointer.last().getMatchingProperty(), value);
+            }
         }
     }
 }

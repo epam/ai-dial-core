@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.BooleanNode;
 import com.fasterxml.jackson.databind.node.IntNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import org.junit.jupiter.api.Test;
@@ -100,6 +101,58 @@ class JsonPatcherTest {
         JsonPatcher.apply(target, Map.of("metadata", node("{\"owner\":\"team-a\",\"version\":2}")));
         assertThat(target.at("/metadata/owner").asText()).isEqualTo("team-a");
         assertThat(target.at("/metadata/version").asInt()).isEqualTo(2);
+    }
+
+    @Test
+    void slashInKeySegment() {
+        ObjectNode target = obj("{\"limits\":{\"models/public/gpt-4\":{\"minute\":100}}}");
+        JsonPatcher.apply(target, Map.of("limits.models/public/gpt-4.minute", IntNode.valueOf(200)));
+        assertThat(target.at("/limits/models~1public~1gpt-4/minute").asInt()).isEqualTo(200);
+        assertThat(target.toString()).isEqualTo("{\"limits\":{\"models/public/gpt-4\":{\"minute\":200}}}");
+    }
+
+    @Test
+    void tildeInKeySegment() {
+        ObjectNode target = obj("{\"meta\":{\"key~name\":42}}");
+        JsonPatcher.apply(target, Map.of("meta.key~name", IntNode.valueOf(99)));
+        assertThat(target.at("/meta/key~0name").asInt()).isEqualTo(99);
+        assertThat(target.toString()).isEqualTo("{\"meta\":{\"key~name\":99}}");
+    }
+
+    @Test
+    void slashAndTildeInKeySegment() {
+        ObjectNode target = obj("{\"a\":{\"b~1/c\":0}}");
+        JsonPatcher.apply(target, Map.of("a.b~1/c", IntNode.valueOf(7)));
+        assertThat(target.at("/a/b~01~1c").asInt()).isEqualTo(7);
+        assertThat(target.toString()).isEqualTo("{\"a\":{\"b~1/c\":7}}");
+    }
+
+    @Test
+    void setNullRemovesTopLevelField() {
+        ObjectNode target = obj("{\"a\":1,\"b\":2}");
+        JsonPatcher.apply(target, Map.of("a", NullNode.getInstance()));
+        assertThat(target.toString()).isEqualTo("{\"b\":2}");
+    }
+
+    @Test
+    void setNullRemovesNestedField() {
+        ObjectNode target = obj("{\"features\":{\"toolsSupported\":true,\"systemPromptSupported\":true}}");
+        JsonPatcher.apply(target, Map.of("features.toolsSupported", NullNode.getInstance()));
+        assertThat(target.toString()).isEqualTo("{\"features\":{\"systemPromptSupported\":true}}");
+    }
+
+    @Test
+    void setNullRemovesKeyWithSlash() {
+        ObjectNode target = obj("{\"limits\":{\"models/public/gpt-4\":{\"minute\":100},\"models/public/gpt-3\":{\"minute\":50}}}");
+        JsonPatcher.apply(target, Map.of("limits.models/public/gpt-4", NullNode.getInstance()));
+        assertThat(target.toString()).isEqualTo("{\"limits\":{\"models/public/gpt-3\":{\"minute\":50}}}");
+    }
+
+    @Test
+    void setNullOnAbsentFieldIsNoOp() {
+        ObjectNode target = obj("{\"a\":1}");
+        JsonPatcher.apply(target, Map.of("b", NullNode.getInstance()));
+        assertThat(target.toString()).isEqualTo("{\"a\":1}");
     }
 
     @Test

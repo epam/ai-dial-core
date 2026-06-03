@@ -373,6 +373,15 @@ dial-cli settings update --set 'retriableErrorCodes=[502,503,504]'
 
 dial-cli model update models/public/example-chat-model \
   --set maxTotalTokens=128000 --if-match "<etag-from-prior-get>"
+
+# Keys containing slashes: dot separates path segments; slash is part of the key name
+dial-cli role update roles/platform/example-user \
+  --set 'limits.models/public/example-chat-model.minute="200000"'
+
+# Remove a field: set to null removes it rather than writing JSON null
+dial-cli model update models/public/example-chat-model --set features.toolsSupported=null
+dial-cli role update roles/platform/example-user \
+  --set limits.models/public/example-chat-model=null
 ```
 
 ### Add via template — `--template` + `--param`
