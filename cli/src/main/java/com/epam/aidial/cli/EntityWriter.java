@@ -121,12 +121,17 @@ public final class EntityWriter {
                     + EntityReader.formatHttpError(getResp.status(), getResp.body(), path),
                     CliHttpClient.toExitCode(getResp.status()));
         }
-        JsonNode sourceSpec;
+        ObjectNode sourceSpec;
         try {
-            sourceSpec = JSON.readTree(getResp.body());
+            JsonNode entity = JSON.readTree(getResp.body());
+            if (!entity.isObject()) {
+                throw CliException.network("GET response is not a JSON object: " + getResp.body());
+            }
+            sourceSpec = (ObjectNode) entity;
         } catch (JsonProcessingException e) {
             throw CliException.network("Failed to parse source " + source.envName() + " response: " + e.getMessage());
         }
+        sourceSpec.remove(java.util.Arrays.asList(PROJECTION_FIELDS));
         Map<String, Object> entityCtx = entityContext(simpleName, kind);
         String effectiveTemplate = templateName;
         if (TEMPLATE_AUTO.equals(templateName)) {
