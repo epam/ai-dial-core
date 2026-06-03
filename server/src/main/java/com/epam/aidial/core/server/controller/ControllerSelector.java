@@ -184,6 +184,10 @@ public class ControllerSelector {
             DeploymentController controller = new DeploymentController(proxy, context);
             return controller::listDeployments;
         })));
+        get(RouteTemplate.LLM_RESPONSES_API_BY_ID, (proxy, context, pathMatcher) -> {
+            String id = UrlUtil.decodePath(pathMatcher.group("id"));
+            return new ResponseItemController(proxy, context, id, ResponseItemController.Operation.GET);
+        });
 
         // POST routes
         // POST on the per-entity CONFIG_RESOURCE URL is wired so the controller can emit 405 with
@@ -197,6 +201,10 @@ public class ControllerSelector {
         post(RouteTemplate.LLM_RESPONSES_API, (proxy, context, pathMatcher) -> {
             ResponsesController controller = new ResponsesController(proxy, context);
             return controller::handle;
+        });
+        post(RouteTemplate.LLM_RESPONSES_API_CANCEL, (proxy, context, pathMatcher) -> {
+            String id = UrlUtil.decodePath(pathMatcher.group("id"));
+            return new ResponseItemController(proxy, context, id, ResponseItemController.Operation.CANCEL);
         });
         post(RouteTemplate.RATE_RESPONSE, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
@@ -400,6 +408,10 @@ public class ControllerSelector {
             String applicationId = UrlUtil.decodePath(pathMatcher.group(1));
             return new ApplicationMcpProxyController(proxy, context, applicationId);
         }));
+        delete(RouteTemplate.LLM_RESPONSES_API_BY_ID, (proxy, context, pathMatcher) -> {
+            String id = UrlUtil.decodePath(pathMatcher.group("id"));
+            return new ResponseItemController(proxy, context, id, ResponseItemController.Operation.DELETE);
+        });
         // PUT routes
         put(RouteTemplate.FILES, (proxy, context, pathMatcher) -> {
             UploadFileController controller = new UploadFileController(proxy, context);

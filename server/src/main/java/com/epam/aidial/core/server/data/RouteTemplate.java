@@ -12,6 +12,14 @@ public enum RouteTemplate {
             "^/+openai/v1/responses$",
             "/openai/v1/responses"
     ),
+    LLM_RESPONSES_API_CANCEL(
+            "^/+openai/v1/responses/(?<id>[^/]+)/cancel$",
+            "/openai/v1/responses/{id}/cancel"
+    ),
+    LLM_RESPONSES_API_BY_ID(
+            "^/+openai/v1/responses/(?<id>[^/]+)$",
+            "/openai/v1/responses/{id}"
+    ),
     POST_DEPLOYMENT(
             "^/+openai/deployments/(?<id>.+?)/(completions|chat/completions|embeddings)$",
             "/openai/deployments/{id}/{action}"

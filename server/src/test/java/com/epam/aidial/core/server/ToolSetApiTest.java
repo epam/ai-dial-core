@@ -66,6 +66,16 @@ public class ToolSetApiTest extends ResourceBaseTest {
         };
     }
 
+    private static TestWebServer.Handler mcpAuthErrorHandler(int statusCode) {
+        return request -> {
+            if ("GET".equals(request.getMethod())) {
+                return new MockResponse().setResponseCode(405);
+            }
+            // MCP server rejects authorization during the initialize handshake
+            return new MockResponse().setResponseCode(statusCode);
+        };
+    }
+
     private static String extractJsonRpcId(String body) {
         try {
             JsonNode node = ProxyUtil.MAPPER.readTree(body);
@@ -142,7 +152,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "auto_caching" : false,
                            "parallel_tool_calls" : true,
                            "assistant_attachments_in_request": false,
-                           "mcp" : true
+                           "mcp" : true,
+                           "max_tokens_supported": true,
+                           "max_completion_tokens_supported": false,
+                           "custom_temperature_supported": true
                       },
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
@@ -182,7 +195,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
                           "auto_caching" : false,
                           "parallel_tool_calls" : true,
                           "assistant_attachments_in_request" : false,
-                          "mcp" : true
+                          "mcp" : true,
+                           "max_tokens_supported": true,
+                           "max_completion_tokens_supported": false,
+                           "custom_temperature_supported": true
                         },
                         "description_keywords" : [ ],
                         "max_retry_attempts" : 1,
@@ -223,7 +239,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
                           "auto_caching" : false,
                           "parallel_tool_calls" : true,
                           "assistant_attachments_in_request" : false,
-                          "mcp" : true
+                          "mcp" : true,
+                           "max_tokens_supported": true,
+                           "max_completion_tokens_supported": false,
+                           "custom_temperature_supported": true
                         },
                         "description_keywords" : [ ],
                         "max_retry_attempts" : 1,
@@ -273,7 +292,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "auto_caching" : false,
                            "parallel_tool_calls" : true,
                            "assistant_attachments_in_request": false,
-                           "mcp" : true
+                           "mcp" : true,
+                           "max_tokens_supported": true,
+                           "max_completion_tokens_supported": false,
+                           "custom_temperature_supported": true
                       },
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
@@ -407,7 +429,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
                         "auto_caching" : false,
                         "parallel_tool_calls" : true,
                         "assistant_attachments_in_request": false,
-                        "mcp" : true
+                        "mcp" : true,
+                           "max_tokens_supported": true,
+                           "max_completion_tokens_supported": false,
+                           "custom_temperature_supported": true
                   },
                   "description_keywords": [],
                   "max_retry_attempts": 1,
@@ -456,7 +481,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
                             "auto_caching" : false,
                             "parallel_tool_calls" : true,
                             "assistant_attachments_in_request": false,
-                            "mcp" : true
+                            "mcp" : true,
+                           "max_tokens_supported": true,
+                           "max_completion_tokens_supported": false,
+                           "custom_temperature_supported": true
                           },
                       "description_keywords" : [ ],
                       "max_retry_attempts" : 1,
@@ -498,7 +526,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
                             "auto_caching" : false,
                             "parallel_tool_calls" : true,
                             "assistant_attachments_in_request": false,
-                            "mcp" : true
+                            "mcp" : true,
+                           "max_tokens_supported": true,
+                           "max_completion_tokens_supported": false,
+                           "custom_temperature_supported": true
                           },
                         "description_keywords" : [ ],
                         "max_retry_attempts" : 1,
@@ -2190,6 +2221,28 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testGetAllTools_Unauthorized() {
+        try (TestWebServer ignore = new TestWebServer(9876, mcpAuthErrorHandler(401))) {
+            Response resp = send(HttpMethod.GET, "/v1/toolset/git/tools",
+                    null, null, "authorization", "admin");
+
+            assertEquals(401, resp.status());
+            assertTrue(resp.body().contains("Please sign in to the toolset"), resp.body());
+        }
+    }
+
+    @Test
+    void testGetAllTools_Forbidden() {
+        try (TestWebServer ignore = new TestWebServer(9876, mcpAuthErrorHandler(403))) {
+            Response resp = send(HttpMethod.GET, "/v1/toolset/git/tools",
+                    null, null, "authorization", "admin");
+
+            assertEquals(403, resp.status());
+            assertTrue(resp.body().contains("Please sign in to the toolset"), resp.body());
+        }
+    }
+
+    @Test
     void testGetAllTools_ResourceToolset_OwnerAccess() throws JsonProcessingException {
         // create resource-based toolset (owner = default user)
         Response response = send(HttpMethod.PUT,
@@ -2804,5 +2857,50 @@ public class ToolSetApiTest extends ResourceBaseTest {
             }
         }
         return ProxyUtil.MAPPER.writeValueAsString(root);
+    }
+
+    @Test
+    void testToolsetEndpointHiddenForReadOnlyUser() throws JsonProcessingException {
+        // Admin creates toolset with endpoint
+        Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/secure-toolset", null, """
+                {
+                    "endpoint": "http://localhost:9876",
+                    "transport": "HTTP",
+                    "allowedTools": [],
+                    "auth_settings": {
+                        "authentication_type": "NONE"
+                    }
+                }
+                """, "authorization", "admin");
+        verify(response, 200);
+
+        // Admin GETs the toolset - should see endpoint
+        response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/secure-toolset", null, null, "authorization", "admin");
+        verify(response, 200);
+        assertNotNull(ProxyUtil.MAPPER.readTree(response.body()).get("endpoint"));
+
+        // Admin shares toolset with user (read-only)
+        response = send(HttpMethod.POST, "/v1/ops/resource/share/create", null, """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "toolsets/4X25dj1mja51jykqxsXnCH/secure-toolset"
+                    }
+                  ]
+                }
+                """, "authorization", "admin");
+        verify(response, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        // User accepts invitation
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "authorization", "user");
+        verify(response, 200);
+
+        // User GETs the toolset - endpoint must be absent
+        response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/secure-toolset", null, null, "authorization", "user");
+        verify(response, 200);
+        assertNull(ProxyUtil.MAPPER.readTree(response.body()).get("endpoint"));
     }
 }

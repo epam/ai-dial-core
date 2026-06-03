@@ -164,7 +164,7 @@ public class UpstreamRoute {
         }
         String expireAt = proxyResponse.getHeader(Proxy.HEADER_CACHE_EXPIRE_AT);
         String extraMetadata = proxyResponse.getHeader(Proxy.HEADER_CACHE_EXTRA_METADATA);
-        CachedUpstreamEntry entry = new CachedUpstreamEntry(upstream.getEndpoint(), breakpointPath, extraMetadata);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry(upstream.getEndpoint(), upstream.getId(), breakpointPath, extraMetadata);
         taskExecutor.submit(() -> {
             upstreamCacheService.updateEntry(hash, entry, model, expireAt);
             return null;

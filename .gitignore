@@ -11,6 +11,7 @@ bin/
 src/main/resources/version
 ### Mac OS ###
 .DS_Store
+/credentials/out/
 ### Eclipse / JDTLS ###
 .classpath
 .factorypath

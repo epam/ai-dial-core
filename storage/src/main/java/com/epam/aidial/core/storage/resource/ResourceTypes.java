@@ -29,7 +29,8 @@ public enum ResourceTypes implements ResourceType {
     ROLE("roles", true, Long.MAX_VALUE),
     PROJECT_KEY("project_keys", "keys", true, Long.MAX_VALUE),
     ROUTE("routes", true, Long.MAX_VALUE),
-    GLOBAL_SETTINGS("settings", true, Long.MAX_VALUE);
+    GLOBAL_SETTINGS("settings", true, Long.MAX_VALUE),
+    RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5));
 
     private final String group;
     private final String urlSegment;
@@ -66,6 +67,7 @@ public enum ResourceTypes implements ResourceType {
             case "project_keys", "keys" -> PROJECT_KEY;
             case "routes" -> ROUTE;
             case "settings" -> GLOBAL_SETTINGS;
+            case "response_mappings" -> RESPONSE_MAPPING;
             default -> throw new IllegalArgumentException("Unsupported resource type: " + group);
         };
     }

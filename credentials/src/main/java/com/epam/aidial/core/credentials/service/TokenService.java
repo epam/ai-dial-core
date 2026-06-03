@@ -10,7 +10,6 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
@@ -114,12 +113,13 @@ public class TokenService {
         };
     }
 
-    // RFC 6749 §2.3.1: client_id and client_secret are application/x-www-form-urlencoded
-    // before being concatenated with ":" and base64-encoded.
+    // RFC 6749 §2.3.1 specifies URL-encoding credentials before base64, but real-world
+    // authorization servers — Snowflake's /oauth/token-request among them — follow plain
+    // RFC 7617 HTTP Basic (Base64(client_id:client_secret), no URL-encoding). URL-encoding
+    // a client_id like "abc/xyz=" turns "/" and "=" into "%2F" and "%3D"; servers that don't
+    // URL-decode the header then see the wrong credentials and return invalid_client.
     private static String buildBasicAuthHeader(String clientId, String clientSecret) {
-        String encId = URLEncoder.encode(StringUtils.defaultString(clientId), StandardCharsets.UTF_8);
-        String encSecret = URLEncoder.encode(StringUtils.defaultString(clientSecret), StandardCharsets.UTF_8);
-        String credentials = encId + ":" + encSecret;
+        String credentials = StringUtils.defaultString(clientId) + ":" + StringUtils.defaultString(clientSecret);
         return "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
     }
 }

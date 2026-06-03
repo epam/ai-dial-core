@@ -173,7 +173,7 @@
       "endpoint" : "http://localhost:4848/chat/completions",
       "responsesEndpoint" : "http://localhost:4848/openai/v1/responses",
       "upstreams": [
-        {"endpoint": "http://chat/completions", "responsesEndpoint": "http://responses", "key": "modelKey"}
+        {"endpoint": "http://chat/completions", "responsesEndpoint": "http://responses", "key": "modelKey", "id": "responses-upstream"}
       ]
     }
   },
@@ -306,6 +306,10 @@
             "WRITE"
           ]
         }
+      },
+      "dial:applicationTypeMcp": {
+        "dial:endpoint": "http://localhost:4848/mcp",
+        "dial:transport": "HTTP"
       },
       "properties": {
         "property1": {

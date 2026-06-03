@@ -946,7 +946,10 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "auto_caching" : false,
                       "parallel_tool_calls" : true,
                       "assistant_attachments_in_request": false,
-                      "mcp" : false
+                      "mcp" : false,
+                      "max_tokens_supported": true,
+                      "max_completion_tokens_supported": false,
+                      "custom_temperature_supported": true
                     },
                     "defaults" : { },
                     "responses_defaults" : { },
@@ -1006,7 +1009,10 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "auto_caching" : false,
                       "parallel_tool_calls" : true,
                       "assistant_attachments_in_request": false,
-                      "mcp" : false
+                      "mcp" : false,
+                      "max_tokens_supported": true,
+                      "max_completion_tokens_supported": false,
+                      "custom_temperature_supported": true
                     },
                     "defaults" : { },
                     "responses_defaults" : { },
@@ -1046,7 +1052,10 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                         "auto_caching" : false,
                         "parallel_tool_calls" : true,
                         "assistant_attachments_in_request": false,
-                        "mcp" : false
+                        "mcp" : false,
+                      "max_tokens_supported": true,
+                      "max_completion_tokens_supported": false,
+                      "custom_temperature_supported": true
                       },
                       "defaults" : { },
                       "responses_defaults" : { },
@@ -1054,17 +1063,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "max_retry_attempts" : 1,
                       "routes" : {
                         "index-search" : {
-                          "name" : null,
-                          "userRoles" : null,
-                          "response" : null,
                           "rewritePath" : true,
                           "paths" : [ "/v1/index(/[^/]+)*$" ],
                           "methods" : [ "DELETE", "POST", "PUT" ],
-                          "upstreams" : [ {
-                            "endpoint" : "http://localhost:4848",
-                            "weight" : 1,
-                            "tier" : 0
-                          } ],
                           "maxRetryAttempts" : 1,
                           "order" : 2147483647,
                           "permissions" : [ ],
@@ -1103,7 +1104,10 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "auto_caching" : false,
                       "parallel_tool_calls" : true,
                       "assistant_attachments_in_request": false,
-                      "mcp" : false
+                      "mcp" : false,
+                      "max_tokens_supported": true,
+                      "max_completion_tokens_supported": false,
+                      "custom_temperature_supported": true
                     },
                     "defaults" : { },
                     "responses_defaults" : { },

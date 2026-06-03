@@ -150,7 +150,6 @@ public class InterceptorController extends BaseDeploymentPostController {
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
-        context.setResponseStream(responseStream);
 
         HttpServerResponse response = context.getResponse();
 
@@ -165,7 +164,7 @@ public class InterceptorController extends BaseDeploymentPostController {
     }
 
     void handleResponse(BufferingReadStream responseStream) {
-        Buffer responseBody = context.getResponseStream().getContent();
+        Buffer responseBody = responseStream.getContent();
         CollectResponseChatCompletionAttachmentsFn fn = new CollectResponseChatCompletionAttachmentsFn(proxy, context);
         collectResponseAttachments(responseBody, fn).onComplete(result -> {
             if (result.failed()) {
