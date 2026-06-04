@@ -245,16 +245,15 @@ public class ApplicationSchemaService {
     }
 
     public void consumeMetadataProperties(Application application, MetadataPropertiesConsumer consumer) {
-        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application, false);
-        if (customApplicationSchema == null) {
-            return;
-        }
-
         if (application.getApplicationProperties() == null) {
             throw new ApplicationTypeSchemaValidationException("Typed application's properties not set");
         }
-
+        String customApplicationSchema = getCustomApplicationSchemaOrThrow(application, false);
         try {
+            if (customApplicationSchema == null) {
+                consumer.accept(application.getApplicationProperties(), true);
+                return;
+            }
             JsonNode schemaNode = ProxyUtil.MAPPER.readTree(customApplicationSchema);
             boolean appendApplicationPropertiesHeader = !schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_APPEND_APPLICATION_PROPERTIES)
                                                         || schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_APPEND_APPLICATION_PROPERTIES).asBoolean();

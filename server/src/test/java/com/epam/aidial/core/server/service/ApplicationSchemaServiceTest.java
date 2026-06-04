@@ -319,17 +319,14 @@ public class ApplicationSchemaServiceTest {
     void consumeMetadataProperties_returnsEmptyMap_whenSchemaIsNull() {
         application.setApplicationTypeSchemaId(null);
 
-        service.consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
-            Assertions.assertEquals(Collections.emptyMap(), properties);
-            Assertions.assertTrue(appendApplicationPropertiesHeader);
-        });
+        assertThrows(ApplicationTypeSchemaValidationException.class, () ->
+                service.consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
+                }));
     }
 
     @Test
     void consumeMetadataProperties_throws_whenSchemaNotFound() {
-        when(configStore.get()).thenReturn(config);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
-        when(config.getCustomApplicationSchema(any())).thenReturn(null);
 
         assertThrows(ApplicationTypeSchemaValidationException.class, () ->
                 service.consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
