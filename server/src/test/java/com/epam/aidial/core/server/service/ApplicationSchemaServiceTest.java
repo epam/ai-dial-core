@@ -318,10 +318,12 @@ public class ApplicationSchemaServiceTest {
     @Test
     void consumeMetadataProperties_returnsEmptyMap_whenSchemaIsNull() {
         application.setApplicationTypeSchemaId(null);
+        application.setApplicationProperties(Map.of());
 
-        assertThrows(ApplicationTypeSchemaValidationException.class, () ->
-                service.consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
-                }));
+        service.consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
+            Assertions.assertTrue(properties.isEmpty());
+            Assertions.assertTrue(appendApplicationPropertiesHeader);
+        });
     }
 
     @Test
