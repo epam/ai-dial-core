@@ -25,27 +25,26 @@ public class SettingsCommand {
 
     static final String TYPE = "settings";
     static final String BUCKET = "platform";
+    static final String NAME = "global";
     static final String KIND = "Settings";
-    static final String CANONICAL_ID = TYPE + "/" + BUCKET + "/global";
-    static final String SINGLETON_PATH = "/v1/" + TYPE + "/" + BUCKET + "/global";
+    static final String CANONICAL_ID = TYPE + "/" + BUCKET + "/" + NAME;
+    static final String SINGLETON_PATH = "/v1/" + TYPE + "/" + BUCKET + "/" + NAME;
 
     @ParentCommand
     DialCli parent;
 
-    @Command(name = "get", description = "Get the effective global settings (no name argument).")
+    @Command(name = "get",
+            description = "Get global settings from all sources (API-managed blob and file-config).")
     static class Get implements Callable<Integer> {
         @ParentCommand
         SettingsCommand cmd;
         @Spec
         CommandSpec spec;
-        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
-        ConfigSource source;
 
         @Override
         public Integer call() {
-            return source == ConfigSource.FILE
-                    ? EntityReader.readConfigFileSingleton(cmd.parent, spec)
-                    : EntityReader.readSingleton(cmd.parent, spec, TYPE);
+            EntityReader.readSingleton(cmd.parent, spec, TYPE, NAME);
+            return 0;
         }
     }
 

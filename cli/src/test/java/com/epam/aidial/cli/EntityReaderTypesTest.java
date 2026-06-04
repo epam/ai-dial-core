@@ -71,6 +71,7 @@ class EntityReaderTypesTest {
         Path config = setup(tmp);
         respond("/v1/metadata/applications/public/", 200,
                 "{\"items\":[{\"url\":\"applications/public/my-app\"}]}");
+        respond("/v1/admin/config/file/applications", 200, "{\"items\":[]}");
 
         Result r = run(config, tmp, "application", "list");
 
@@ -84,6 +85,7 @@ class EntityReaderTypesTest {
         Path config = setup(tmp);
         respond("/v1/metadata/interceptors/platform/", 200,
                 "{\"items\":[{\"url\":\"interceptors/platform/guardrail\"}]}");
+        respond("/v1/admin/config/file/interceptors", 200, "{\"items\":[]}");
 
         Result r = run(config, tmp, "interceptor", "list");
 
@@ -96,7 +98,7 @@ class EntityReaderTypesTest {
         Path config = setup(tmp);
         respond("/v1/roles/platform/viewer", 200, "{\"name\":\"viewer\"}");
 
-        Result r = run(config, tmp, "role", "get", "viewer");
+        Result r = run(config, tmp, "role", "get", "roles/platform/viewer");
 
         assertEquals(0, r.exitCode, r.err);
         assertTrue(r.out.contains("viewer"), r.out);
@@ -107,6 +109,7 @@ class EntityReaderTypesTest {
         Path config = setup(tmp);
         respond("/v1/metadata/keys/platform/", 200,
                 "{\"items\":[{\"url\":\"keys/platform/prod-key\"}]}");
+        respond("/v1/admin/config/file/keys", 200, "{\"items\":[]}");
 
         Result r = run(config, tmp, "-o", "json", "key", "list");
 
@@ -117,25 +120,15 @@ class EntityReaderTypesTest {
     @Test
     void settingsGetHitsSingletonUrl(@TempDir Path tmp) throws Exception {
         Path config = setup(tmp);
-        respond("/v1/settings/platform/global", 200,
-                "{\"globalInterceptors\":[],\"source\":\"file\"}");
+        respond("/v1/settings/platform/global", 200, "{\"globalInterceptors\":[]}");
+        respond("/v1/admin/config/file/settings/global", 200, "{}");
 
         Result r = run(config, tmp, "-o", "json", "settings", "get");
 
         assertEquals(0, r.exitCode, r.err);
+        assertTrue(r.out.contains("\"globalInterceptors\""), r.out);
         assertTrue(r.out.contains("\"source\""), r.out);
-        assertTrue(r.out.contains("\"file\""), r.out);
-    }
-
-    @Test
-    void getSettingsAliasHitsSingleton(@TempDir Path tmp) throws Exception {
-        Path config = setup(tmp);
-        respond("/v1/settings/platform/global", 200, "{\"source\":\"default\"}");
-
-        Result r = run(config, tmp, "-o", "yaml", "get", "settings");
-
-        assertEquals(0, r.exitCode, r.err);
-        assertTrue(r.out.contains("source: \"default\""), r.out);
+        assertTrue(r.out.contains("\"api\""), r.out);
     }
 
     @Test
@@ -143,6 +136,7 @@ class EntityReaderTypesTest {
         Path config = setup(tmp);
         respond("/v1/metadata/roles/platform/", 200,
                 "{\"items\":[{\"url\":\"roles/platform/admin\"},{\"url\":\"roles/platform/viewer\"}]}");
+        respond("/v1/admin/config/file/roles", 200, "{\"items\":[]}");
 
         Result r = run(config, tmp, "get", "roles");
 
@@ -167,6 +161,7 @@ class EntityReaderTypesTest {
         Path config = setup(tmp);
         respond("/v1/metadata/schemas/public/", 200,
                 "{\"items\":[{\"url\":\"schemas/public/my-schema\"}]}");
+        respond("/v1/admin/config/file/schemas", 200, "{\"items\":[]}");
 
         Result r = run(config, tmp, "schema", "list");
 
@@ -181,7 +176,7 @@ class EntityReaderTypesTest {
         Result r = run(config, tmp, "toolset", "get", "public/foo");
 
         assertEquals(2, r.exitCode);
-        assertTrue(r.err.contains("Ambiguous"), r.err);
+        assertTrue(r.err.contains("Unrecognised identifier"), r.err);
         assertTrue(r.err.contains("toolsets/public/<name>"), r.err);
     }
 
@@ -192,7 +187,7 @@ class EntityReaderTypesTest {
         Result r = run(config, tmp, "role", "get", "platform/foo");
 
         assertEquals(2, r.exitCode);
-        assertTrue(r.err.contains("Ambiguous"), r.err);
+        assertTrue(r.err.contains("Unrecognised identifier"), r.err);
         assertTrue(r.err.contains("roles/platform/<name>"), r.err);
     }
 
@@ -201,6 +196,7 @@ class EntityReaderTypesTest {
         Path config = setup(tmp);
         respond("/v1/metadata/keys/platform/", 200,
                 "{\"items\":[{\"url\":\"keys/platform/k1\"}],\"nextToken\":\"abc\"}");
+        respond("/v1/admin/config/file/keys", 200, "{\"items\":[]}");
 
         Result r = run(config, tmp, "key", "list");
 
@@ -213,6 +209,7 @@ class EntityReaderTypesTest {
     void routeListWhenEmpty(@TempDir Path tmp) throws Exception {
         Path config = setup(tmp);
         respond("/v1/metadata/routes/platform/", 200, "{\"items\":[]}");
+        respond("/v1/admin/config/file/routes", 200, "{\"items\":[]}");
 
         Result r = run(config, tmp, "route", "list");
 

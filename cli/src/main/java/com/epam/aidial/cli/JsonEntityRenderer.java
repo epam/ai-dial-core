@@ -14,12 +14,7 @@ final class JsonEntityRenderer implements EntityRenderer {
     }
 
     @Override
-    public String renderMetadataList(JsonNode items, String type) throws JsonProcessingException {
-        return JSON.writerWithDefaultPrettyPrinter().writeValueAsString(items);
-    }
-
-    @Override
-    public String renderFileList(JsonNode items, String type) throws JsonProcessingException {
+    public String renderList(JsonNode items, String type) throws JsonProcessingException {
         return JSON.writerWithDefaultPrettyPrinter().writeValueAsString(items);
     }
 }

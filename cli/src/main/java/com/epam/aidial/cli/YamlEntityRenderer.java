@@ -14,12 +14,7 @@ final class YamlEntityRenderer implements EntityRenderer {
     }
 
     @Override
-    public String renderMetadataList(JsonNode items, String type) throws JsonProcessingException {
-        return YAML.writeValueAsString(items).stripTrailing();
-    }
-
-    @Override
-    public String renderFileList(JsonNode items, String type) throws JsonProcessingException {
+    public String renderList(JsonNode items, String type) throws JsonProcessingException {
         return YAML.writeValueAsString(items).stripTrailing();
     }
 }

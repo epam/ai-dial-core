@@ -32,7 +32,8 @@ public class ModelCommand {
     @ParentCommand
     DialCli parent;
 
-    @Command(name = "get", description = "Get a single model by name (or canonical id).")
+    @Command(name = "get",
+            description = "Get a single model. Pass a canonical id (models/<bucket>/<name>) for API-managed entities, or a plain name for file-config entities.")
     static class Get implements Callable<Integer> {
         @ParentCommand
         ModelCommand model;
@@ -40,31 +41,25 @@ public class ModelCommand {
         CommandSpec spec;
         @Parameters(index = "0", description = "Model name or canonical id (models/<bucket>/<name>).")
         String name;
-        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
-        ConfigSource source;
 
         @Override
         public Integer call() {
-            return source == ConfigSource.FILE
-                    ? EntityReader.readConfigFileEntity(model.parent, spec, TYPE, name)
-                    : EntityReader.readEntity(model.parent, spec, TYPE, name);
+            EntityReader.readEntity(model.parent, spec, TYPE, name);
+            return 0;
         }
     }
 
-    @Command(name = "list", description = "List models in the public bucket.")
+    @Command(name = "list", description = "List models from all sources (API-managed and file-config).")
     static class List implements Callable<Integer> {
         @ParentCommand
         ModelCommand model;
         @Spec
         CommandSpec spec;
-        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
-        ConfigSource source;
 
         @Override
         public Integer call() {
-            return source == ConfigSource.FILE
-                    ? EntityReader.listConfigFileEntities(model.parent, spec, TYPE)
-                    : EntityReader.listEntities(model.parent, spec, TYPE);
+            EntityReader.listEntities(model.parent, spec, TYPE);
+            return 0;
         }
     }
 

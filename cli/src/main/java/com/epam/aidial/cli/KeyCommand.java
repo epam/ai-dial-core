@@ -33,7 +33,8 @@ public class KeyCommand {
     @ParentCommand
     DialCli parent;
 
-    @Command(name = "get", description = "Get a single key by name (or canonical id).")
+    @Command(name = "get",
+            description = "Get a single key. Pass a canonical id (keys/<bucket>/<name>) for API-managed entities, or a plain name for file-config entities.")
     static class Get implements Callable<Integer> {
         @ParentCommand
         KeyCommand cmd;
@@ -41,31 +42,25 @@ public class KeyCommand {
         CommandSpec spec;
         @Parameters(index = "0", description = "Key name or canonical id (keys/<bucket>/<name>).")
         String name;
-        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
-        ConfigSource source;
 
         @Override
         public Integer call() {
-            return source == ConfigSource.FILE
-                    ? EntityReader.readConfigFileEntity(cmd.parent, spec, TYPE, name)
-                    : EntityReader.readEntity(cmd.parent, spec, TYPE, name);
+            EntityReader.readEntity(cmd.parent, spec, TYPE, name);
+            return 0;
         }
     }
 
-    @Command(name = "list", description = "List keys in the platform bucket.")
+    @Command(name = "list", description = "List keys from all sources (API-managed and file-config).")
     static class List implements Callable<Integer> {
         @ParentCommand
         KeyCommand cmd;
         @Spec
         CommandSpec spec;
-        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
-        ConfigSource source;
 
         @Override
         public Integer call() {
-            return source == ConfigSource.FILE
-                    ? EntityReader.listConfigFileEntities(cmd.parent, spec, TYPE)
-                    : EntityReader.listEntities(cmd.parent, spec, TYPE);
+            EntityReader.listEntities(cmd.parent, spec, TYPE);
+            return 0;
         }
     }
 

@@ -33,7 +33,8 @@ public class RouteCommand {
     @ParentCommand
     DialCli parent;
 
-    @Command(name = "get", description = "Get a single route by name (or canonical id).")
+    @Command(name = "get",
+            description = "Get a single route. Pass a canonical id (routes/<bucket>/<name>) for API-managed entities, or a plain name for file-config entities.")
     static class Get implements Callable<Integer> {
         @ParentCommand
         RouteCommand cmd;
@@ -41,31 +42,25 @@ public class RouteCommand {
         CommandSpec spec;
         @Parameters(index = "0", description = "Route name or canonical id (routes/<bucket>/<name>).")
         String name;
-        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
-        ConfigSource source;
 
         @Override
         public Integer call() {
-            return source == ConfigSource.FILE
-                    ? EntityReader.readConfigFileEntity(cmd.parent, spec, TYPE, name)
-                    : EntityReader.readEntity(cmd.parent, spec, TYPE, name);
+            EntityReader.readEntity(cmd.parent, spec, TYPE, name);
+            return 0;
         }
     }
 
-    @Command(name = "list", description = "List routes in the platform bucket.")
+    @Command(name = "list", description = "List routes from all sources (API-managed and file-config).")
     static class List implements Callable<Integer> {
         @ParentCommand
         RouteCommand cmd;
         @Spec
         CommandSpec spec;
-        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
-        ConfigSource source;
 
         @Override
         public Integer call() {
-            return source == ConfigSource.FILE
-                    ? EntityReader.listConfigFileEntities(cmd.parent, spec, TYPE)
-                    : EntityReader.listEntities(cmd.parent, spec, TYPE);
+            EntityReader.listEntities(cmd.parent, spec, TYPE);
+            return 0;
         }
     }
 

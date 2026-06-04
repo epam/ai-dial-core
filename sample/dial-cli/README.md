@@ -103,9 +103,9 @@ dial-cli env current                                    # → local
 dial-cli get models
 dial-cli get roles
 
-# Inspect file-sourced entries (--source FILE reads /v1/admin/config/file/{type}).
-dial-cli get models --source FILE
-dial-cli get roles --source FILE
+# Inspect all entries — API-managed and file-sourced merged, with SOURCE column.
+dial-cli get models
+dial-cli get roles
 
 # Apply the whole base/ tree in one shot — directory walk picks up every
 # .yaml / .yml / .json file under the path.
@@ -347,14 +347,12 @@ Full surface in `06-cli-user-guide.md §2`.
 ### Read
 
 ```shell
-dial-cli get models                                         # kubectl-style alias (API-managed)
+dial-cli get models                                         # all sources merged (api + file)
 dial-cli get roles
 dial-cli get keys
 
-dial-cli get models --source FILE                           # file-sourced entries only
-dial-cli model get gpt-4 --source FILE                      # single file-sourced model
-
-dial-cli model get models/public/example-chat-model -o yaml # full body, secrets masked
+dial-cli model get models/public/example-chat-model -o yaml # canonical id → API-managed
+dial-cli model get gpt-4 -o yaml                            # plain name → file-config
 dial-cli role get roles/platform/example-user
 dial-cli settings get                                       # singleton — no name argument
 ```

@@ -19,15 +19,9 @@ final class TableEntityRenderer implements EntityRenderer {
                     new String[]{"name", "status", "endpoint"})
     );
 
-    // Metadata listing items (ResourceItemMetadata) carry url as the canonical id
-    private static final TableShape METADATA_LIST_SHAPE = new TableShape(
-            new String[]{"NAME"},
-            new String[]{"url"});
-
-    // File-config listing items carry name (simple map key from aidial.config.json)
-    private static final TableShape FILE_LIST_SHAPE = new TableShape(
-            new String[]{"NAME"},
-            new String[]{"name"});
+    private static final TableShape LIST_SHAPE = new TableShape(
+            new String[]{"NAME", "SOURCE"},
+            new String[]{"name", "source"});
 
     @Override
     public String renderSingle(JsonNode node, String type) {
@@ -36,17 +30,10 @@ final class TableEntityRenderer implements EntityRenderer {
     }
 
     @Override
-    public String renderMetadataList(JsonNode items, String type) {
+    public String renderList(JsonNode items, String type) {
         List<JsonNode> rows = new ArrayList<>();
         items.forEach(rows::add);
-        return renderTable(rows, METADATA_LIST_SHAPE);
-    }
-
-    @Override
-    public String renderFileList(JsonNode items, String type) {
-        List<JsonNode> rows = new ArrayList<>();
-        items.forEach(rows::add);
-        return renderTable(rows, FILE_LIST_SHAPE);
+        return renderTable(rows, LIST_SHAPE);
     }
 
     private static String renderTable(List<JsonNode> rows, TableShape shape) {

@@ -28,6 +28,10 @@ public class CliException extends RuntimeException {
         return new CliException(message, 1);
     }
 
+    public static CliException jsonProcessing(String message) {
+        return new CliException(message, 1);
+    }
+
     public static CliException alreadyExists(String canonicalId) {
         return new CliException("Already exists: " + canonicalId, 5);
     }

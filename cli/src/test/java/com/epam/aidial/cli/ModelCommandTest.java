@@ -95,7 +95,7 @@ class ModelCommandTest {
         respond("/v1/models/public/gpt-4", 200,
                 "{\"name\":\"gpt-4\",\"endpoint\":\"https://example/openai/gpt-4\"}");
 
-        Result r = run(config, apiKeyFile(tmp), "model", "get", "gpt-4");
+        Result r = run(config, apiKeyFile(tmp), "model", "get", "models/public/gpt-4");
 
         assertEquals(0, r.exitCode, r.err);
         assertTrue(r.out.contains("NAME"), r.out);
@@ -109,7 +109,7 @@ class ModelCommandTest {
         Path config = writeProfileAndKey(tmp);
         respond("/v1/models/public/gpt-4", 200, "{\"name\":\"gpt-4\"}");
 
-        Result r = run(config, apiKeyFile(tmp), "-o", "json", "model", "get", "gpt-4");
+        Result r = run(config, apiKeyFile(tmp), "-o", "json", "model", "get", "models/public/gpt-4");
 
         assertEquals(0, r.exitCode, r.err);
         assertTrue(r.out.contains("\"name\""), r.out);
@@ -121,7 +121,7 @@ class ModelCommandTest {
         Path config = writeProfileAndKey(tmp);
         respond("/v1/models/public/gpt-4", 200, "{\"name\":\"gpt-4\"}");
 
-        Result r = run(config, apiKeyFile(tmp), "-o", "yaml", "model", "get", "gpt-4");
+        Result r = run(config, apiKeyFile(tmp), "-o", "yaml", "model", "get", "models/public/gpt-4");
 
         assertEquals(0, r.exitCode, r.err);
         assertTrue(r.out.contains("name: \"gpt-4\""), r.out);
@@ -135,7 +135,7 @@ class ModelCommandTest {
         Path config = writeProfileAndKey(tmp);
         respond("/v1/models/public/gpt-4", 200, "{\"name\":\"gpt-4\"}");
 
-        Result r = run(config, apiKeyFile(tmp), "model", "get", "gpt-4", "-o", "yaml");
+        Result r = run(config, apiKeyFile(tmp), "model", "get", "models/public/gpt-4", "-o", "yaml");
 
         assertEquals(0, r.exitCode, r.err);
         assertTrue(r.out.contains("name: \"gpt-4\""), r.out);
@@ -168,7 +168,7 @@ class ModelCommandTest {
         Path config = writeProfileAndKey(tmp);
         respond("/v1/models/public/x", 401, "{\"error\":\"unauthorized\"}");
 
-        Result r = run(config, apiKeyFile(tmp), "model", "get", "x");
+        Result r = run(config, apiKeyFile(tmp), "model", "get", "models/public/x");
 
         assertEquals(3, r.exitCode);
         assertTrue(r.err.contains("401"), r.err);
@@ -183,6 +183,7 @@ class ModelCommandTest {
                   {"url":"models/public/claude-sonnet"}
                 ]}
                 """);
+        respond("/v1/admin/config/file/models", 200, "{\"items\":[]}");
 
         Result r = run(config, apiKeyFile(tmp), "model", "list");
 
@@ -196,11 +197,12 @@ class ModelCommandTest {
         Path config = writeProfileAndKey(tmp);
         respond("/v1/metadata/models/public/", 200,
                 "{\"items\":[{\"url\":\"models/public/gpt-4\"}]}");
+        respond("/v1/admin/config/file/models", 200, "{\"items\":[]}");
 
         Result r = run(config, apiKeyFile(tmp), "-o", "json", "model", "list");
 
         assertEquals(0, r.exitCode, r.err);
-        assertTrue(r.out.contains("\"url\""), r.out);
+        assertTrue(r.out.contains("\"name\""), r.out);
         assertTrue(r.out.contains("gpt-4"), r.out);
     }
 
@@ -231,6 +233,7 @@ class ModelCommandTest {
         Path config = writeProfileAndKey(tmp);
         respond("/v1/metadata/models/public/", 200,
                 "{\"items\":[{\"url\":\"models/public/gpt-4\"}]}");
+        respond("/v1/admin/config/file/models", 200, "{\"items\":[]}");
 
         Result r = run(config, apiKeyFile(tmp), "get", "models");
 
@@ -255,7 +258,7 @@ class ModelCommandTest {
         Result r = run(config, apiKeyFile(tmp), "model", "get", "public/gpt-4");
 
         assertEquals(2, r.exitCode);
-        assertTrue(r.err.contains("Ambiguous"), r.err);
+        assertTrue(r.err.contains("Unrecognised identifier"), r.err);
         assertTrue(r.err.contains("models/public/<name>"), r.err);
     }
 
@@ -263,6 +266,7 @@ class ModelCommandTest {
     void modelListEmptyItems(@TempDir Path tmp) throws Exception {
         Path config = writeProfileAndKey(tmp);
         respond("/v1/metadata/models/public/", 200, "{\"items\":[]}");
+        respond("/v1/admin/config/file/models", 200, "{\"items\":[]}");
 
         Result r = run(config, apiKeyFile(tmp), "model", "list");
 
@@ -278,6 +282,7 @@ class ModelCommandTest {
             capturedQuery.set(exchange.getRequestURI().getQuery());
             send(exchange, 200, "{\"items\":[]}");
         });
+        respond("/v1/admin/config/file/models", 200, "{\"items\":[]}");
 
         Result r = run(config, apiKeyFile(tmp), "model", "list");
 

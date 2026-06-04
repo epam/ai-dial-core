@@ -33,7 +33,8 @@ public class ApplicationCommand {
     @ParentCommand
     DialCli parent;
 
-    @Command(name = "get", description = "Get a single application by name (or canonical id).")
+    @Command(name = "get",
+            description = "Get a single application. Pass a canonical id (applications/<bucket>/<name>) for API-managed entities, or a plain name for file-config entities.")
     static class Get implements Callable<Integer> {
         @ParentCommand
         ApplicationCommand cmd;
@@ -41,31 +42,25 @@ public class ApplicationCommand {
         CommandSpec spec;
         @Parameters(index = "0", description = "Application name or canonical id (applications/<bucket>/<name>).")
         String name;
-        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
-        ConfigSource source;
 
         @Override
         public Integer call() {
-            return source == ConfigSource.FILE
-                    ? EntityReader.readConfigFileEntity(cmd.parent, spec, TYPE, name)
-                    : EntityReader.readEntity(cmd.parent, spec, TYPE, name);
+            EntityReader.readEntity(cmd.parent, spec, TYPE, name);
+            return 0;
         }
     }
 
-    @Command(name = "list", description = "List applications in the public bucket.")
+    @Command(name = "list", description = "List applications from all sources (API-managed and file-config).")
     static class List implements Callable<Integer> {
         @ParentCommand
         ApplicationCommand cmd;
         @Spec
         CommandSpec spec;
-        @Option(names = "--source", description = "Config source: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE}).", defaultValue = "api")
-        ConfigSource source;
 
         @Override
         public Integer call() {
-            return source == ConfigSource.FILE
-                    ? EntityReader.listConfigFileEntities(cmd.parent, spec, TYPE)
-                    : EntityReader.listEntities(cmd.parent, spec, TYPE);
+            EntityReader.listEntities(cmd.parent, spec, TYPE);
+            return 0;
         }
     }
 
