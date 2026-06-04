@@ -65,12 +65,12 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
                 .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
                 .build();
         return proxy.getTaskExecutor()
-                .submit(() -> {
-                    String generatedDialId = proxy.getResponseMappingService().saveMapping(context, mapping);
-                    if (context.isBackgroundJob()) {
-                        proxy.getBackgroundJobService().saveJob(context, generatedDialId, mapping);
-                    }
-                    return generatedDialId;
+                .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
+                .compose(generatedDialId -> {
+                    Future<Void> jobFuture = context.isBackgroundJob()
+                            ? proxy.getBackgroundJobService().saveJob(context, generatedDialId, mapping)
+                            : Future.succeededFuture();
+                    return jobFuture.map(ignored -> generatedDialId);
                 })
                 .map(generatedDialId -> {
                     dialId = generatedDialId;

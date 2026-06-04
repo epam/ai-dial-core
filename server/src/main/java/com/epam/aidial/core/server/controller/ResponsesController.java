@@ -333,10 +333,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 return rewriteId(proxy, context, mapping)
                         .compose(dialId -> {
                             Future<Void> jobFuture = context.isBackgroundJob()
-                                    ? proxy.getTaskExecutor().submit(() -> {
-                                        proxy.getBackgroundJobService().saveJob(context, dialId, mapping);
-                                        return null;
-                                    })
+                                    ? proxy.getBackgroundJobService().saveJob(context, dialId, mapping)
                                     : Future.succeededFuture();
                             return jobFuture.map(ignored -> {
                                 object.put("id", dialId);

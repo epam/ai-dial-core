@@ -22,15 +22,11 @@ import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
-import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
-import com.epam.aidial.core.storage.data.MetadataBase;
-import com.epam.aidial.core.storage.data.NodeType;
-import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
+import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
-import com.epam.aidial.core.storage.service.ResourceService;
-import com.epam.aidial.core.storage.util.EtagHeader;
+import com.epam.aidial.core.storage.util.RedisUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -44,32 +40,32 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RFuture;
+import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 
-import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
-import javax.annotation.Nullable;
 
 @Slf4j
 public class BackgroundJobService {
 
     static final long POLL_INTERVAL_MS = 5_000L;
     static final long LEASE_TTL_MS = 30_000L;
-    static final int MAX_POLL_FAILURES = 10;
+    static final int MAX_SEQUENTIAL_POLL_FAILURES = 10;
     public static final long DEFAULT_JOB_TTL_MS = 24L * 60 * 60 * 1000;
     static final long DEFAULT_CHECK_PERIOD_MS = 24L * 60 * 60 * 1000;
-    static final long MAX_START_OFFSET_MS = 60_000L;
-    private static final int PAGE_SIZE = 1000;
 
     private static final String TERMINAL_COMPLETED = "completed";
     private static final String TERMINAL_FAILED = "failed";
     private static final String TERMINAL_CANCELLED = "cancelled";
     private static final String TERMINAL_INCOMPLETE = "incomplete";
 
-    private final ResourceService resourceService;
+    private final RedissonClient redis;
+    private final String prefix;
+    private final String jobIndexKey;
     private final ApiKeyStore apiKeyStore;
     private final TokenStatsTracker tokenStatsTracker;
     private final RateLimiter rateLimiter;
@@ -77,18 +73,20 @@ public class BackgroundJobService {
     private final UpstreamRouteProvider upstreamRouteProvider;
     private final HttpClient httpClient;
     private final HttpClientOptions clientOptions;
-    private final AsyncTaskExecutor taskExecutor;
     private final LockService lockService;
     private final String instanceId;
     private Vertx vertx;
 
-    public BackgroundJobService(ResourceService resourceService, ApiKeyStore apiKeyStore,
+    public BackgroundJobService(RedissonClient redis, String prefix,
+                                ApiKeyStore apiKeyStore,
                                 TokenStatsTracker tokenStatsTracker, RateLimiter rateLimiter,
                                 ConfigStore configStore,
                                 UpstreamRouteProvider upstreamRouteProvider, HttpClient httpClient,
-                                HttpClientOptions clientOptions, AsyncTaskExecutor taskExecutor,
+                                HttpClientOptions clientOptions,
                                 LockService lockService, Supplier<String> generator) {
-        this.resourceService = resourceService;
+        this.redis = redis;
+        this.prefix = prefix;
+        this.jobIndexKey = "background_job_index:" + BlobStorageUtil.toStoragePath(prefix, ResponseIdUtil.BACKGROUND_JOB_BUCKET_LOCATION);
         this.apiKeyStore = apiKeyStore;
         this.tokenStatsTracker = tokenStatsTracker;
         this.rateLimiter = rateLimiter;
@@ -96,25 +94,17 @@ public class BackgroundJobService {
         this.upstreamRouteProvider = upstreamRouteProvider;
         this.httpClient = httpClient;
         this.clientOptions = clientOptions;
-        this.taskExecutor = taskExecutor;
         this.lockService = lockService;
         this.instanceId = generator.get();
     }
 
     public void init(Vertx vertx) {
         this.vertx = vertx;
-        long offset = ThreadLocalRandom.current().nextLong(MAX_START_OFFSET_MS + 1);
-        vertx.setTimer(offset, ignored -> {
-            taskExecutor.submit(this::resumeActiveJobs);
-            vertx.setPeriodic(DEFAULT_CHECK_PERIOD_MS, ignored2 -> taskExecutor.submit(this::cleanExpiredJobs));
-        });
+        resumeActiveJobs();
+        vertx.setPeriodic(DEFAULT_CHECK_PERIOD_MS, ignored -> cleanStaleIndexEntries());
     }
 
-    /**
-     * Saves a background job record and schedules polling.
-     * Must be called from a blocking context (taskExecutor).
-     */
-    public void saveJob(ProxyContext context, String dialResponseId, ResponseMapping mapping) {
+    public Future<Void> saveJob(ProxyContext context, String dialResponseId, ResponseMapping mapping) {
         String jobId = context.getProxy().getGenerator().get();
         BackgroundJobRecord record = BackgroundJobRecord.builder()
                 .dialResponseId(dialResponseId)
@@ -125,16 +115,16 @@ public class BackgroundJobService {
                 .createdAt(System.currentTimeMillis())
                 .streaming(context.isStreamingRequest())
                 .build();
-
         Job job = new Job(jobId, record);
-        persistRecord(job);
-        if (context.isStreamingRequest()) {
-            // The initial stream delivers the full result; finalization is handled at stream end.
-            context.setBackgroundJobId(jobId);
-        } else {
-            vertx.runOnContext(ignored -> startPolling(job));
-        }
-        log.info("Background job {} saved for deployment {}", jobId, mapping.getDeploymentName());
+        return persistRecordAsync(job)
+                .onSuccess(ignored -> {
+                    if (context.isStreamingRequest()) {
+                        context.setBackgroundJobId(jobId);
+                    } else {
+                        startPolling(job);
+                    }
+                    log.info("Background job {} saved for deployment {}", jobId, mapping.getDeploymentName());
+                });
     }
 
     // ── Polling ────────────────────────────────────────────────────────────────
@@ -148,19 +138,20 @@ public class BackgroundJobService {
     }
 
     private void pollOnce(Job job, AtomicInteger failureCount) {
-        if (isExpired(job.record())) {
-            log.warn("Background job {} exceeded TTL, cleaning up", job.id());
-            onJobExpired(job, () -> {});
-            return;
-        }
-
         tryClaimOrRenewAsync(job.id())
                 .onSuccess(remaining -> {
                     if (remaining > 0) {
                         vertx.setTimer(remaining, ignored -> pollOnce(job, failureCount));
                         return;
                     }
-                    taskExecutor.submit(() -> loadRecord(job.id()))
+                    if (isExpired(job.record())) {
+                        log.warn("Background job {} exceeded TTL, cleaning up", job.id());
+                        deleteRecordAsync(job.id())
+                                .eventually(() -> releaseLeaseAsync(job.id()))
+                                .onSuccess(ignored -> onJobExpired(job));
+                        return;
+                    }
+                    loadRecordAsync(job.id())
                             .onSuccess(freshJob -> {
                                 if (freshJob == null) {
                                     releaseLeaseAsync(job.id());
@@ -169,25 +160,34 @@ public class BackgroundJobService {
                                 long renewalId = vertx.setPeriodic(LEASE_TTL_MS / 2, id ->
                                         tryClaimOrRenewAsync(freshJob.id())
                                                 .onFailure(e -> log.warn("Lease renewal failed for background job {}", freshJob.id(), e)));
-                                Runnable cancelRenewal = () -> vertx.cancelTimer(renewalId);
                                 doPoll(freshJob)
                                         .onSuccess(status -> {
                                             if (isTerminal(status.status())) {
-                                                onJobCompleted(freshJob, status, cancelRenewal);
+                                                deleteRecordAsync(freshJob.id())
+                                                        .eventually(() -> {
+                                                            vertx.cancelTimer(renewalId);
+                                                            return releaseLeaseAsync(job.id());
+                                                        })
+                                                        .onSuccess(ignored -> onJobCompleted(freshJob, status));
                                             } else {
-                                                cancelRenewal.run();
+                                                vertx.cancelTimer(renewalId);
                                                 failureCount.set(0);
                                                 scheduleNextPoll(freshJob, failureCount);
                                             }
                                         })
                                         .onFailure(error -> {
                                             int n = failureCount.incrementAndGet();
-                                            if (n >= MAX_POLL_FAILURES) {
+                                            if (n >= MAX_SEQUENTIAL_POLL_FAILURES) {
                                                 log.error("Background job {} exceeded max poll failures, giving up", freshJob.id(), error);
-                                                onJobExpired(freshJob, cancelRenewal);
+                                                deleteRecordAsync(freshJob.id())
+                                                        .eventually(() -> {
+                                                            vertx.cancelTimer(renewalId);
+                                                            return releaseLeaseAsync(job.id());
+                                                        })
+                                                        .onSuccess(ignored -> onJobExpired(freshJob));
                                             } else {
-                                                cancelRenewal.run();
-                                                log.warn("Poll failed for background job {} ({}/{})", freshJob.id(), n, MAX_POLL_FAILURES, error);
+                                                vertx.cancelTimer(renewalId);
+                                                log.warn("Poll failed for background job {} ({}/{})", freshJob.id(), n, MAX_SEQUENTIAL_POLL_FAILURES, error);
                                                 scheduleNextPoll(freshJob, failureCount);
                                             }
                                         });
@@ -267,7 +267,7 @@ public class BackgroundJobService {
     // ── Completion ─────────────────────────────────────────────────────────────
 
     /** Called on the event loop when a terminal status is observed. Chains async cleanup. */
-    private void onJobCompleted(Job job, JobStatus status, Runnable cancelRenewal) {
+    private void onJobCompleted(Job job, JobStatus status) {
         BackgroundJobRecord record = job.record();
         ResponseMapping mapping = record.getMapping();
         Config config = configStore.get();
@@ -291,12 +291,6 @@ public class BackgroundJobService {
 
         Future.all(tokenFuture, rateLimitFuture)
                 .compose(ignored -> invalidatePerRequestKey(record))
-                .compose(ignored -> taskExecutor.submit(() -> {
-                    deleteRecord(job.id());
-                    cancelRenewal.run();
-                    return null;
-                }))
-                .compose(ignored -> releaseLeaseAsync(job.id()))
                 .onSuccess(ignored ->
                         log.info("Background job {} completed with status {}", job.id(), status.status()))
                 .onFailure(error ->
@@ -304,14 +298,8 @@ public class BackgroundJobService {
     }
 
     /** Called on the event loop when the job has exceeded its TTL or poll failure limit. */
-    private void onJobExpired(Job job, Runnable cancelRenewal) {
+    private void onJobExpired(Job job) {
         invalidatePerRequestKey(job.record())
-                .compose(ignored -> taskExecutor.submit(() -> {
-                    deleteRecord(job.id());
-                    cancelRenewal.run();
-                    return null;
-                }))
-                .compose(ignored -> releaseLeaseAsync(job.id()))
                 .onSuccess(ignored ->
                         log.warn("Background job {} expired and was cleaned up", job.id()))
                 .onFailure(error ->
@@ -328,10 +316,7 @@ public class BackgroundJobService {
         if (jobId == null) {
             return;
         }
-        taskExecutor.submit(() -> {
-                    deleteRecord(jobId);
-                    return null;
-                })
+        deleteRecordAsync(jobId)
                 .onSuccess(ignored ->
                         log.info("Streaming background job {} finalized", jobId))
                 .onFailure(error ->
@@ -340,58 +325,33 @@ public class BackgroundJobService {
 
     // ── Restart recovery ───────────────────────────────────────────────────────
 
-    /** Scans blob storage for active background jobs and resumes polling for each. */
-    private Void resumeActiveJobs() {
+    /** Reads the job index from Redis and resumes polling for each active job. */
+    private void resumeActiveJobs() {
         log.info("Scanning for active background jobs to resume");
-        try {
-            ResourceDescriptor root = ResourceDescriptorFactory.fromDecoded(
-                    ResourceTypes.BACKGROUND_JOB,
-                    ResponseIdUtil.BACKGROUND_JOB_BUCKET,
-                    ResponseIdUtil.BACKGROUND_JOB_BUCKET_LOCATION,
-                    null);
-            int resumed = resumeJobsUnder(root);
-            log.info("Resumed {} background jobs", resumed);
-        } catch (Throwable e) {
-            log.warn("Failed to scan for active background jobs", e);
-        }
-        return null;
-    }
-
-    private int resumeJobsUnder(ResourceDescriptor root) {
-        int count = 0;
-        String token = null;
-        do {
-            ResourceFolderMetadata folder = resourceService.getFolderMetadata(root, token, PAGE_SIZE, false);
-            if (folder == null) {
-                break;
-            }
-            List<? extends MetadataBase> items = folder.getItems();
-            if (items != null) {
-                for (MetadataBase item : items) {
-                    if (item.getNodeType() == NodeType.ITEM) {
-                        try {
-                            Job job = loadRecord(item.getName());
-                            if (job != null) {
-                                if (isExpired(job.record())) {
-                                    log.warn("Background job {} already expired on startup, cleaning up", job.id());
-                                    vertx.runOnContext(ignored -> onJobExpired(job, () -> {}));
-                                } else if (job.record().isStreaming()) {
-                                    reconnectSseStream(job);
-                                    count++;
-                                } else {
-                                    vertx.runOnContext(ignored -> startPolling(job));
-                                    count++;
-                                }
-                            }
-                        } catch (Throwable e) {
-                            log.warn("Failed to resume background job {}", item.getName(), e);
-                        }
+        toFuture(redis.<String>getSet(jobIndexKey, StringCodec.INSTANCE).readAllAsync())
+                .onSuccess(jobIds -> {
+                    for (String jobId : jobIds) {
+                        loadRecordAsync(jobId)
+                                .onSuccess(job -> {
+                                    if (job == null) {
+                                        redis.<String>getSet(jobIndexKey, StringCodec.INSTANCE).removeAsync(jobId);
+                                        return;
+                                    }
+                                    if (isExpired(job.record())) {
+                                        log.warn("Background job {} already expired on startup, cleaning up", job.id());
+                                        deleteRecordAsync(job.id()).onSuccess(ignored -> onJobExpired(job));
+                                    } else if (job.record().isStreaming()) {
+                                        reconnectSseStream(job);
+                                        log.info("Resumed streaming background job {}", jobId);
+                                    } else {
+                                        startPolling(job);
+                                        log.info("Resumed polling background job {}", jobId);
+                                    }
+                                })
+                                .onFailure(e -> log.warn("Failed to resume background job {}", jobId, e));
                     }
-                }
-            }
-            token = folder.getNextToken();
-        } while (token != null);
-        return count;
+                })
+                .onFailure(e -> log.warn("Failed to scan for active background jobs", e));
     }
 
     void reconnectSseStream(Job job) {
@@ -399,19 +359,20 @@ public class BackgroundJobService {
     }
 
     private void doSseReconnect(Job job) {
-        if (isExpired(job.record())) {
-            log.warn("Background job {} exceeded TTL on SSE reconnect, cleaning up", job.id());
-            onJobExpired(job, () -> {});
-            return;
-        }
-
         tryClaimOrRenewAsync(job.id())
                 .onSuccess(remaining -> {
                     if (remaining > 0) {
                         log.info("Background job {} lease held by another instance, skipping SSE reconnect", job.id());
                         return;
                     }
-                    taskExecutor.submit(() -> loadRecord(job.id()))
+                    if (isExpired(job.record())) {
+                        log.warn("Background job {} exceeded TTL on SSE reconnect, cleaning up", job.id());
+                        deleteRecordAsync(job.id())
+                                .eventually(() -> releaseLeaseAsync(job.id()))
+                                .onSuccess(ignored -> onJobExpired(job));
+                        return;
+                    }
+                    loadRecordAsync(job.id())
                             .onSuccess(freshJob -> {
                                 if (freshJob == null) {
                                     releaseLeaseAsync(job.id());
@@ -543,7 +504,12 @@ public class BackgroundJobService {
             public void onComplete() {
                 JobStatus status = terminalStatusRef.get();
                 if (status != null && isTerminal(status.status())) {
-                    onJobCompleted(job, status, cancelRenewal);
+                    deleteRecordAsync(job.id())
+                            .eventually(() -> {
+                                cancelRenewal.run();
+                                return releaseLeaseAsync(job.id());
+                            })
+                            .onSuccess(ignored -> onJobCompleted(job, status));
                 } else {
                     log.warn("SSE reconnect stream ended without terminal status for job {}, falling back to polling", job.id());
                     cancelRenewal.run();
@@ -574,7 +540,12 @@ public class BackgroundJobService {
             }
             JobStatus jobStatus = new JobStatus(status, tokenUsage, 200);
             if (isTerminal(status)) {
-                onJobCompleted(job, jobStatus, cancelRenewal);
+                deleteRecordAsync(job.id())
+                        .eventually(() -> {
+                            cancelRenewal.run();
+                            return releaseLeaseAsync(job.id());
+                        })
+                        .onSuccess(ignored -> onJobCompleted(job, jobStatus));
             } else {
                 cancelRenewal.run();
                 releaseLeaseAsync(job.id());
@@ -590,83 +561,74 @@ public class BackgroundJobService {
 
     // ── Cleanup ────────────────────────────────────────────────────────────────
 
-    private Void cleanExpiredJobs() {
-        log.debug("Housekeeping: scanning for expired background jobs");
-        try {
-            ResourceDescriptor root = ResourceDescriptorFactory.fromDecoded(
-                    ResourceTypes.BACKGROUND_JOB,
-                    ResponseIdUtil.BACKGROUND_JOB_BUCKET,
-                    ResponseIdUtil.BACKGROUND_JOB_BUCKET_LOCATION,
-                    null);
-            cleanExpiredJobsUnder(root);
-        } catch (Throwable e) {
-            log.warn("Housekeeping: failed to clean expired background jobs", e);
-        }
-        return null;
-    }
-
-    private void cleanExpiredJobsUnder(ResourceDescriptor root) {
-        long now = System.currentTimeMillis();
-        String token = null;
-        do {
-            ResourceFolderMetadata folder = resourceService.getFolderMetadata(root, token, PAGE_SIZE, false);
-            if (folder == null) {
-                break;
-            }
-            List<? extends MetadataBase> items = folder.getItems();
-            if (items != null) {
-                for (MetadataBase item : items) {
-                    if (item.getNodeType() == NodeType.ITEM) {
-                        Long createdAt = item instanceof com.epam.aidial.core.storage.data.ResourceItemMetadata meta
-                                ? (meta.getCreatedAt() != null ? meta.getCreatedAt() : meta.getUpdatedAt())
-                                : null;
-                        if (createdAt != null && createdAt + DEFAULT_JOB_TTL_MS < now) {
-                            try {
-                                ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(item.getName());
-                                resourceService.deleteResource(descriptor, EtagHeader.ANY);
-                                log.debug("Housekeeping: deleted expired background job {}", item.getName());
-                            } catch (Throwable e) {
-                                log.warn("Housekeeping: failed to delete expired background job {}", item.getName(), e);
-                            }
-                        }
+    /** Removes index entries whose Redis buckets have already expired. */
+    private void cleanStaleIndexEntries() {
+        log.debug("Housekeeping: scanning for stale background job index entries");
+        toFuture(redis.<String>getSet(jobIndexKey, StringCodec.INSTANCE).readAllAsync())
+                .onSuccess(jobIds -> {
+                    for (String jobId : jobIds) {
+                        loadRecordAsync(jobId)
+                                .onSuccess(job -> {
+                                    if (job == null) {
+                                        redis.<String>getSet(jobIndexKey, StringCodec.INSTANCE).removeAsync(jobId);
+                                        log.debug("Housekeeping: removed stale index entry for background job {}", jobId);
+                                    }
+                                })
+                                .onFailure(e -> log.warn("Housekeeping: failed to check background job {}", jobId, e));
                     }
-                }
-            }
-            token = folder.getNextToken();
-        } while (token != null);
+                })
+                .onFailure(e -> log.warn("Housekeeping: failed to clean stale background job index entries", e));
     }
 
     // ── Storage helpers ────────────────────────────────────────────────────────
 
-    private void persistRecord(Job job) {
-        ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(job.id());
-        resourceService.putResource(descriptor, ProxyUtil.convertToString(job.record()), EtagHeader.NEW_ONLY);
+    private Future<Void> persistRecordAsync(Job job) {
+        String json = ProxyUtil.convertToString(job.record());
+        Future<Void> setFuture = toFuture(
+                redis.<String>getBucket(toRedisKey(job.id()), StringCodec.INSTANCE)
+                        .setAsync(json, DEFAULT_JOB_TTL_MS, TimeUnit.MILLISECONDS))
+                .mapEmpty();
+        Future<Boolean> addFuture = toFuture(redis.<String>getSet(jobIndexKey, StringCodec.INSTANCE)
+                .addAsync(job.id()));
+        return Future.all(setFuture, addFuture).mapEmpty();
     }
 
-    private void deleteRecord(String jobId) {
-        ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(jobId);
-        resourceService.deleteResource(descriptor, EtagHeader.ANY);
+    private Future<Void> deleteRecordAsync(String jobId) {
+        Future<Boolean> deleteFuture = toFuture(redis.<String>getBucket(toRedisKey(jobId), StringCodec.INSTANCE).deleteAsync());
+        Future<Boolean> removeFuture = toFuture(redis.<String>getSet(jobIndexKey, StringCodec.INSTANCE).removeAsync(jobId));
+        return Future.all(deleteFuture, removeFuture).mapEmpty();
     }
 
-    @Nullable
-    private Job loadRecord(String jobId) {
-        ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(jobId);
-        String json = resourceService.getResource(descriptor);
-        BackgroundJobRecord record = ProxyUtil.convertToObject(json, BackgroundJobRecord.class);
-        return record != null ? new Job(jobId, record) : null;
+    /** Async load for event-loop callers; returns a succeeded future with {@code null} when the record is absent. */
+    private Future<Job> loadRecordAsync(String jobId) {
+        return toFuture(redis.<String>getBucket(toRedisKey(jobId), StringCodec.INSTANCE).getAsync())
+                .map(json -> {
+                    BackgroundJobRecord record = ProxyUtil.convertToObject(json, BackgroundJobRecord.class);
+                    return record != null ? new Job(jobId, record) : null;
+                });
+    }
+
+    private String toRedisKey(String jobId) {
+        ResourceDescriptor resource = ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.BACKGROUND_JOB, ResponseIdUtil.BACKGROUND_JOB_BUCKET,
+                ResponseIdUtil.BACKGROUND_JOB_BUCKET_LOCATION, jobId);
+        return RedisUtil.redisKey(resource, prefix);
     }
 
     // ── Lease helpers ──────────────────────────────────────────────────────────
 
     private Future<Long> tryClaimOrRenewAsync(String jobId) {
         RFuture<Long> rf = lockService.tryClaimOrRenewAsync("background_job_poll:" + jobId, instanceId, LEASE_TTL_MS);
-        return Future.fromCompletionStage(rf.toCompletableFuture(), vertx.getOrCreateContext())
-                .map(result -> result != null ? result : LEASE_TTL_MS);
+        return toFuture(rf).map(result -> result != null ? result : LEASE_TTL_MS);
     }
 
     private Future<Void> releaseLeaseAsync(String jobId) {
         RFuture<Boolean> rf = lockService.releaseClaimAsync("background_job_poll:" + jobId, instanceId);
-        return Future.fromCompletionStage(rf.toCompletableFuture(), vertx.getOrCreateContext()).mapEmpty();
+        return toFuture(rf).mapEmpty();
+    }
+
+    private <T> Future<T> toFuture(RFuture<T> rf) {
+        return Future.fromCompletionStage(rf.toCompletableFuture(), vertx.getOrCreateContext());
     }
 
     // ── Key helpers ────────────────────────────────────────────────────────────

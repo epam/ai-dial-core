@@ -12,9 +12,7 @@ import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.service.LockService;
-import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -24,7 +22,7 @@ import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
-import io.vertx.core.json.JsonObject;
+import io.vertx.junit5.Checkpoint;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,9 +30,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.redisson.api.RBucket;
 import org.redisson.api.RFuture;
+import org.redisson.api.RSet;
+import org.redisson.api.RedissonClient;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -45,6 +47,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -61,7 +64,7 @@ public class BackgroundJobServiceTest {
     private static final String RESPONSES_ENDPOINT = "http://upstream/responses";
 
     @Mock
-    private ResourceService resourceService;
+    private RedissonClient redis;
     @Mock
     private ApiKeyStore apiKeyStore;
     @Mock
@@ -77,30 +80,49 @@ public class BackgroundJobServiceTest {
     @Mock
     private LockService lockService;
 
+    @SuppressWarnings("unchecked")
+    private final RBucket<String> bucket = mock(RBucket.class);
+    @SuppressWarnings("unchecked")
+    private final RSet<String> jobIndexSet = mock(RSet.class);
+
     private BackgroundJobService service;
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp(Vertx vertx) {
+        // Pre-create shared futures to avoid nested stubbing conflicts
+        RFuture<String> nullStringFuture = completedFuture(null);
+        RFuture<Boolean> trueFuture = completedFuture(true);
+        RFuture<Set<String>> emptySetFuture = completedFuture(Set.of());
+
+        RFuture<Boolean> releasedFuture = completedFuture(true);
+        lenient().doReturn(bucket).when(redis).getBucket(anyString(), any());
+        lenient().doReturn(jobIndexSet).when(redis).getSet(anyString(), any());
+        lenient().doReturn(nullStringFuture).when(bucket).getAsync();
+        lenient().doReturn(trueFuture).when(bucket).deleteAsync();
+        lenient().doReturn(trueFuture).when(jobIndexSet).removeAsync(any());
+        lenient().doReturn(emptySetFuture).when(jobIndexSet).readAllAsync();
+        lenient().doReturn(releasedFuture).when(lockService).releaseClaimAsync(anyString(), anyString());
+
         HttpClientOptions clientOptions = new HttpClientOptions();
-        AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx, new JsonObject(Map.of("useVirtualThreads", false)));
         service = new BackgroundJobService(
-                resourceService, apiKeyStore, tokenStatsTracker, rateLimiter,
+                redis, "", apiKeyStore, tokenStatsTracker, rateLimiter,
                 configStore, upstreamRouteProvider, httpClient, clientOptions,
-                taskExecutor, lockService, () -> "instance-id");
+                lockService, () -> "instance-id");
         service.init(vertx);
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testReconnectSseStreamCompletesOnTerminalEvent(Vertx vertx, VertxTestContext testContext) throws Throwable {
         Model deployment = buildDeployment();
         BackgroundJobRecord record = buildRecord();
         BackgroundJobService.Job job = new BackgroundJobService.Job(JOB_ID, record);
 
         mockLeaseClaimed();
-        mockLeaseRelease(testContext);
 
-        when(resourceService.getResource(any())).thenReturn(ProxyUtil.convertToString(record));
-        when(resourceService.deleteResource(any(), any())).thenReturn(true);
+        RFuture<String> jsonFuture = completedFuture(ProxyUtil.convertToString(record));
+        when(bucket.getAsync()).thenReturn(jsonFuture);
 
         Config config = new Config();
         config.setModels(Map.of(DEPLOYMENT_NAME, deployment));
@@ -130,11 +152,23 @@ public class BackgroundJobServiceTest {
         });
         when(httpResponse.exceptionHandler(any())).thenReturn(httpResponse);
 
-        when(tokenStatsTracker.updateStats(eq(TRACE_ID), eq(SPAN_ID), any()))
-                .thenReturn(Future.succeededFuture());
-        when(tokenStatsTracker.endRootSpan(eq(TRACE_ID))).thenReturn(Future.succeededFuture());
-        when(rateLimiter.increase(eq(deployment), anyString(), any(), any(), any()))
-                .thenReturn(Future.succeededFuture());
+        // Use one checkpoint per tracked operation: await only returns after all three have fired,
+        // avoiding the race where afterEach runs before the event-loop finishes onJobCompleted.
+        Checkpoint statsCheckpoint = testContext.checkpoint();
+        Checkpoint endSpanCheckpoint = testContext.checkpoint();
+        Checkpoint rateLimitCheckpoint = testContext.checkpoint();
+        when(tokenStatsTracker.updateStats(eq(TRACE_ID), eq(SPAN_ID), any())).thenAnswer(inv -> {
+            statsCheckpoint.flag();
+            return Future.succeededFuture();
+        });
+        when(tokenStatsTracker.endRootSpan(eq(TRACE_ID))).thenAnswer(inv -> {
+            endSpanCheckpoint.flag();
+            return Future.succeededFuture();
+        });
+        when(rateLimiter.increase(eq(deployment), anyString(), any(), any(), any())).thenAnswer(inv -> {
+            rateLimitCheckpoint.flag();
+            return Future.succeededFuture();
+        });
 
         String ssePayload = "event: response.completed\n"
                 + "data: {\"status\":\"completed\",\"usage\":{\"completion_tokens\":5,\"prompt_tokens\":5,\"total_tokens\":10}}\n\n";
@@ -154,8 +188,9 @@ public class BackgroundJobServiceTest {
 
         await(testContext);
 
-        verify(resourceService).deleteResource(any(), any());
+        verify(bucket).deleteAsync();
         verify(tokenStatsTracker).updateStats(eq(TRACE_ID), eq(SPAN_ID), any());
+        verify(tokenStatsTracker).endRootSpan(eq(TRACE_ID));
         verify(rateLimiter).increase(eq(deployment), anyString(), any(), any(), any());
     }
 
@@ -164,9 +199,7 @@ public class BackgroundJobServiceTest {
         BackgroundJobRecord record = buildRecord();
         BackgroundJobService.Job job = new BackgroundJobService.Job(JOB_ID, record);
 
-        RFuture<Long> leaseHeld = mock(RFuture.class);
-        when(leaseHeld.toCompletableFuture())
-                .thenReturn(CompletableFuture.completedFuture(BackgroundJobService.LEASE_TTL_MS));
+        RFuture<Long> leaseHeld = completedFuture(BackgroundJobService.LEASE_TTL_MS);
         when(lockService.tryClaimOrRenewAsync(anyString(), anyString(), anyLong())).thenReturn(leaseHeld);
 
         service.reconnectSseStream(job);
@@ -175,10 +208,11 @@ public class BackgroundJobServiceTest {
         await(testContext);
 
         verify(httpClient, never()).request(any());
-        verify(resourceService, never()).deleteResource(any(), any());
+        verify(bucket, never()).deleteAsync();
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testReconnectFallsBackToPollingOnHttpError(Vertx vertx, VertxTestContext testContext) throws Throwable {
         Model deployment = buildDeployment();
         BackgroundJobRecord record = buildRecord();
@@ -187,7 +221,8 @@ public class BackgroundJobServiceTest {
         mockLeaseClaimed();
         mockLeaseRelease(testContext);
 
-        when(resourceService.getResource(any())).thenReturn(ProxyUtil.convertToString(record));
+        RFuture<String> jsonFuture = completedFuture(ProxyUtil.convertToString(record));
+        when(bucket.getAsync()).thenReturn(jsonFuture);
 
         Config config = new Config();
         config.setModels(Map.of(DEPLOYMENT_NAME, deployment));
@@ -208,11 +243,12 @@ public class BackgroundJobServiceTest {
 
         await(testContext);
 
-        verify(resourceService, never()).deleteResource(any(), any());
+        verify(bucket, never()).deleteAsync();
         verify(tokenStatsTracker, never()).updateStats(anyString(), anyString(), any());
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testReconnectFallsBackToPollingOnSseStreamError(Vertx vertx, VertxTestContext testContext) throws Throwable {
         Model deployment = buildDeployment();
         BackgroundJobRecord record = buildRecord();
@@ -221,7 +257,8 @@ public class BackgroundJobServiceTest {
         mockLeaseClaimed();
         mockLeaseRelease(testContext);
 
-        when(resourceService.getResource(any())).thenReturn(ProxyUtil.convertToString(record));
+        RFuture<String> jsonFuture = completedFuture(ProxyUtil.convertToString(record));
+        when(bucket.getAsync()).thenReturn(jsonFuture);
 
         Config config = new Config();
         config.setModels(Map.of(DEPLOYMENT_NAME, deployment));
@@ -258,21 +295,21 @@ public class BackgroundJobServiceTest {
 
         await(testContext);
 
-        verify(resourceService, never()).deleteResource(any(), any());
+        verify(bucket, never()).deleteAsync();
         verify(tokenStatsTracker, never()).updateStats(anyString(), anyString(), any());
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void testReconnectCompletesFromJsonResponse(Vertx vertx, VertxTestContext testContext) throws Throwable {
         Model deployment = buildDeployment();
         BackgroundJobRecord record = buildRecord();
         BackgroundJobService.Job job = new BackgroundJobService.Job(JOB_ID, record);
 
         mockLeaseClaimed();
-        mockLeaseRelease(testContext);
 
-        when(resourceService.getResource(any())).thenReturn(ProxyUtil.convertToString(record));
-        when(resourceService.deleteResource(any(), any())).thenReturn(true);
+        RFuture<String> jsonFuture = completedFuture(ProxyUtil.convertToString(record));
+        when(bucket.getAsync()).thenReturn(jsonFuture);
 
         Config config = new Config();
         config.setModels(Map.of(DEPLOYMENT_NAME, deployment));
@@ -293,8 +330,11 @@ public class BackgroundJobServiceTest {
         when(httpResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
         when(httpResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer(jsonBody)));
 
-        when(tokenStatsTracker.updateStats(eq(TRACE_ID), eq(SPAN_ID), any()))
-                .thenReturn(Future.succeededFuture());
+        Checkpoint statsCheckpoint = testContext.checkpoint();
+        when(tokenStatsTracker.updateStats(eq(TRACE_ID), eq(SPAN_ID), any())).thenAnswer(inv -> {
+            statsCheckpoint.flag();
+            return Future.succeededFuture();
+        });
         when(tokenStatsTracker.endRootSpan(eq(TRACE_ID))).thenReturn(Future.succeededFuture());
         when(rateLimiter.increase(eq(deployment), anyString(), any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
@@ -303,7 +343,7 @@ public class BackgroundJobServiceTest {
 
         await(testContext);
 
-        verify(resourceService).deleteResource(any(), any());
+        verify(bucket).deleteAsync();
         verify(tokenStatsTracker).updateStats(eq(TRACE_ID), eq(SPAN_ID), any());
     }
 
@@ -319,18 +359,25 @@ public class BackgroundJobServiceTest {
                 .build();
         BackgroundJobService.Job job = new BackgroundJobService.Job(JOB_ID, record);
 
-        when(resourceService.deleteResource(any(), any())).thenReturn(true);
+        mockLeaseClaimed();
         mockLeaseRelease(testContext);
 
         service.reconnectSseStream(job);
 
         await(testContext);
 
-        verify(resourceService).deleteResource(any(), any());
+        verify(bucket).deleteAsync();
         verify(httpClient, never()).request(any());
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────
+
+    @SuppressWarnings("unchecked")
+    private static <V> RFuture<V> completedFuture(V value) {
+        RFuture<V> rf = mock(RFuture.class);
+        lenient().doReturn(CompletableFuture.completedFuture(value)).when(rf).toCompletableFuture();
+        return rf;
+    }
 
     private Model buildDeployment() {
         Model deployment = new Model();
@@ -360,14 +407,12 @@ public class BackgroundJobServiceTest {
     }
 
     private void mockLeaseClaimed() {
-        RFuture<Long> claimed = mock(RFuture.class);
-        when(claimed.toCompletableFuture()).thenReturn(CompletableFuture.completedFuture(0L));
+        RFuture<Long> claimed = completedFuture(0L);
         when(lockService.tryClaimOrRenewAsync(anyString(), anyString(), anyLong())).thenReturn(claimed);
     }
 
     private void mockLeaseRelease(VertxTestContext testContext) {
-        RFuture<Boolean> released = mock(RFuture.class);
-        when(released.toCompletableFuture()).thenReturn(CompletableFuture.completedFuture(true));
+        RFuture<Boolean> released = completedFuture(true);
         when(lockService.releaseClaimAsync(anyString(), anyString())).thenAnswer(inv -> {
             testContext.completeNow();
             return released;
