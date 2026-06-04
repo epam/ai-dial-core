@@ -1,5 +1,6 @@
 package com.epam.aidial.cli.auth;
 
+import com.epam.aidial.cli.CliException;
 import com.epam.aidial.cli.config.Auth;
 import com.epam.aidial.cli.config.Environment;
 
@@ -8,7 +9,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.function.Function;
 
-/** Resolves an API key using design 06 §2.1's priority chain: env var → --api-key-file → no-echo prompt. */
+/**
+ * Resolves an API key using design 06 §2.1's priority chain: --api-key-file → env var → no-echo prompt.
+ */
 public class ApiKeyResolver {
 
     private final Function<String, String> envLookup;
@@ -24,6 +27,13 @@ public class ApiKeyResolver {
     }
 
     public String resolve(String envName, Environment env, Path apiKeyFile) {
+        if (apiKeyFile != null) {
+            try {
+                return Files.readString(apiKeyFile).strip();
+            } catch (IOException e) {
+                throw CliException.validation("Failed to read --api-key-file " + apiKeyFile + ": " + e.getMessage());
+            }
+        }
         Auth auth = (env != null) ? env.getAuth() : null;
         String keyEnvVar = (auth != null) ? auth.getKeyEnvVar() : null;
         if (keyEnvVar != null) {
@@ -32,23 +42,18 @@ public class ApiKeyResolver {
                 return fromEnv;
             }
         }
-        if (apiKeyFile != null) {
-            try {
-                return Files.readString(apiKeyFile).strip();
-            } catch (IOException e) {
-                throw new CliAuthException("Failed to read --api-key-file " + apiKeyFile + ": " + e.getMessage());
-            }
-        }
         String prompted = prompter.prompt("API key for env '" + envName + "': ");
         if (prompted != null && !prompted.isBlank()) {
             return prompted;
         }
-        String missing = (keyEnvVar != null) ? keyEnvVar : "<auth.key_env_var>";
-        throw new CliAuthException(
-            "No API key resolved for env '" + envName + "'. Set $" + missing + ", pass --api-key-file <path>, or run from a TTY.");
+        String msg = env == null
+                ? "No API key resolved. Pass --api-key-file <path> or run from a TTY."
+                : "No API key resolved for env '" + envName + "'. Pass --api-key-file <path>, set $"
+                        + (keyEnvVar != null ? keyEnvVar : "<auth.key_env_var>") + ", or run from a TTY.";
+        throw CliException.validation(msg);
     }
 
-    public String describeSource(Environment env, Path apiKeyFile) {
+    public String describeSource(Environment env) {
         Auth auth = (env != null) ? env.getAuth() : null;
         String keyEnvVar = (auth != null) ? auth.getKeyEnvVar() : null;
         if (keyEnvVar != null) {
@@ -57,10 +62,6 @@ public class ApiKeyResolver {
                 return "env-var ($" + keyEnvVar + ")";
             }
         }
-        if (apiKeyFile != null) {
-            String suffix = Files.isReadable(apiKeyFile) ? "" : " — NOT readable";
-            return "file (" + apiKeyFile + ")" + suffix;
-        }
-        return "would prompt (no env var set, no --api-key-file)";
+        return "would prompt (no env var set)";
     }
 }

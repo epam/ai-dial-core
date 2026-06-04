@@ -1,5 +1,6 @@
 package com.epam.aidial.cli;
 
+import com.epam.aidial.cli.auth.ApiKeyResolver;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
@@ -15,8 +16,10 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ModelCommandTest {
@@ -29,11 +32,14 @@ class ModelCommandTest {
         server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
         server.start();
         baseUrl = "http://localhost:" + server.getAddress().getPort();
+        EnvResolver.apiKeyResolver = new ApiKeyResolver(
+                Map.of("DIAL_TEST_KEY", "test-key")::get, msg -> null);
     }
 
     @AfterEach
     void stopServer() {
         server.stop(0);
+        EnvResolver.apiKeyResolver = new ApiKeyResolver();
     }
 
     private Path writeProfileAndKey(Path tmp) throws Exception {
@@ -45,7 +51,7 @@ class ModelCommandTest {
                 environments:
                   dev:
                     api_url: "%s"
-                    auth: { type: api_key, key_env_var: NONEXISTENT_DIAL_TEST_KEY }
+                    auth: { type: api_key, key_env_var: DIAL_TEST_KEY }
                 """.formatted(baseUrl));
         return config;
     }
@@ -58,18 +64,25 @@ class ModelCommandTest {
         return key;
     }
 
+    private Result run(Path config, String... args) {
+        return run(config, null, args);
+    }
+
     private Result run(Path config, Path keyFile, String... args) {
         StringWriter out = new StringWriter();
         StringWriter err = new StringWriter();
         CommandLine cli = DialCliFactory.build();
         cli.setOut(new PrintWriter(out));
         cli.setErr(new PrintWriter(err));
-        String[] full = new String[4 + args.length];
+        int offset = keyFile != null ? 4 : 2;
+        String[] full = new String[offset + args.length];
         full[0] = "--config";
         full[1] = config.toString();
-        full[2] = "--api-key-file";
-        full[3] = keyFile.toString();
-        System.arraycopy(args, 0, full, 4, args.length);
+        if (keyFile != null) {
+            full[2] = "--api-key-file";
+            full[3] = keyFile.toString();
+        }
+        System.arraycopy(args, 0, full, offset, args.length);
         int code = cli.execute(full);
         return new Result(code, out.toString(), err.toString());
     }
@@ -1160,10 +1173,10 @@ class ModelCommandTest {
                 environments:
                   dev:
                     api_url: "%s"
-                    auth: { type: api_key, key_env_var: NONEXISTENT_DIAL_TEST_KEY }
+                    auth: { type: api_key, key_env_var: DIAL_TEST_KEY }
                   uat:
                     api_url: "%s"
-                    auth: { type: api_key, key_env_var: NONEXISTENT_DIAL_TEST_KEY }
+                    auth: { type: api_key, key_env_var: DIAL_TEST_KEY }
                 """.formatted(sourceUrl, targetUrl));
         return config;
     }
@@ -1179,7 +1192,7 @@ class ModelCommandTest {
             target.createContext("/v1/admin/apply", exchange -> send(exchange, 200,
                     "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied_invalid\",\"error\":\"dangling ref\"}]}"));
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "promote", "--from", "dev", "--to", "uat",
                     "--name", "models/public/m");
 
@@ -1212,7 +1225,7 @@ class ModelCommandTest {
                         "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied\"}]}");
             });
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "promote", "--from", "dev", "--to", "uat",
                     "--name", "models/public/m");
 
@@ -1242,14 +1255,14 @@ class ModelCommandTest {
                 send(exchange, 200, "{}");
             });
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "promote", "--from", "dev", "--to", "uat",
                     "--name", "models/public/missing");
 
             assertEquals(4, r.exitCode);
             assertTrue(r.err.contains("Source dev"), r.err);
             assertTrue(r.err.contains("Not found"), r.err);
-            assertTrue(!targetHit.get(), "Target apply must not fire when source GET fails");
+            assertFalse(targetHit.get(), "Target apply must not fire when source GET fails");
         } finally {
             target.stop(0);
         }
@@ -1267,7 +1280,7 @@ class ModelCommandTest {
             target.createContext("/v1/admin/apply", exchange -> send(exchange, 422,
                     "{\"applied\":0,\"failed\":1,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"FAILED\",\"error\":\"missing interceptor\"}]}"));
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "promote", "--from", "dev", "--to", "uat",
                     "--name", "models/public/m");
 
@@ -1288,7 +1301,7 @@ class ModelCommandTest {
             respond("/v1/models/public/m", 200, "{\"name\":\"m\",\"type\":\"chat\"}");
             target.createContext("/v1/admin/apply", exchange -> send(exchange, 403, "{\"error\":\"forbidden\"}"));
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "promote", "--from", "dev", "--to", "uat",
                     "--name", "models/public/m");
 
@@ -1315,7 +1328,7 @@ class ModelCommandTest {
                 send(exchange, 500, "{}");
             });
 
-            Result r = run(config, apiKeyFile(tmp), "--dry-run",
+            Result r = run(config, "--dry-run",
                     "model", "promote", "--from", "dev", "--to", "uat",
                     "--name", "models/public/m");
 
@@ -1323,7 +1336,7 @@ class ModelCommandTest {
             assertTrue(r.out.contains("\"manifests\""), r.out);
             assertTrue(r.out.contains("\"kind\":\"Model\""), r.out);
             assertTrue(r.out.contains("\"precheck\":true"), r.out);
-            assertTrue(!targetHit.get(), "Target apply must not fire on --dry-run");
+            assertFalse(targetHit.get(), "Target apply must not fire on --dry-run");
         } finally {
             target.stop(0);
         }
@@ -1333,7 +1346,7 @@ class ModelCommandTest {
     void modelPromoteUnknownSourceEnvExitsTwo(@TempDir Path tmp) throws Exception {
         Path config = writeTwoEnvProfile(tmp, baseUrl, baseUrl);
 
-        Result r = run(config, apiKeyFile(tmp),
+        Result r = run(config,
                 "model", "promote", "--from", "ghost", "--to", "uat",
                 "--name", "models/public/m");
 
@@ -1345,7 +1358,7 @@ class ModelCommandTest {
     void modelPromoteUnknownTargetEnvExitsTwo(@TempDir Path tmp) throws Exception {
         Path config = writeTwoEnvProfile(tmp, baseUrl, baseUrl);
 
-        Result r = run(config, apiKeyFile(tmp),
+        Result r = run(config,
                 "model", "promote", "--from", "dev", "--to", "phantom",
                 "--name", "models/public/m");
 
@@ -1357,7 +1370,7 @@ class ModelCommandTest {
     void modelPromoteRejectsSimpleName(@TempDir Path tmp) throws Exception {
         Path config = writeTwoEnvProfile(tmp, baseUrl, baseUrl);
 
-        Result r = run(config, apiKeyFile(tmp),
+        Result r = run(config,
                 "model", "promote", "--from", "dev", "--to", "uat", "--name", "gpt-4");
 
         assertEquals(2, r.exitCode);
@@ -1375,7 +1388,7 @@ class ModelCommandTest {
             target.createContext("/v1/models/public/m", exchange ->
                     send(exchange, 200, "{\"name\":\"m\",\"endpoint\":\"http://tgt\"}"));
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "diff", "--source", "dev", "--target", "uat",
                     "--name", "models/public/m");
 
@@ -1397,7 +1410,7 @@ class ModelCommandTest {
             target.createContext("/v1/models/public/m", exchange ->
                     send(exchange, 200, "{\"name\":\"m\",\"endpoint\":\"http://x\"}"));
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "diff", "--source", "dev", "--target", "uat",
                     "--name", "models/public/m");
 
@@ -1419,7 +1432,7 @@ class ModelCommandTest {
             target.createContext("/v1/models/public/m", exchange ->
                     send(exchange, 200, "{\"name\":\"m\",\"endpoint\":\"http://x\"}"));
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "diff", "--source", "dev", "--target", "uat",
                     "--name", "models/public/m");
 
@@ -1442,7 +1455,7 @@ class ModelCommandTest {
             target.createContext("/v1/models/public/m", exchange ->
                     send(exchange, 404, "{\"error\":\"not found\"}"));
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "diff", "--source", "dev", "--target", "uat",
                     "--name", "models/public/m");
 
@@ -1472,7 +1485,7 @@ class ModelCommandTest {
                       {"name":"tgt-only","endpoint":"http://tgt-only"}
                     ],"hasMore":false}"""));
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "diff", "--source", "dev", "--target", "uat");
 
             assertEquals(0, r.exitCode, r.err);
@@ -1496,7 +1509,7 @@ class ModelCommandTest {
             target.createContext("/v1/models/public/", exchange -> send(exchange, 200,
                     "{\"items\":[{\"name\":\"m\",\"endpoint\":\"http://x\"}],\"hasMore\":false}"));
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "diff", "--source", "dev", "--target", "uat");
 
             assertEquals(0, r.exitCode, r.err);
@@ -1517,7 +1530,7 @@ class ModelCommandTest {
             server.createContext("/v1/models/public/", exchange -> send(exchange, 200, identical));
             target.createContext("/v1/models/public/", exchange -> send(exchange, 200, identical));
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "diff", "--source", "dev", "--target", "uat");
 
             assertEquals(0, r.exitCode, r.err);
@@ -1539,7 +1552,7 @@ class ModelCommandTest {
             target.createContext("/v1/models/public/", exchange -> send(exchange, 200,
                     "{\"items\":[{\"name\":\"m\"}],\"hasMore\":false}"));
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "diff", "--source", "dev", "--target", "uat");
 
             assertEquals(0, r.exitCode, r.err);
@@ -1559,7 +1572,7 @@ class ModelCommandTest {
                     "http://localhost:" + target.getAddress().getPort());
             respond("/v1/models/public/m", 401, "{\"error\":\"unauthorized\"}");
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "diff", "--source", "dev", "--target", "uat",
                     "--name", "models/public/m");
 
@@ -1575,7 +1588,7 @@ class ModelCommandTest {
     void modelDiffRejectsSimpleName(@TempDir Path tmp) throws Exception {
         Path config = writeTwoEnvProfile(tmp, baseUrl, baseUrl);
 
-        Result r = run(config, apiKeyFile(tmp),
+        Result r = run(config,
                 "model", "diff", "--source", "dev", "--target", "uat", "--name", "gpt-4");
 
         assertEquals(2, r.exitCode);
@@ -1586,7 +1599,7 @@ class ModelCommandTest {
     void modelDiffRejectsAmbiguousPartialCanonicalId(@TempDir Path tmp) throws Exception {
         Path config = writeTwoEnvProfile(tmp, baseUrl, baseUrl);
 
-        Result r = run(config, apiKeyFile(tmp),
+        Result r = run(config,
                 "model", "diff", "--source", "dev", "--target", "uat",
                 "--name", "models/public/foo/bar");
 
@@ -1602,13 +1615,13 @@ class ModelCommandTest {
                 environments:
                   dev:
                     api_url: "%s"
-                    auth: { type: api_key, key_env_var: NONEXISTENT_DIAL_TEST_KEY }
+                    auth: { type: api_key, key_env_var: DIAL_TEST_KEY }
                     vars:
                       adapter_host: "http://dev-host:8080"
                       region: "us-east-1"
                   uat:
                     api_url: "%s"
-                    auth: { type: api_key, key_env_var: NONEXISTENT_DIAL_TEST_KEY }
+                    auth: { type: api_key, key_env_var: DIAL_TEST_KEY }
                     vars:
                       adapter_host: "http://uat-host:8080"
                       region: "eu-west-1"
@@ -1638,7 +1651,7 @@ class ModelCommandTest {
                         "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied\"}]}");
             });
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "promote", "--from", "dev", "--to", "uat",
                     "--name", "models/public/m",
                     "--template", "bedrock-chat");
@@ -1646,8 +1659,7 @@ class ModelCommandTest {
             assertEquals(0, r.exitCode, r.err);
             assertTrue(applyBody.get().contains("http://uat-host:8080/openai/deployments/m/chat/completions"),
                     "Expected target env vars resolved; got: " + applyBody.get());
-            assertTrue(!applyBody.get().contains("dev-host"),
-                    "Source-env hostname must be replaced by target's; got: " + applyBody.get());
+            assertFalse(applyBody.get().contains("dev-host"), "Source-env hostname must be replaced by target's; got: " + applyBody.get());
         } finally {
             target.stop(0);
         }
@@ -1680,7 +1692,7 @@ class ModelCommandTest {
                         "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied\"}]}");
             });
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "promote", "--from", "dev", "--to", "uat",
                     "--name", "models/public/m",
                     "--template", "auto");
@@ -1716,7 +1728,7 @@ class ModelCommandTest {
                 send(exchange, 200, "{}");
             });
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "promote", "--from", "dev", "--to", "uat",
                     "--name", "models/public/m",
                     "--template", "auto");
@@ -1724,7 +1736,7 @@ class ModelCommandTest {
             assertEquals(2, r.exitCode);
             assertTrue(r.err.contains("No template matches"), r.err);
             assertTrue(r.err.contains("bedrock-chat"), r.err);
-            assertTrue(!targetHit.get(), "Apply must not fire on auto-no-match");
+            assertFalse(targetHit.get(), "Apply must not fire on auto-no-match");
         } finally {
             target.stop(0);
         }
@@ -1754,7 +1766,7 @@ class ModelCommandTest {
                 send(exchange, 200, "{}");
             });
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "promote", "--from", "dev", "--to", "uat",
                     "--name", "models/public/m",
                     "--template", "auto");
@@ -1763,7 +1775,7 @@ class ModelCommandTest {
             assertTrue(r.err.contains("Multiple templates match"), r.err);
             assertTrue(r.err.contains("template-a"), r.err);
             assertTrue(r.err.contains("template-b"), r.err);
-            assertTrue(!targetHit.get(), "Apply must not fire on auto-multi-match");
+            assertFalse(targetHit.get(), "Apply must not fire on auto-multi-match");
         } finally {
             target.stop(0);
         }
@@ -1781,7 +1793,7 @@ class ModelCommandTest {
             target.createContext("/v1/admin/apply", exchange -> send(exchange, 200,
                     "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied\"}]}"));
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "promote", "--from", "dev", "--to", "uat",
                     "--name", "models/public/m");
 
@@ -1813,13 +1825,13 @@ class ModelCommandTest {
             target.createContext("/v1/admin/apply", exchange -> send(exchange, 200,
                     "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/m\",\"status\":\"applied\"}]}"));
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "promote", "--from", "dev", "--to", "uat",
                     "--name", "models/public/m",
                     "--template", "bedrock-chat");
 
             assertEquals(0, r.exitCode, r.err);
-            assertTrue(!r.err.contains("WARN"), "Template-resolved endpoint should suppress warning; err=" + r.err);
+            assertFalse(r.err.contains("WARN"), "Template-resolved endpoint should suppress warning; err=" + r.err);
         } finally {
             target.stop(0);
         }
@@ -1839,14 +1851,14 @@ class ModelCommandTest {
                 send(exchange, 200, "{}");
             });
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "promote", "--from", "dev", "--to", "uat",
                     "--name", "models/public/m",
                     "--template", "auto");
 
             assertEquals(2, r.exitCode);
             assertTrue(r.err.contains("No templates defined in profile"), r.err);
-            assertTrue(!targetHit.get(), "Apply must not fire when profile has no templates");
+            assertFalse(targetHit.get(), "Apply must not fire when profile has no templates");
         } finally {
             target.stop(0);
         }
@@ -1866,14 +1878,14 @@ class ModelCommandTest {
                 send(exchange, 200, "{}");
             });
 
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "model", "promote", "--from", "dev", "--to", "uat",
                     "--name", "models/public/m",
                     "--template", "ghost");
 
             assertEquals(2, r.exitCode);
             assertTrue(r.err.contains("ghost"), r.err);
-            assertTrue(!targetHit.get(), "Apply must not fire on unknown template");
+            assertFalse(targetHit.get(), "Apply must not fire on unknown template");
         } finally {
             target.stop(0);
         }

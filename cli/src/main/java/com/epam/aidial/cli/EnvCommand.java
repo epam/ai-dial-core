@@ -125,12 +125,8 @@ public class EnvCommand {
                 spec.commandLine().getErr().println("No environment selected.");
                 return 2;
             }
-            Map<String, Environment> environments = profile.getEnvironments();
-            Environment target = (environments != null) ? environments.get(name) : null;
-            if (target == null) {
-                spec.commandLine().getErr().println("Environment '" + name + "' not found in profile.");
-                return 2;
-            }
+
+            Environment target = EnvResolver.lookupEnv(profile, name);
             String apiUrl = target.getApiUrl();
             if (apiUrl == null || apiUrl.isBlank()) {
                 spec.commandLine().getErr().println("Environment '" + name + "' has no api_url configured.");
@@ -139,7 +135,7 @@ public class EnvCommand {
             PrintWriter out = spec.commandLine().getOut();
             out.println("Environment: " + name);
             out.println("API URL:     " + apiUrl);
-            out.println("Credentials: " + apiKeyResolver.describeSource(target, root.apiKeyFile));
+            out.println("Credentials: " + apiKeyResolver.describeSource(target));
             return 0;
         }
     }

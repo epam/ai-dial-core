@@ -1,7 +1,6 @@
 package com.epam.aidial.cli;
 
 import com.epam.aidial.cli.auth.ApiKeyResolver;
-import com.epam.aidial.cli.auth.CliAuthException;
 import com.epam.aidial.cli.config.CliProfile;
 import com.epam.aidial.cli.config.Defaults;
 import com.epam.aidial.cli.config.Environment;
@@ -11,40 +10,64 @@ import java.util.Map;
 
 public final class EnvResolver {
 
+    // package-private — replaced in tests to avoid real System.getenv / TTY lookups
+    static ApiKeyResolver apiKeyResolver = new ApiKeyResolver();
+
     static ResolvedEnv resolveEnv(DialCli root) {
-        return resolveEnv(root, null);
+        CliProfile profile = ProfileLoader.load(root.configPath);
+        String envName = resolveCurrent(root, profile);
+        if (envName == null || envName.isBlank()) {
+            return resolveAdHoc(root, profile);
+        }
+        Environment env = lookupEnv(profile, envName);
+        String apiUrl = (root.apiUrl != null && !root.apiUrl.isBlank()) ? root.apiUrl : env.getApiUrl();
+        String apiKey = apiKeyResolver.resolve(envName, env, root.apiKeyFile);
+        return buildResolved(profile, envName, env, apiUrl, apiKey);
     }
 
     static ResolvedEnv resolveEnv(DialCli root, String explicitEnv) {
         CliProfile profile = ProfileLoader.load(root.configPath);
-        boolean crossEnv = explicitEnv != null && !explicitEnv.isBlank();
-        String envName = crossEnv ? explicitEnv : resolveCurrent(root, profile);
-        if (envName == null || envName.isBlank()) {
+        Environment env = lookupEnv(profile, explicitEnv);
+        String apiKey = apiKeyResolver.resolve(explicitEnv, env, null);
+        return buildResolved(profile, explicitEnv, env, env.getApiUrl(), apiKey);
+    }
+
+    private static ResolvedEnv resolveAdHoc(DialCli root, CliProfile profile) {
+        String apiUrl = root.apiUrl;
+        if (apiUrl == null || apiUrl.isBlank()) {
             throw CliException.validation(
-                    "No environment selected. Pass --env or set defaults.env via 'dial-cli env use'.");
+                    "No environment selected and no --api-url provided. Pass --env <name> or --api-url <url>.");
         }
+        apiUrl = stripTrailingSlash(apiUrl);
+
+        String apiKey = apiKeyResolver.resolve("<ad-hoc>", null, root.apiKeyFile);
+        Map<String, Object> templates = (profile.getTemplates() != null) ? profile.getTemplates() : Map.of();
+        return new ResolvedEnv("<ad-hoc>", apiUrl, apiKey, Map.of(), templates);
+    }
+
+    static Environment lookupEnv(CliProfile profile, String envName) {
         Map<String, Environment> envs = profile.getEnvironments();
         Environment env = (envs != null) ? envs.get(envName) : null;
         if (env == null) {
             throw CliException.validation("Environment '" + envName + "' not found in profile.");
         }
-        boolean useApiUrlOverride = !crossEnv && root.apiUrl != null && !root.apiUrl.isBlank();
-        String apiUrl = useApiUrlOverride ? root.apiUrl : env.getApiUrl();
+        return env;
+    }
+
+    private static ResolvedEnv buildResolved(CliProfile profile, String envName, Environment env, String apiUrl, String apiKey) {
         if (apiUrl == null || apiUrl.isBlank()) {
             throw CliException.validation(
                     "Environment '" + envName + "' has no api_url and no --api-url override.");
         }
-        if (apiUrl.endsWith("/")) {
-            apiUrl = apiUrl.substring(0, apiUrl.length() - 1);
-        }
-        try {
-            String apiKey = new ApiKeyResolver().resolve(envName, env, root.apiKeyFile);
-            Map<String, Object> vars = (env.getVars() != null) ? env.getVars() : Map.of();
-            Map<String, Object> templates = (profile.getTemplates() != null) ? profile.getTemplates() : Map.of();
-            return new EnvResolver.ResolvedEnv(envName, apiUrl, apiKey, vars, templates);
-        } catch (CliAuthException e) {
-            throw CliException.validation(e.getMessage());
-        }
+        apiUrl = stripTrailingSlash(apiUrl);
+
+        Map<String, Object> vars = (env.getVars() != null) ? env.getVars() : Map.of();
+        Map<String, Object> templates = (profile.getTemplates() != null) ? profile.getTemplates() : Map.of();
+        return new ResolvedEnv(envName, apiUrl, apiKey, vars, templates);
+    }
+
+    private static String stripTrailingSlash(String url) {
+        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
     static String resolveCurrent(DialCli root, CliProfile profile) {

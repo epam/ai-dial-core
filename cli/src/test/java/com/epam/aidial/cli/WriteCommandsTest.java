@@ -1,5 +1,6 @@
 package com.epam.aidial.cli;
 
+import com.epam.aidial.cli.auth.ApiKeyResolver;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
@@ -15,6 +16,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -30,11 +32,14 @@ class WriteCommandsTest {
         server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
         server.start();
         baseUrl = "http://localhost:" + server.getAddress().getPort();
+        EnvResolver.apiKeyResolver = new ApiKeyResolver(
+                Map.of("DIAL_TEST_KEY", "test-key")::get, msg -> null);
     }
 
     @AfterEach
     void stopServer() {
         server.stop(0);
+        EnvResolver.apiKeyResolver = new ApiKeyResolver();
     }
 
     private Path writeProfile(Path tmp) throws Exception {
@@ -45,7 +50,7 @@ class WriteCommandsTest {
                 environments:
                   dev:
                     api_url: "%s"
-                    auth: { type: api_key, key_env_var: NONEXISTENT_DIAL_TEST_KEY }
+                    auth: { type: api_key, key_env_var: DIAL_TEST_KEY }
                 """.formatted(baseUrl));
         return config;
     }
@@ -57,10 +62,10 @@ class WriteCommandsTest {
                 environments:
                   dev:
                     api_url: "%s"
-                    auth: { type: api_key, key_env_var: NONEXISTENT_DIAL_TEST_KEY }
+                    auth: { type: api_key, key_env_var: DIAL_TEST_KEY }
                   uat:
                     api_url: "%s"
-                    auth: { type: api_key, key_env_var: NONEXISTENT_DIAL_TEST_KEY }
+                    auth: { type: api_key, key_env_var: DIAL_TEST_KEY }
                 """.formatted(sourceUrl, targetUrl));
         return config;
     }
@@ -79,18 +84,25 @@ class WriteCommandsTest {
         return file;
     }
 
+    private Result run(Path config, String... args) {
+        return run(config, null, args);
+    }
+
     private Result run(Path config, Path keyFile, String... args) {
         StringWriter out = new StringWriter();
         StringWriter err = new StringWriter();
         CommandLine cli = DialCliFactory.build();
         cli.setOut(new PrintWriter(out));
         cli.setErr(new PrintWriter(err));
-        String[] full = new String[4 + args.length];
+        int offset = keyFile != null ? 4 : 2;
+        String[] full = new String[offset + args.length];
         full[0] = "--config";
         full[1] = config.toString();
-        full[2] = "--api-key-file";
-        full[3] = keyFile.toString();
-        System.arraycopy(args, 0, full, 4, args.length);
+        if (keyFile != null) {
+            full[2] = "--api-key-file";
+            full[3] = keyFile.toString();
+        }
+        System.arraycopy(args, 0, full, offset, args.length);
         return new Result(cli.execute(full), out.toString(), err.toString());
     }
 
@@ -269,7 +281,7 @@ class WriteCommandsTest {
             });
 
             Files.writeString(tmp.resolve("key.txt"), "test-key");
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "schema", "promote", "--from", "dev", "--to", "uat",
                     "--name", "schemas/public/s1");
 
@@ -294,7 +306,7 @@ class WriteCommandsTest {
                     send(exchange, 200, "{\"name\":\"a1\",\"endpoint\":\"http://tgt\"}"));
 
             Files.writeString(tmp.resolve("key.txt"), "test-key");
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "application", "diff", "--source", "dev", "--target", "uat",
                     "--name", "applications/public/a1");
 
@@ -435,7 +447,7 @@ class WriteCommandsTest {
             });
 
             Files.writeString(tmp.resolve("key.txt"), "test-key");
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "settings", "promote", "--from", "dev", "--to", "uat");
 
             assertEquals(0, r.exitCode, r.err);
@@ -459,7 +471,7 @@ class WriteCommandsTest {
                     send(exchange, 200, "{\"globalInterceptors\":[\"b\"]}"));
 
             Files.writeString(tmp.resolve("key.txt"), "test-key");
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "settings", "diff", "--source", "dev", "--target", "uat");
 
             assertEquals(0, r.exitCode, r.err);
@@ -491,7 +503,7 @@ class WriteCommandsTest {
             });
 
             Files.writeString(tmp.resolve("key.txt"), "test-key");
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "interceptor", "diff", "--source", "dev", "--target", "uat");
 
             assertEquals(0, r.exitCode, r.err);
@@ -517,7 +529,7 @@ class WriteCommandsTest {
             });
 
             Files.writeString(tmp.resolve("key.txt"), "test-key");
-            Result r = run(config, apiKeyFile(tmp),
+            Result r = run(config,
                     "role", "diff", "--source", "dev", "--target", "uat",
                     "--name", "roles/platform/viewer");
 
