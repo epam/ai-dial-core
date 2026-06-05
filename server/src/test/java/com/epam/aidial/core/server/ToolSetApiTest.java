@@ -636,6 +636,57 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testProxyMcpPostCall_ListTools_GzippedResponse() throws JsonProcessingException {
+        // Regression for the gzip MCP proxy bug: a CDN-fronted MCP server may gzip the tools/list
+        // response regardless of Accept-Encoding. Core must decompress before filtering, and must
+        // not leave the re-serialized (plain) body labeled Content-Encoding: gzip. Without the fix
+        // Core fails JSON parsing on the raw gzip bytes and returns 400 "Invalid response body from
+        // MCP server"; without the header removal the client cannot decode the response.
+        String mcpRequest = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 1,
+                   "method": "tools/list",
+                   "params": {
+                     "cursor": "optional-cursor-value"
+                   }
+                 }
+                """;
+        String mcpResponse = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 1,
+                   "result": {
+                     "tools": [
+                       {
+                         "name": "branch",
+                         "title": "Manage branches"
+                       },
+                       {
+                         "name": "tag",
+                         "title": "Manage tags"
+                       }
+                     ],
+                     "nextCursor": "next-page-cursor"
+                   }
+                 }
+                """;
+        TestWebServer.Handler handler = request -> gzippedJsonResponse(mcpResponse);
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            // "git" toolset has allowedTools: ["branch", "remote"]
+            Response resp = send(HttpMethod.POST, "/v1/toolset/git/mcp", null,
+                    mcpRequest, "Content-Type", "application/json");
+
+            assertEquals(200, resp.status(),
+                    () -> "expected gzipped tools/list to be decoded and filtered but got: " + resp.body());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = (ArrayNode) json.get("result").get("tools");
+            assertEquals(1, tools.size());
+            assertEquals("branch", tools.get(0).get("name").asText());
+        }
+    }
+
+    @Test
     void testProxyMcpPostCall_ListAllTools() throws JsonProcessingException {
         String mcpRequest = """
                 {
