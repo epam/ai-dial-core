@@ -179,23 +179,27 @@ public class ApiKeyStore {
      *                            blank entries are skipped (fail closed) — the canonical id is never
      *                            used as an auth bearer.
      */
-    public void addProjectKeys(Map<String, Key> projectKeys) {
+    public void addProjectKeys(Map<String, Key> fileKeysBySecret, Map<String, Key> apiKeysByCanonicalId) {
         ConcurrentHashMap<String, ApiKeyData> apiKeyDataMap = new ConcurrentHashMap<>();
-        for (Map.Entry<String, Key> entry : projectKeys.entrySet()) {
-            String apiKey = entry.getKey();
+        for (Map.Entry<String, Key> entry : fileKeysBySecret.entrySet()) {
+            String mapKey = entry.getKey();
             Key value = entry.getValue();
             validateProjectKey(value);
             if (StringUtils.isBlank(value.getKey())) {
-                // Fail closed for API-sourced entries — under MergedConfigStore the map key for
-                // API entries is the canonical id (e.g. "keys/platform/foo"), never the secret.
-                // The substitution below is only legitimate for file-mode entries where the map
-                // key IS the plaintext secret (pre-existing file convention).
-                if (apiKey.contains("/")) {
-                    log.warn("Skipping API-sourced project key '{}': Key.key is blank after decrypt; "
-                            + "refusing to use canonical id as auth bearer", apiKey);
-                    continue;
-                }
-                value.setKey(apiKey);
+                value.setKey(mapKey);
+            }
+            ApiKeyData apiKeyData = new ApiKeyData();
+            apiKeyData.setOriginalKey(value);
+            apiKeyDataMap.put(value.getKey(), apiKeyData);
+            log.debug("Loading {}", value);
+        }
+        for (Map.Entry<String, Key> entry : apiKeysByCanonicalId.entrySet()) {
+            Key value = entry.getValue();
+            validateProjectKey(value);
+            if (StringUtils.isBlank(value.getKey())) {
+                log.warn("Skipping API-sourced project key '{}': Key.key is blank after decrypt; "
+                        + "refusing to use canonical id as auth bearer", entry.getKey());
+                continue;
             }
             ApiKeyData apiKeyData = new ApiKeyData();
             apiKeyData.setOriginalKey(value);

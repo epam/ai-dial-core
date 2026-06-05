@@ -46,6 +46,7 @@ public class AccessService {
     private final ShareService shareService;
     private final RuleService ruleService;
     private final List<Rule> adminRules;
+    private final boolean adminRulesConfigured;
 
     private final List<String> createCodeAppRoles;
 
@@ -73,6 +74,7 @@ public class AccessService {
         this.ruleService = ruleService;
         this.applicationSchemaService = applicationSchemaService;
         this.adminRules = adminRules(settings);
+        this.adminRulesConfigured = !this.adminRules.isEmpty();
         this.createCodeAppRoles = getCreateCodeAppRoles(settings);
     }
 
@@ -377,6 +379,16 @@ public class AccessService {
     public boolean hasAdminAccess(ProxyContext context) {
         return context.getApiKeyData().getPerRequestKey() == null // not application
                 && RuleMatcher.match(context, adminRules);
+    }
+
+    /**
+     * Fail-closed admin check for the Configuration/Admin API surface. Unlike {@link #hasAdminAccess}
+     * — whose empty rule set is treated by {@link RuleMatcher} as allow-all — this returns
+     * {@code false} when {@code access.admin.rules} is unconfigured or empty, so an operator who
+     * never configured admin rules denies all config/admin access rather than granting it to everyone.
+     */
+    public boolean hasExplicitAdminAccess(ProxyContext context) {
+        return adminRulesConfigured && hasAdminAccess(context);
     }
 
     /**

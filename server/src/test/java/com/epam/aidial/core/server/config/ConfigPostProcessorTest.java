@@ -67,7 +67,7 @@ public class ConfigPostProcessorTest {
         config.getApplications().put("shared", new Application());
 
         assertThrows(IllegalStateException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, null));
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
     }
 
     @Test
@@ -79,7 +79,7 @@ public class ConfigPostProcessorTest {
         AtomicReference<ResourceTypes> capturedType = new AtomicReference<>();
         AtomicReference<String> capturedKey = new AtomicReference<>();
 
-        ConfigPostProcessor.processSemantic(config, null, (type, error) -> {
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), (type, error) -> {
             capturedType.set(type);
             capturedKey.set(error.getMapKey());
         });

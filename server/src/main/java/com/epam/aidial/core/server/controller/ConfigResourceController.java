@@ -335,8 +335,9 @@ public class ConfigResourceController implements Controller {
 
     private Future<?> handleSettingsGet(Config config) {
         if (path == null || path.isEmpty()) {
-            // Singleton has no listing surface.
-            return respondMethodNotAllowed();
+            // Per-entity URL with empty name is not a listing surface (see handleSingleGet).
+            context.respond(HttpStatus.NOT_FOUND);
+            return Future.succeededFuture();
         }
         if (!SETTINGS_SINGLETON_NAME.equals(path)) {
             context.respond(HttpStatus.NOT_FOUND);
@@ -457,6 +458,7 @@ public class ConfigResourceController implements Controller {
                 String blobBody;
                 Key keyEntity = null;
                 String keySecret = null;
+                String oldSecret = null;
                 Object entity = null;
                 if (spec.entityClass() == null) {
                     blobBody = requestNode.toString();
@@ -477,6 +479,20 @@ public class ConfigResourceController implements Controller {
                             // ciphertext or other content we don't want to surface verbatim.
                             throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
                                     "Stored entity is malformed at " + locationOf(e));
+                        }
+                        if (spec.isKey()) {
+                            // Recover the prior plaintext secret so a rotation can revoke the old
+                            // auth bearer (FINDING #2). Deliberately non-fatal: a corrupt prior blob
+                            // must NOT abort the rotation — the new secret is authoritative and any
+                            // stale entry is cleaned at the next full rebuild.
+                            try {
+                                Key prior = ProxyUtil.BLOB_MAPPER.treeToValue(existingBlobNode, Key.class);
+                                secretFieldProcessor.decryptFields(prior, descriptor);
+                                oldSecret = prior.getKey();
+                            } catch (Exception e) {
+                                log.warn("Could not recover prior key secret for rotation at {}; "
+                                        + "proceeding with new secret as authoritative", descriptor.getUrl());
+                            }
                         }
                         source = secretFieldProcessor.mergePreservingOmittedSecrets(
                                 existingBlobNode, requestNode, spec.entityClass());
@@ -508,6 +524,9 @@ public class ConfigResourceController implements Controller {
                         descriptor, blobBody, EtagHeader.ANY, author, false);
                 if (keySecret != null) {
                     apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
+                    if (oldSecret != null && !oldSecret.isBlank() && !oldSecret.equals(keySecret)) {
+                        apiKeyStore.removeKey(oldSecret);
+                    }
                 }
                 // Decrypt-in-place after blob put. PUT-upsert can produce a mixed
                 // plaintext/ciphertext entity (preserve-on-omit on the update arm); decryptValue
@@ -653,8 +672,11 @@ public class ConfigResourceController implements Controller {
 
     private static JsonNode parseJsonBody(Buffer body) {
         String text = body == null ? "" : body.toString(StandardCharsets.UTF_8);
+        if (text.isBlank()) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Request body must not be empty");
+        }
         try {
-            return ProxyUtil.BLOB_MAPPER.readTree(text.isEmpty() ? "{}" : text);
+            return ProxyUtil.BLOB_MAPPER.readTree(text);
         } catch (JsonProcessingException e) {
             // getOriginalMessage() echoes the offending token verbatim, which can include
             // submitted credentials (Key.key, Upstream.key, etc.). Surface only the location.

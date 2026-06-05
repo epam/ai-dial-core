@@ -5,6 +5,7 @@ import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.lang.reflect.Field;
@@ -130,18 +131,53 @@ public class SecretFieldProcessor {
             if (nestedType != null) {
                 JsonNode targetArr = target.get(name);
                 JsonNode sourceArr = source.get(name);
-                if (targetArr != null && targetArr.isArray() && sourceArr != null && sourceArr.isArray()) {
-                    int n = Math.min(targetArr.size(), sourceArr.size());
-                    for (int i = 0; i < n; i++) {
-                        JsonNode targetItem = targetArr.get(i);
-                        JsonNode sourceItem = sourceArr.get(i);
-                        if (targetItem instanceof ObjectNode targetObj && sourceItem.isObject()) {
-                            mergeInto(targetObj, sourceItem, nestedType);
-                        }
-                    }
+                if (targetArr instanceof ArrayNode targets && sourceArr instanceof ArrayNode sources) {
+                    mergeArray(targets, sources, nestedType);
                 }
             }
         }
+    }
+
+    // Pair each target (request) element with its preserved source (blob) element. The matcher keys
+    // on the canonical JSON name "endpoint" (blobs are always written via the canonical mapper, so
+    // the field is present under that name) and falls back to index pairing when "endpoint" is
+    // absent — preserving prior behavior for non-keyed arrays. Iteration follows the request, so the
+    // desired set/order wins; duplicate endpoints match in relative order (stable two-pointer).
+    private void mergeArray(ArrayNode targets, ArrayNode sources, Class<?> nestedType) {
+        boolean[] consumed = new boolean[sources.size()];
+        for (int i = 0; i < targets.size(); i++) {
+            if (!(targets.get(i) instanceof ObjectNode targetObj)) {
+                continue;
+            }
+            int sourceIdx = matchSourceIndex(targetObj, sources, consumed, i);
+            if (sourceIdx < 0) {
+                continue;
+            }
+            consumed[sourceIdx] = true;
+            mergeInto(targetObj, sources.get(sourceIdx), nestedType);
+        }
+    }
+
+    private int matchSourceIndex(ObjectNode targetObj, ArrayNode sources, boolean[] consumed, int targetIndex) {
+        JsonNode endpointNode = targetObj.get("endpoint");
+        if (endpointNode != null && endpointNode.isTextual()) {
+            String endpoint = endpointNode.textValue();
+            for (int j = 0; j < sources.size(); j++) {
+                if (consumed[j] || !(sources.get(j) instanceof ObjectNode sourceObj)) {
+                    continue;
+                }
+                JsonNode sourceEndpoint = sourceObj.get("endpoint");
+                if (sourceEndpoint != null && sourceEndpoint.isTextual()
+                        && endpoint.equals(sourceEndpoint.textValue())) {
+                    return j;
+                }
+            }
+            return -1;
+        }
+        if (targetIndex < sources.size() && !consumed[targetIndex] && sources.get(targetIndex).isObject()) {
+            return targetIndex;
+        }
+        return -1;
     }
 
     private void walk(Object entity, byte[] aad, boolean encrypt) {
@@ -197,7 +233,10 @@ public class SecretFieldProcessor {
         if (value == null || value.isEmpty()) {
             return value;
         }
-        if (value.startsWith(ENC_PREFIX) && value.endsWith(ENC_SUFFIX)) {
+        // Only a structurally valid envelope (valid Base64, decoded length >= AES-GCM minimum) is
+        // trusted as already-encrypted. An ENC[-shaped but malformed value falls through and is
+        // encrypted as plaintext rather than blindly preserved.
+        if (isValidEnvelope(value)) {
             return value;
         }
         if (value.startsWith(SECRET_REF_PREFIX)) {
@@ -220,6 +259,21 @@ public class SecretFieldProcessor {
             return decryptEnvelope(value, aad, fieldName);
         }
         return value;
+    }
+
+    private boolean isValidEnvelope(String value) {
+        if (!value.startsWith(ENC_PREFIX) || !value.endsWith(ENC_SUFFIX)) {
+            return false;
+        }
+        String payload = value.substring(ENC_PREFIX.length(), value.length() - ENC_SUFFIX.length());
+        byte[] decoded;
+        try {
+            decoded = Base64.getDecoder().decode(payload);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+        // A decoded payload shorter than IV + GCM tag cannot be a real envelope.
+        return decoded.length >= encryptionService.minEncryptedLength();
     }
 
     private String decryptEnvelope(String envelope, byte[] aad, String fieldName) {

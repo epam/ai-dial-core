@@ -119,6 +119,7 @@ class ResourceAuthSettingsEncryptionServiceTest {
         ResourceAuthSettings settings = new ResourceAuthSettings();
         settings.setCodeVerifier(Base64.getEncoder().encodeToString(ENCRYPTED_CODE_VERIFIER));
 
+        when(encryptionService.minEncryptedLength()).thenReturn(1);
         when(encryptionService.decrypt(bucketInfo, ENCRYPTED_CODE_VERIFIER, AAD))
                 .thenReturn(CODE_VERIFIER.getBytes(StandardCharsets.UTF_8));
 
@@ -140,11 +141,46 @@ class ResourceAuthSettingsEncryptionServiceTest {
     }
 
     @Test
+    void testDecrypt_returnsShortValidBase64CodeVerifierAsIs() {
+        // "abcdABCD12345678" is valid Base64 decoding to 12 bytes, below the 28-byte new-format minimum.
+        String shortValidBase64 = "abcdABCD12345678";
+        BucketInfo bucketInfo = new BucketInfo("bucket-name", "bucket-location/");
+        ResourceAuthSettings settings = new ResourceAuthSettings();
+        settings.setCodeVerifier(shortValidBase64);
+
+        when(encryptionService.minEncryptedLength()).thenReturn(28);
+
+        service.decrypt(RESOURCE_ID, bucketInfo, settings);
+
+        assertEquals(shortValidBase64, settings.getCodeVerifier());
+        verify(encryptionService, never()).decrypt(any(), any(), any());
+    }
+
+    @Test
+    void testDecrypt_returnsLongValidBase64CodeVerifierAsIsWhenDecryptFails() {
+        // 48-char alphanumeric value: valid Base64 decoding to 36 bytes (>= 28), so decrypt is attempted.
+        String longValidBase64 = "abcdABCD12345678abcdABCD12345678abcdABCD12345678";
+        BucketInfo bucketInfo = new BucketInfo("bucket-name", "bucket-location/");
+        ResourceAuthSettings settings = new ResourceAuthSettings();
+        settings.setCodeVerifier(longValidBase64);
+
+        when(encryptionService.minEncryptedLength()).thenReturn(28);
+        when(encryptionService.decrypt(any(), any(), any()))
+                .thenThrow(new RuntimeException("authentication tag mismatch"));
+
+        service.decrypt(RESOURCE_ID, bucketInfo, settings);
+
+        assertEquals(longValidBase64, settings.getCodeVerifier());
+        verify(encryptionService).decrypt(any(), any(), any());
+    }
+
+    @Test
     void testEncryptAndDecrypt_areInverseOperationsForCodeVerifier() {
         BucketInfo bucketInfo = new BucketInfo("bucket-name", "bucket-location/");
         ResourceAuthSettings original = new ResourceAuthSettings();
         original.setCodeVerifier(CODE_VERIFIER);
 
+        when(encryptionService.minEncryptedLength()).thenReturn(1);
         when(encryptionService.encrypt(any(), any(), any()))
                 .thenAnswer(inv -> {
                     byte[] input = inv.getArgument(1);

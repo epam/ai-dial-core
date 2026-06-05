@@ -66,11 +66,12 @@ public class ConfigSettingsTest extends ResourceBaseTest {
     }
 
     @Test
-    void testListingPathReturns405WithAllow() {
+    void testListingPathGetReturns404() {
+        // FINDING #10: a per-entity URL with an empty name is not a listing surface — 404, symmetric
+        // with handleSingleGet for the non-singleton types.
         Response response = send(HttpMethod.GET, "/v1/settings/platform/", null, "",
                 "authorization", "admin");
-        verify(response, 405);
-        assertEquals("GET, PUT, DELETE", response.headers().get("Allow"));
+        verify(response, 404);
     }
 
     @Test
@@ -183,6 +184,13 @@ public class ConfigSettingsTest extends ResourceBaseTest {
     @Test
     void testPutInvalidJsonReturns400() {
         verify(send(HttpMethod.PUT, SETTINGS_URL, null, "{not-json",
+                "authorization", "admin"), 400);
+    }
+
+    @Test
+    void testPutEmptyBodyReturns400() {
+        // FINDING #5: an empty body is rejected before coercion; explicit "{}" still works (below).
+        verify(send(HttpMethod.PUT, SETTINGS_URL, null, "",
                 "authorization", "admin"), 400);
     }
 
