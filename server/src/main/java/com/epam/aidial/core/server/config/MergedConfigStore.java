@@ -32,6 +32,7 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -77,6 +78,17 @@ public final class MergedConfigStore implements ConfigStore {
             ResourceTypes.ROLE,
             ResourceTypes.PROJECT_KEY,
             ResourceTypes.ROUTE);
+
+    private static final Set<String> MANAGED_URL_SEGMENTS = managedUrlSegments();
+
+    private static Set<String> managedUrlSegments() {
+        Set<String> segments = new HashSet<>();
+        for (ResourceTypes type : MANAGED_TYPES) {
+            segments.add(type.urlSegment());
+        }
+        segments.add(ResourceTypes.GLOBAL_SETTINGS.urlSegment());
+        return Set.copyOf(segments);
+    }
 
     /**
      * Bucket locations the admin write/read paths serialize on cluster-wide via
@@ -221,6 +233,9 @@ public final class MergedConfigStore implements ConfigStore {
         if (senderPodId != null && senderPodId.equals(thisPodId)) {
             return;
         }
+        if (!isManagedEventUrl(event.getUrl())) {
+            return;
+        }
         ResourceDescriptor descriptor;
         try {
             descriptor = ResourceDescriptorFactory.fromAnyUrl(event.getUrl(), null);
@@ -241,6 +256,24 @@ public final class MergedConfigStore implements ConfigStore {
                     descriptor.getUrl(), error);
             requestRebuild();
         });
+    }
+
+    /**
+     * Cheap firehose pre-filter: event URLs carry the unencoded {@code type.urlSegment()} as their
+     * first path segment ({@link ResourceDescriptor#getUrl} encodes it via
+     * {@code UrlUtil.encodePathSegment}, and all managed segments are {@code [a-z_]} so are never
+     * percent-encoded). Drops the vast majority of non-managed events (conversations, prompts,
+     * files, …) before the {@link ResourceDescriptorFactory#fromAnyUrl} parse runs.
+     */
+    static boolean isManagedEventUrl(String url) {
+        if (url == null) {
+            return false;
+        }
+        int slash = url.indexOf('/');
+        if (slash <= 0) {
+            return false;
+        }
+        return MANAGED_URL_SEGMENTS.contains(url.substring(0, slash));
     }
 
     /**
@@ -285,10 +318,19 @@ public final class MergedConfigStore implements ConfigStore {
             if (type == ResourceTypes.PROJECT_KEY) {
                 Key key = (Key) entity;
                 String secret = key.getKey();
+                // Snapshot the prior secret BEFORE applyEntityWrite swaps the config (mirrors
+                // applyReplicaDelete). On rotation (secret changed) the old auth bearer must be
+                // revoked so the previous secret no longer authenticates (FINDING #2).
+                Config snapshot = this.config;
+                Key prior = snapshot == null ? null : snapshot.getKeys().get(canonicalId);
+                String oldSecret = prior == null ? null : prior.getKey();
                 if (secret != null && !secret.isBlank()) {
                     ApiKeyData data = new ApiKeyData();
                     data.setOriginalKey(key);
                     apiKeyStore.addOrUpdateKey(secret, data);
+                }
+                if (oldSecret != null && !oldSecret.isBlank() && !oldSecret.equals(secret)) {
+                    apiKeyStore.removeKey(oldSecret);
                 }
             }
             applyEntityWrite(type, canonicalId, entity);
@@ -870,6 +912,11 @@ public final class MergedConfigStore implements ConfigStore {
 
         Map<String, JsonNode> blobBodies = new HashMap<>();
         Map<ResourceTypes, Map<String, InvalidEntityRecord>> pendingInvalid = new EnumMap<>(ResourceTypes.class);
+        // API-sourced project keys collected during the blob scan, keyed by canonical id. Kept
+        // distinct from the file partition (base.getKeys(), keyed by secret) so the ApiKeyStore feed
+        // can classify the source without inferring from map-key shape — file secrets may be Base64
+        // and contain '/' (OQ-12). The merged keys map itself still folds both for config consumers.
+        Map<String, Key> apiKeysByCanonicalId = new HashMap<>();
 
         for (ResourceTypes type : MANAGED_TYPES) {
             for (String scope : locationStrategy.listScopes(type)) {
@@ -929,6 +976,9 @@ public final class MergedConfigStore implements ConfigStore {
                                     node, REASON_DECRYPTION, "api");
                             continue;
                         }
+                        if (type == ResourceTypes.PROJECT_KEY) {
+                            apiKeysByCanonicalId.put(canonicalId, (Key) added.entity());
+                        }
                     }
                     blobBodies.put(canonicalId, node);
                 }
@@ -965,7 +1015,10 @@ public final class MergedConfigStore implements ConfigStore {
                             REASON_VALIDATION, fromApi ? "api" : "file");
                 }
                 : null;
-        ConfigPostProcessor.processSemantic(merged, apiKeyStore, onSkip);
+        // File partition = base file keys (keyed by secret); API partition = PROJECT_KEY blob entries
+        // collected above (keyed by canonical id). The merged Config.getKeys() folds both for config
+        // consumers, but the ApiKeyStore feed stays explicitly source-classified (FINDING #7).
+        ConfigPostProcessor.processSemantic(merged, apiKeyStore, base.getKeys(), apiKeysByCanonicalId, onSkip);
 
         // ConfigPostProcessor sets entity.name = mapKey: canonical ID for API entries
         // ("models/public/foo"), simple name for file entries ("gpt-4"). This is the OQ-23 contract:

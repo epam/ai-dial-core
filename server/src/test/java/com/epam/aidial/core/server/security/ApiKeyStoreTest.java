@@ -109,7 +109,7 @@ public class ApiKeyStoreTest {
         key1.setRole("role1");
         Map<String, Key> projectKeys1 = Map.of("key1", key1);
 
-        store.addProjectKeys(projectKeys1);
+        store.addProjectKeys(projectKeys1, Map.of());
 
         ApiKeyData apiKeyData = new ApiKeyData();
         store.assignPerRequestApiKey(apiKeyData);
@@ -119,7 +119,7 @@ public class ApiKeyStoreTest {
         key2.setRole("role1");
         Map<String, Key> projectKeys2 = Map.of("key2", key2);
 
-        store.addProjectKeys(projectKeys2);
+        store.addProjectKeys(projectKeys2, Map.of());
 
         // old key must be removed
         assertNull(store.getApiKeyData("key1", null).result());
@@ -139,9 +139,26 @@ public class ApiKeyStoreTest {
         key.setRole("role1");
         Map<String, Key> projectKeys = Map.of("secret-value", key);
 
-        store.addProjectKeys(projectKeys);
+        store.addProjectKeys(projectKeys, Map.of());
 
         assertEquals("secret-value", key.getKey());
+    }
+
+    @Test
+    public void testAddFileProjectKeyWithSlashInSecret() {
+        Key key = new Key();
+        key.setProject("prj1");
+        key.setRole("role1");
+        // File-mode secrets may be Base64 and contain '/' — the map key IS the secret and must be
+        // back-filled verbatim (no map-key shape inference). See OQ-12.
+        Map<String, Key> projectKeys = Map.of("ab/cd+ef==", key);
+
+        store.addProjectKeys(projectKeys, Map.of());
+
+        assertEquals("ab/cd+ef==", key.getKey());
+        Future<ApiKeyData> hit = store.getApiKeyData("ab/cd+ef==", null);
+        assertNotNull(hit.result());
+        assertEquals(key, hit.result().getOriginalKey());
     }
 
     @Test
@@ -152,7 +169,7 @@ public class ApiKeyStoreTest {
         key.setKey("api-secret");
         Map<String, Key> projectKeys = Map.of("human-name", key);
 
-        store.addProjectKeys(projectKeys);
+        store.addProjectKeys(Map.of(), projectKeys);
 
         assertEquals("api-secret", key.getKey());
     }
@@ -170,12 +187,32 @@ public class ApiKeyStoreTest {
         key.setKey("api-secret");
         Map<String, Key> projectKeys = Map.of("human-name", key);
 
-        store.addProjectKeys(projectKeys);
+        store.addProjectKeys(Map.of(), projectKeys);
 
         Future<ApiKeyData> hit = store.getApiKeyData("api-secret", null);
         assertNotNull(hit.result());
         assertEquals(key, hit.result().getOriginalKey());
         assertNull(store.getApiKeyData("human-name", null).result());
+    }
+
+    @Test
+    public void testAddApiProjectKeyBlankSecretFailsClosed() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        Key key = new Key();
+        key.setProject("prj1");
+        key.setRole("role1");
+        // API-sourced entry with no secret after decrypt — must be skipped, never back-filled
+        // from the canonical-id map key (fail closed).
+        Map<String, Key> projectKeys = Map.of("keys/platform/foo", key);
+
+        store.addProjectKeys(Map.of(), projectKeys);
+
+        assertNull(key.getKey());
+        assertNull(store.getApiKeyData("keys/platform/foo", null).result());
     }
 
     @Test
@@ -257,7 +294,7 @@ public class ApiKeyStoreTest {
                 """;
         Config config = ProxyUtil.convertToObject(json, Config.class);
         assertNotNull(config);
-        store.addProjectKeys(config.getKeys());
+        store.addProjectKeys(config.getKeys(), Map.of());
 
         List<String> allowedIpAddresses = List.of("198.51.100.25", "2002:0000:0000:1234:0030:1500:0340:0000");
         List<String> forbiddenIpAddresses = List.of("198.51.99.14", "2002:0000:0000:1233:0000:FB00:0000:0000");

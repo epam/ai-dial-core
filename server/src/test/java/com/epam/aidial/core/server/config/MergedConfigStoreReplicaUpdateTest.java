@@ -51,6 +51,8 @@ public class MergedConfigStoreReplicaUpdateTest {
     private static final String SETTINGS_ID = "settings/platform/global";
     private static final String KEY_JSON =
             "{\"project\":\"proj-a\",\"role\":\"admin-role\",\"key\":\"secret-A\"}";
+    private static final String KEY_JSON_NEW_SECRET =
+            "{\"project\":\"proj-a\",\"role\":\"admin-role\",\"key\":\"secret-NEW\"}";
     private static final String SETTINGS_JSON =
             "{\"globalInterceptors\":[\"api-overlay\"],\"retriableErrorCodes\":[503]}";
 
@@ -91,6 +93,40 @@ public class MergedConfigStoreReplicaUpdateTest {
     }
 
     @Test
+    public void nonManagedFirehoseEventShortCircuitsBeforeParse() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        Mockito.reset(taskExecutor, resourceService);
+
+        ResourceEvent event = new ResourceEvent()
+                .setUrl("conversations/someEncryptedBucket/folder/conv-1")
+                .setAction(ResourceEvent.Action.UPDATE)
+                .setSenderPodId("pod-other");
+        invokeOnResourceEvent(store, event);
+
+        verifyNoInteractions(taskExecutor);
+        verifyNoInteractions(resourceService);
+    }
+
+    @Test
+    public void isManagedEventUrlMatchesManagedSegments() {
+        assertTrue(MergedConfigStore.isManagedEventUrl("models/public/gpt-4"));
+        assertTrue(MergedConfigStore.isManagedEventUrl("schemas/public/s-1"));
+        assertTrue(MergedConfigStore.isManagedEventUrl("interceptors/public/i-1"));
+        assertTrue(MergedConfigStore.isManagedEventUrl("roles/public/r-1"));
+        assertTrue(MergedConfigStore.isManagedEventUrl("keys/platform/proj-a"));
+        assertTrue(MergedConfigStore.isManagedEventUrl("routes/public/rt-1"));
+        assertTrue(MergedConfigStore.isManagedEventUrl("settings/platform/global"));
+
+        assertFalse(MergedConfigStore.isManagedEventUrl("conversations/x"));
+        assertFalse(MergedConfigStore.isManagedEventUrl("prompts/x"));
+        assertFalse(MergedConfigStore.isManagedEventUrl("files/x"));
+        assertFalse(MergedConfigStore.isManagedEventUrl(null));
+        assertFalse(MergedConfigStore.isManagedEventUrl(""));
+        assertFalse(MergedConfigStore.isManagedEventUrl("noslash"));
+        assertFalse(MergedConfigStore.isManagedEventUrl("/models/x"));
+    }
+
+    @Test
     public void projectKeyCreateFetchesDecryptsAndUpdatesKeyStoreBeforeApply() {
         Config seeded = newConfig();
         MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
@@ -122,6 +158,44 @@ public class MergedConfigStoreReplicaUpdateTest {
 
         assertTrue(store.get().getKeys().containsKey(KEY_ID));
         verify(apiKeyStore).addOrUpdateKey(eq("secret-A"), any(ApiKeyData.class));
+    }
+
+    @Test
+    public void projectKeyRotationViaReplicaRemovesOldSecret() {
+        Key existing = new Key();
+        existing.setProject("proj-a");
+        existing.setKey("secret-OLD");
+        Config seeded = newConfig();
+        seeded.setKeys(new HashMap<>(java.util.Map.of(KEY_ID, existing)));
+        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        Mockito.reset(apiKeyStore, resourceService);
+
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
+        when(resourceService.getResource(descriptor)).thenReturn(KEY_JSON_NEW_SECRET);
+
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE);
+
+        verify(apiKeyStore).addOrUpdateKey(eq("secret-NEW"), any(ApiKeyData.class));
+        verify(apiKeyStore).removeKey("secret-OLD");
+    }
+
+    @Test
+    public void projectKeyReplicaSameSecretDoesNotRemove() {
+        Key existing = new Key();
+        existing.setProject("proj-a");
+        existing.setKey("secret-A");
+        Config seeded = newConfig();
+        seeded.setKeys(new HashMap<>(java.util.Map.of(KEY_ID, existing)));
+        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        Mockito.reset(apiKeyStore, resourceService);
+
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(KEY_ID, null);
+        when(resourceService.getResource(descriptor)).thenReturn(KEY_JSON);
+
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE);
+
+        verify(apiKeyStore).addOrUpdateKey(eq("secret-A"), any(ApiKeyData.class));
+        verify(apiKeyStore, never()).removeKey(any());
     }
 
     @Test

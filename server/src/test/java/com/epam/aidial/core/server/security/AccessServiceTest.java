@@ -397,4 +397,62 @@ public class AccessServiceTest {
         assertFalse(result.isEmpty());
         assertEquals(Map.of(resource, ResourceAccessType.ALL), result);
     }
+
+    @Test
+    public void testHasExplicitAdminAccess_EmptyRulesDenies() {
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
+                {
+                 "admin": {"rules": []}
+                }
+                """));
+
+        assertFalse(accessService.hasExplicitAdminAccess(context));
+    }
+
+    @Test
+    public void testHasExplicitAdminAccess_ConfiguredAndMatching() {
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getUserRoles()).thenReturn(List.of("admin"));
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
+                {
+                 "admin": {"rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]}
+                }
+                """));
+
+        assertTrue(accessService.hasExplicitAdminAccess(context));
+    }
+
+    @Test
+    public void testHasExplicitAdminAccess_ConfiguredAndNonMatching() {
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getUserRoles()).thenReturn(List.of("user"));
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
+                {
+                 "admin": {"rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]}
+                }
+                """));
+
+        assertFalse(accessService.hasExplicitAdminAccess(context));
+    }
+
+    @Test
+    public void testHasExplicitAdminAccess_MissingAdminBlockDoesNotThrow() {
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        AccessService missingAdmin = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService, new JsonObject("{}"));
+        AccessService missingRules = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService, new JsonObject("{\"admin\": {}}"));
+
+        assertFalse(missingAdmin.hasExplicitAdminAccess(context));
+        assertFalse(missingRules.hasExplicitAdminAccess(context));
+    }
 }

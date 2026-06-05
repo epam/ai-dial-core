@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpMethod;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
 
@@ -38,6 +39,7 @@ import java.util.Map;
  * so the controller can emit {@code 405 Method Not Allowed} with {@code Allow: GET}
  * (RFC 9110 §15.5.6), rather than falling through to the global route handler.
  */
+@Slf4j
 @RequiredArgsConstructor
 public class FileConfigController implements Controller {
 
@@ -147,7 +149,8 @@ public class FileConfigController implements Controller {
                 node.put("status", "valid");
                 context.respond(HttpStatus.OK, node);
             } catch (Exception e) {
-                context.respond(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
+                log.error("Failed to render file-config schema '{}'", name, e);
+                context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to render schema for " + name);
             }
             return Future.succeededFuture();
         }

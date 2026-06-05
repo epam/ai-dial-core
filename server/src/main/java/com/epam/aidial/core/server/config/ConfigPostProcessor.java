@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.config;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
@@ -54,7 +55,7 @@ public final class ConfigPostProcessor {
 
     public static void process(Config config, @Nullable ApiKeyStore apiKeyStore) {
         processStructural(config);
-        processSemantic(config, apiKeyStore, null);
+        processSemantic(config, apiKeyStore, config.getKeys(), Map.of(), null);
     }
 
     /**
@@ -78,6 +79,7 @@ public final class ConfigPostProcessor {
      * route through {@code onSkip} when non-null; otherwise they throw.
      */
     public static void processSemantic(Config config, @Nullable ApiKeyStore apiKeyStore,
+                                       Map<String, Key> fileKeysBySecret, Map<String, Key> apiKeysByCanonicalId,
                                        @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
         Set<String> deploymentIds = new HashSet<>();
         sortRoutes(config);
@@ -88,7 +90,7 @@ public final class ConfigPostProcessor {
         processToolSets(config, deploymentIds, onSkip);
 
         if (apiKeyStore != null) {
-            apiKeyStore.addProjectKeys(config.getKeys());
+            apiKeyStore.addProjectKeys(fileKeysBySecret, apiKeysByCanonicalId);
         }
     }
 

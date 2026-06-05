@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -44,9 +45,21 @@ class SecretFieldProcessorTest {
 
     @BeforeEach
     void setUp() {
+        // AES-GCM IV 12 + tag 16; mirrors DataEncryptionService defaults (pinned in DataEncryptionServiceTest).
+        lenient().when(encryptionService.minEncryptedLength()).thenReturn(28);
         processor = new SecretFieldProcessor(encryptionService, BUCKET);
         descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.PROJECT_KEY, "platform", "platform/", "test-key");
+    }
+
+    // Structurally valid envelope: Base64 of >= 28 bytes (AES-GCM IV 12 + tag 16 minimum).
+    private static String validEnvelope(String seed) {
+        byte[] bytes = new byte[28];
+        byte[] src = seed.getBytes(StandardCharsets.UTF_8);
+        for (int i = 0; i < bytes.length; i++) {
+            bytes[i] = src[i % src.length];
+        }
+        return "ENC[" + Base64.getEncoder().encodeToString(bytes) + "]";
     }
 
     @Test
@@ -65,11 +78,12 @@ class SecretFieldProcessorTest {
     @Test
     void encryptFields_skipsAlreadyEncryptedEnvelope() {
         Key key = new Key();
-        key.setKey("ENC[abc]");
+        String envelope = validEnvelope("already-encrypted-payload-bytes");
+        key.setKey(envelope);
 
         processor.encryptFields(key, descriptor);
 
-        assertEquals("ENC[abc]", key.getKey());
+        assertEquals(envelope, key.getKey());
         verify(encryptionService, never()).encrypt(any(), any(), any());
     }
 
@@ -228,5 +242,140 @@ class SecretFieldProcessorTest {
     @Test
     void stripEncryptedFields_returnsNullForNonObject() {
         assertNull(SecretFieldProcessor.stripEncryptedFields(null, Key.class));
+    }
+
+    @Test
+    void reorderPreservesCorrectSecretPerEndpoint() throws Exception {
+        ObjectNode existing = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"},{\"endpoint\":\"B\",\"key\":\"ENC[b]\"}]}");
+        ObjectNode request = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"B\"},{\"endpoint\":\"A\"}]}");
+
+        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+
+        assertEquals("B", merged.get("upstreams").get(0).get("endpoint").asText());
+        assertEquals("ENC[b]", merged.get("upstreams").get(0).get("key").asText());
+        assertEquals("A", merged.get("upstreams").get(1).get("endpoint").asText());
+        assertEquals("ENC[a]", merged.get("upstreams").get(1).get("key").asText());
+    }
+
+    @Test
+    void insertAtIndexZeroGetsNoSecret() throws Exception {
+        ObjectNode existing = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"}]}");
+        ObjectNode request = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"C\"},{\"endpoint\":\"A\"}]}");
+
+        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+
+        ObjectNode c = (ObjectNode) merged.get("upstreams").get(0);
+        assertEquals("C", c.get("endpoint").asText());
+        assertFalse(c.has("key") && !c.get("key").isNull(), () -> "C must get no preserved secret: " + c);
+        assertEquals("ENC[a]", merged.get("upstreams").get(1).get("key").asText());
+    }
+
+    @Test
+    void removalLeavesRemainingCorrect() throws Exception {
+        ObjectNode existing = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"},"
+                        + "{\"endpoint\":\"B\",\"key\":\"ENC[b]\"},{\"endpoint\":\"C\",\"key\":\"ENC[c]\"}]}");
+        ObjectNode request = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"A\"},{\"endpoint\":\"C\"}]}");
+
+        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+
+        assertEquals("ENC[a]", merged.get("upstreams").get(0).get("key").asText());
+        assertEquals("ENC[c]", merged.get("upstreams").get(1).get("key").asText());
+    }
+
+    @Test
+    void duplicateEndpointsMatchInRelativeOrder() throws Exception {
+        ObjectNode existing = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"A\",\"tier\":0,\"key\":\"ENC[a0]\"},"
+                        + "{\"endpoint\":\"A\",\"tier\":1,\"key\":\"ENC[a1]\"}]}");
+        ObjectNode request = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"A\"},{\"endpoint\":\"A\"}]}");
+
+        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+
+        assertEquals("ENC[a0]", merged.get("upstreams").get(0).get("key").asText());
+        assertEquals("ENC[a1]", merged.get("upstreams").get(1).get("key").asText());
+    }
+
+    @Test
+    void newUpstreamWithExplicitKeyKept() throws Exception {
+        ObjectNode existing = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"}]}");
+        ObjectNode request = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"D\",\"key\":\"new-plain\"},{\"endpoint\":\"A\"}]}");
+
+        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+
+        assertEquals("new-plain", merged.get("upstreams").get(0).get("key").asText());
+        assertEquals("ENC[a]", merged.get("upstreams").get(1).get("key").asText());
+    }
+
+    @Test
+    void extraDataAlsoPreservedByEndpoint() throws Exception {
+        ObjectNode existing = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"A\",\"extraData\":\"ENC[xa]\"},"
+                        + "{\"endpoint\":\"B\",\"extraData\":\"ENC[xb]\"}]}");
+        ObjectNode request = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"B\"},{\"endpoint\":\"A\"}]}");
+
+        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+
+        assertEquals("ENC[xb]", merged.get("upstreams").get(0).get("extraData").asText());
+        assertEquals("ENC[xa]", merged.get("upstreams").get(1).get("extraData").asText());
+    }
+
+    @Test
+    void plaintextShapedLikeEnvelopeGetsEncrypted() {
+        Key key = new Key();
+        key.setKey("ENC[not-base64!]");
+        when(encryptionService.encrypt(eq(BUCKET), any(byte[].class), any(byte[].class)))
+                .thenReturn("CIPHER".getBytes(StandardCharsets.UTF_8));
+
+        processor.encryptFields(key, descriptor);
+
+        String expected = "ENC[" + Base64.getEncoder().encodeToString("CIPHER".getBytes(StandardCharsets.UTF_8)) + "]";
+        assertEquals(expected, key.getKey());
+        verify(encryptionService).encrypt(eq(BUCKET), any(byte[].class), any(byte[].class));
+    }
+
+    @Test
+    void tooShortEnvelopeShapedPlaintextGetsEncrypted() {
+        Key key = new Key();
+        // "YQ==" decodes to a single byte, well below the 28-byte AES-GCM minimum.
+        key.setKey("ENC[YQ==]");
+        when(encryptionService.encrypt(eq(BUCKET), any(byte[].class), any(byte[].class)))
+                .thenReturn("CIPHER".getBytes(StandardCharsets.UTF_8));
+
+        processor.encryptFields(key, descriptor);
+
+        String expected = "ENC[" + Base64.getEncoder().encodeToString("CIPHER".getBytes(StandardCharsets.UTF_8)) + "]";
+        assertEquals(expected, key.getKey());
+        verify(encryptionService).encrypt(eq(BUCKET), any(byte[].class), any(byte[].class));
+    }
+
+    @Test
+    void legacyValidEnvelopePassesThroughUnchanged() {
+        Key key = new Key();
+        String envelope = validEnvelope("legacy-ciphertext-bytes");
+        key.setKey(envelope);
+
+        processor.encryptFields(key, descriptor);
+
+        assertEquals(envelope, key.getKey());
+        verify(encryptionService, never()).encrypt(any(), any(), any());
+    }
+
+    @Test
+    void invalidBase64EnvelopeThrowsOnDecrypt() {
+        Key key = new Key();
+        key.setKey("ENC[!!!]");
+
+        assertThrows(SecurityException.class, () -> processor.decryptFields(key, descriptor));
+        verify(encryptionService, never()).decrypt(any(), any(), any());
     }
 }

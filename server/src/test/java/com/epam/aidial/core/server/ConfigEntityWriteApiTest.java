@@ -142,6 +142,28 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testPutEmptyBodyReturns400() {
+        // FINDING #5: an empty request body is rejected before coercion — no silent "{}" upsert.
+        Response put = send(HttpMethod.PUT, "/v1/interceptors/platform/test-interceptor-empty", null,
+                "", "authorization", "admin");
+        verify(put, 400);
+    }
+
+    @Test
+    void testPutEmptyBodyDoesNotOverwrite() {
+        // FINDING #5: a rejected empty-body PUT must leave the existing entity untouched.
+        verify(send(HttpMethod.PUT, "/v1/interceptors/platform/test-interceptor-keep", null,
+                INTERCEPTOR_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.PUT, "/v1/interceptors/platform/test-interceptor-keep", null,
+                "", "authorization", "admin"), 400);
+        Response get = send(HttpMethod.GET, "/v1/interceptors/platform/test-interceptor-keep", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertTrue(get.body().contains("http://localhost:7001/forward"),
+                () -> "Original endpoint must be unchanged: " + get.body());
+    }
+
+    @Test
     void testInterceptorDelete204HappyPath() {
         verify(send(HttpMethod.PUT, "/v1/interceptors/platform/test-interceptor-delete", null,
                 INTERCEPTOR_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
@@ -252,6 +274,38 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
         Response bucket = send(HttpMethod.GET, "/v1/bucket", null, "",
                 "Api-key", "secret-auth-roundtrip");
         verify(bucket, 200);
+    }
+
+    @Test
+    void rotatingKeyViaPutRemovesOldSecretFromAuthStore() {
+        // FINDING #2: rotating a key's secret via PUT must revoke the old auth bearer.
+        String bodyOld = """
+                {
+                  "key": "secret-rotate-old",
+                  "project": "projA",
+                  "roles": ["admin"]
+                }
+                """;
+        String bodyNew = """
+                {
+                  "key": "secret-rotate-new",
+                  "project": "projA",
+                  "roles": ["admin"]
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-rotate", null,
+                bodyOld, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
+                "Api-key", "secret-rotate-old"), 200);
+
+        verify(send(HttpMethod.PUT, "/v1/keys/platform/test-key-rotate", null,
+                bodyNew, "authorization", "admin"), 200);
+
+        // Old secret revoked, new secret authenticates.
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
+                "Api-key", "secret-rotate-old"), 401);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "",
+                "Api-key", "secret-rotate-new"), 200);
     }
 
     @Test

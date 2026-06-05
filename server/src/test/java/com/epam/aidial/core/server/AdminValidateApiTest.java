@@ -297,9 +297,9 @@ public class AdminValidateApiTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     void testV10UnknownKindPerEntityFailed() {
-        // Validate diverges from apply on unknown kinds: apply lets them pass precheck and FAIL
-        // at the apply step, but validate reports FAILED so the CLI's validate-first gate stops
-        // the batch before any apply call.
+        // Validate and apply agree on unknown kinds: both report a per-entity FAILED. With
+        // precheck=false the failure surfaces inside the 200 batch; with precheck=true (default)
+        // it fails precheck and the batch is rejected with 422 (see the parity test below).
         String body = """
                 {
                   "precheck": false,
@@ -312,6 +312,29 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
         assertEquals(1, parsed.get("failed").asInt());
         assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateAndApplyUnknownKindParity() {
+        // Under precheck=true (default) an unknown kind fails precheck on both surfaces: 422 with
+        // the same results[0] status/error.
+        String body = """
+                {
+                  "manifests": [{"kind": "Whatever", "name": "x", "spec": {}}]
+                }
+                """;
+        Response validate = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        Response apply = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(validate, 422);
+        verify(apply, 422);
+        JsonNode validateParsed = ProxyUtil.MAPPER.readTree(validate.body());
+        JsonNode applyParsed = ProxyUtil.MAPPER.readTree(apply.body());
+        assertEquals("FAILED", validateParsed.get("results").get(0).get("status").asText());
+        assertEquals("FAILED", applyParsed.get("results").get(0).get("status").asText());
+        assertEquals(validateParsed.get("results").get(0).get("error").asText(),
+                applyParsed.get("results").get(0).get("error").asText());
+        assertEquals("Unknown kind: Whatever", applyParsed.get("results").get(0).get("error").asText());
     }
 
     @Test

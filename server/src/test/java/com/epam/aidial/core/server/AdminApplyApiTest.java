@@ -83,7 +83,8 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
         JsonNode results = parsed.get("results");
         assertEquals(1, results.size());
-        assertEquals("skipped", results.get(0).get("status").asText());
+        // Mirrors /v1/admin/validate: the offending entry stays FAILED on a precheck rejection.
+        assertEquals("FAILED", results.get(0).get("status").asText());
         verify(send(HttpMethod.GET, "/v1/models/public/apply-precheck-bad", null, "",
                 "authorization", "admin"), 404);
     }
@@ -117,9 +118,20 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         assertEquals(0, parsed.get("applied").asInt());
         JsonNode results = parsed.get("results");
         assertEquals(2, results.size());
+        // Mirrors /v1/admin/validate: the offending entry stays FAILED; valid siblings collapse to
+        // "skipped". Exactly one of each, regardless of dependency-sort order.
+        int failed = 0;
+        int skipped = 0;
         for (JsonNode r : results) {
-            assertEquals("skipped", r.get("status").asText());
+            String status = r.get("status").asText();
+            if ("FAILED".equals(status)) {
+                failed++;
+            } else if ("skipped".equals(status)) {
+                skipped++;
+            }
         }
+        assertEquals(1, failed, () -> "Body: " + response.body());
+        assertEquals(1, skipped, () -> "Body: " + response.body());
         verify(send(HttpMethod.GET, "/v1/interceptors/platform/apply-mixed-int", null, "",
                 "authorization", "admin"), 404);
         verify(send(HttpMethod.GET, "/v1/models/public/apply-mixed-bad", null, "",
@@ -179,20 +191,72 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testApplyUnknownKindPerEntityFailed() {
+    void testApplyUnknownKindPrecheckTrueReturns422() {
+        // precheck defaults to true: an unknown kind fails precheck and the whole batch is
+        // rejected (422) — the valid sibling must NOT be applied.
         String body = """
                 {
                   "manifests": [
-                    {"kind": "Whatever", "name": "x", "spec": {}}
+                    {"kind": "Whatever", "name": "x", "spec": {}},
+                    {
+                      "kind": "Model",
+                      "name": "apply-unknown-sibling",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        // The server dependency-sorts the batch, so locate the unknown-kind result by error rather
+        // than by index. It must be FAILED with the canonical message; the sibling is "skipped".
+        JsonNode unknownResult = null;
+        for (JsonNode r : parsed.get("results")) {
+            if (r.has("error") && r.get("error").asText().startsWith("Unknown kind:")) {
+                unknownResult = r;
+            }
+        }
+        assertNotNull(unknownResult, () -> "Body: " + response.body());
+        assertEquals("FAILED", unknownResult.get("status").asText());
+        assertEquals("Unknown kind: Whatever", unknownResult.get("error").asText());
+        // Nothing applied — the valid sibling must not exist.
+        verify(send(HttpMethod.GET, "/v1/models/public/apply-unknown-sibling", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyUnknownKindPrecheckFalsePerEntityFailed() {
+        // precheck=false: the unknown kind is a per-entity FAILED inside a 200 batch; the valid
+        // sibling is still applied.
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {"kind": "Whatever", "name": "x", "spec": {}},
+                    {
+                      "kind": "Model",
+                      "name": "apply-unknown-pf-sibling",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
+                      }
+                    }
                   ]
                 }
                 """;
         Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
         verify(response, 200);
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals(0, parsed.get("applied").asInt());
+        assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
         assertEquals(1, parsed.get("failed").asInt());
-        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
+        verify(send(HttpMethod.GET, "/v1/models/public/apply-unknown-pf-sibling", null, "",
+                "authorization", "admin"), 200);
     }
 
     @Test
@@ -270,6 +334,42 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                 "authorization", "admin"), 200);
         verify(send(HttpMethod.GET, "/v1/toolsets/public/apply-toolset-1", null, "",
                 "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void batchKeyRotationRemovesOldSecret() {
+        // FINDING #2: applying a key with a changed secret via /v1/admin/apply must revoke the
+        // old auth bearer.
+        String bodyOld = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "apply-rotate-key",
+                      "spec": {"key": "apply-secret-old", "project": "projA", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, bodyOld, "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-secret-old"), 200);
+
+        String bodyNew = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "apply-rotate-key",
+                      "spec": {"key": "apply-secret-new", "project": "projA", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, bodyNew, "authorization", "admin"), 200);
+
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-secret-old"), 401);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-secret-new"), 200);
     }
 
     @Test

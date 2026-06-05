@@ -127,12 +127,9 @@ public class AdminValidateController implements Controller {
         for (AdminApplyController.ManifestEntry entry : entries) {
             String entityId = AdminApplyController.entityId(entry);
             String error = null;
-            // Validate's "would apply succeed" framing differs from apply's precheck framing:
-            // apply lets unknown kinds pass precheck and FAIL at the apply step (so the batch
-            // continues for other entities). For validate, an unknown kind means the manifest is
-            // wrong and the user must fix it before running apply — so report FAILED here, even
-            // though the shared validateOnly says "valid". Bundle is already rejected at the
-            // envelope-parse level (per 4S.0).
+            // Unknown kinds FAIL on both surfaces: validateOnly returns FAILED (apply precheck
+            // rejects the batch with 422), so this explicit branch is redundant but kept as a
+            // defensive guard. Bundle is already rejected at the envelope-parse level (per 4S.0).
             if (!AdminApplyController.KIND_URL_SEGMENT.containsKey(entry.kind())) {
                 error = "Unknown kind: " + entry.kind();
             } else {

@@ -190,7 +190,9 @@ public class AdminApplyController {
                 EntityResult result = validateOnly(entry, scratch, softValidation);
                 if (!"valid".equals(result.status())) {
                     anyFailure = true;
-                    results.add(new EntityResult(result.entityId(), "skipped", result.error()));
+                    // Mirror /v1/admin/validate: the offending entry stays FAILED (carrying its
+                    // error); only the valid siblings collapse to "skipped" below.
+                    results.add(new EntityResult(result.entityId(), "FAILED", result.error()));
                 } else {
                     // Mutate scratch so subsequent precheck entries see prior ones — even though we
                     // aren't writing yet, reference resolution depends on the cumulative scratch.
@@ -264,9 +266,7 @@ public class AdminApplyController {
     static EntityResult validateOnly(ManifestEntry entry, Config scratch, boolean softValidation) {
         String id = entityId(entry);
         if (!KIND_URL_SEGMENT.containsKey(entry.kind())) {
-            // Unknown kinds pass precheck and are recorded as FAILED during the apply phase —
-            // unknown-kind is a structural per-entity failure, not a precheck rejection.
-            return new EntityResult(id, "valid", null);
+            return new EntityResult(id, "FAILED", "Unknown kind: " + entry.kind());
         }
         if (!"Settings".equals(entry.kind())) {
             if (StringUtils.isBlank(entry.name())) {
@@ -424,12 +424,31 @@ public class AdminApplyController {
                 ResourceTypes.PROJECT_KEY, ResourceDescriptor.PLATFORM_BUCKET,
                 ResourceDescriptor.PLATFORM_LOCATION, entry.name());
         String secret = key.getKey();
+        // Recover the prior plaintext secret so a rotation can revoke the old auth bearer
+        // (FINDING #2). Deliberately non-fatal: a corrupt prior blob must NOT abort the rotation —
+        // the new secret is authoritative and any stale entry is cleaned at the next full rebuild.
+        String oldSecret = null;
+        String existingBody = resourceService.getResource(descriptor);
+        if (existingBody != null) {
+            try {
+                Key prior = ConfigResourceController.treeToEntity(
+                        ProxyUtil.BLOB_MAPPER.readTree(existingBody), Key.class);
+                secretFieldProcessor.decryptFields(prior, descriptor);
+                oldSecret = prior.getKey();
+            } catch (Exception e) {
+                log.warn("Could not recover prior key secret for rotation at {}; "
+                        + "proceeding with new secret as authoritative", descriptor.getUrl());
+            }
+        }
         secretFieldProcessor.encryptFields(key, descriptor);
         String blobBody = ConfigResourceController.serializeForBlob(key);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
         ApiKeyData data = new ApiKeyData();
         data.setOriginalKey(key);
         apiKeyStore.addOrUpdateKey(secret, data);
+        if (oldSecret != null && !oldSecret.isBlank() && !oldSecret.equals(secret)) {
+            apiKeyStore.removeKey(oldSecret);
+        }
         // Slice 4S.4: decrypt-in-place after blob put so the partial-update path receives a
         // fully-plaintext Key. decryptValue is idempotent on plaintext fields.
         secretFieldProcessor.decryptFields(key, descriptor);
