@@ -28,7 +28,6 @@ public class RouteCommand {
     static final String TYPE = "routes";
     static final String BUCKET = "platform";
     static final String KIND = "Route";
-    static final String CANONICAL_PREFIX = TYPE + "/" + BUCKET + "/";
 
     @ParentCommand
     DialCli parent;
@@ -179,7 +178,7 @@ public class RouteCommand {
     }
 
     @Command(name = "diff",
-            description = "Structural diff of a single route (with --name) or all routes between two environments.")
+            description = "Structural diff of a single route between two environments.")
     static class Diff implements Callable<Integer> {
 
         @ParentCommand
@@ -190,12 +189,13 @@ public class RouteCommand {
         String sourceEnv;
         @Option(names = "--target", required = true, description = "Target environment.")
         String targetEnv;
-        @Option(names = "--name", description = "Optional canonical id (routes/platform/<name>) for a single-entity diff.")
+        @Option(names = "--name", required = true, description = "Route name or canonical id (routes/<bucket>/<name>).")
         String name;
 
         @Override
         public Integer call() {
-            return EntityDiff.run(cmd.parent, spec, TYPE, BUCKET, CANONICAL_PREFIX, sourceEnv, targetEnv, name);
+            EntityDiff.run(cmd.parent, spec, TYPE, sourceEnv, targetEnv, name);
+            return 0;
         }
     }
 }

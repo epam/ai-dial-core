@@ -94,14 +94,14 @@ class JsonDiffTest {
                 .map(JsonDiff.Change::toString)
                 .collect(Collectors.toList());
 
-        assertEquals(List.of("~ b", "- c", "+ d"), paths);
+        assertEquals(List.of("~ b: 2 → 99", "- c: 3", "+ d: 4"), paths);
     }
 
     @Test
-    void changeToStringPrefixes() {
-        assertEquals("+ x.y", new JsonDiff.Change("x.y", JsonDiff.Op.ADDED).toString());
-        assertEquals("- x.y", new JsonDiff.Change("x.y", JsonDiff.Op.REMOVED).toString());
-        assertEquals("~ x.y", new JsonDiff.Change("x.y", JsonDiff.Op.CHANGED).toString());
+    void changeToStringPrefixes() throws Exception {
+        assertEquals("+ x.y: \"val\"", new JsonDiff.Change("x.y", JsonDiff.Op.ADDED, null, tree("\"val\"")).toString());
+        assertEquals("- x.y: \"val\"", new JsonDiff.Change("x.y", JsonDiff.Op.REMOVED, tree("\"val\""), null).toString());
+        assertEquals("~ x.y: \"old\" → \"new\"", new JsonDiff.Change("x.y", JsonDiff.Op.CHANGED, tree("\"old\""), tree("\"new\"")).toString());
     }
 
     @Test

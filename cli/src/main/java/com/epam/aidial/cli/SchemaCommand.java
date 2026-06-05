@@ -28,7 +28,6 @@ public class SchemaCommand {
     static final String TYPE = "schemas";
     static final String BUCKET = "public";
     static final String KIND = "Schema";
-    static final String CANONICAL_PREFIX = TYPE + "/" + BUCKET + "/";
 
     @ParentCommand
     DialCli parent;
@@ -179,7 +178,7 @@ public class SchemaCommand {
     }
 
     @Command(name = "diff",
-            description = "Structural diff of a single schema (with --name) or all schemas between two environments.")
+            description = "Structural diff of a single schema between two environments.")
     static class Diff implements Callable<Integer> {
 
         @ParentCommand
@@ -190,12 +189,13 @@ public class SchemaCommand {
         String sourceEnv;
         @Option(names = "--target", required = true, description = "Target environment.")
         String targetEnv;
-        @Option(names = "--name", description = "Optional canonical id (schemas/public/<name>) for a single-entity diff.")
+        @Option(names = "--name", required = true, description = "Schema name or canonical id (schemas/<bucket>/<name>).")
         String name;
 
         @Override
         public Integer call() {
-            return EntityDiff.run(cmd.parent, spec, TYPE, BUCKET, CANONICAL_PREFIX, sourceEnv, targetEnv, name);
+            EntityDiff.run(cmd.parent, spec, TYPE, sourceEnv, targetEnv, name);
+            return 0;
         }
     }
 }

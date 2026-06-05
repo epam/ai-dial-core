@@ -28,7 +28,6 @@ public class SettingsCommand {
     static final String NAME = "global";
     static final String KIND = "Settings";
     static final String CANONICAL_ID = TYPE + "/" + BUCKET + "/" + NAME;
-    static final String SINGLETON_PATH = "/v1/" + TYPE + "/" + BUCKET + "/" + NAME;
 
     @ParentCommand
     DialCli parent;
@@ -145,7 +144,8 @@ public class SettingsCommand {
 
         @Override
         public Integer call() {
-            return EntityDiff.runSingleton(cmd.parent, spec, SINGLETON_PATH, sourceEnv, targetEnv);
+            EntityDiff.runSingleton(cmd.parent, spec, TYPE, sourceEnv, targetEnv, NAME);
+            return 0;
         }
     }
 }

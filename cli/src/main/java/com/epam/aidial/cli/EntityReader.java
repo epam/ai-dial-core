@@ -31,6 +31,17 @@ public final class EntityReader {
 
     public static void readEntity(DialCli root, CommandSpec spec, String type, String identifier) {
         EnvResolver.ResolvedEnv env = EnvResolver.resolveEnv(root);
+
+        try {
+            JsonNode response = getEntity(env, type, identifier);
+            EntityRenderer renderer = EntityRenderer.of(OutputFormatResolver.resolve(root));
+            spec.commandLine().getOut().println(renderer.renderSingle(response, type));
+        } catch (JsonProcessingException e) {
+            throw CliException.jsonProcessing("Failed to parse response: " + e.getMessage());
+        }
+    }
+
+    public static JsonNode getEntity(EnvResolver.ResolvedEnv env, String type, String identifier) throws JsonProcessingException {
         String path = identifier.contains("/")
                 ?  identifierToPath(type, identifier)
                 : "/v1/admin/config/file/" + type + "/" + identifier;
@@ -41,13 +52,7 @@ public final class EntityReader {
             throw CliException.httpError(resp.status(), resp.body(), path);
         }
 
-        try {
-            JsonNode response = JSON.readTree(resp.body());
-            EntityRenderer renderer = EntityRenderer.of(OutputFormatResolver.resolve(root));
-            spec.commandLine().getOut().println(renderer.renderSingle(response, type));
-        } catch (JsonProcessingException e) {
-            throw CliException.jsonProcessing("Failed to parse response: " + e.getMessage());
-        }
+        return JSON.readTree(resp.body());
     }
 
     /**
@@ -129,12 +134,9 @@ public final class EntityReader {
     public static void readSingleton(DialCli root, CommandSpec spec, String type, String name) {
         EnvResolver.ResolvedEnv env = EnvResolver.resolveEnv(root);
 
-        CliHttpClient.Response apiResp = getBlobSingletonResponse(env, type, name);
-        CliHttpClient.Response fileResp = getConfigFileSingletonResponse(env, type, name);
-
         try {
-            JsonNode apiNode = JSON.readTree(apiResp.body());
-            JsonNode fileNode = JSON.readTree(fileResp.body());
+            JsonNode apiNode = getBlobSingleton(env, type, name);
+            JsonNode fileNode = getConfigFileSingleton(env, type, name);
 
             ArrayNode entries = JSON.createArrayNode();
 
@@ -155,7 +157,7 @@ public final class EntityReader {
         }
     }
 
-    private static CliHttpClient.Response getBlobSingletonResponse(EnvResolver.ResolvedEnv env, String type, String name) {
+    public static JsonNode getBlobSingleton(EnvResolver.ResolvedEnv env, String type, String name) throws JsonProcessingException {
         String bucket = TYPE_DEFAULT_BUCKET.get(type);
         if (bucket == null) {
             throw CliException.validation("Unsupported entity type: " + type);
@@ -165,29 +167,29 @@ public final class EntityReader {
         CliHttpClient.Response response = doGet(env, path);
 
         if (response.status() == 404) {
-            return new CliHttpClient.Response(404, "", null);
+            return JSON.createObjectNode();
         }
 
         if (response.status() >= 300) {
             throw CliException.httpError(response.status(), response.body(), path);
         }
 
-        return response;
+        return JSON.readTree(response.body());
     }
 
-    private static CliHttpClient.Response getConfigFileSingletonResponse(EnvResolver.ResolvedEnv env, String type, String name) {
+    public static JsonNode getConfigFileSingleton(EnvResolver.ResolvedEnv env, String type, String name) throws JsonProcessingException {
         String path = "/v1/admin/config/file/" + type + "/" + name;
         CliHttpClient.Response response = doGet(env, path);
 
         if (response.status() == 404) {
-            return new CliHttpClient.Response(404, "", null);
+            return JSON.createObjectNode();
         }
 
         if (response.status() >= 300) {
             throw CliException.httpError(response.status(), response.body(), path);
         }
 
-        return response;
+        return JSON.readTree(response.body());
     }
 
     // ---- Internal helpers ----

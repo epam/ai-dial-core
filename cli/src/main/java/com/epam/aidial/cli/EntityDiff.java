@@ -1,11 +1,12 @@
 package com.epam.aidial.cli;
 
-import com.epam.aidial.cli.http.CliHttpClient;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import picocli.CommandLine.Model.CommandSpec;
+
+import java.util.List;
 
 public final class EntityDiff {
 
@@ -14,107 +15,64 @@ public final class EntityDiff {
     private EntityDiff() {
     }
 
-    static int run(DialCli root, CommandSpec spec, String type, String bucket, String canonicalPrefix,
-                   String sourceEnv, String targetEnv, String name) {
+    static void run(DialCli root, CommandSpec spec, String type, String sourceEnv, String targetEnv, String name) {
         EnvResolver.ResolvedEnv source = EnvResolver.resolveEnv(root, sourceEnv);
         EnvResolver.ResolvedEnv target = EnvResolver.resolveEnv(root, targetEnv);
-        String path;
-        String query;
-        boolean isList;
-        if (name == null || name.isBlank()) {
-            path = "/v1/" + type + "/" + bucket + "/";
-            query = "limit=100";
-            isList = true;
-        } else {
-            if (!name.startsWith(canonicalPrefix) || name.length() == canonicalPrefix.length()
-                    || name.indexOf('/', canonicalPrefix.length()) >= 0) {
-                spec.commandLine().getErr().println(
-                        "--name must be a canonical id '" + canonicalPrefix + "<name>'; got '" + name + "'.");
-                return 2;
+
+        JsonNode sourceTree = fetchOrAbsent(source, type, name);
+        JsonNode targetTree = fetchOrAbsent(target, type, name);
+
+        printChanges(spec, sourceTree, targetTree);
+    }
+
+    static void runSingleton(DialCli root, CommandSpec spec, String type, String sourceEnv, String targetEnv, String name) {
+        EnvResolver.ResolvedEnv source = EnvResolver.resolveEnv(root, sourceEnv);
+        EnvResolver.ResolvedEnv target = EnvResolver.resolveEnv(root, targetEnv);
+
+        JsonNode sourceTree = fetchSingletonOrAbsent(source, type, name);
+        JsonNode targetTree = fetchSingletonOrAbsent(target, type, name);
+
+        printChanges(spec, sourceTree, targetTree);
+    }
+
+    private static JsonNode fetchOrAbsent(EnvResolver.ResolvedEnv env, String type, String id) {
+        try {
+            return EntityReader.getEntity(env, type, id);
+        } catch (JsonProcessingException e) {
+            throw CliException.jsonProcessing(env.envName() + ": failed to parse response: " + e.getMessage());
+        } catch (CliException e) {
+            if (e.exitCode() == 4) {
+                return JSON.createObjectNode();
             }
-            path = "/v1/" + name;
-            query = null;
-            isList = false;
+            throw new CliException(env.envName() + ": " + e.getMessage(), e.exitCode());
         }
-        JsonNode sourceTree = fetchOrAbsent(spec, source, path, query, isList);
-        if (sourceTree == null) {
-            return 1;
-        }
-        JsonNode targetTree = fetchOrAbsent(spec, target, path, query, isList);
-        if (targetTree == null) {
-            return 1;
-        }
-        return printChanges(spec, sourceTree, targetTree);
     }
 
-    static int runSingleton(DialCli root, CommandSpec spec, String singletonPath, String sourceEnv, String targetEnv) {
-        EnvResolver.ResolvedEnv source = EnvResolver.resolveEnv(root, sourceEnv);
-        EnvResolver.ResolvedEnv target = EnvResolver.resolveEnv(root, targetEnv);
-        JsonNode sourceTree = fetchOrAbsent(spec, source, singletonPath, null, false);
-        if (sourceTree == null) {
-            return 1;
+    private static JsonNode fetchSingletonOrAbsent(EnvResolver.ResolvedEnv env, String type, String id) {
+        try {
+            JsonNode blobSingleton = EntityReader.getBlobSingleton(env, type, id);
+            JsonNode configFileSingleton = EntityReader.getConfigFileSingleton(env, type, id);
+
+            ObjectNode merged = JSON.createObjectNode();
+            if (!blobSingleton.isEmpty()) {
+                merged.set("api", blobSingleton);
+            }
+            if (!configFileSingleton.isEmpty()) {
+                merged.set("file", configFileSingleton);
+            }
+            return merged;
+        } catch (JsonProcessingException e) {
+            throw CliException.jsonProcessing(env.envName() + ": failed to parse response: " + e.getMessage());
         }
-        JsonNode targetTree = fetchOrAbsent(spec, target, singletonPath, null, false);
-        if (targetTree == null) {
-            return 1;
-        }
-        return printChanges(spec, sourceTree, targetTree);
     }
 
-    private static int printChanges(CommandSpec spec, JsonNode sourceTree, JsonNode targetTree) {
-        java.util.List<JsonDiff.Change> changes = JsonDiff.diff(sourceTree, targetTree);
+    private static void printChanges(CommandSpec spec, JsonNode sourceTree, JsonNode targetTree) {
+        List<JsonDiff.Change> changes = JsonDiff.diff(sourceTree, targetTree);
         if (changes.isEmpty()) {
             spec.commandLine().getOut().println("No differences.");
-            return 0;
         }
         for (JsonDiff.Change c : changes) {
             spec.commandLine().getOut().println(c);
-        }
-        return 0;
-    }
-
-    private static JsonNode fetchOrAbsent(CommandSpec spec, EnvResolver.ResolvedEnv env, String path,
-                                          String query, boolean isList) {
-        CliHttpClient.Response resp;
-        try {
-            resp = new CliHttpClient(env.apiUrl(), env.apiKey()).get(path, query);
-        } catch (CliHttpClient.NetworkException e) {
-            spec.commandLine().getErr().println(env.envName() + ": " + e.getMessage());
-            return null;
-        }
-        if (resp.status() == 404 && !isList) {
-            return JSON.createObjectNode();
-        }
-        if (resp.status() >= 300) {
-            spec.commandLine().getErr().println(env.envName() + ": HTTP " + resp.status() + " " + resp.body());
-            return null;
-        }
-        try {
-            JsonNode body = JSON.readTree(resp.body());
-            if (!isList) {
-                return body;
-            }
-            JsonNode items = body.get("items");
-            if (items == null || !items.isArray()) {
-                spec.commandLine().getErr().println(env.envName() + ": unexpected listing shape (missing 'items').");
-                return null;
-            }
-            JsonNode hasMore = body.get("hasMore");
-            if (hasMore != null && hasMore.asBoolean()) {
-                spec.commandLine().getErr().println("[warn] " + env.envName() + ": result truncated at 100 items.");
-            }
-            ObjectNode keyed = JSON.createObjectNode();
-            for (JsonNode item : items) {
-                JsonNode itemName = item.get("name");
-                if (itemName == null || itemName.isNull()) {
-                    continue;
-                }
-                keyed.set(itemName.asText(), item);
-            }
-            return keyed;
-        } catch (JsonProcessingException e) {
-            spec.commandLine().getErr().println(env.envName() + ": failed to parse response: " + e.getMessage());
-            return null;
         }
     }
 }

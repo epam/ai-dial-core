@@ -485,36 +485,6 @@ class WriteCommandsTest {
     // ───── Group D: platform-bucket diff regression ─────
 
     @Test
-    void interceptorDiffListUsesPlatformBucket(@TempDir Path tmp) throws Exception {
-        HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
-        target.start();
-        try {
-            Path config = writeTwoEnvProfile(tmp, baseUrl,
-                    "http://localhost:" + target.getAddress().getPort());
-            AtomicReference<String> sourcePath = new AtomicReference<>();
-            AtomicReference<String> targetPath = new AtomicReference<>();
-            server.createContext("/v1/interceptors/platform/", exchange -> {
-                sourcePath.set(exchange.getRequestURI().getPath());
-                send(exchange, 200, "{\"items\":[{\"name\":\"g1\"}],\"hasMore\":false}");
-            });
-            target.createContext("/v1/interceptors/platform/", exchange -> {
-                targetPath.set(exchange.getRequestURI().getPath());
-                send(exchange, 200, "{\"items\":[{\"name\":\"g1\"}],\"hasMore\":false}");
-            });
-
-            Files.writeString(tmp.resolve("key.txt"), "test-key");
-            Result r = run(config,
-                    "interceptor", "diff", "--source", "dev", "--target", "uat");
-
-            assertEquals(0, r.exitCode, r.err);
-            assertEquals("/v1/interceptors/platform/", sourcePath.get());
-            assertEquals("/v1/interceptors/platform/", targetPath.get());
-        } finally {
-            target.stop(0);
-        }
-    }
-
-    @Test
     void roleDiffSingleEntityUsesPlatformBucketInPath(@TempDir Path tmp) throws Exception {
         HttpServer target = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
         target.start();

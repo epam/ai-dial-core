@@ -24,11 +24,11 @@ final class JsonDiff {
             return;
         }
         if (src == null || src.isMissingNode()) {
-            changes.add(new Change(path, Op.ADDED));
+            changes.add(new Change(path, Op.ADDED, null, tgt));
             return;
         }
         if (tgt == null || tgt.isMissingNode()) {
-            changes.add(new Change(path, Op.REMOVED));
+            changes.add(new Change(path, Op.REMOVED, src, null));
             return;
         }
         if (src.equals(tgt)) {
@@ -44,12 +44,12 @@ final class JsonDiff {
             }
             return;
         }
-        changes.add(new Change(path, Op.CHANGED));
+        changes.add(new Change(path, Op.CHANGED, src, tgt));
     }
 
     enum Op { ADDED, REMOVED, CHANGED }
 
-    record Change(String path, Op op) {
+    record Change(String path, Op op, JsonNode srcValue, JsonNode tgtValue) {
         @Override
         public String toString() {
             char prefix = switch (op) {
@@ -57,7 +57,16 @@ final class JsonDiff {
                 case REMOVED -> '-';
                 case CHANGED -> '~';
             };
-            return path.isEmpty() ? String.valueOf(prefix) : prefix + " " + path;
+            String label = path.isEmpty() ? String.valueOf(prefix) : prefix + " " + path + ":";
+            return switch (op) {
+                case ADDED   -> label + " " + render(tgtValue);
+                case REMOVED -> label + " " + render(srcValue);
+                case CHANGED -> label + " " + render(srcValue) + " → " + render(tgtValue);
+            };
+        }
+
+        private static String render(JsonNode node) {
+            return (node == null || node.isNull()) ? "null" : node.toString();
         }
     }
 }

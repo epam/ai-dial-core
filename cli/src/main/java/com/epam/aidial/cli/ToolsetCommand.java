@@ -28,7 +28,6 @@ public class ToolsetCommand {
     static final String TYPE = "toolsets";
     static final String BUCKET = "public";
     static final String KIND = "ToolSet";
-    static final String CANONICAL_PREFIX = TYPE + "/" + BUCKET + "/";
 
     @ParentCommand
     DialCli parent;
@@ -179,7 +178,7 @@ public class ToolsetCommand {
     }
 
     @Command(name = "diff",
-            description = "Structural diff of a single toolset (with --name) or all toolsets between two environments.")
+            description = "Structural diff of a single toolset between two environments.")
     static class Diff implements Callable<Integer> {
 
         @ParentCommand
@@ -190,12 +189,13 @@ public class ToolsetCommand {
         String sourceEnv;
         @Option(names = "--target", required = true, description = "Target environment.")
         String targetEnv;
-        @Option(names = "--name", description = "Optional canonical id (toolsets/public/<name>) for a single-entity diff.")
+        @Option(names = "--name", required = true, description = "Toolset name or canonical id (toolsets/<bucket>/<name>).")
         String name;
 
         @Override
         public Integer call() {
-            return EntityDiff.run(cmd.parent, spec, TYPE, BUCKET, CANONICAL_PREFIX, sourceEnv, targetEnv, name);
+            EntityDiff.run(cmd.parent, spec, TYPE, sourceEnv, targetEnv, name);
+            return 0;
         }
     }
 }

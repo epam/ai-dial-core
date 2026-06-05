@@ -28,7 +28,6 @@ public class RoleCommand {
     static final String TYPE = "roles";
     static final String BUCKET = "platform";
     static final String KIND = "Role";
-    static final String CANONICAL_PREFIX = TYPE + "/" + BUCKET + "/";
 
     @ParentCommand
     DialCli parent;
@@ -179,7 +178,7 @@ public class RoleCommand {
     }
 
     @Command(name = "diff",
-            description = "Structural diff of a single role (with --name) or all roles between two environments.")
+            description = "Structural diff of a single role between two environments.")
     static class Diff implements Callable<Integer> {
 
         @ParentCommand
@@ -190,12 +189,13 @@ public class RoleCommand {
         String sourceEnv;
         @Option(names = "--target", required = true, description = "Target environment.")
         String targetEnv;
-        @Option(names = "--name", description = "Optional canonical id (roles/platform/<name>) for a single-entity diff.")
+        @Option(names = "--name", required = true, description = "Role name or canonical id (roles/<bucket>/<name>).")
         String name;
 
         @Override
         public Integer call() {
-            return EntityDiff.run(cmd.parent, spec, TYPE, BUCKET, CANONICAL_PREFIX, sourceEnv, targetEnv, name);
+            EntityDiff.run(cmd.parent, spec, TYPE, sourceEnv, targetEnv, name);
+            return 0;
         }
     }
 }

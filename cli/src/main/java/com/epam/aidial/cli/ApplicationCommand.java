@@ -28,7 +28,6 @@ public class ApplicationCommand {
     static final String TYPE = "applications";
     static final String BUCKET = "public";
     static final String KIND = "Application";
-    static final String CANONICAL_PREFIX = TYPE + "/" + BUCKET + "/";
 
     @ParentCommand
     DialCli parent;
@@ -179,7 +178,7 @@ public class ApplicationCommand {
     }
 
     @Command(name = "diff",
-            description = "Structural diff of a single application (with --name) or all applications between two environments.")
+            description = "Structural diff of a single application between two environments.")
     static class Diff implements Callable<Integer> {
 
         @ParentCommand
@@ -190,12 +189,13 @@ public class ApplicationCommand {
         String sourceEnv;
         @Option(names = "--target", required = true, description = "Target environment.")
         String targetEnv;
-        @Option(names = "--name", description = "Optional canonical id (applications/public/<name>) for a single-entity diff.")
+        @Option(names = "--name", required = true, description = "Application name or canonical id (applications/<bucket>/<name>).")
         String name;
 
         @Override
         public Integer call() {
-            return EntityDiff.run(cmd.parent, spec, TYPE, BUCKET, CANONICAL_PREFIX, sourceEnv, targetEnv, name);
+            EntityDiff.run(cmd.parent, spec, TYPE, sourceEnv, targetEnv, name);
+            return 0;
         }
     }
 }

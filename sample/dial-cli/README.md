@@ -416,7 +416,6 @@ dial-cli settings delete                                    # release API contro
 ### Promote / diff between environments
 
 ```shell
-dial-cli model diff --source local --target staging
 dial-cli model diff --source local --target staging \
   --name models/public/example-chat-model
 
