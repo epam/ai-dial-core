@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -75,6 +76,8 @@ public class MergedConfigStoreReplicaUpdateTest {
     public void setUpLockService() {
         lenient().when(lockService.underBucketLocks(any(), any()))
                 .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
+        // MergedConfigStore adopts ApiKeyStore's mutation lock; mock must supply a real one.
+        lenient().when(apiKeyStore.getMutationLock()).thenReturn(new ReentrantLock());
     }
 
     @Test

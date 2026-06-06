@@ -26,9 +26,14 @@ import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -249,6 +255,84 @@ public class ApiKeyStoreTest {
         store.removeKey("removable");
 
         assertTrue(store.getApiKeyData("removable", null).failed());
+    }
+
+    @Test
+    public void testPointWriteSurvivesConcurrentRebuildSwap() throws Exception {
+        // A redis miss must resolve to a failed future (not NPE), so an in-memory map miss caused by
+        // a lost-update is observable below. None of the fast-secret-N keys are written to redis.
+        lenient().when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        int writes = 2000;
+        // Models the blob store the writer pod persists to. The production ordering is: put the blob,
+        // THEN do the locked point-write. The rebuild scans this same store while holding the lock, so
+        // any committed point-write is either already in the scan input or applied after the swap.
+        Map<String, Key> blobStore = new ConcurrentHashMap<>();
+        CyclicBarrier start = new CyclicBarrier(2);
+        CountDownLatch writerDone = new CountDownLatch(1);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+
+        // Rebuild-style thread: rebuilds the key map from the (live) blob store and atomically swaps
+        // the reference, exactly as a full merged-config rebuild does via addProjectKeys. Production's
+        // rebuild() holds the SAME lock (rebuildLock == mutationLock) across the whole scan→build→swap:
+        // it scans blobs BEFORE re-entering addProjectKeys, all while already holding the lock. This test
+        // approximates that single critical section by scanning the live ConcurrentHashMap INSIDE the
+        // locked addProjectKeys call — so a point-write that committed its blob before acquiring the lock
+        // is visible to the scan, and one that blocks on the lock applies to the post-swap map. Passing
+        // the live map (not a pre-call snapshot) is what keeps the scan inside the lock.
+        Thread rebuilder = new Thread(() -> {
+            try {
+                start.await();
+                while (writerDone.getCount() > 0) {
+                    store.addProjectKeys(blobStore, Map.of());
+                }
+            } catch (Throwable t) {
+                failure.set(t);
+            }
+        });
+
+        // Point-write thread: persists the blob, then adds the key via the fast-path mutator while the
+        // swap races. With the lost-update bug the put can land in a map the rebuilder is about to
+        // orphan, even though the blob was written before the swap snapshot.
+        Thread writer = new Thread(() -> {
+            try {
+                start.await();
+                for (int i = 0; i < writes; i++) {
+                    String secret = "fast-secret-" + i;
+                    Key key = new Key();
+                    key.setProject("prj");
+                    key.setRole("role");
+                    key.setKey(secret);
+                    blobStore.put(secret, key);
+                    ApiKeyData data = new ApiKeyData();
+                    data.setOriginalKey(key);
+                    store.addOrUpdateKey(secret, data);
+                }
+            } catch (Throwable t) {
+                failure.set(t);
+            } finally {
+                writerDone.countDown();
+            }
+        });
+
+        rebuilder.start();
+        writer.start();
+        writer.join(5000);
+        writerDone.countDown();
+        rebuilder.join(5000);
+
+        assertNull(failure.get());
+
+        List<Integer> lost = new ArrayList<>();
+        for (int i = 0; i < writes; i++) {
+            if (store.getApiKeyData("fast-secret-" + i, null).failed()) {
+                lost.add(i);
+            }
+        }
+        assertTrue(lost.isEmpty(), "Lost point-written keys after concurrent rebuild swap: " + lost);
     }
 
     @Test

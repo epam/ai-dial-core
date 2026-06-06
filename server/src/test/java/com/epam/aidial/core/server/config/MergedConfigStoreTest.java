@@ -15,6 +15,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -51,6 +52,8 @@ public class MergedConfigStoreTest {
         // serialization is covered by AdminReadSerializationTest; these unit tests assert orthogonal logic.
         lenient().when(lockService.underBucketLocks(any(), any()))
                 .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
+        // MergedConfigStore adopts ApiKeyStore's mutation lock; mock must supply a real one.
+        lenient().when(apiKeyStore.getMutationLock()).thenReturn(new ReentrantLock());
     }
 
     @Test
