@@ -36,6 +36,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
@@ -128,8 +129,11 @@ public final class MergedConfigStore implements ConfigStore {
     private final Map<ResourceTypes, Map<String, Counter>> skipCounters = new EnumMap<>(ResourceTypes.class);
     // Serializes rebuild() across init/reload/rebuildNow/timer-fire callsites. ReentrantLock
     // (vs. synchronized) lets virtual threads park instead of pin their carrier while waiting —
-    // rebuild() does blob-storage IO that can take tens to hundreds of ms.
-    private final ReentrantLock rebuildLock = new ReentrantLock();
+    // rebuild() does blob-storage IO that can take tens to hundreds of ms. Shared with
+    // ApiKeyStore (its mutation lock) so per-entry key point-writes serialize against the entire
+    // rebuild (scan → addProjectKeys → swap), closing the lost-update window where a point-write
+    // would land in the orphaned pre-swap map (FINDING #1).
+    private final ReentrantLock rebuildLock;
 
     public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
@@ -160,7 +164,10 @@ public final class MergedConfigStore implements ConfigStore {
         this.vertx = vertx;
         this.taskExecutor = taskExecutor;
         this.resourceService = resourceService;
-        this.apiKeyStore = apiKeyStore;
+        this.apiKeyStore = Objects.requireNonNull(apiKeyStore, "apiKeyStore must not be null");
+        // Adopt ApiKeyStore's mutation lock so rebuild and key point-writes serialize on the same monitor.
+        this.rebuildLock = Objects.requireNonNull(apiKeyStore.getMutationLock(),
+                "apiKeyStore.getMutationLock() must not be null (mock fixtures must stub it with a real ReentrantLock)");
         this.locationStrategy = locationStrategy;
         this.secretFieldProcessor = secretFieldProcessor;
         this.lockService = lockService;
