@@ -330,6 +330,72 @@ class SecretFieldProcessorTest {
     }
 
     @Test
+    void mixedKeyedUnkeyedLosesSecretOnConsumedIndexSlot() throws Exception {
+        // Contract pin (not a fix): an endpoint-keyed element and an endpoint-less element in the
+        // same request array can silently lose a stored secret. element0 endpoint-matches B (consumes
+        // slot 1); element1 has no endpoint so it strict-index-pairs with slot 1, finds it consumed,
+        // and preserves nothing. Deterministic by structure — clients must not mix the two forms.
+        ObjectNode existing = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"},{\"endpoint\":\"B\",\"key\":\"ENC[b]\"}]}");
+        ObjectNode request = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"B\"},{}]}");
+
+        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+
+        assertEquals("ENC[b]", merged.get("upstreams").get(0).get("key").asText());
+        ObjectNode element1 = (ObjectNode) merged.get("upstreams").get(1);
+        assertFalse(element1.has("key"),
+                () -> "element1 must get no preserved secret (slot 1 consumed by endpoint match): " + element1);
+    }
+
+    @Test
+    void allUnkeyedElementsPairByIndex() throws Exception {
+        ObjectNode existing = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"},"
+                        + "{\"endpoint\":\"B\",\"key\":\"ENC[b]\"},{\"endpoint\":\"C\",\"key\":\"ENC[c]\"}]}");
+        ObjectNode request = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{},{},{}]}");
+
+        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+
+        assertEquals("ENC[a]", merged.get("upstreams").get(0).get("key").asText());
+        assertEquals("ENC[b]", merged.get("upstreams").get(1).get("key").asText());
+        assertEquals("ENC[c]", merged.get("upstreams").get(2).get("key").asText());
+    }
+
+    @Test
+    void unkeyedElementBeyondSourceBoundsGetsNothing() throws Exception {
+        ObjectNode existing = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"}]}");
+        ObjectNode request = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{},{\"key\":\"new-plain\"}]}");
+
+        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+
+        // element0 index-pairs with slot 0; element1 index 1 is out of source bounds (size 1) → no
+        // preservation, its explicit value survives (re-encrypted on write).
+        assertEquals("ENC[a]", merged.get("upstreams").get(0).get("key").asText());
+        assertEquals("new-plain", merged.get("upstreams").get(1).get("key").asText());
+    }
+
+    @Test
+    void unkeyedFirstThenEndpointMatchOnSameSlot() throws Exception {
+        ObjectNode existing = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{\"endpoint\":\"A\",\"key\":\"ENC[a]\"},{\"endpoint\":\"B\",\"key\":\"ENC[b]\"}]}");
+        ObjectNode request = (ObjectNode) M.readTree(
+                "{\"upstreams\":[{},{\"endpoint\":\"A\"}]}");
+
+        ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
+
+        // element0 (no endpoint) strict-index-pairs slot 0 → preserves ENC[a], consumes slot 0.
+        // element1 endpoint=A then finds slot 0 consumed and no other A source → preserves nothing.
+        assertEquals("ENC[a]", merged.get("upstreams").get(0).get("key").asText());
+        ObjectNode element1 = (ObjectNode) merged.get("upstreams").get(1);
+        assertFalse(element1.has("key"),
+                () -> "element1 endpoint=A must get nothing (slot 0 already consumed): " + element1);
+    }
+
+    @Test
     void plaintextShapedLikeEnvelopeGetsEncrypted() {
         Key key = new Key();
         key.setKey("ENC[not-base64!]");

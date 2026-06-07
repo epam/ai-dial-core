@@ -143,6 +143,11 @@ public class SecretFieldProcessor {
     // the field is present under that name) and falls back to index pairing when "endpoint" is
     // absent — preserving prior behavior for non-keyed arrays. Iteration follows the request, so the
     // desired set/order wins; duplicate endpoints match in relative order (stable two-pointer).
+    // Contract: endpoint-less elements use strict same-index pairing only. A consumed or
+    // out-of-bounds index slot yields no preservation (request value, possibly null, wins) — this is
+    // deterministic and never throws. Because an endpoint match can consume the slot an endpoint-less
+    // element would otherwise take, clients mixing endpoint-keyed and endpoint-less elements in one
+    // array must supply secrets explicitly for the unkeyed elements (or avoid the mix).
     private void mergeArray(ArrayNode targets, ArrayNode sources, Class<?> nestedType) {
         boolean[] consumed = new boolean[sources.size()];
         for (int i = 0; i < targets.size(); i++) {
