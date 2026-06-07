@@ -101,9 +101,11 @@ public final class MergedConfigStore implements ConfigStore {
      *
      * <p>The constant is shared so reader and writer lock-key sets stay byte-identical — divergent
      * sets would silently fail to serialize across the boundary. {@link #init} (startup) and the
-     * replica fast path ({@link #applyReplicaEvent}) deliberately do NOT take these locks; the
-     * {@code apply*} methods take only the inner {@link #rebuildLock} because their controller
-     * callers already hold the outer locks.
+     * replica fast path ({@link #applyReplicaEvent}) deliberately do NOT take these outer bucket
+     * locks. The replica path instead holds the inner {@link #rebuildLock} across its whole
+     * snapshot-plus-mutation sequence (one atomic critical section per replica event), so a
+     * concurrent rebuild cannot interleave between the prior-secret snapshot and the
+     * {@link ApiKeyStore} mutations; the {@code apply*} methods re-enter that same reentrant lock.
      */
     public static final List<String> ADMIN_BUCKET_LOCATIONS = List.of(
             ResourceDescriptor.PUBLIC_LOCATION,
@@ -313,34 +315,45 @@ public final class MergedConfigStore implements ConfigStore {
                 return;
             }
             JsonNode node = ProxyUtil.BLOB_MAPPER.readTree(body);
-            if (type == ResourceTypes.GLOBAL_SETTINGS) {
-                GlobalSettings settings = ProxyUtil.BLOB_MAPPER.treeToValue(node, GlobalSettings.class);
-                applySettingsWrite(settings);
-                return;
-            }
-            Object entity = deserializeReplicaEntity(type, node);
-            if (!(entity instanceof String)) {
-                secretFieldProcessor.decryptFields(entity, descriptor);
-            }
-            if (type == ResourceTypes.PROJECT_KEY) {
-                Key key = (Key) entity;
-                String secret = key.getKey();
-                // Snapshot the prior secret BEFORE applyEntityWrite swaps the config (mirrors
-                // applyReplicaDelete). On rotation (secret changed) the old auth bearer must be
-                // revoked so the previous secret no longer authenticates (FINDING #2).
-                Config snapshot = this.config;
-                Key prior = snapshot == null ? null : snapshot.getKeys().get(canonicalId);
-                String oldSecret = prior == null ? null : prior.getKey();
-                if (secret != null && !secret.isBlank()) {
-                    ApiKeyData data = new ApiKeyData();
-                    data.setOriginalKey(key);
-                    apiKeyStore.addOrUpdateKey(secret, data);
+            // Blob fetch + readTree above stay OUTSIDE the lock (IO). Everything that reads or
+            // mutates shared in-memory state — the GLOBAL_SETTINGS dispatch, entity deserialization,
+            // the prior-secret snapshot, and the ApiKeyStore/Config mutations — runs under a single
+            // rebuildLock critical section so a concurrent rebuild cannot interleave between the
+            // snapshot and the mutations (FINDING #2). The apply*/addOrUpdateKey/removeKey calls
+            // re-enter the same reentrant lock.
+            rebuildLock.lock();
+            try {
+                if (type == ResourceTypes.GLOBAL_SETTINGS) {
+                    GlobalSettings settings = ProxyUtil.BLOB_MAPPER.treeToValue(node, GlobalSettings.class);
+                    applySettingsWrite(settings);
+                    return;
                 }
-                if (oldSecret != null && !oldSecret.isBlank() && !oldSecret.equals(secret)) {
-                    apiKeyStore.removeKey(oldSecret);
+                Object entity = deserializeReplicaEntity(type, node);
+                if (!(entity instanceof String)) {
+                    secretFieldProcessor.decryptFields(entity, descriptor);
                 }
+                if (type == ResourceTypes.PROJECT_KEY) {
+                    Key key = (Key) entity;
+                    String secret = key.getKey();
+                    // Snapshot the prior secret BEFORE applyEntityWrite swaps the config (mirrors
+                    // applyReplicaDelete). On rotation (secret changed) the old auth bearer must be
+                    // revoked so the previous secret no longer authenticates (FINDING #2).
+                    Config snapshot = this.config;
+                    Key prior = snapshot == null ? null : snapshot.getKeys().get(canonicalId);
+                    String oldSecret = prior == null ? null : prior.getKey();
+                    if (secret != null && !secret.isBlank()) {
+                        ApiKeyData data = new ApiKeyData();
+                        data.setOriginalKey(key);
+                        apiKeyStore.addOrUpdateKey(secret, data);
+                    }
+                    if (oldSecret != null && !oldSecret.isBlank() && !oldSecret.equals(secret)) {
+                        apiKeyStore.removeKey(oldSecret);
+                    }
+                }
+                applyEntityWrite(type, canonicalId, entity);
+            } finally {
+                rebuildLock.unlock();
             }
-            applyEntityWrite(type, canonicalId, entity);
         } catch (Exception error) {
             log.warn("Failed to apply replica event for {}; falling back to full rebuild",
                     descriptor.getUrl(), error);
@@ -353,15 +366,24 @@ public final class MergedConfigStore implements ConfigStore {
             applySettingsDelete();
             return;
         }
-        if (type == ResourceTypes.PROJECT_KEY) {
-            Config snapshot = this.config;
-            Key existing = snapshot == null ? null : snapshot.getKeys().get(canonicalId);
-            String secret = existing == null ? null : existing.getKey();
-            if (secret != null && !secret.isBlank()) {
-                apiKeyStore.removeKey(secret);
+        // Hold rebuildLock across snapshot → removeKey → applyEntityDelete so a concurrent rebuild
+        // cannot interleave between the plaintext-secret snapshot and the mutations and resurrect
+        // the deleted key into the ApiKeyStore (FINDING #2). removeKey/applyEntityDelete re-enter
+        // the same reentrant lock.
+        rebuildLock.lock();
+        try {
+            if (type == ResourceTypes.PROJECT_KEY) {
+                Config snapshot = this.config;
+                Key existing = snapshot == null ? null : snapshot.getKeys().get(canonicalId);
+                String secret = existing == null ? null : existing.getKey();
+                if (secret != null && !secret.isBlank()) {
+                    apiKeyStore.removeKey(secret);
+                }
             }
+            applyEntityDelete(type, canonicalId);
+        } finally {
+            rebuildLock.unlock();
         }
-        applyEntityDelete(type, canonicalId);
     }
 
     private static Object deserializeReplicaEntity(ResourceTypes type, JsonNode node)
