@@ -92,6 +92,37 @@ public class MergedConfigStorePartialUpdateTest {
     }
 
     @Test
+    public void cascadeClassifiesSourceByMapKeyShape() {
+        // Two models reference the same interceptor: one file-defined (bare simple-name key) and one
+        // API-defined (canonical-id key). Deleting the interceptor cross-ref-invalidates both; the
+        // recorded source must follow the key shape, mirroring the full rebuild() onSkip classifier.
+        Model fileModel = new Model();
+        fileModel.setInterceptors(List.of(INTERCEPTOR_ID));
+        Model apiModel = new Model();
+        apiModel.setInterceptors(List.of(INTERCEPTOR_ID));
+        Config seeded = newConfig();
+        Map<String, Model> models = new LinkedHashMap<>();
+        models.put("gpt-4-file", fileModel);       // bare simple name → file-sourced
+        models.put(MODEL_ID, apiModel);            // contains '/' → api-sourced
+        seeded.setModels(models);
+        seeded.setInterceptors(mutable(INTERCEPTOR_ID, new Interceptor()));
+        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_SKIP);
+
+        store.applyEntityDelete(ResourceTypes.INTERCEPTOR, INTERCEPTOR_ID);
+
+        Map<String, InvalidEntityRecord> invalidModels = store.getInvalidEntities().get(ResourceTypes.MODEL);
+        assertEquals(2, invalidModels.size(), "both cross-ref-invalidated models recorded");
+
+        InvalidEntityRecord fileRecord = invalidModels.get("models/public/gpt-4-file");
+        assertEquals("file", fileRecord.getSource(), "bare-key model attributed to file source");
+        assertEquals("gpt-4-file", fileRecord.getSimpleName());
+
+        InvalidEntityRecord apiRecord = invalidModels.get(MODEL_ID);
+        assertEquals("api", apiRecord.getSource(), "canonical-id-key model attributed to api source");
+        assertEquals("gpt-4", apiRecord.getSimpleName());
+    }
+
+    @Test
     public void interceptorWriteResurrectsPreviouslySkippedModel() {
         // Seed: a model that references a missing interceptor sits in invalidEntities (validation skipped).
         JsonNode modelPayload = JsonNodeFactory.instance.objectNode()
