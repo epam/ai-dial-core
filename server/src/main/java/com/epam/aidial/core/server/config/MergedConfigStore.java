@@ -41,6 +41,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 
 /**
  * {@link ConfigStore} implementation that builds the runtime {@link Config} as the
@@ -763,11 +764,26 @@ public final class MergedConfigStore implements ConfigStore {
         if (!MODE_SKIP.equals(onInvalidEntity)) {
             return null;
         }
-        return (skippedType, error) -> {
-            String mapKey = error.getMapKey();
-            recordInvalid(nextInvalid, skippedType, mapKey, lastSegment(mapKey),
-                    error.getMessage(), error.getWarnings(), null, REASON_VALIDATION, "api");
-        };
+        return (skippedType, error) -> recordSkippedByMapKey(nextInvalid, skippedType, error, id -> null);
+    }
+
+    /**
+     * Records a {@link InvalidEntityException} routed via {@code onSkip}, classifying the source the
+     * same way the full {@code rebuild()} path does: a map key carrying a {@code '/'} is an API-sourced
+     * canonical id, while a bare key is a file-defined simple name that we expand to its canonical id.
+     * {@code payloadByCanonicalId} supplies the parsed blob body (rebuild) or {@code null} (partial update).
+     */
+    private void recordSkippedByMapKey(Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid,
+                                       ResourceTypes type, InvalidEntityException error,
+                                       Function<String, JsonNode> payloadByCanonicalId) {
+        String mapKey = error.getMapKey();
+        boolean fromApi = mapKey.contains("/");
+        String canonicalId = fromApi
+                ? mapKey
+                : canonicalId(type, locationStrategy.resolveBucket(type, EntityLocationStrategy.PLATFORM_SCOPE), mapKey);
+        String simpleName = fromApi ? lastSegment(mapKey) : mapKey;
+        recordInvalid(nextInvalid, type, canonicalId, simpleName, error.getMessage(), error.getWarnings(),
+                payloadByCanonicalId.apply(canonicalId), REASON_VALIDATION, fromApi ? "api" : "file");
     }
 
     private void resurrectInvalidModels(Config next, Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid) {
@@ -1033,15 +1049,7 @@ public final class MergedConfigStore implements ConfigStore {
                                 error.getMapKey(), error.getMessage());
                         return;
                     }
-                    String mapKey = error.getMapKey();
-                    boolean fromApi = mapKey.contains("/");
-                    String canonicalId = fromApi
-                            ? mapKey
-                            : canonicalId(type, locationStrategy.resolveBucket(type, EntityLocationStrategy.PLATFORM_SCOPE), mapKey);
-                    String simpleName = fromApi ? lastSegment(mapKey) : mapKey;
-                    recordInvalid(pendingInvalid, type, canonicalId, simpleName,
-                            error.getMessage(), error.getWarnings(), blobBodies.get(canonicalId),
-                            REASON_VALIDATION, fromApi ? "api" : "file");
+                    recordSkippedByMapKey(pendingInvalid, type, error, blobBodies::get);
                 }
                 : null;
         // File partition = base file keys (keyed by secret); API partition = PROJECT_KEY blob entries
