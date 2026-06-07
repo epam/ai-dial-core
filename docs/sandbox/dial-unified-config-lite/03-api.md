@@ -82,9 +82,11 @@ CI pipelines and concurrency-sensitive callers should always pass `If-Match`; ad
 
 ### Secret fields on `PUT` — preserve-on-omit
 
-`PUT` is full-replace by default — absent fields revert to defaults. **Secret fields are the explicit exception**: an absent / `null` / `"***"` secret on `PUT` preserves the value already stored. This applies to `Key.key`, `Upstream.key`, `Upstream.extraData`, plus toolset OAuth credentials (`ResourceAuthSettings.clientSecret` and `codeVerifier`) — those use the existing toolset-encryption path but follow the same preserve-on-omit semantics. All other fields follow standard full-replace; clients that want to keep a non-secret value must include it in the body.
+`PUT` is full-replace by default — absent fields revert to defaults. **Secret fields are the explicit exception**: an absent or `null` secret on `PUT` preserves the value already stored. (Slice U.4 retired the `"***"` mask sentinel — a literal `"***"` in the request body is now treated as a real string value, not a preserve signal, and is re-encrypted on write.) This applies to `Key.key`, `Upstream.key`, `Upstream.extraData`, plus toolset OAuth credentials (`ResourceAuthSettings.clientSecret` and `codeVerifier`) — those use the existing toolset-encryption path but follow the same preserve-on-omit semantics. All other fields follow standard full-replace; clients that want to keep a non-secret value must include it in the body.
 
-On a create (`PUT … If-None-Match: *` against a non-existent URL) there is no prior value to preserve — a `"***"` sentinel at create time is rejected as `400 Bad Request`.
+On a create (`PUT … If-None-Match: *` against a non-existent URL) there is no prior value to preserve — a body that contains a literal `"***"` in a secret field stores that string as the secret value (U.4 retired the sentinel rejection).
+
+For secret-bearing arrays (`Model.upstreams`), preserve-on-omit pairs request elements to stored ones by `endpoint` (else strict same-index) before carrying ciphertext forward; no pair → no preservation, and mixing endpoint-keyed with endpoint-less elements can silently drop a stored secret — supply secrets explicitly for unkeyed elements.
 
 ## Authorization model
 
