@@ -9,7 +9,11 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.openapi.ApiOperation;
-import com.epam.aidial.core.server.openapi.ApiOperations;
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
+import com.epam.aidial.core.server.openapi.ParameterIn;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -51,9 +55,37 @@ public class DeploymentFeatureController {
         this.context = context;
     }
 
-    @ApiOperation(method = "GET", path = "/v1/deployments/{deployment_name}/configuration", operationId = "configurationDeployment")
-    @ApiOperation(method = "POST", path = "/v1/deployments/{deployment_name}/tokenize", operationId = "tokenize")
-    @ApiOperation(method = "POST", path = "/v1/deployments/{deployment_name}/truncate_prompt", operationId = "truncatePrompt")
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/deployments/{deployment_name}/configuration",
+            operationId = "configurationDeployment",
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.AUTHENTICATED_READ
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/deployments/{deployment_name}/tokenize",
+            operationId = "tokenize",
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.AUTHENTICATED_READ
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/deployments/{deployment_name}/truncate_prompt",
+            operationId = "truncatePrompt",
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.AUTHENTICATED_READ
+    )
     public Future<?> handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
         // make sure request.body() called before request.resume()
         return proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId)).map(dep -> {

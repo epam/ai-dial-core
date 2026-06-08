@@ -32,9 +32,10 @@ import com.epam.aidial.core.server.controller.UploadFileController;
 import com.epam.aidial.core.server.controller.UserInfoController;
 import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.openapi.ApiOperations;
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
 
 import java.lang.reflect.Method;
-import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -91,11 +92,17 @@ public final class AnnotationEndpointCollector {
     }
 
     private static void collectFromMethod(Method method, List<EndpointMetadata.Endpoint> endpoints) {
+        ApiParameter[] methodParameters = method.getAnnotationsByType(ApiParameter.class);
+        ApiResponse[] methodResponses = method.getAnnotationsByType(ApiResponse.class);
+
         // Check for @ApiOperations container first
         ApiOperations container = method.getAnnotation(ApiOperations.class);
         if (container != null) {
             for (ApiOperation op : container.value()) {
-                endpoints.add(toEndpoint(op));
+                endpoints.add(toEndpoint(
+                        op,
+                        mergeParameters(methodParameters, op.parameters()),
+                        mergeResponses(methodResponses, op.responses())));
             }
         }
 
@@ -103,37 +110,50 @@ public final class AnnotationEndpointCollector {
         ApiOperation[] operations = method.getAnnotationsByType(ApiOperation.class);
         if (container == null && operations.length > 0) {
             for (ApiOperation op : operations) {
-                endpoints.add(toEndpoint(op));
+                endpoints.add(toEndpoint(
+                        op,
+                        mergeParameters(methodParameters, op.parameters()),
+                        mergeResponses(methodResponses, op.responses())));
             }
         }
     }
 
-    private static EndpointMetadata.Endpoint toEndpoint(ApiOperation op) {
+    private static ApiParameter[] mergeParameters(ApiParameter[] methodParameters, ApiParameter[] operationParameters) {
+        if (methodParameters.length == 0) {
+            return operationParameters;
+        }
+        if (operationParameters.length == 0) {
+            return methodParameters;
+        }
+        ApiParameter[] merged = new ApiParameter[methodParameters.length + operationParameters.length];
+        System.arraycopy(methodParameters, 0, merged, 0, methodParameters.length);
+        System.arraycopy(operationParameters, 0, merged, methodParameters.length, operationParameters.length);
+        return merged;
+    }
+
+    private static ApiResponse[] mergeResponses(ApiResponse[] methodResponses, ApiResponse[] operationResponses) {
+        if (operationResponses.length > 0) {
+            return operationResponses;
+        }
+        return methodResponses;
+    }
+
+    private static EndpointMetadata.Endpoint toEndpoint(
+            ApiOperation op,
+            ApiParameter[] parameters,
+            ApiResponse[] responses
+    ) {
         Type requestBody = op.requestBody() == Void.class ? null : op.requestBody();
-        Type responseBody = resolveResponseType(op);
         return new EndpointMetadata.Endpoint(
                 op.method(),
                 op.path(),
                 op.operationId(),
                 requestBody,
-                responseBody,
                 op.tags(),
-                op.contentType()
+                op.contentType(),
+                parameters,
+                responses,
+                op.responseProfile()
         );
-    }
-
-    private static Type resolveResponseType(ApiOperation op) {
-        Class<?> responseBody = op.responseBody();
-        Class<?> responseWrapper = op.responseWrapper();
-
-        if (responseBody == Void.class) {
-            return null;
-        }
-
-        if (responseWrapper != Void.class) {
-            return EndpointMetadata.paramType(responseWrapper, responseBody);
-        }
-
-        return responseBody;
     }
 }

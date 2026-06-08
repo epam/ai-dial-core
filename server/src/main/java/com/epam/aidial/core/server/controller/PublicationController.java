@@ -9,6 +9,8 @@ import com.epam.aidial.core.server.data.RejectPublicationRequest;
 import com.epam.aidial.core.server.data.ResourceLink;
 import com.epam.aidial.core.server.data.Rules;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
@@ -30,6 +32,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collection;
+import java.util.List;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -57,8 +60,12 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/list",
             operationId = "getPublications",
-            requestBody = com.epam.aidial.core.server.data.ResourceLink.class,
-            tags = {"Publications"}
+            tags = {"Publications"},
+            requestBody = ResourceLink.class,
+            responses = {
+                @ApiResponse(code = 200, description = "Success", body = Publication.class, wrapper = List.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> listPublications() {
         context.getRequest()
@@ -79,9 +86,12 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/get",
             operationId = "getPublication",
-            requestBody = com.epam.aidial.core.server.data.ResourceLink.class,
-            responseBody = com.epam.aidial.core.server.data.Publication.class,
-            tags = {"Publications"}
+            requestBody = ResourceLink.class,
+            tags = {"Publications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = Publication.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> getPublication() {
         context.getRequest()
@@ -102,9 +112,12 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/create",
             operationId = "createPublication",
-            requestBody = com.epam.aidial.core.server.data.Publication.class,
-            responseBody = com.epam.aidial.core.server.data.Publication.class,
-            tags = {"Publications"}
+            requestBody = Publication.class,
+            tags = {"Publications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = Publication.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> createPublication() {
         context.getRequest()
@@ -123,8 +136,12 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/delete",
             operationId = "deletePublication",
-            requestBody = com.epam.aidial.core.server.data.ResourceLink.class,
-            tags = {"Publications"}
+            requestBody = ResourceLink.class,
+            tags = {"Publications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> deletePublication() {
         context.getRequest()
@@ -145,9 +162,12 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/update",
             operationId = "updatePublication",
-            requestBody = com.epam.aidial.core.server.data.Publication.class,
-            responseBody = com.epam.aidial.core.server.data.Publication.class,
-            tags = {"Publications"}
+            requestBody = Publication.class,
+            tags = {"Publications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = Publication.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> updatePublication() {
         context.getRequest()
@@ -169,9 +189,12 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/approve",
             operationId = "approvePublication",
-            requestBody = com.epam.aidial.core.server.data.ResourceLink.class,
-            responseBody = com.epam.aidial.core.server.data.Publication.class,
-            tags = {"Publications"}
+            requestBody = ResourceLink.class,
+            tags = {"Publications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = Publication.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> approvePublication() {
         context.getRequest()
@@ -194,9 +217,12 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/reject",
             operationId = "rejectPublication",
-            requestBody = com.epam.aidial.core.server.data.RejectPublicationRequest.class,
-            responseBody = com.epam.aidial.core.server.data.Publication.class,
-            tags = {"Publications"}
+            requestBody = RejectPublicationRequest.class,
+            tags = {"Publications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = Publication.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> rejectPublication() {
         context.getRequest()
@@ -218,9 +244,12 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/rule/list",
             operationId = "getPublicationRules",
-            requestBody = com.epam.aidial.core.server.data.ResourceLink.class,
-            responseBody = com.epam.aidial.core.server.data.Rules.class,
-            tags = {"Publications"}
+            requestBody = ResourceLink.class,
+            tags = {"Publications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = Rules.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> listRules() {
         context.getRequest()
@@ -241,10 +270,12 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/resource/list",
             operationId = "listPublishedResources",
-            requestBody = com.epam.aidial.core.server.data.ListPublishedResourcesRequest.class,
-            responseBody = com.epam.aidial.core.storage.data.MetadataBase.class,
-            responseWrapper = java.util.Collection.class,
-            tags = {"Publications"}
+            requestBody = ListPublishedResourcesRequest.class,
+            tags = {"Publications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = MetadataBase.class, wrapper = Collection.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> listPublishedResources() {
         context.getRequest()

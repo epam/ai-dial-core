@@ -3,6 +3,11 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
+import com.epam.aidial.core.server.openapi.ParameterIn;
+import com.epam.aidial.core.server.openapi.schema.OpenApiBinary;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.InputStreamReader;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -21,7 +26,22 @@ public class DownloadFileController extends AccessControlBaseController {
     }
 
     @Override
-    @ApiOperation(method = "GET", path = "/v1/files/{bucket}/{file_path}", operationId = "downloadFile", contentType = "application/octet-stream", tags = {"Files"})
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/files/{bucket}/{file_path}",
+            operationId = "downloadFile",
+            contentType = "application/octet-stream",
+            tags = {"Files"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                    @ApiParameter(name = "file_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.FILE_PATH)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = OpenApiBinary.class, contentTypes = {"application/octet-stream"}),
+                    @ApiResponse(code = 401, description = OpenApiDescriptions.RESPONSE_INVALID_AUTHENTICATION)
+            }
+    )
     protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         if (resource.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Can't download a folder");

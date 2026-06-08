@@ -15,6 +15,11 @@ import com.epam.aidial.core.server.data.DeploymentData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ToolSetData;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
+import com.epam.aidial.core.server.openapi.ParameterIn;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -65,8 +70,15 @@ public class DeploymentController {
             method = "GET",
             path = "/openai/deployments/{deployment_name}",
             operationId = "getDeployment",
-            responseBody = DeploymentData.class,
-            tags = {"Deployment listing"}
+            tags = {"Deployment listing"},
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = DeploymentData.class)
+            },
+            responseProfile = ResponseProfile.AUTHENTICATED_READ
     )
     public Future<?> getDeployment(String deploymentId) {
         Config config = context.getConfig();
@@ -89,9 +101,11 @@ public class DeploymentController {
             method = "GET",
             path = "/openai/deployments",
             operationId = "getDeployments",
-            responseBody = DeploymentData.class,
-            responseWrapper = ListData.class,
-            tags = {"Deployment listing"}
+            tags = {"Deployment listing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = DeploymentData.class, wrapper = ListData.class)
+            },
+            responseProfile = ResponseProfile.AUTHENTICATED_READ
     )
     public Future<?> getDeployments() {
         getModels(List.of()).onSuccess(deployments -> {
@@ -109,9 +123,17 @@ public class DeploymentController {
             method = "GET",
             path = "/v1/deployments",
             operationId = "listDeployments",
-            responseBody = DeploymentData.class,
-            responseWrapper = List.class,
-            tags = {"Deployment listing"}
+            tags = {"Deployment listing"},
+            parameters = {
+                    @ApiParameter(name = "interface_type", in = ParameterIn.QUERY,
+                            schema = String[].class,
+                            description = OpenApiDescriptions.INTERFACE_TYPE,
+                            allowableValues = {"chat", "embedding", "mcp", "custom_ui", "all"})
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = DeploymentData.class, wrapper = List.class)
+            },
+            responseProfile = ResponseProfile.AUTHENTICATED_READ
     )
     public Future<?> listDeployments() {
         String[] interfaces = getDeploymentInterfaces();

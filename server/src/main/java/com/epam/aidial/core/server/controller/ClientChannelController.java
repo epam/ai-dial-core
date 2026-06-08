@@ -6,6 +6,11 @@ import com.epam.aidial.core.server.jsonrpc.domain.ErrorMessage;
 import com.epam.aidial.core.server.jsonrpc.domain.RpcRequest;
 import com.epam.aidial.core.server.jsonrpc.domain.RpcResponse;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
+import com.epam.aidial.core.server.openapi.ParameterIn;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.clientchannel.ClientChannelService;
@@ -60,7 +65,16 @@ public class ClientChannelController {
             path = "/v1/ops/client-channel/subscribe",
             operationId = "subscribeClientChannel",
             contentType = "text/event-stream",
-            tags = {"Client channel"})
+            tags = {"Client channel"},
+            parameters = {
+                    @ApiParameter(name = "X-DIAL-CLIENT-CHANNEL-ID", in = ParameterIn.HEADER,
+                            description = OpenApiDescriptions.CLIENT_CHANNEL_ID_RECONNECT)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST
+    )
     public Future<?> subscribe() {
         HttpServerResponse response = context.getResponse();
         Consumer<RpcRequest> subscriber = this::sendMessage;
@@ -96,7 +110,16 @@ public class ClientChannelController {
             path = "/v1/ops/client-channel/report",
             operationId = "reportClientChannel",
             requestBody = RpcResponse.class,
-            tags = {"Client channel"})
+            tags = {"Client channel"},
+            parameters = {
+                    @ApiParameter(name = "X-DIAL-CLIENT-CHANNEL-ID", in = ParameterIn.HEADER, required = true,
+                            description = OpenApiDescriptions.CLIENT_CHANNEL_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST
+    )
     public Future<?> report() {
         String channelId = context.getRequest().getHeader(Proxy.HEADER_CLIENT_CHANNEL_ID);
         if (channelId == null) {
@@ -121,7 +144,16 @@ public class ClientChannelController {
             method = "POST",
             path = "/v1/ops/client-channel/unsubscribe",
             operationId = "unsubscribeClientChannel",
-            tags = {"Client channel"})
+            tags = {"Client channel"},
+            parameters = {
+                    @ApiParameter(name = "X-DIAL-CLIENT-CHANNEL-ID", in = ParameterIn.HEADER, required = true,
+                            description = OpenApiDescriptions.CLIENT_CHANNEL_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.LIMIT_WITH_NOT_FOUND
+    )
     public Future<?> unsubscribe() {
         String channelId = context.getRequest().getHeader(Proxy.HEADER_CLIENT_CHANNEL_ID);
         if (channelId == null) {
@@ -148,7 +180,16 @@ public class ClientChannelController {
             operationId = "interactClientChannel",
             requestBody = RpcRequest.class,
             contentType = "text/event-stream",
-            tags = {"Client channel"})
+            tags = {"Client channel"},
+            parameters = {
+                    @ApiParameter(name = "X-DIAL-CLIENT-CHANNEL-ID", in = ParameterIn.HEADER, required = true,
+                            description = OpenApiDescriptions.CLIENT_CHANNEL_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST
+    )
     public Future<?> interact() {
         HttpServerResponse response = context.getResponse();
         setupEventStreamResponse(response);

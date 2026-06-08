@@ -22,20 +22,78 @@ test {
     useJUnitPlatform()
 }
 
-task generateOpenApiSkeleton(type: JavaExec) {
+def generatedDir = "${layout.buildDirectory.get()}/generated"
+
+def skeletonFile = "${generatedDir}/openapi-skeleton.yaml"
+def mergedFile = "${generatedDir}/openapi-merged.yaml"
+def targetSpec = "${rootDir}/raillanding/public/universal_chat_api.yaml"
+def backupDir = "${rootDir}/raillanding/public/bak"
+
+tasks.register('generateOpenApiSkeleton', JavaExec) {
     dependsOn classes
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.epam.aidial.core.openapi.OpenApiSkeletonGenerator'
-    args = ["${layout.buildDirectory.get()}/generated/openapi-skeleton.yaml", "${project.version}"]
+    args = [skeletonFile, "${project.version}"]
 }
 
-task mergeOpenApiSpec(type: JavaExec) {
+tasks.register('lintOpenApiSkeleton', Exec) {
     dependsOn generateOpenApiSkeleton
+
+    if (System.getProperty("os.name").toLowerCase().contains("windows")) {
+        commandLine "cmd", "/c", "npx", "@redocly/cli", "lint", skeletonFile
+    } else {
+        commandLine "npx", "@redocly/cli", "lint", skeletonFile
+    }
+}
+
+tasks.register('mergeOpenApiSpec', JavaExec) {
+    dependsOn lintOpenApiSkeleton
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.epam.aidial.core.openapi.SpecMerger'
     args = [
-        "${layout.buildDirectory.get()}/generated/openapi-skeleton.yaml",
-        "${rootDir}/raillanding/public/universal_chat_api.yaml",
-        "${layout.buildDirectory.get()}/generated/openapi-merged.yaml"
+        skeletonFile,
+        targetSpec,
+        mergedFile
     ]
+}
+
+tasks.register('backupAndReplaceSpec') {
+    dependsOn lintMergedOpenApi
+
+    doLast {
+        def target = file(targetSpec)
+        def backupFolder = file(backupDir)
+
+        backupFolder.mkdirs()
+
+        if (target.exists()) {
+            copy {
+                from target
+                into backupFolder
+                rename {
+                    "universal_chat_api-${new Date().format('yyyyMMdd-HHmmss')}.yaml"
+                }
+            }
+        }
+
+        copy {
+            from file(mergedFile)
+            into target.parentFile
+            rename { "universal_chat_api.yaml" }
+        }
+    }
+}
+
+tasks.register('lintMergedOpenApi', Exec) {
+    dependsOn mergeOpenApiSpec
+
+    if (System.getProperty("os.name").toLowerCase().contains("windows")) {
+        commandLine "cmd", "/c", "npx", "@redocly/cli", "lint", mergedFile
+    } else {
+        commandLine "npx", "@redocly/cli", "lint", mergedFile
+    }
+}
+
+tasks.register('publishOpenApiSpec') {
+    dependsOn backupAndReplaceSpec
 }

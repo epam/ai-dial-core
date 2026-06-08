@@ -9,26 +9,24 @@ import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
 import io.swagger.v3.oas.models.Paths;
 import io.swagger.v3.oas.models.info.Info;
-import io.swagger.v3.oas.models.media.Content;
-import io.swagger.v3.oas.models.media.MediaType;
+import io.swagger.v3.oas.models.info.License;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.parameters.RequestBody;
-import io.swagger.v3.oas.models.responses.ApiResponse;
-import io.swagger.v3.oas.models.responses.ApiResponses;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
+import io.swagger.v3.oas.models.servers.Server;
+import io.swagger.v3.oas.models.tags.Tag;
 
-import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 public class SpecAssembler {
-
-    private static final String COMPONENTS_SCHEMAS_PREFIX = "#/components/schemas/";
 
     private final DtoSchemaGenerator schemaGenerator;
     private final String apiVersion;
@@ -39,21 +37,28 @@ public class SpecAssembler {
     }
 
     public String assemble() {
-        List<EndpointMetadata.Endpoint> endpoints = AnnotationEndpointCollector.collect();
+        List<EndpointMetadata.Endpoint> endpoints = new ArrayList<>(AnnotationEndpointCollector.collect());
+
+        // Deterministic ordering for stable YAML generation
+        endpoints.sort(
+                Comparator.comparing(EndpointMetadata.Endpoint::path)
+                    .thenComparing(EndpointMetadata.Endpoint::method)
+        );
 
         // Collect all DTO types for schema generation
         for (EndpointMetadata.Endpoint endpoint : endpoints) {
-            schemaGenerator.processType(endpoint.requestBody());
-            schemaGenerator.processType(endpoint.responseBody());
+            OpenApiRequestBodyBuilder.registerRequestBodySchemas(endpoint, schemaGenerator);
+            OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
         }
 
         OpenAPI openApi = new OpenAPI();
         openApi.setOpenapi("3.0.0");
-        openApi.setInfo(buildInfo());
+        var info = buildInfo();
+        openApi.setInfo(info);
         openApi.setComponents(buildComponents());
         openApi.setPaths(buildPaths(endpoints));
+        openApi.setTags(buildTags(endpoints));
         openApi.setSecurity(List.of(new SecurityRequirement().addList("ApiKeyAuth")));
-
         return Yaml.pretty(openApi);
     }
 
@@ -62,6 +67,7 @@ public class SpecAssembler {
         info.setTitle("AI DIAL Core API");
         info.setVersion(apiVersion);
         info.setDescription("AI DIAL Core API - auto-generated skeleton");
+        info.setLicense(new License().name("Apache-2.0").url("https://www.apache.org/licenses/LICENSE-2.0.html"));
         return info;
     }
 
@@ -112,6 +118,20 @@ public class SpecAssembler {
         return paths;
     }
 
+    private List<Tag> buildTags(List<EndpointMetadata.Endpoint> endpoints) {
+
+        return endpoints.stream()
+            .flatMap(endpoint -> Stream.of(endpoint.tags()))
+            .distinct()
+            .sorted()
+            .map(tagName -> {
+                Tag tag = new Tag();
+                tag.setName(tagName);
+                return tag;
+            })
+            .toList();
+    }
+
     private Operation buildOperation(EndpointMetadata.Endpoint endpoint) {
         Operation operation = new Operation();
         operation.setOperationId(endpoint.operationId());
@@ -120,69 +140,17 @@ public class SpecAssembler {
             operation.setTags(List.of(endpoint.tags()));
         }
 
-        // Path parameters
-        List<String> pathParams = RouteExtractor.extractPathParams(endpoint.path());
-        if (!pathParams.isEmpty()) {
-            List<Parameter> parameters = new ArrayList<>();
-            for (String paramName : pathParams) {
-                Parameter param = new Parameter();
-                param.setName(paramName);
-                param.setIn("path");
-                param.setRequired(true);
-                Schema<String> paramSchema = new Schema<>();
-                paramSchema.setType("string");
-                param.setSchema(paramSchema);
-                parameters.add(param);
-            }
+        List<Parameter> parameters = OpenApiParameterBuilder.buildParameters(endpoint);
+        if (!parameters.isEmpty()) {
             operation.setParameters(parameters);
         }
 
-        // Request body
-        if (endpoint.requestBody() != null && endpoint.requestBody() != Void.class) {
-            RequestBody requestBody = new RequestBody();
-            requestBody.setRequired(true);
-            Content content = new Content();
-            MediaType mediaType = new MediaType();
-            String schemaName = schemaGenerator.resolveTypeName(endpoint.requestBody());
-            Schema<?> refSchema = new Schema<>();
-            refSchema.set$ref(COMPONENTS_SCHEMAS_PREFIX + schemaName);
-            mediaType.setSchema(refSchema);
-            content.addMediaType(endpoint.contentType(), mediaType);
-            requestBody.setContent(content);
+        RequestBody requestBody = OpenApiRequestBodyBuilder.build(endpoint, schemaGenerator);
+        if (requestBody != null) {
             operation.setRequestBody(requestBody);
         }
 
-        // Responses
-        ApiResponses responses = new ApiResponses();
-        ApiResponse successResponse = new ApiResponse();
-        successResponse.setDescription("Successful response");
-
-        if (endpoint.responseBody() != null && endpoint.responseBody() != Void.class) {
-            Content responseContent = new Content();
-            MediaType responseMediaType = new MediaType();
-            String schemaName = schemaGenerator.resolveTypeName(endpoint.responseBody());
-            Schema<?> refSchema = new Schema<>();
-            refSchema.set$ref(COMPONENTS_SCHEMAS_PREFIX + schemaName);
-            responseMediaType.setSchema(refSchema);
-            responseContent.addMediaType(endpoint.contentType(), responseMediaType);
-            successResponse.setContent(responseContent);
-        }
-
-        responses.addApiResponse("200", successResponse);
-
-        ApiResponse unauthorized = new ApiResponse();
-        unauthorized.setDescription("Unauthorized - missing or invalid API key");
-        responses.addApiResponse("401", unauthorized);
-
-        ApiResponse forbidden = new ApiResponse();
-        forbidden.setDescription("Forbidden - insufficient permissions");
-        responses.addApiResponse("403", forbidden);
-
-        ApiResponse serverError = new ApiResponse();
-        serverError.setDescription("Internal server error");
-        responses.addApiResponse("500", serverError);
-
-        operation.setResponses(responses);
+        operation.setResponses(OpenApiResponseBuilder.buildResponses(endpoint, schemaGenerator));
 
         return operation;
     }

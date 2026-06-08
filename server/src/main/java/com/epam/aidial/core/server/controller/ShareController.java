@@ -4,13 +4,16 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.CopySharedAccessRequest;
+import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.server.data.ResourceLinkCollection;
 import com.epam.aidial.core.server.data.RevokeResourcesRequest;
 import com.epam.aidial.core.server.data.ShareResourcesRequest;
 import com.epam.aidial.core.server.data.SharedResource;
+import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.openapi.ApiOperation;
-import com.epam.aidial.core.server.openapi.ApiOperations;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.ShareService;
@@ -55,36 +58,56 @@ public class ShareController {
             method = "POST",
             path = "/v1/ops/resource/share/create",
             operationId = "shareResource",
-            requestBody = com.epam.aidial.core.server.data.ShareResourcesRequest.class,
-            tags = {"Sharing"}
+            requestBody = ShareResourcesRequest.class,
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = InvitationLink.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     @ApiOperation(
             method = "POST",
             path = "/v1/ops/resource/share/list",
             operationId = "getSharedResources",
-            requestBody = com.epam.aidial.core.server.data.ListSharedResourcesRequest.class,
-            tags = {"Sharing"}
+            requestBody = ListSharedResourcesRequest.class,
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = SharedResourcesResponse.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     @ApiOperation(
             method = "POST",
             path = "/v1/ops/resource/share/revoke",
             operationId = "revokeSharedResources",
-            requestBody = com.epam.aidial.core.server.data.RevokeResourcesRequest.class,
-            tags = {"Sharing"}
+            requestBody = RevokeResourcesRequest.class,
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+                    responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     @ApiOperation(
             method = "POST",
             path = "/v1/ops/resource/share/discard",
             operationId = "discardSharedResources",
-            requestBody = com.epam.aidial.core.server.data.ResourceLinkCollection.class,
-            tags = {"Sharing"}
+            requestBody = ResourceLinkCollection.class,
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     @ApiOperation(
             method = "POST",
             path = "/v1/ops/resource/share/copy",
             operationId = "copySharedResources",
-            requestBody = com.epam.aidial.core.server.data.CopySharedAccessRequest.class,
-            tags = {"Sharing"}
+            requestBody = CopySharedAccessRequest.class,
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> handle(Operation operation) {
         if (context.getApiKeyData().getPerRequestKey() != null) {

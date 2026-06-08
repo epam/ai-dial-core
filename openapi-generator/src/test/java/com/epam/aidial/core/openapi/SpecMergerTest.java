@@ -625,4 +625,310 @@ class SpecMergerTest {
         assertTrue(output.contains("DIAL Core API"), "Manual title should be preferred");
         assertFalse(output.contains("AI DIAL Core API"), "Skeleton title should NOT override manual");
     }
+
+    @Test
+    void pathsWithDifferentParamCasingAreMerged(@TempDir Path tempDir) throws IOException {
+        ObjectNode skeleton = mapper.createObjectNode();
+        ObjectNode skeletonPaths = mapper.createObjectNode();
+        ObjectNode skeletonPathItem = mapper.createObjectNode();
+        ObjectNode skeletonGet = mapper.createObjectNode();
+        skeletonGet.put("operationId", "getApplicationResource");
+        ArrayNode skeletonParams = mapper.createArrayNode();
+        ObjectNode skeletonPathParam = mapper.createObjectNode();
+        skeletonPathParam.put("name", "bucket");
+        skeletonPathParam.put("in", "path");
+        skeletonPathParam.put("required", true);
+        skeletonParams.add(skeletonPathParam);
+        skeletonGet.set("parameters", skeletonParams);
+        skeletonPathItem.set("get", skeletonGet);
+        skeletonPaths.set("/v1/applications/{bucket}/{application_path}", skeletonPathItem);
+        skeleton.set("paths", skeletonPaths);
+
+        ObjectNode manual = mapper.createObjectNode();
+        ObjectNode manualPaths = mapper.createObjectNode();
+        ObjectNode manualPathItem = mapper.createObjectNode();
+        ObjectNode manualGet = mapper.createObjectNode();
+        manualGet.put("operationId", "getApplicationResource");
+        manualGet.put("summary", "Manual summary for application resource");
+        ArrayNode manualParams = mapper.createArrayNode();
+        ObjectNode manualPathParam = mapper.createObjectNode();
+        manualPathParam.put("name", "Bucket");
+        manualPathParam.put("in", "path");
+        manualPathParam.put("required", true);
+        manualPathParam.put("description", "Encrypted bucket name");
+        manualParams.add(manualPathParam);
+        manualGet.set("parameters", manualParams);
+        manualPathItem.set("get", manualGet);
+        manualPaths.set("/v1/applications/{Bucket}/{application_path}", manualPathItem);
+        manual.set("paths", manualPaths);
+
+        Path skeletonFile = tempDir.resolve("skeleton.yaml");
+        Path manualFile = tempDir.resolve("manual.yaml");
+        Path outputFile = tempDir.resolve("output.yaml");
+
+        mapper.writeValue(skeletonFile.toFile(), skeleton);
+        mapper.writeValue(manualFile.toFile(), manual);
+
+        SpecMerger merger = new SpecMerger();
+        merger.merge(skeletonFile, manualFile, outputFile);
+
+        String output = Files.readString(outputFile);
+        assertFalse(output.contains("{Bucket}"), "Should not duplicate path with manual casing");
+        assertTrue(output.contains("/v1/applications/{bucket}/{application_path}"),
+                "Merged output should use skeleton path key");
+        assertTrue(output.contains("Manual summary for application resource"),
+                "Manual operation fields should be merged");
+        assertTrue(output.contains("Encrypted bucket name"),
+                "Path parameters with different name casing should merge");
+        assertEquals(1, output.split("getApplicationResource", -1).length - 1,
+                "Operation should appear once, not as duplicate paths");
+    }
+
+    @Test
+    void metadataPathsWithDifferentParamCasingAreMerged(@TempDir Path tempDir) throws IOException {
+        ObjectNode skeleton = mapper.createObjectNode();
+        ObjectNode skeletonPaths = mapper.createObjectNode();
+        ObjectNode skeletonPathItem = mapper.createObjectNode();
+        ObjectNode skeletonGet = mapper.createObjectNode();
+        skeletonGet.put("operationId", "getFileMetadata");
+        skeletonPathItem.set("get", skeletonGet);
+        skeletonPaths.set("/v1/metadata/files/{bucket}/{path}", skeletonPathItem);
+        skeleton.set("paths", skeletonPaths);
+
+        ObjectNode manual = mapper.createObjectNode();
+        ObjectNode manualPaths = mapper.createObjectNode();
+        ObjectNode manualPathItem = mapper.createObjectNode();
+        ObjectNode manualGet = mapper.createObjectNode();
+        manualGet.put("operationId", "getFileMetadata");
+        manualGet.put("description", "Manual metadata description");
+        manualPathItem.set("get", manualGet);
+        manualPaths.set("/v1/metadata/files/{Bucket}/{Path}", manualPathItem);
+        manual.set("paths", manualPaths);
+
+        Path skeletonFile = tempDir.resolve("skeleton.yaml");
+        Path manualFile = tempDir.resolve("manual.yaml");
+        Path outputFile = tempDir.resolve("output.yaml");
+
+        mapper.writeValue(skeletonFile.toFile(), skeleton);
+        mapper.writeValue(manualFile.toFile(), manual);
+
+        SpecMerger merger = new SpecMerger();
+        merger.merge(skeletonFile, manualFile, outputFile);
+
+        String output = Files.readString(outputFile);
+        assertFalse(output.contains("{Bucket}"));
+        assertFalse(output.contains("{Path}"));
+        assertTrue(output.contains("/v1/metadata/files/{bucket}/{path}"));
+        assertTrue(output.contains("Manual metadata description"));
+    }
+
+    @Test
+    void componentSchemaDescriptionPreservedFromManual(@TempDir Path tempDir) throws IOException {
+        ObjectNode skeleton = mapper.createObjectNode();
+        ObjectNode skeletonComponents = mapper.createObjectNode();
+        ObjectNode skeletonSchemas = mapper.createObjectNode();
+        ObjectNode skeletonSchema = mapper.createObjectNode();
+        skeletonSchema.put("type", "object");
+        ArrayNode skeletonRequired = mapper.createArrayNode();
+        skeletonRequired.add("model");
+        skeletonSchema.set("required", skeletonRequired);
+        ObjectNode skeletonProperties = mapper.createObjectNode();
+        ObjectNode modelProp = mapper.createObjectNode();
+        modelProp.put("type", "string");
+        skeletonProperties.set("model", modelProp);
+        skeletonSchema.set("properties", skeletonProperties);
+        skeletonSchema.put("description", "Auto-generated from Java");
+        skeletonSchemas.set("CreateChatCompletionRequest", skeletonSchema);
+        skeletonComponents.set("schemas", skeletonSchemas);
+        skeleton.set("components", skeletonComponents);
+
+        ObjectNode manual = mapper.createObjectNode();
+        ObjectNode manualComponents = mapper.createObjectNode();
+        ObjectNode manualSchemas = mapper.createObjectNode();
+        ObjectNode manualSchema = mapper.createObjectNode();
+        manualSchema.put("description", "Hand-maintained request schema documentation");
+        manualSchemas.set("CreateChatCompletionRequest", manualSchema);
+        manualComponents.set("schemas", manualSchemas);
+        manual.set("components", manualComponents);
+
+        Path skeletonFile = tempDir.resolve("skeleton.yaml");
+        Path manualFile = tempDir.resolve("manual.yaml");
+        Path outputFile = tempDir.resolve("output.yaml");
+
+        mapper.writeValue(skeletonFile.toFile(), skeleton);
+        mapper.writeValue(manualFile.toFile(), manual);
+
+        SpecMerger merger = new SpecMerger();
+        merger.merge(skeletonFile, manualFile, outputFile);
+
+        String output = Files.readString(outputFile);
+        assertTrue(output.contains("Hand-maintained request schema documentation"),
+                "Manual component schema description should be preserved");
+        assertTrue(output.contains("model:"), "Skeleton schema properties should be preserved");
+        assertFalse(output.contains("Auto-generated from Java"),
+                "Skeleton schema description should not override manual");
+    }
+
+    @Test
+    void nestedPropertyDescriptionPreservedInComponentsSchemas(@TempDir Path tempDir) throws IOException {
+        ObjectNode skeleton = mapper.createObjectNode();
+        ObjectNode skeletonComponents = mapper.createObjectNode();
+        ObjectNode skeletonSchemas = mapper.createObjectNode();
+        ObjectNode skeletonSchema = mapper.createObjectNode();
+        skeletonSchema.put("type", "object");
+        ObjectNode skeletonProperties = mapper.createObjectNode();
+        ObjectNode messagesProp = mapper.createObjectNode();
+        messagesProp.put("type", "array");
+        skeletonProperties.set("messages", messagesProp);
+        skeletonSchema.set("properties", skeletonProperties);
+        skeletonSchemas.set("ChatRequest", skeletonSchema);
+        skeletonComponents.set("schemas", skeletonSchemas);
+        skeleton.set("components", skeletonComponents);
+
+        ObjectNode manual = mapper.createObjectNode();
+        ObjectNode manualComponents = mapper.createObjectNode();
+        ObjectNode manualSchemas = mapper.createObjectNode();
+        ObjectNode manualSchema = mapper.createObjectNode();
+        ObjectNode manualProperties = mapper.createObjectNode();
+        ObjectNode manualMessages = mapper.createObjectNode();
+        manualMessages.put("description", "Conversation messages in OpenAI format");
+        manualProperties.set("messages", manualMessages);
+        manualSchema.set("properties", manualProperties);
+        manualSchemas.set("ChatRequest", manualSchema);
+        manualComponents.set("schemas", manualSchemas);
+        manual.set("components", manualComponents);
+
+        Path skeletonFile = tempDir.resolve("skeleton.yaml");
+        Path manualFile = tempDir.resolve("manual.yaml");
+        Path outputFile = tempDir.resolve("output.yaml");
+
+        mapper.writeValue(skeletonFile.toFile(), skeleton);
+        mapper.writeValue(manualFile.toFile(), manual);
+
+        SpecMerger merger = new SpecMerger();
+        merger.merge(skeletonFile, manualFile, outputFile);
+
+        String output = Files.readString(outputFile);
+        assertTrue(output.contains("Conversation messages in OpenAI format"),
+                "Manual property description should be preserved under components.schemas");
+        assertTrue(output.contains("type: array"), "Skeleton property structure should be preserved");
+    }
+
+    @Test
+    void inlineSchemaDescriptionPreservedWhenSkeletonHasRefOnly(@TempDir Path tempDir) throws IOException {
+        ObjectNode skeleton = mapper.createObjectNode();
+        ObjectNode skeletonPaths = mapper.createObjectNode();
+        ObjectNode skeletonPathItem = mapper.createObjectNode();
+        ObjectNode skeletonPost = mapper.createObjectNode();
+        skeletonPost.put("operationId", "createChat");
+        ObjectNode skeletonReqBody = mapper.createObjectNode();
+        ObjectNode skeletonContent = mapper.createObjectNode();
+        ObjectNode skeletonJson = mapper.createObjectNode();
+        ObjectNode skeletonSchema = mapper.createObjectNode();
+        skeletonSchema.put("$ref", "#/components/schemas/ChatRequest");
+        skeletonJson.set("schema", skeletonSchema);
+        skeletonContent.set("application/json", skeletonJson);
+        skeletonReqBody.set("content", skeletonContent);
+        skeletonPost.set("requestBody", skeletonReqBody);
+        skeletonPathItem.set("post", skeletonPost);
+        skeletonPaths.set("/v1/chat", skeletonPathItem);
+        skeleton.set("paths", skeletonPaths);
+
+        ObjectNode manual = mapper.createObjectNode();
+        ObjectNode manualPaths = mapper.createObjectNode();
+        ObjectNode manualPathItem = mapper.createObjectNode();
+        ObjectNode manualPost = mapper.createObjectNode();
+        manualPost.put("operationId", "createChat");
+        ObjectNode manualReqBody = mapper.createObjectNode();
+        ObjectNode manualContent = mapper.createObjectNode();
+        ObjectNode manualJson = mapper.createObjectNode();
+        ObjectNode manualSchema = mapper.createObjectNode();
+        manualSchema.put("description", "Inline schema documentation from manual spec");
+        manualJson.set("schema", manualSchema);
+        manualContent.set("application/json", manualJson);
+        manualReqBody.set("content", manualContent);
+        manualPost.set("requestBody", manualReqBody);
+        manualPathItem.set("post", manualPost);
+        manualPaths.set("/v1/chat", manualPathItem);
+        manual.set("paths", manualPaths);
+
+        Path skeletonFile = tempDir.resolve("skeleton.yaml");
+        Path manualFile = tempDir.resolve("manual.yaml");
+        Path outputFile = tempDir.resolve("output.yaml");
+
+        mapper.writeValue(skeletonFile.toFile(), skeleton);
+        mapper.writeValue(manualFile.toFile(), manual);
+
+        SpecMerger merger = new SpecMerger();
+        merger.merge(skeletonFile, manualFile, outputFile);
+
+        String output = Files.readString(outputFile);
+        assertTrue(output.contains("Inline schema documentation from manual spec"),
+                "Manual description on inline schema should be preserved when skeleton uses $ref");
+        assertTrue(output.contains("ChatRequest"), "Skeleton $ref should be preserved");
+    }
+
+    @Test
+    void streamingResponseSchemaDoesNotMergeRefWithStructuralSchema(@TempDir Path tempDir) throws IOException {
+        ObjectNode skeleton = mapper.createObjectNode();
+        ObjectNode skeletonPaths = mapper.createObjectNode();
+        ObjectNode skeletonPathItem = mapper.createObjectNode();
+        ObjectNode skeletonPost = mapper.createObjectNode();
+        skeletonPost.put("operationId", "createChatCompletion");
+        ObjectNode skeletonResponses = mapper.createObjectNode();
+        ObjectNode skeleton200 = mapper.createObjectNode();
+        skeleton200.put("description", "Success");
+        ObjectNode skeletonContent = mapper.createObjectNode();
+        ObjectNode skeletonEventStream = mapper.createObjectNode();
+        ObjectNode skeletonSchema = mapper.createObjectNode();
+        skeletonSchema.put("$ref", "#/components/schemas/CreateChatCompletionResponse");
+        skeletonEventStream.set("schema", skeletonSchema);
+        skeletonContent.set("text/event-stream", skeletonEventStream);
+        skeleton200.set("content", skeletonContent);
+        skeletonResponses.set("200", skeleton200);
+        skeletonPost.set("responses", skeletonResponses);
+        skeletonPathItem.set("post", skeletonPost);
+        skeletonPaths.set("/openai/deployments/{deployment_name}/chat/completions", skeletonPathItem);
+        skeleton.set("paths", skeletonPaths);
+
+        ObjectNode manual = mapper.createObjectNode();
+        ObjectNode manualPaths = mapper.createObjectNode();
+        ObjectNode manualPathItem = mapper.createObjectNode();
+        ObjectNode manualPost = mapper.createObjectNode();
+        manualPost.put("operationId", "createChatCompletion");
+        ObjectNode manualResponses = mapper.createObjectNode();
+        ObjectNode manual200 = mapper.createObjectNode();
+        manual200.put("description", "Success");
+        ObjectNode manualContent = mapper.createObjectNode();
+        ObjectNode manualEventStream = mapper.createObjectNode();
+        ObjectNode manualSchema = mapper.createObjectNode();
+        manualSchema.put("type", "array");
+        ObjectNode manualItems = mapper.createObjectNode();
+        manualItems.put("$ref", "#/components/schemas/CreateChatCompletionStreamResponse");
+        manualSchema.set("items", manualItems);
+        manualEventStream.set("schema", manualSchema);
+        manualContent.set("text/event-stream", manualEventStream);
+        manual200.set("content", manualContent);
+        manualResponses.set("200", manual200);
+        manualPost.set("responses", manualResponses);
+        manualPathItem.set("post", manualPost);
+        manualPaths.set("/openai/deployments/{deployment_name}/chat/completions", manualPathItem);
+        manual.set("paths", manualPaths);
+
+        Path skeletonFile = tempDir.resolve("skeleton.yaml");
+        Path manualFile = tempDir.resolve("manual.yaml");
+        Path outputFile = tempDir.resolve("output.yaml");
+
+        mapper.writeValue(skeletonFile.toFile(), skeleton);
+        mapper.writeValue(manualFile.toFile(), manual);
+
+        SpecMerger merger = new SpecMerger();
+        merger.merge(skeletonFile, manualFile, outputFile);
+
+        String output = Files.readString(outputFile);
+        assertTrue(output.contains("type: array"));
+        assertTrue(output.contains("CreateChatCompletionStreamResponse"));
+        assertFalse(output.matches("(?s)text/event-stream:.*?schema:.*?\\$ref:.*CreateChatCompletionResponse"),
+                "text/event-stream schema must not combine CreateChatCompletionResponse $ref with array items");
+    }
 }

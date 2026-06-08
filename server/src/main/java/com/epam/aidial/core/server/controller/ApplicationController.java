@@ -10,6 +10,11 @@ import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ResourceLink;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
+import com.epam.aidial.core.server.openapi.ParameterIn;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -62,8 +67,15 @@ public class ApplicationController {
             method = "GET",
             path = "/openai/applications/{application_name}",
             operationId = "getApplication",
-            responseBody = ApplicationData.class,
-            tags = {"Deployment listing"}
+            tags = {"Deployment listing"},
+            parameters = {
+                    @ApiParameter(name = "application_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.APPLICATION_NAME)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = ApplicationData.class)
+            },
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_WITH_NOT_FOUND
     )
     public Future<?> getApplication(String applicationId) {
         taskExecutor.submit(() -> deploymentService.findDeployment(context, applicationId))
@@ -81,15 +93,15 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
-
-
     @ApiOperation(
             method = "GET",
             path = "/openai/applications",
             operationId = "getApplications",
-            responseBody = ApplicationData.class,
-            responseWrapper = ListData.class,
-            tags = {"Deployment listing"}
+            tags = {"Deployment listing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = ApplicationData.class, wrapper = ListData.class)
+            },
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_WITH_SERVER_ERROR
     )
     public Future<?> getApplications() {
         Config config = context.getConfig();
@@ -117,8 +129,11 @@ public class ApplicationController {
             path = "/v1/ops/application/deploy",
             operationId = "deployApplication",
             requestBody = ResourceLink.class,
-            responseBody = Application.class,
-            tags = {"Applications"}
+            tags = {"Applications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = Application.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> deployApplication() {
         context.getRequest()
@@ -140,8 +155,11 @@ public class ApplicationController {
             path = "/v1/ops/application/undeploy",
             operationId = "undeployApplication",
             requestBody = ResourceLink.class,
-            responseBody = Application.class,
-            tags = {"Applications"}
+            tags = {"Applications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = Application.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> undeployApplication() {
         context.getRequest()
@@ -163,8 +181,11 @@ public class ApplicationController {
             path = "/v1/ops/application/redeploy",
             operationId = "redeployApplication",
             requestBody = ResourceLink.class,
-            responseBody = Application.class,
-            tags = {"Applications"}
+            tags = {"Applications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = Application.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> redeployApplication() {
         context.getRequest()
@@ -181,7 +202,17 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
-    @ApiOperation(method = "POST", path = "/v1/ops/application/logs", operationId = "getApplicationLogs", requestBody = ResourceLink.class, tags = {"Applications"})
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/application/logs",
+            operationId = "getApplicationLogs",
+            requestBody = ResourceLink.class,
+            tags = {"Applications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = Application.Logs.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+    )
     public Future<?> getApplicationLogs() {
         context.getRequest()
                 .body()

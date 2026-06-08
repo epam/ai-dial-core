@@ -11,6 +11,11 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.openapi.ApiOperations;
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
+import com.epam.aidial.core.server.openapi.ParameterIn;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -39,12 +44,45 @@ public class ToolSetMcpProxyController extends McpProxyController {
 
     @Override
     @ApiOperations({
-            @ApiOperation(method = "GET", path = "/v1/toolset/{toolset_name}/mcp",
-                    operationId = "getToolSetMcp", tags = {"Toolsets", "MCP"}),
-            @ApiOperation(method = "POST", path = "/v1/toolset/{toolset_name}/mcp",
-                    operationId = "postToolSetMcp", tags = {"Toolsets", "MCP"}),
-            @ApiOperation(method = "DELETE", path = "/v1/toolset/{toolset_name}/mcp",
-                    operationId = "deleteToolSetMcp", tags = {"Toolsets", "MCP"})
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/toolset/{toolset_name}/mcp",
+                    operationId = "getToolSetMcp",
+                    tags = {"Toolsets", "MCP"},
+                    parameters = {
+                            @ApiParameter(name = "toolset_name", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.TOOLSET_NAME)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success")
+                },
+                responseProfile = ResponseProfile.AUTHENTICATED_READ),
+            @ApiOperation(
+                    method = "POST",
+                    path = "/v1/toolset/{toolset_name}/mcp",
+                    operationId = "postToolSetMcp",
+                    tags = {"Toolsets", "MCP"},
+                    parameters = {
+                            @ApiParameter(name = "toolset_name", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.TOOLSET_NAME)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success")
+                },
+                responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/toolset/{toolset_name}/mcp",
+                    operationId = "deleteToolSetMcp",
+                    tags = {"Toolsets", "MCP"},
+                    parameters = {
+                            @ApiParameter(name = "toolset_name", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.TOOLSET_NAME)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success")
+                },
+                responseProfile = ResponseProfile.AUTHENTICATED_READ),
     })
     public Future<?> handle() {
         return super.handle();

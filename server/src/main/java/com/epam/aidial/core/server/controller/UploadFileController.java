@@ -3,6 +3,12 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
+import com.epam.aidial.core.server.openapi.ParameterIn;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
+import com.epam.aidial.core.server.openapi.schema.OpenApiBinary;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.stream.BlobWriteStream;
@@ -29,7 +35,24 @@ public class UploadFileController extends AccessControlBaseController {
     }
 
     @Override
-    @ApiOperation(method = "PUT", path = "/v1/files/{bucket}/{file_path}", operationId = "uploadFile", contentType = "application/octet-stream", tags = {"Files"})
+    @ApiOperation(
+            method = "PUT",
+            path = "/v1/files/{bucket}/{file_path}",
+            operationId = "uploadFile",
+            contentType = "multipart/form-data",
+            tags = {"Files"},
+            requestBody = OpenApiBinary.class,
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                    @ApiParameter(name = "file_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.FILE_PATH),
+                    @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_FILE),
+                    @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_FILE)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = FileMetadata.class)
+            },
+            responseProfile = ResponseProfile.CONDITIONAL_WRITE
+    )
     protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         if (resource.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "File name is missing");

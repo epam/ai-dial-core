@@ -3,7 +3,10 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFile;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
@@ -16,7 +19,16 @@ public class ConfigController implements Controller {
 
     private final ProxyContext context;
 
-    @ApiOperation(method = "POST", path = "/v1/ops/config/reload", operationId = "reloadConfig", responseBody = Config.class, tags = {"Config"})
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/config/reload",
+            operationId = "reloadConfig",
+            tags = {"Config"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = Config.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+    )
     @Override
     public Future<?> handle() throws Exception {
         Proxy proxy = context.getProxy();

@@ -3,12 +3,16 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
+import com.epam.aidial.core.server.openapi.ParameterIn;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpHeaders;
 import lombok.extern.slf4j.Slf4j;
@@ -38,8 +42,19 @@ public class FileMetadataController extends AccessControlBaseController {
             method = "GET",
             path = "/v1/metadata/files/{bucket}/{path}",
             operationId = "getFileMetadata",
-            responseBody = com.epam.aidial.core.storage.data.MetadataBase.class,
-            tags = {"Files"}
+            tags = {"Files"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_FILES),
+                    @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.QUERY_TOKEN),
+                    @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.QUERY_LIMIT, schema = Integer.class),
+                    @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.QUERY_RECURSIVE, schema = Boolean.class),
+                    @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.QUERY_PERMISSIONS, schema = Boolean.class)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
+            },
+            responseProfile = ResponseProfile.AUTHENTICATED_READ
     )
     protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         boolean recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));

@@ -5,6 +5,11 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.enhancement.HandleRateResponseFn;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
+import com.epam.aidial.core.server.openapi.ParameterIn;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import io.vertx.core.Future;
 
 import java.util.function.Function;
@@ -16,7 +21,19 @@ public class RateResponseController extends DeploymentFeatureController {
     }
 
     @Override
-    @ApiOperation(method = "POST", path = "/v1/{deployment_name}/rate", operationId = "rateDeployment")
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/{deployment_name}/rate",
+            operationId = "rateDeployment",
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.AUTHENTICATED_READ
+    )
     public Future<?> handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
         return super.handle(deploymentId, endpointGetter, requireEndpoint);
     }

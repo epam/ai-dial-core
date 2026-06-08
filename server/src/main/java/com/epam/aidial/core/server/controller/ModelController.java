@@ -12,6 +12,11 @@ import com.epam.aidial.core.server.data.ModelData;
 import com.epam.aidial.core.server.data.PricingData;
 import com.epam.aidial.core.server.data.TokenLimitsData;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
+import com.epam.aidial.core.server.openapi.ParameterIn;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
@@ -28,8 +33,15 @@ public class ModelController {
             method = "GET",
             path = "/openai/models/{model_name}",
             operationId = "getModel",
-            responseBody = ModelData.class,
-            tags = {"Deployment listing"}
+            tags = {"Deployment listing"},
+            parameters = {
+                    @ApiParameter(name = "model_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.MODEL_NAME)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = ModelData.class)
+            },
+            responseProfile = ResponseProfile.AUTHENTICATED_READ
     )
     public Future<?> getModel(String modelId) {
         Config config = context.getConfig();
@@ -51,9 +63,11 @@ public class ModelController {
             method = "GET",
             path = "/openai/models",
             operationId = "getModels",
-            responseBody = ModelData.class,
-            responseWrapper = ListData.class,
-            tags = {"Deployment listing"}
+            tags = {"Deployment listing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = ModelData.class, wrapper = ListData.class)
+            },
+            responseProfile = ResponseProfile.AUTHENTICATED_READ
     )
     public Future<?> getModels() {
         Config config = context.getConfig();

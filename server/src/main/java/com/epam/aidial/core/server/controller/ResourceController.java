@@ -10,6 +10,11 @@ import com.epam.aidial.core.server.data.Conversation;
 import com.epam.aidial.core.server.data.Prompt;
 import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.openapi.ApiOperations;
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
+import com.epam.aidial.core.server.openapi.ParameterIn;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -84,123 +89,283 @@ public class ResourceController extends AccessControlBaseController {
                     method = "PUT",
                     path = "/v1/applications/{bucket}/{application_path}",
                     operationId = "saveCustomApplication",
-                    requestBody = com.epam.aidial.core.config.Application.class,
-                    responseBody = com.epam.aidial.core.config.Application.class,
-                    tags = {"Applications"}
+                    requestBody = Application.class,
+                    tags = {"Applications"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "application_path", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.APPLICATION_PATH_SAVE),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_APPLICATION),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_APPLICATION)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class)
+                    },
+                    responseProfile = ResponseProfile.CONDITIONAL_WRITE
             ),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/applications/{bucket}/{application_path}",
                     operationId = "getCustomApplication",
-                    responseBody = com.epam.aidial.core.config.Application.class,
-                    tags = {"Applications"}
+                    tags = {"Applications"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "application_path", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.APPLICATION_PATH)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success", body = Application.class)
+                },
+                responseProfile = ResponseProfile.AUTHENTICATED_READ
             ),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/applications/{bucket}/{application_path}",
                     operationId = "deleteCustomApplication",
-                    tags = {"Applications"}
+                    tags = {"Applications"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "application_path", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.APPLICATION_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_APPLICATION)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success")
+                },
+                responseProfile = ResponseProfile.CONDITIONAL_DELETE
             ),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/metadata/applications/{bucket}/{path}",
                     operationId = "getApplicationMetadata",
-                    responseBody = com.epam.aidial.core.storage.data.MetadataBase.class,
-                    tags = {"Applications"}
+                    tags = {"Applications"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_APPLICATIONS),
+                            @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
+                            @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
+                            @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
+                            @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_PERMISSIONS_APPLICATIONS, schema = Boolean.class)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
+                },
+                responseProfile = ResponseProfile.AUTHENTICATED_READ
             ),
             // Conversations
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/conversations/{bucket}/{conversation_path}",
                     operationId = "saveConversation",
-                    requestBody = com.epam.aidial.core.server.data.Conversation.class,
-                    responseBody = com.epam.aidial.core.server.data.Conversation.class,
-                    tags = {"Conversations"}
+                    requestBody = Conversation.class,
+                    tags = {"Conversations"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "conversation_path", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.CONVERSATION_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_CONVERSATION),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_CONVERSATION)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class)
+                },
+                responseProfile = ResponseProfile.CONDITIONAL_WRITE
             ),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/conversations/{bucket}/{conversation_path}",
                     operationId = "getConversation",
-                    responseBody = com.epam.aidial.core.server.data.Conversation.class,
-                    tags = {"Conversations"}
+                    tags = {"Conversations"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "conversation_path", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.CONVERSATION_PATH)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success", body = Conversation.class)
+                },
+                responseProfile = ResponseProfile.AUTHENTICATED_READ
             ),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/conversations/{bucket}/{conversation_path}",
                     operationId = "deleteConversation",
-                    tags = {"Conversations"}
+                    tags = {"Conversations"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "conversation_path", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.CONVERSATION_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_CONVERSATION)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success")
+                },
+                responseProfile = ResponseProfile.CONDITIONAL_DELETE
             ),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/metadata/conversations/{bucket}/{path}",
                     operationId = "getConversationMetadata",
-                    responseBody = com.epam.aidial.core.storage.data.MetadataBase.class,
-                    tags = {"Conversations"}
+                    tags = {"Conversations"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_CONVERSATIONS),
+                            @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
+                            @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
+                            @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
+                            @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_PERMISSIONS_CONVERSATIONS,
+                                schema = Boolean.class)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
+                },
+                responseProfile = ResponseProfile.AUTHENTICATED_READ
             ),
             // Prompts
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/prompts/{bucket}/{prompt_path}",
                     operationId = "savePrompt",
-                    requestBody = com.epam.aidial.core.server.data.Prompt.class,
-                    responseBody = com.epam.aidial.core.server.data.Prompt.class,
-                    tags = {"Prompts"}
+                    requestBody = Prompt.class,
+                    tags = {"Prompts"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_PROMPT),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_PROMPT)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class)
+                },
+                responseProfile = ResponseProfile.CONDITIONAL_WRITE
             ),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/prompts/{bucket}/{prompt_path}",
                     operationId = "getPrompt",
-                    responseBody = com.epam.aidial.core.server.data.Prompt.class,
-                    tags = {"Prompts"}
+                    tags = {"Prompts"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success", body = Prompt.class)
+                },
+                responseProfile = ResponseProfile.AUTHENTICATED_READ
             ),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/prompts/{bucket}/{prompt_path}",
                     operationId = "deletePrompt",
-                    tags = {"Prompts"}
+                    tags = {"Prompts"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_PROMPT)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success")
+                },
+                responseProfile = ResponseProfile.CONDITIONAL_DELETE
             ),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/metadata/prompts/{bucket}/{path}",
                     operationId = "getPromptMetadata",
-                    responseBody = com.epam.aidial.core.storage.data.MetadataBase.class,
-                    tags = {"Prompts"}
+                    tags = {"Prompts"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_PROMPTS),
+                            @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
+                            @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
+                            @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
+                            @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_PERMISSIONS_PROMPTS, schema = Boolean.class)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
+                },
+                responseProfile = ResponseProfile.AUTHENTICATED_READ
             ),
             // Toolsets
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/toolsets/{bucket}/{toolset_path}",
                     operationId = "saveToolSet",
-                    requestBody = com.epam.aidial.core.config.ToolSet.class,
-                    responseBody = com.epam.aidial.core.config.ToolSet.class,
-                    tags = {"Toolsets"}
+                    requestBody = ToolSet.class,
+                    tags = {"Toolsets"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_TOOLSET),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_TOOLSET)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class)
+                },
+                responseProfile = ResponseProfile.CONDITIONAL_WRITE
             ),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/toolsets/{bucket}/{toolset_path}",
                     operationId = "getCustomToolSet",
-                    responseBody = com.epam.aidial.core.config.ToolSet.class,
-                    tags = {"Toolsets"}
+                    tags = {"Toolsets"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success", body = ToolSet.class)
+                },
+                responseProfile = ResponseProfile.AUTHENTICATED_READ
             ),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/toolsets/{bucket}/{toolset_path}",
                     operationId = "deleteToolSet",
-                    tags = {"Toolsets"}
+                    tags = {"Toolsets"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_TOOLSET)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success")
+                },
+                responseProfile = ResponseProfile.CONDITIONAL_DELETE
             ),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/metadata/toolsets/{bucket}/{path}",
                     operationId = "getToolSetMetadata",
-                    responseBody = com.epam.aidial.core.storage.data.MetadataBase.class,
-                    tags = {"Toolsets"}
+                    tags = {"Toolsets"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_TOOLSETS),
+                            @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
+                            @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
+                            @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
+                            @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_PERMISSIONS_TOOLSETS, schema = Boolean.class)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
+                },
+                responseProfile = ResponseProfile.AUTHENTICATED_READ
             ),
             // Files (delete only - upload/download handled by UploadFileController/DownloadFileController)
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/files/{bucket}/{file_path}",
                     operationId = "deleteFile",
-                    tags = {"Files"}
+                    tags = {"Files"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "file_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.FILE_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_FILE)
+                    },
+                responses = {
+                    @ApiResponse(code = 200, description = "Success")
+                },
+                responseProfile = ResponseProfile.CONDITIONAL_DELETE
             )
     })
     protected Future<?> handle(ResourceDescriptor descriptor, boolean hasWriteAccess) {

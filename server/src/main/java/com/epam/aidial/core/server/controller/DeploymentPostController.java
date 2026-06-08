@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
@@ -22,6 +23,11 @@ import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
+import com.epam.aidial.core.server.openapi.ParameterIn;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -64,17 +70,54 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             method = "POST",
             path = "/openai/deployments/{deployment_name}/completions",
             operationId = "createCompletion",
-            tags = {"LLM"})
+            tags = {"LLM"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionResponse", contentTypes = {"application/json"}),
+                    @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionStreamResponse", contentTypes = {"text/event-stream"})
+            })
     @ApiOperation(
             method = "POST",
             path = "/openai/deployments/{deployment_name}/chat/completions",
-            operationId = "createChatCompletion",
-            tags = {"LLM"})
+            operationId = "sendChatCompletionRequest",
+            tags = {"LLM"},
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME),
+                    @ApiParameter(name = "api-version", in = ParameterIn.QUERY, required = true,
+                            description = OpenApiDescriptions.API_VERSION, example = "2024-10-21"),
+                    @ApiParameter(name = "X-DIAL-CACHE-POLICY", in = ParameterIn.HEADER,
+                            description = OpenApiDescriptions.CACHE_POLICY,
+                            allowableValues = {"availability-priority", "cache-priority"})
+            },
+            responses = {
+
+                    @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionResponse"),
+                    @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionStreamResponse", contentTypes = {"text/event-stream"}),
+                    @ApiResponse(code = 401, description = OpenApiDescriptions.RESPONSE_INVALID_AUTHENTICATION,
+                            body = ErrorData.class),
+                    @ApiResponse(code = 404, description = OpenApiDescriptions.RESPONSE_DEPLOYMENT_NOT_FOUND,
+                            body = ErrorData.class),
+                    @ApiResponse(code = 429, description = OpenApiDescriptions.RESPONSE_RATE_LIMIT,
+                            body = ErrorData.class),
+                    @ApiResponse(code = 500, description = OpenApiDescriptions.RESPONSE_SERVER_ERROR,
+                            body = ErrorData.class),
+                    @ApiResponse(code = 502, description = OpenApiDescriptions.RESPONSE_UPSTREAM_ERROR,
+                            body = ErrorData.class),
+                    @ApiResponse(code = 503, description = OpenApiDescriptions.RESPONSE_OVERLOADED,
+                            body = ErrorData.class)
+            })
     @ApiOperation(
             method = "POST",
             path = "/openai/deployments/{deployment_name}/embeddings",
             operationId = "createEmbedding",
-            tags = {"LLM"})
+            tags = {"LLM"},
+            responseProfile = ResponseProfile.LLM_EMBEDDING,
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME),
+                    @ApiParameter(name = "api-version", in = ParameterIn.QUERY, required = true,
+                            description = OpenApiDescriptions.API_VERSION, example = "2023-12-01-preview")
+            })
     public Future<?> handle(String deploymentId) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
         if (!Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {

@@ -7,6 +7,9 @@ import com.epam.aidial.core.server.data.CopyResourcesRequest;
 import com.epam.aidial.core.server.data.MoveResourcesRequest;
 import com.epam.aidial.core.server.data.SubscribeResourcesRequest;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.HeartbeatService;
@@ -63,8 +66,12 @@ public class ResourceOperationController {
             method = "POST",
             path = "/v1/ops/resource/move",
             operationId = "moveResource",
-            requestBody = com.epam.aidial.core.server.data.MoveResourcesRequest.class,
-            tags = {"Files"}
+            requestBody = MoveResourcesRequest.class,
+            tags = {"Files", "Conversations", "Prompts", "Applications", "ToolSets"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> move() {
         context.getRequest()
@@ -127,8 +134,12 @@ public class ResourceOperationController {
             method = "POST",
             path = "/v1/ops/resource/copy",
             operationId = "copyResource",
-            requestBody = com.epam.aidial.core.server.data.CopyResourcesRequest.class,
-            tags = {"Files"}
+            requestBody = CopyResourcesRequest.class,
+            tags = {"Files", "Conversations", "Prompts", "Applications", "ToolSets"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> copy() {
         context.getRequest()
@@ -195,9 +206,16 @@ public class ResourceOperationController {
             method = "POST",
             path = "/v1/ops/resource/subscribe",
             operationId = "subscribeToResources",
-            requestBody = com.epam.aidial.core.server.data.SubscribeResourcesRequest.class,
+            requestBody = SubscribeResourcesRequest.class,
             contentType = "text/event-stream",
-            tags = {"Notifications"}
+            tags = {"Notifications"},
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = ResourceEvent.class, contentTypes = {"text/event-stream"}),
+                    @ApiResponse(code = 400, description = OpenApiDescriptions.RESPONSE_BAD_REQUEST),
+                    @ApiResponse(code = 401, description = OpenApiDescriptions.RESPONSE_UNAUTHORIZED),
+                    @ApiResponse(code = 500, description = OpenApiDescriptions.RESPONSE_SERVER_ERROR)
+            }
     )
     public Future<?> subscribe() {
         HttpServerResponse response = context.getResponse();

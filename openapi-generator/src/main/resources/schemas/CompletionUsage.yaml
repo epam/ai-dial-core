@@ -1,0 +1,8 @@
+type: object
+properties:
+  prompt_tokens:
+    type: integer
+  completion_tokens:
+    type: integer
+  total_tokens:
+    type: integer

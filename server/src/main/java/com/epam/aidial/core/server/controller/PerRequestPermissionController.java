@@ -5,8 +5,10 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.permission.ListPermissionRequest;
 import com.epam.aidial.core.server.data.permission.PerRequestReceiver;
 import com.epam.aidial.core.server.data.permission.ResourcePermission;
+import com.epam.aidial.core.server.data.permission.ResourcePermissionList;
 import com.epam.aidial.core.server.openapi.ApiOperation;
-import com.epam.aidial.core.server.openapi.ApiOperations;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
@@ -42,22 +44,34 @@ public class PerRequestPermissionController {
             method = "POST",
             path = "/v1/ops/resource/per-request-permissions/grant",
             operationId = "grantPerRequestPermissions",
-            requestBody = com.epam.aidial.core.server.data.permission.PerRequestReceiver.class,
-            tags = {"Sharing"}
+            requestBody = PerRequestReceiver.class,
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     @ApiOperation(
             method = "POST",
             path = "/v1/ops/resource/per-request-permissions/revoke",
             operationId = "revokePerRequestPermissions",
-            requestBody = com.epam.aidial.core.server.data.permission.PerRequestReceiver.class,
-            tags = {"Sharing"}
+            requestBody = PerRequestReceiver.class,
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     @ApiOperation(
             method = "POST",
             path = "/v1/ops/resource/per-request-permissions/list",
             operationId = "getPerRequestPermissions",
-            requestBody = com.epam.aidial.core.server.data.permission.ListPermissionRequest.class,
-            tags = {"Sharing"}
+            requestBody = ListPermissionRequest.class,
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = ResourcePermissionList.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<Void> handle(String operation) {
         Future<Void> result = Future.succeededFuture();

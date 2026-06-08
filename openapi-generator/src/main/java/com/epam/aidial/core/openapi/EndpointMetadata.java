@@ -1,5 +1,9 @@
 package com.epam.aidial.core.openapi;
 
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
+
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 
@@ -10,9 +14,11 @@ public final class EndpointMetadata {
             String path,
             String operationId,
             Type requestBody,
-            Type responseBody,
             String[] tags,
-            String contentType
+            String contentType,
+            ApiParameter[] parameters,
+            ApiResponse[] responses,
+            ResponseProfile responseProfile
     ) {
     }
 

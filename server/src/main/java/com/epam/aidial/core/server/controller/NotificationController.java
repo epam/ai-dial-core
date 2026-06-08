@@ -5,13 +5,14 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.DeleteNotificationRequest;
 import com.epam.aidial.core.server.data.Notifications;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -31,8 +32,11 @@ public class NotificationController {
             method = "POST",
             path = "/v1/ops/notification/list",
             operationId = "getNotifications",
-            responseBody = com.epam.aidial.core.server.data.Notifications.class,
-            tags = {"Notifications"}
+            tags = {"Notifications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = Notifications.class)
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> listNotifications() {
         taskExecutor.submit(() -> service.listNotification(context))
@@ -46,8 +50,12 @@ public class NotificationController {
             method = "POST",
             path = "/v1/ops/notification/delete",
             operationId = "deleteNotifications",
-            requestBody = com.epam.aidial.core.server.data.DeleteNotificationRequest.class,
-            tags = {"Notifications"}
+            requestBody = DeleteNotificationRequest.class,
+            tags = {"Notifications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> deleteNotification() {
         context.getRequest()

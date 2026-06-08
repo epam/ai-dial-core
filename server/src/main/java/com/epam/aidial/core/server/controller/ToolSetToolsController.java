@@ -13,6 +13,11 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
+import com.epam.aidial.core.server.openapi.ParameterIn;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -98,12 +103,28 @@ public class ToolSetToolsController implements Controller {
             method = "GET",
             path = "/v1/toolset/{toolset_name}/tools",
             operationId = "getToolSetTools",
-            tags = {"Toolsets"})
+            tags = {"Toolsets"},
+            parameters = {
+                    @ApiParameter(name = "toolset_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.TOOLSET_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.AUTHENTICATED_READ)
     @ApiOperation(
             method = "GET",
             path = "/v1/toolset/{toolset_name}/allowed-tools",
             operationId = "getToolSetAllowedTools",
-            tags = {"Toolsets"})
+            tags = {"Toolsets"},
+            parameters = {
+                    @ApiParameter(name = "toolset_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.TOOLSET_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.AUTHENTICATED_READ)
     public Future<?> handle() {
         return taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);

@@ -2,7 +2,13 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiParameter;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
+import com.epam.aidial.core.server.openapi.ParameterIn;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -21,7 +27,20 @@ public class LimitController {
         this.context = context;
     }
 
-    @ApiOperation(method = "GET", path = "/v1/deployments/{deployment_name}/limits", operationId = "getDeploymentLimits", tags = {"Limits"})
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/deployments/{deployment_name}/limits",
+            operationId = "getDeploymentLimits",
+            tags = {"Limits"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = LimitStats.class)
+            },
+            responseProfile = ResponseProfile.LIMIT_WITH_NOT_FOUND,
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME)
+            }
+    )
     public Future<?> getLimits(String deploymentId) {
         proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId))
                 .compose(dep -> proxy.getRateLimiter().getLimitStats(dep, context))

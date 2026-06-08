@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.DeploymentData;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteRequest;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFile;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterInputFile;
@@ -8,6 +9,8 @@ import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterOutputFil
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterSession;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterSessionId;
 import com.epam.aidial.core.server.openapi.ApiOperation;
+import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
@@ -52,8 +55,11 @@ public class CodeInterpreterController {
             path = "/v1/ops/code_interpreter/open_session",
             operationId = "openSession",
             requestBody = CodeInterpreterSessionId.class,
-            responseBody = CodeInterpreterSession.class,
-            tags = {"Code interpreter"}
+            tags = {"Code interpreter"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = CodeInterpreterSession.class)
+            },
+            responseProfile = ResponseProfile.CODE_INTERPRETER
     )
     Future<?> openSession() {
         context.getRequest()
@@ -74,8 +80,11 @@ public class CodeInterpreterController {
             path = "/v1/ops/code_interpreter/close_session",
             operationId = "closeSession",
             requestBody = CodeInterpreterSessionId.class,
-            responseBody = CodeInterpreterSession.class,
-            tags = {"Code interpreter"}
+            tags = {"Code interpreter"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = CodeInterpreterSession.class)
+            },
+            responseProfile = ResponseProfile.CODE_INTERPRETER
     )
     Future<?> closeSession() {
         context.getRequest()
@@ -95,8 +104,11 @@ public class CodeInterpreterController {
             path = "/v1/ops/code_interpreter/get_session",
             operationId = "getSession",
             requestBody = CodeInterpreterSessionId.class,
-            responseBody = CodeInterpreterSession.class,
-            tags = {"Code interpreter"}
+            tags = {"Code interpreter"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = CodeInterpreterSession.class)
+            },
+            responseProfile = ResponseProfile.CODE_INTERPRETER
     )
     Future<?> getSession() {
         context.getRequest()
@@ -116,7 +128,11 @@ public class CodeInterpreterController {
             path = "/v1/ops/code_interpreter/execute_code",
             operationId = "executeCode",
             requestBody = CodeInterpreterExecuteRequest.class,
-            tags = {"Code interpreter"}
+            tags = {"Code interpreter"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.CODE_INTERPRETER
     )
     Future<?> executeCode() {
         context.getRequest()
@@ -136,8 +152,11 @@ public class CodeInterpreterController {
             method = "POST",
             path = "/v1/ops/code_interpreter/upload_file",
             operationId = "uploadFileToCodeInterpreter",
-            responseBody = CodeInterpreterFile.class,
-            tags = {"Code interpreter"}
+            tags = {"Code interpreter"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = CodeInterpreterFile.class)
+            },
+            responseProfile = ResponseProfile.CODE_INTERPRETER
     )
     Future<?> uploadFile() {
         context.getRequest()
@@ -175,7 +194,11 @@ public class CodeInterpreterController {
             path = "/v1/ops/code_interpreter/download_file",
             operationId = "downloadFileFromCodeInterpreter",
             requestBody = CodeInterpreterFile.class,
-            tags = {"Code interpreter"}
+            tags = {"Code interpreter"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.CODE_INTERPRETER
     )
     Future<?> downloadFile() {
         context.getRequest().body()
@@ -208,7 +231,11 @@ public class CodeInterpreterController {
             path = "/v1/ops/code_interpreter/list_files",
             operationId = "listFilesFromCodeInterpreter",
             requestBody = CodeInterpreterSessionId.class,
-            tags = {"Code interpreter"}
+            tags = {"Code interpreter"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.CODE_INTERPRETER
     )
     Future<?> listFiles() {
         context.getRequest()
@@ -228,7 +255,11 @@ public class CodeInterpreterController {
             path = "/v1/ops/code_interpreter/transfer_input_file",
             operationId = "transferInputFile",
             requestBody = CodeInterpreterInputFile.class,
-            tags = {"Code interpreter"}
+            tags = {"Code interpreter"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = CodeInterpreterFile.class)
+            },
+            responseProfile = ResponseProfile.CODE_INTERPRETER
     )
     Future<?> transferInputFile() {
         context.getRequest()
@@ -248,7 +279,11 @@ public class CodeInterpreterController {
             path = "/v1/ops/code_interpreter/transfer_output_file",
             operationId = "transferOutputFile",
             requestBody = CodeInterpreterOutputFile.class,
-            tags = {"Code interpreter"}
+            tags = {"Code interpreter"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success")
+            },
+            responseProfile = ResponseProfile.CODE_INTERPRETER
     )
     Future<?> transferOutputFile() {
         context.getRequest()

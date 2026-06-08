@@ -1,5 +1,6 @@
 package com.epam.aidial.core.openapi;
 
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.controller.ControllerSelector;
 import org.junit.jupiter.api.Test;
 
@@ -31,6 +32,10 @@ class EndpointMetadataTest {
 
         // For each endpoint in EndpointMetadata, verify it matches at least one ControllerSelector route
         for (EndpointMetadata.Endpoint endpoint : endpoints) {
+            if (isProxyHandledEndpoint(endpoint)) {
+                continue;
+            }
+
             String samplePath = RouteExtractor.toSamplePath(endpoint.path());
             String httpMethod = endpoint.method();
             boolean matched = false;
@@ -96,6 +101,22 @@ class EndpointMetadataTest {
             assertTrue(added,
                     "Duplicate operationId found: " + endpoint.operationId());
         }
+    }
+
+    /**
+     * Endpoints handled in {@link Proxy} before {@link ControllerSelector} (health, version, OAuth metadata).
+     */
+    private static boolean isProxyHandledEndpoint(EndpointMetadata.Endpoint endpoint) {
+        if (!"GET".equals(endpoint.method())) {
+            return false;
+        }
+        String path = endpoint.path();
+        if (Proxy.HEALTH_CHECK_PATH.equals(path) || Proxy.VERSION_PATH.equals(path)) {
+            return true;
+        }
+        String samplePath = RouteExtractor.toSamplePath(path);
+        return Proxy.TOOLSET_PROXY_METADATA_PATTERN.matcher(samplePath).matches()
+                || Proxy.APPLICATION_MCP_PROXY_METADATA_PATTERN.matcher(samplePath).matches();
     }
 
     private List<?> getControllerRoutes() throws Exception {

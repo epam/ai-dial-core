@@ -1,0 +1,10 @@
+type: object
+properties:
+  role:
+    type: string
+    enum:
+      - assistant
+      - tool
+  content:
+    type: string
+    nullable: true

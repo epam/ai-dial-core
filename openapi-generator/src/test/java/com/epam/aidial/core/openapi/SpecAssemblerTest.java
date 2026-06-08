@@ -168,6 +168,24 @@ class SpecAssemblerTest {
                 "Should include 500 error response");
     }
 
+    @Test
+    void uploadFileRequestBodyIsMultipartBinary() {
+        SpecAssembler assembler = new SpecAssembler("1.0.0");
+        String yaml = assembler.assemble();
+
+        int uploadStart = yaml.indexOf("operationId: uploadFile");
+        assertTrue(uploadStart >= 0, "uploadFile operation should be present");
+        int nextOperation = yaml.indexOf("operationId:", uploadStart + 1);
+        String uploadSection = yaml.substring(uploadStart, nextOperation);
+
+        assertTrue(uploadSection.contains("multipart/form-data"));
+        assertTrue(uploadSection.contains("format: binary"));
+        assertTrue(uploadSection.contains("file:"));
+        assertTrue(uploadSection.contains("required: true"));
+        assertFalse(uploadSection.contains("OpenApiBinary"),
+                "uploadFile request body must not reference OpenApiBinary component schema");
+    }
+
     private Schema<?> invokeConvert(ObjectNode schemaNode) throws Exception {
         SpecAssembler assembler = new SpecAssembler("1.0.0");
         var method = SpecAssembler.class.getDeclaredMethod("convertToSwaggerSchema", ObjectNode.class);
