@@ -127,7 +127,7 @@ Key characteristics relevant to config storage:
 - **ETag-based optimistic concurrency** on every write
 - **Pub/sub events** (`ResourceEvent` with `Action.CREATE/UPDATE/DELETE`) already implemented, published via Redisson `RTopic`
 - **Compression** (gzip above `compressionMinSize` — configurable, not a fixed threshold; transparent to callers)
-- **APPLICATION and TOOL_SET** already use infinite cache TTL (`Long.MAX_VALUE`) — proving this pattern works for config-like entities
+- **APPLICATION and TOOL_SET** already use long-lived cache TTL (30 days) — proving this pattern works for config-like entities
 - **19 resource types** with differentiated caching/compression — adding more is a well-established pattern
 
 ### 2.6 DIAL Admin Backend — Existing Intermediary

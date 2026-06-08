@@ -352,13 +352,15 @@ Note on files/prompts/conversations: admin-managed shared instances live in `pub
 
 | Enum entry | `ResourceTypes.of()` group | Bucket | URL segment (Configuration API) | Compressed | Cache TTL | User-facing? |
 |---|---|---|---|:---:|---|:---:|
-| `MODEL` | `models` | `public/` | `/v1/models/{bucket}/{name}` | Yes | infinite | Yes |
-| `APP_TYPE_SCHEMA` | `app_type_schemas` | `public/` | `/v1/schemas/{bucket}/{name}` | Yes | infinite | Yes |
-| `INTERCEPTOR` | `interceptors` | `platform/` | `/v1/interceptors/{bucket}/{name}` | Yes | infinite | No |
-| `ROLE` | `roles` | `platform/` | `/v1/roles/{bucket}/{name}` | Yes | infinite | No |
-| `PROJECT_KEY` | `project_keys` | `platform/` | `/v1/keys/{bucket}/{name}` | Yes | infinite | No |
-| `ROUTE` | `routes` | `platform/` | `/v1/routes/{bucket}/{name}` | Yes | infinite | No |
-| `GLOBAL_SETTINGS` | `settings` | `platform/` | `/v1/settings/platform/global` (singleton) | Yes | infinite | No |
+| `MODEL` | `models` | `public/` | `/v1/models/{bucket}/{name}` | Yes | 30 days | Yes |
+| `APP_TYPE_SCHEMA` | `app_type_schemas` | `public/` | `/v1/schemas/{bucket}/{name}` | Yes | 30 days | Yes |
+| `INTERCEPTOR` | `interceptors` | `platform/` | `/v1/interceptors/{bucket}/{name}` | Yes | 30 days | No |
+| `ROLE` | `roles` | `platform/` | `/v1/roles/{bucket}/{name}` | Yes | 30 days | No |
+| `PROJECT_KEY` | `project_keys` | `platform/` | `/v1/keys/{bucket}/{name}` | Yes | 30 days | No |
+| `ROUTE` | `routes` | `platform/` | `/v1/routes/{bucket}/{name}` | Yes | 30 days | No |
+| `GLOBAL_SETTINGS` | `settings` | `platform/` | `/v1/settings/platform/global` (singleton) | Yes | 30 days | No |
+
+These are Redis *cache* TTLs (blob storage is the source of truth — §10). The 30-day value mirrors `APPLICATION`/`TOOL_SET`: the prior `Long.MAX_VALUE` sentinel is no longer usable since `ResourceService.getExpiration()` feeds the TTL straight into Redis `PEXPIRE`, which rejects `Long.MAX_VALUE` as an invalid expire time.
 
 The three names that intentionally diverge — enum / blob group / URL segment — are documented above so implementers don't conflate them:
 - `APP_TYPE_SCHEMA` (enum) → `app_type_schemas` (blob group, plural-snake-case to match `ResourceTypes` convention) → `schemas` (URL segment, short/idiomatic).
@@ -607,7 +609,7 @@ Use existing ResourceService (Redis + Blob). **Don't introduce new infrastructur
 | **Durability** | Blob storage is the source of truth. Survives Redis loss. |
 | **Audit** *(Phase 7 — deferred)* | ResourceService events (CREATE/UPDATE/DELETE) will provide the foundation for the Phase 7 audit subsystem; not delivered in Phases 1–6. |
 | **New dependencies** | Zero. Blob + Redis already deployed in every DIAL environment. |
-| **Proven patterns** | APPLICATION and TOOL_SET already use infinite-TTL ResourceService storage in `public/` bucket. Admin-managed models join them there. |
+| **Proven patterns** | APPLICATION and TOOL_SET already use long-lived (30-day cache-TTL) ResourceService storage in `public/` bucket. Admin-managed models join them there. |
 
 ### What we don't need
 
