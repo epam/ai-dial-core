@@ -646,7 +646,6 @@ public class ResourceService implements AutoCloseable {
             if (metadata != null) {
                 etagHeader.validate(metadata.getEtag());
             }
-            flushToBlobStore(redisKey);
 
             MultipartUpload multipartUpload = resourceUpload.getMultipartUpload();
             List<MultipartPart> parts = resourceUpload.getParts();
@@ -654,7 +653,11 @@ public class ResourceService implements AutoCloseable {
             long updatedAt = resourceUpload.getUpdatedAt();
             Long createdAt = resourceUpload.getCreatedAt();
 
+            // Complete the multipart upload first so the new content is the final object in the blob store.
+            // Then drop the stale cache entry without flushing it back to the blob - flushing the previously
+            // cached (smaller) version here would overwrite the freshly uploaded object on S3. See issue #1594.
             String etag = blobStore.completeMultipartUpload(multipartUpload, parts);
+            invalidateCache(redisKey);
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
@@ -1036,6 +1039,17 @@ public class ResourceService implements AutoCloseable {
 
     private void flushToBlobStore(String redisKey) {
         RMap<String, byte[]> map = sync(redisKey);
+        map.delete();
+    }
+
+    /**
+     * Drops the cached resource entry and its pending sync queue record without writing it back to the blob store.
+     * Unlike {@link #flushToBlobStore(String)} this never issues a blob write, so it is safe to call when the blob
+     * has just been replaced (e.g. right after completing a multipart upload).
+     */
+    private void invalidateCache(String redisKey) {
+        redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).remove(redisKey);
+        RMap<String, byte[]> map = redis.getMap(redisKey, REDIS_MAP_CODEC);
         map.delete();
     }
 
