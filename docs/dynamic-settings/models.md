@@ -205,6 +205,7 @@ Some models adapters expose specialized HTTP endpoints for tokenization, rate es
 * `parallelToolCallsSupported`: A boolean parameter that indicates whether the deployment supports `parallel_tool_calls` parameter in a chat completion request. Default is `true`.
 * `assistantAttachmentsInRequestSupported`: A boolean parameter that indicates whether the deployment supports DIAL attachments in the assistant messages. Default is `false`. When set to `true`, DIAL Chat must preserve attachments in the assistant messages, instead of removing them. The feature is especially useful for models that can generate attachments as well as take attachments in its input. A typical example of such a model is an image-editing model.
 * `supportCommentInRateResponse`: A boolean parameters that indicates whether the application supports the field `comment` in rate response payload.
+* `reasoningEffortsSupported`: A boolean parameter that indicates whether the deployment supports the `effort` parameter in chat completions requests. When enabled, clients can specify the reasoning effort level (e.g., `low`, `medium`, `high`) for reasoning models. Default is `false`.
 
 **Example**
 
@@ -226,7 +227,8 @@ Some models adapters expose specialized HTTP endpoints for tokenization, rate es
                 "folderAttachmentsSupported": false,
                 "accessibleByPerRequestKey": true,
                 "contentPartsSupported": false,
-                "assistantAttachmentsInRequestSupported": false
+                "assistantAttachmentsInRequestSupported": false,
+                "reasoningEffortsSupported": false
             },
         }
 }

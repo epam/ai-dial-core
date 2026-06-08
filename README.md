@@ -216,11 +216,11 @@ Priority order:
 | resources.cacheExpiration               |  300000  |    No    | Expiration in milliseconds for synced resources in Redis.                                          |
 | resources.compressionMinSize            |   256    |    No    | Compress a resource with gzip if its size in bytes more or equal to this value.                    |
 | resources.resourceTypesExpiration       |      |    No    | Define expiration time per resource type in milliseconds                                           |
-| resources.resourceTypesExpiration.FILE |      |  300000  | Define expiration time for files                                                                   |
-| resources.resourceTypesExpiration.CONVERSATION |      |  300000  | Define expiration time for converations                                                            |
-| resources.resourceTypesExpiration.PROMPT |      |  300000  | Define expiration time for prompts                                                                 |
-| resources.resourceTypesExpiration.APPLICATION |      | Infinity | Define expiration time for applications                                                            |
-| resources.resourceTypesExpiration.TOOL_SET |      |  Infinity  | Define expiration time for toolsets                                                                |
+| resources.resourceTypesExpiration.FILE |      |  5 mins  | Define expiration time for files                                                                   |
+| resources.resourceTypesExpiration.CONVERSATION |      |  5 mins  | Define expiration time for converations                                                            |
+| resources.resourceTypesExpiration.PROMPT |      |  5 mins  | Define expiration time for prompts                                                                 |
+| resources.resourceTypesExpiration.APPLICATION |      | 30 days  | Define expiration time for applications                                                            |
+| resources.resourceTypesExpiration.TOOL_SET |      | 30 days  | Define expiration time for toolsets                                                                |
 
 </details>
 
