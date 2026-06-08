@@ -557,6 +557,7 @@ public class AiDial {
             prometheusReg.config().meterFilter(new RouteNormalizingMeterFilter());
             micrometer.setMicrometerRegistry(prometheusReg);
             Metrics.addRegistry(prometheusReg);
+            this.prometheusRegistry = prometheusReg;
         }
 
         JsonObject oltp = metrics.toJson().getJsonObject("oltpOptions", new JsonObject());
@@ -565,6 +566,7 @@ public class AiDial {
             otlpReg.config().meterFilter(new RouteNormalizingMeterFilter());
             micrometer.setMicrometerRegistry(otlpReg);
             Metrics.addRegistry(otlpReg);
+            this.otlpRegistry = otlpReg;
         }
 
         options.setMetricsOptions(micrometer);
