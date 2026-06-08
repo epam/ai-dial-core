@@ -187,6 +187,15 @@ Credentials: env-var ($DIAL_review_API_KEY)
 **Input:**
 ```shell
 dial-cli env use local
+```
+
+**Expected result:**
+```
+Switched to environment 'local'.
+```
+
+Verify the switch:
+```shell
 dial-cli env current
 ```
 
@@ -215,13 +224,28 @@ dial-cli get roles
 dial-cli get keys
 ```
 
-**Expected result (fresh DIAL Core, nothing applied yet):**
+**Expected result (fresh DIAL Core, nothing applied via API yet):**
 ```
-No API-managed models found.
-No API-managed roles found.
-HTTP 403 Access to file-sourced keys via this surface is disabled.
+# dial-cli get models
+NAME              SOURCE
+gpt-4o            file
+claude-3-sonnet   file
+...
+
+# dial-cli get roles
+NAME        SOURCE
+default     file
+...
+
+# dial-cli get keys
+NAME  SOURCE
 ```
-After running `apply` in Step 4, these lists populate.
+`get models` and `get roles` merge API-managed and file-config entries — on a fresh
+instance only the file-config entries appear (`source: file`). After running `apply` in
+Step 4, API-managed entries appear alongside them with `source: api`.
+
+`get keys` shows only API-managed keys. File-sourced key entries are silently omitted and
+are not accessible via this surface.
 
 File-sourced and API-managed entries coexist in the same running config under different
 keys — file entries use simple names (`gpt-4`), API entries use canonical IDs
@@ -317,7 +341,7 @@ dial-cli apply -f manifests/base/06-model.yaml
 
 **Expected result:**
 ```
-Model  models/public/example-chat-model  CREATED  ✓
+Created models/public/example-chat-model
 ```
 
 ---
@@ -337,20 +361,11 @@ dial-cli apply -f manifests/base/
 
 **Expected result:**
 ```
-Schema       schemas/public/example-app-type          CREATED  ✓
-Interceptor  interceptors/platform/example-auth        CREATED  ✓
-Role         roles/platform/example-user              CREATED  ✓
-Key          keys/platform/example-ci-key             CREATED  ✓
-Route        routes/platform/example-rate             CREATED  ✓
-Model        models/public/example-chat-model         EXISTS   (skipped — already applied)
-ToolSet      toolsets/public/example-git-tools        CREATED  ✓
-Application  applications/public/example-forecast     CREATED  ✓
-Settings     settings/platform/global                 CREATED  ✓
-
-Applied 9 manifests. 8 created, 1 skipped.
+applied: 9, failed: 0
 ```
-The model already existed from Step 4.2, so it is skipped (no overwrite on `apply` — use
-`model update` or `apply` with an overlay patch to change an existing entity).
+The model already existed from Step 4.2. `apply` is idempotent — existing entities are
+re-applied without error (use `model update` or `apply` with an overlay patch to change
+a specific field).
 
 If `DIAL_CI_KEY` is not set the CLI fails loudly before sending:
 ```
@@ -395,10 +410,9 @@ dial-cli apply -f manifests-json/ --env review --dry-run
 
 **Expected result:**
 ```
-[DRY RUN] Would apply 14 manifests to env 'review':
-  ... (9 single + 2 from batch array + 3 from bundle)
-No changes written.
+{"manifests":[{"kind":"Model","name":"example-model","spec":{...}},...],"precheck":true}
 ```
+Same JSON envelope format as Step 4.1 — pipe through `jq` to inspect individual entries.
 
 ---
 
@@ -420,7 +434,7 @@ dial-cli model update models/public/example-chat-model --set 'displayName="Examp
 
 **Expected result:**
 ```
-Model  models/public/example-chat-model  UPDATED  ✓
+Updated models/public/example-chat-model
 ```
 
 Verify:
@@ -444,7 +458,7 @@ dial-cli model update models/public/example-chat-model \
 
 **Expected result:**
 ```
-Model  models/public/example-chat-model  UPDATED  ✓
+Updated models/public/example-chat-model
 ```
 Multiple `--set` flags are merged into a single PUT. Dot-path notation addresses nested
 fields; quoted JSON values set lists or strings.
@@ -461,7 +475,7 @@ dial-cli role update roles/platform/example-user \
 
 **Expected result:**
 ```
-Role  roles/platform/example-user  UPDATED  ✓
+Updated roles/platform/example-user
 ```
 
 ---
@@ -491,14 +505,14 @@ dial-cli model update models/public/example-chat-model \
 
 **Expected result (ETag matches):**
 ```
-Model  models/public/example-chat-model  UPDATED  ✓
+Updated models/public/example-chat-model
 ```
 
 **Expected result (ETag stale — another writer changed it first):**
 ```
-Error: 412 Precondition Failed — ETag stale. Re-read the entity and retry.
-Exit code: 6
+Stale ETag: models/public/example-chat-model
 ```
+Exit code: 6
 
 ---
 
@@ -511,7 +525,7 @@ dial-cli settings update --set 'retriableErrorCodes=[502,503,504]'
 
 **Expected result:**
 ```
-Settings  settings/platform/global  UPDATED  ✓
+Updated settings/platform/global
 ```
 `settings update` is an upsert — it creates the entry if none exists (no `settings add`
 is needed).
@@ -530,7 +544,7 @@ dial-cli model update models/public/example-chat-model \
 
 **Expected result:**
 ```
-Model  models/public/example-chat-model  UPDATED  ✓
+Updated models/public/example-chat-model
 ```
 
 Verify the field is gone:
@@ -549,7 +563,7 @@ dial-cli role update roles/platform/example-user \
 
 **Expected result:**
 ```
-Role  roles/platform/example-user  UPDATED  ✓
+Updated roles/platform/example-user
 ```
 
 ---
@@ -575,14 +589,14 @@ dial-cli model add \
 
 **Expected result:**
 ```
-Model  models/public/another-chat-model  CREATED  ✓
+Created models/public/another-chat-model
 ```
 
 **If the model already exists:**
 ```
-Error: 412 — Entity already exists. Use 'model update' to modify it.
-Exit code: 5
+Already exists: models/public/another-chat-model
 ```
+Exit code: 5
 
 ---
 
@@ -595,14 +609,14 @@ dial-cli model delete models/public/another-chat-model
 
 **Expected result:**
 ```
-Model  models/public/another-chat-model  DELETED  ✓
+Deleted models/public/another-chat-model
 ```
 
 **If not found:**
 ```
-Error: 404 — Entity not found.
-Exit code: 4
+Not found: models/public/another-chat-model
 ```
+Exit code: 4
 
 ---
 
@@ -615,9 +629,12 @@ dial-cli settings delete
 
 **Expected result:**
 ```
-Settings  settings/platform/global  DELETED  ✓
+Deleted settings/platform/global
 ```
 DIAL Core reverts to file/default settings immediately.
+
+> **Note:** `settings delete` is idempotent — it always returns 204, even when no API
+> blob exists. It never exits with code 4 (unlike regular entity delete).
 
 ---
 
@@ -641,12 +658,10 @@ dial-cli role promote --from review --to local \
 
 **Expected result:**
 ```
-[DRY RUN] Would promote roles/platform/example-user from review → local
-  No env-specific fields detected.
-No changes written.
+{"manifests":[{"kind":"Role","name":"roles/platform/example-user","spec":{...}}],"precheck":true}
 ```
-
-Without `--dry-run` the role is written to the `local` env.
+The raw JSON apply envelope is printed (same format as `apply --dry-run`). Pipe through
+`jq` to inspect the resolved spec. Without `--dry-run` the role is written to the `local` env.
 
 ---
 
@@ -667,16 +682,14 @@ dial-cli model promote --from review --to local \
 
 **Expected result:**
 ```
-[DRY RUN] Would promote models/public/example-chat-model from review → local
-  Template 'bedrock-chat' re-resolved against env 'local':
-    endpoint    → http://reviewhost:7001/openai/.../chat/completions  (same host, demo env)
-    iconUrl     → https://example.com/icons/example-chat-model.svg  (local icon_base_url)
-    forwardAuthToken → true                                          (local forward_auth_token)
-    upstreams   → 1 region (us-east-1, overridden by --param)
-No changes written.
+{"manifests":[{"kind":"Model","name":"models/public/example-chat-model","spec":{"displayName":"...","endpoint":"...","iconUrl":"https://example.com/icons/example-chat-model.svg","forwardAuthToken":true,"upstreams":[{"endpoint":"...","extraData":{"region":"us-east-1"}}],...}}],"precheck":true}
 ```
-The key local-specific changes: `iconUrl` is now non-empty, `forwardAuthToken` is `true`,
-and only one region is present.
+The raw JSON apply envelope is printed. The template re-resolved against `local` vars, so
+`iconUrl` is set from `vars.icon_base_url`, `forwardAuthToken` is `true`, and only one
+region is present (overridden by `--param`). Pipe through `jq` to inspect specific fields:
+```shell
+dial-cli model promote ... --dry-run | jq '.manifests[0].spec | {iconUrl, forwardAuthToken}'
+```
 
 ---
 
@@ -693,18 +706,22 @@ dial-cli model promote --from review --to local \
 
 **Expected result:**
 ```
-[DRY RUN] Auto-matched template 'bedrock-chat' for models/public/example-chat-model.
-Would promote from review → local using template 'bedrock-chat'.
-No changes written.
+{"manifests":[{"kind":"Model","name":"models/public/example-chat-model","spec":{...}}],"precheck":true}
 ```
+The template is matched silently — no "auto-matched" message is printed. The resolved spec
+in the envelope uses the matched template applied against `local` vars.
 
-**If no unique match:**
+**If no template matches:**
 ```
-Error: No template uniquely matches 'models/public/example-chat-model'.
-       Available: bedrock-chat, chat-base, forward-auth-when-enabled.
-       Use --template <name> explicitly.
-Exit code: 1
+No template matches the source entity. Available: bedrock-chat, chat-base, forward-auth-when-enabled. Use --template <name> explicitly.
 ```
+Exit code: 2
+
+**If multiple templates match:**
+```
+Multiple templates match: bedrock-chat, chat-base. Use --template <name> explicitly.
+```
+Exit code: 2
 
 ---
 
@@ -785,14 +802,17 @@ dial-cli apply -f manifests/bundles/onboard-example.yaml --env review --dry-run
 
 **Expected result:**
 ```
-[DRY RUN] Would apply 3 manifests (expanded from bundle 'onboard-rollout-model') to env 'review':
-  Model  models/public/example-rollout-model          CREATE
-  Role   roles/platform/example-user                  PATCH   (merge into existing limits)
-  Key    keys/platform/example-rollout-model-ci       CREATE
-No changes written.
+{"manifests":[{"kind":"Model","name":"models/public/example-rollout-model","spec":{...}},{"kind":"Role","name":"roles/platform/example-user","spec":{...merged limits...}},{"kind":"Key","name":"keys/platform/example-rollout-model-ci","spec":{...}}],"precheck":true}
 ```
-Check that the Role `patch:` shows `limits["models/public/example-rollout-model"]` added
-alongside the existing `limits["models/public/example-chat-model"]` — not replaced.
+The bundle is expanded into individual manifest entries before printing. Inspect the
+expanded result with `jq`:
+```shell
+dial-cli apply -f manifests/bundles/onboard-example.yaml --env review --dry-run \
+  | jq '.manifests[] | {kind, name}'
+```
+Check that the Role entry's `spec.limits` contains both
+`"models/public/example-chat-model"` (existing) and `"models/public/example-rollout-model"`
+(added by bundle patch) — not replaced.
 
 ---
 
@@ -810,9 +830,7 @@ dial-cli apply -f manifests/bundles/onboard-example.yaml --env review
 
 **Expected result:**
 ```
-Model  models/public/example-rollout-model      CREATED  ✓
-Role   roles/platform/example-user              UPDATED  ✓
-Key    keys/platform/example-rollout-model-ci   CREATED  ✓
+applied: 3, failed: 0
 ```
 
 ### Step 9.3 — Verify
@@ -861,19 +879,14 @@ dial-cli apply -f manifests/base/ --overlay manifests/overlays/local/ \
 
 **Expected result:**
 ```
-[DRY RUN] Would apply 8 manifests (9 base − 1 disabled) to env 'local':
-  Schema       schemas/public/example-app-type          CREATE
-  Interceptor  interceptors/platform/example-auth        CREATE
-  Role         roles/platform/example-user              CREATE  (overlay: limits bumped)
-  Route        routes/platform/example-rate             CREATE
-  Model        models/public/example-chat-model         CREATE  (overlay: +pricing, 1 region)
-  ToolSet      toolsets/public/example-git-tools        CREATE
-  Application  applications/public/example-forecast     CREATE
-  Settings     settings/platform/global                 CREATE
-  -- Key keys/platform/example-ci-key EXCLUDED by 04-key.disable --
-No changes written.
+{"manifests":[{"kind":"Schema","name":"schemas/public/example-app-type","spec":{...}},{"kind":"Interceptor",...},{"kind":"Role",...},{"kind":"Route",...},{"kind":"Model",...},{"kind":"ToolSet",...},{"kind":"Application",...},{"kind":"Settings",...}],"precheck":true}
 ```
-8 instead of 9 manifests — the CI key is excluded for `local` by the `.disable` marker.
+8 instead of 9 manifests — `04-key.disable` removes the CI key from the set before the
+envelope is built. Inspect with `jq`:
+```shell
+dial-cli apply -f manifests/base/ --overlay manifests/overlays/local/ --env local --dry-run \
+  | jq '[.manifests[] | {kind, name}]'
+```
 
 ---
 
@@ -890,16 +903,7 @@ dial-cli apply -f manifests/base/ --overlay manifests/overlays/local/ \
 
 **Expected result:**
 ```
-Schema       schemas/public/example-app-type        CREATED  ✓
-Interceptor  interceptors/platform/example-auth      CREATED  ✓
-Role         roles/platform/example-user            CREATED  ✓
-Route        routes/platform/example-rate           CREATED  ✓
-Model        models/public/example-chat-model       CREATED  ✓
-ToolSet      toolsets/public/example-git-tools      CREATED  ✓
-Application  applications/public/example-forecast   CREATED  ✓
-Settings     settings/platform/global               CREATED  ✓
-
-Applied 8 manifests. 8 created.
+applied: 8, failed: 0
 ```
 
 ### Step 10.3 — Verify the overlay was applied
@@ -936,7 +940,7 @@ The key was suppressed by `04-key.disable`.
 |------|---------|
 | 0 | Success |
 | 1 | Network error, HTTP 5xx, or partial batch failure |
-| 2 | Validation error, bad input, HTTP 4xx |
+| 2 | Validation error or bad input (HTTP 400, 422) |
 | 3 | Authentication failure |
 | 4 | Entity not found (404) |
 | 5 | Entity already exists — use `update` (412 on `add`) |
@@ -992,6 +996,11 @@ dial-cli model update models/public/<name> \
 # Remove a field (set to null)
 dial-cli model update models/public/<name> --set features.toolsSupported=null
 dial-cli role update roles/platform/<name> --set limits.models/public/<model>=null
+
+# Validate (no write — POST /v1/admin/validate)
+dial-cli model validate --name models/public/<name> --from-file <spec.yaml> \
+  --template bedrock-chat --param 'regions=[us-east-1]'
+dial-cli settings validate --from-file <spec.yaml>
 
 # Add / delete
 dial-cli model add --name models/public/<name> --from-file <spec.yaml> \
