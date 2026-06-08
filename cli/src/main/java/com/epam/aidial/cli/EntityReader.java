@@ -42,6 +42,12 @@ public final class EntityReader {
     }
 
     public static JsonNode getEntity(EnvResolver.ResolvedEnv env, String type, String identifier) throws JsonProcessingException {
+        if (type.equals(KeyCommand.TYPE) && !identifier.contains("/")) {
+            String bucket = TYPE_DEFAULT_BUCKET.getOrDefault(type, "platform");
+            throw CliException.validation(
+                    "Keys must be specified by full path (e.g. 'keys/" + bucket + "/<name>'). File-sourced keys are not accessible.");
+        }
+
         String path = identifier.contains("/")
                 ?  identifierToPath(type, identifier)
                 : "/v1/admin/config/file/" + type + "/" + identifier;
@@ -63,11 +69,11 @@ public final class EntityReader {
         EnvResolver.ResolvedEnv env = EnvResolver.resolveEnv(root);
 
         CliHttpClient.Response apiResp = getBlobEntitiesResponse(env, type);
-        CliHttpClient.Response fileResp = getConfigFileEntitiesResponse(env, type);
+        CliHttpClient.Response fileResp = type.equals(KeyCommand.TYPE) ? null : getConfigFileEntitiesResponse(env, type);
 
         try {
             JsonNode apiNode = JSON.readTree(apiResp.body());
-            JsonNode fileNode = JSON.readTree(fileResp.body());
+            JsonNode fileNode = fileResp != null ? JSON.readTree(fileResp.body()) : JSON.createObjectNode();
 
             ArrayNode entries = JSON.createArrayNode();
 
