@@ -177,8 +177,7 @@ final class ManifestLoader {
         String kind = kindNode.asText();
         if (OVERLAY_KINDS.contains(kind)) {
             throw new ManifestParseException(where + ": kind '" + kind
-                    + "' — overlay manifests belong under `--overlay <dir>`, not in the base tree "
-                    + "(see 05-cli-design.md §5.2)");
+                    + "' — overlay manifests belong under `--overlay <dir>`, not in the base tree");
         }
         if (BUNDLE_KIND.equals(kind)) {
             return expandBundle(doc, where, file);
@@ -188,11 +187,11 @@ final class ManifestLoader {
         }
         if (doc.has("target")) {
             throw new ManifestParseException(where + ": field 'target' belongs in `*Overlay` manifests under "
-                    + "`--overlay <dir>`, not in a top-level base manifest (see 05-cli-design.md §5.2)");
+                    + "`--overlay <dir>`, not in a top-level base manifest");
         }
         if (doc.has("patch")) {
             throw new ManifestParseException(where + ": field 'patch' belongs in Bundle entries or "
-                    + "`*Overlay` manifests, not in a top-level base manifest (see 05-cli-design.md §5.3)");
+                    + "`*Overlay` manifests, not in a top-level base manifest");
         }
         return List.of(parseEntity(doc, kind, where, file));
     }
@@ -250,7 +249,7 @@ final class ManifestLoader {
         return params;
     }
 
-    // Expand a Bundle manifest (design 05 §5.3) into one Manifest per entity. The bundle's
+    // Expand a Bundle manifest into one Manifest per entity. The bundle's
     // `params` are visible to every nested entity and override same-named per-entity params
     // (bundle wins on conflict per the design). Each entity declares exactly one of
     // `spec:` (full replacement) or `patch:` (resolved at apply time via GET → JSON Merge
@@ -285,8 +284,7 @@ final class ManifestLoader {
             }
             if (OVERLAY_KINDS.contains(entryKind)) {
                 throw new ManifestParseException(entryWhere + ": kind '" + entryKind
-                        + "' — overlay manifests belong under `--overlay <dir>`, not in a Bundle entry "
-                        + "(see 05-cli-design.md §5.2)");
+                        + "' — overlay manifests belong under `--overlay <dir>`, not in a Bundle entry");
             }
             if (!ALLOWED_KINDS.contains(entryKind)) {
                 throw new ManifestParseException(entryWhere + ": unknown kind '" + entryKind

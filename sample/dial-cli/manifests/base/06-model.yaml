@@ -2,7 +2,6 @@
 # Uses the `bedrock-chat` template from config.yaml — the CLI resolves
 # endpoint / iconUrl / upstreams / type / features / forwardAuthToken from the
 # template before sending; only fields below override or add to that result.
-# See 05-cli-design.md §3 for the merge order.
 kind: Model
 name: models/public/example-chat-model
 template: bedrock-chat

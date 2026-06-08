@@ -32,8 +32,7 @@ environments:
       forward_auth_token: "true"
 
 # Templates — reusable, entity-type-agnostic field patterns the CLI deep-merges
-# into manifest `spec` at write time. See 05-cli-design.md §3 and
-# 06-cli-user-guide.md §1.2 for the full DSL surface.
+# into manifest `spec` at write time.
 templates:
   # Base — common chat-model shape every adapter family inherits.
   chat-base:

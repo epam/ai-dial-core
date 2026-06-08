@@ -44,7 +44,7 @@ sample/dial-cli/
 ## Prerequisites
 
 1. **A running DIAL Core on `http://localhost:8080`.**
-   Fastest route — the bundled image (per `06-cli-user-guide.md` §1.1.1):
+   Fastest route — the bundled image:
 
    ```shell
    docker run --rm --name dial-core -p 8080:8080 -p 9464:9464 \
@@ -159,16 +159,6 @@ dial-cli apply -f manifests/base/06-model.yaml --env local   --dry-run   # → n
 dial-cli apply -f manifests/base/06-model.yaml --env staging --dry-run   # → forwardAuthToken: true
 ```
 
-Full DSL surface (functions, `!if` / `!for` semantics, merge order, cycle
-detection) is in `05-cli-design.md §3` and `06-cli-user-guide.md §1.2`.
-
-> **`!if` quoting.** Both `!if ${vars.x} == 'true':` (unquoted) and
-> `!if "${vars.x} == 'true'":` (whole-expression double-quoted, as in
-> `05-cli-design.md §3.3`) are accepted — the quoted form has its outer pair
-> stripped before evaluation (slice Cli.6). Embedded string literals still
-> use single quotes (`'true'`). `config.yaml` ships the unquoted form because
-> it reads cleanest in YAML.
-
 ## Environment overlays (4C.2)
 
 Overlays split shared manifests from per-env deltas. `manifests/overlays/staging/`
@@ -190,7 +180,6 @@ Resulting batch: 8 manifests (the key is gone), the Model has one upstream
 region instead of two, and `pricing.prompt` is set.
 
 `.disable` marker matching is byte-equal stem + identical relative directory.
-Format and the four-row truth table are documented in `05-cli-design.md §5.2`.
 
 ## Bundles (4C.3)
 
@@ -232,8 +221,7 @@ JSON bundles can be applied side-by-side without collisions.
 **Concurrency caveat.** Concurrent bundles `patch:`ing the same shared entity
 race silently with last-write-wins — `POST /v1/admin/apply` has no per-entity
 `If-Match`. Use `patch:` only for entities a single bundle owns; for anything
-shared across bundles or overlays write a full `spec:`. The hard contract is
-spelled out in `05-cli-design.md §5.3`.
+shared across bundles or overlays write a full `spec:`.
 
 ## Secrets & env vars (4C.4)
 
@@ -250,7 +238,7 @@ dial-cli apply -f manifests/secrets-demo.yaml --env local --dry-run
 ```
 
 Vault / OS-keychain extension stays deferred (OQ-19); env-var resolution is the
-MVP path. See `05-cli-design.md §3.1` and `06-cli-user-guide.md §2.1`.
+MVP path.
 
 ## Promote between environments (4C.5)
 
@@ -309,8 +297,6 @@ ERROR: No template matches entity 'models/public/example-chat-model' against
 
 All 9 per-type commands (`model`, `application`, `toolset`, `interceptor`,
 `role`, `key`, `route`, `schema`, `settings`) accept `--template` + `--param`.
-The full reverse-match algorithm and template-wins-deep-merge order are in
-`05-cli-design.md §4`.
 
 ## JSON manifests
 
@@ -342,7 +328,6 @@ more naturally in YAML.
 ## Common commands
 
 Once a base or overlay sweep has been applied, these are the day-to-day verbs.
-Full surface in `06-cli-user-guide.md §2`.
 
 ### Read
 
@@ -448,8 +433,7 @@ dial-cli env check --env local                              # config-only valida
 ## Exit codes
 
 `0` success; `1` partial-batch / general failure; `2` validation; `3` auth;
-`4` 404; `5` 409 (conflict on `add`); `6` 412 (stale ETag). Full contract:
-`06-cli-user-guide.md §2.8`.
+`4` 404; `5` 409 (conflict on `add`); `6` 412 (stale ETag).
 
 ## Caveats
 
@@ -463,14 +447,8 @@ dial-cli env check --env local                              # config-only valida
   `export DIAL_CI_KEY=<key>` (`04-key.yaml`),
   `export DIAL_ROLLOUT_KEY=<key>` (bundle), `export DIAL_BATCH_KEY=<key>`
   (`00-batch-array.json`). `secrets-demo.yaml` shows the full env-var pattern;
-  in real workflows source secrets from vault per `06-cli-user-guide.md §2.1`.
+  in real workflows source secrets from vault.
 - The docker alias mounts `$PWD` **read-only**, so `dial-cli env use` won't
   persist back to `config.yaml` from inside the container. Drop the `:ro` if
   you want to test that path; safer to leave it on for alpha CI.
 
-## See also
-
-- `docs/sandbox/dial-unified-config/06-cli-user-guide.md` — full operator guide
-- `docs/sandbox/dial-unified-config/05-cli-design.md` — CLI internals (templates, overlays, DSL)
-- `docs/sandbox/dial-unified-config/03-api-reference.md` — wire protocol
-- `docs/sandbox/dial-unified-config/IMPLEMENTATION.md` — slice register (which features have landed)
