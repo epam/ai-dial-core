@@ -23,6 +23,13 @@ public enum ResourceTypes implements ResourceType {
     CREDENTIALS("credentials", true, TimeUnit.MINUTES.toMillis(5)),
     ENCRYPTION_KEYS("encryption_keys", true, TimeUnit.MINUTES.toMillis(5)),
     CLIENT_CHANNEL("client_channels", true, TimeUnit.HOURS.toMillis(24)),
+    MODEL("models", true, TimeUnit.DAYS.toMillis(30)),
+    APP_TYPE_SCHEMA("app_type_schemas", "schemas", true, TimeUnit.DAYS.toMillis(30)),
+    INTERCEPTOR("interceptors", true, TimeUnit.DAYS.toMillis(30)),
+    ROLE("roles", true, TimeUnit.DAYS.toMillis(30)),
+    PROJECT_KEY("project_keys", "keys", true, TimeUnit.DAYS.toMillis(30)),
+    ROUTE("routes", true, TimeUnit.DAYS.toMillis(30)),
+    GLOBAL_SETTINGS("settings", true, TimeUnit.DAYS.toMillis(30)),
     RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5));
 
     private final String group;

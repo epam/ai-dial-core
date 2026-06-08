@@ -117,7 +117,7 @@ Seven phases. Phase 0 is current research and design. Phases 1–4 deliver the C
 
 **DIAL Core changes:**
 
-- Add new resource type `MODEL` in `ResourceTypes` (infinite TTL, `public/` bucket). Extend `ResourceTypes.of()` switch.
+- Add new resource type `MODEL` in `ResourceTypes` (30-day cache TTL, `public/` bucket). Extend `ResourceTypes.of()` switch.
 - Introduce `PLATFORM_BUCKET` and `PLATFORM_LOCATION` constants in `ResourceDescriptor`. Update `fromAnyUrl()` to handle the platform bucket.
 - Implement `MergedConfigStore` — union of `FileConfigStore` + `ResourceService` (no override — see [`02-architecture.md`](02-architecture.md) §MergedConfigStore).
 - Add a new `List<Consumer<Config>> onReloadCallbacks` field + registration method on `FileConfigStore`, and invoke the list at the end of `load()` only on a non-null `Config` return, after the `this.config = config` volatile write. `MergedConfigStore` registers its `requestRebuild()` trigger via this hook. Callback invocation must not block the `FileConfigStore` reload thread (`requestRebuild()` is non-blocking per [`02-architecture.md`](02-architecture.md) §11.1). **Implementation note:** invoke callbacks immediately after `this.config = config` is set (line 141 in current source) and before the successful-reload return. This co-location naturally satisfies the "fire only on non-null `Config` return" rule because the catch path (which returns `null`) does not reach that line.
