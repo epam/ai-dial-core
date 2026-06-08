@@ -22,6 +22,7 @@ import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -291,6 +292,7 @@ public class AdminApplyController {
                     Model model = ConfigResourceController.treeToEntity(entry.spec(), Model.class);
                     List<ValidationWarning> warnings = new ArrayList<>();
                     ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
+                    UpstreamExtraDataMerger.validateNoOverlap(model);
                     if (!warnings.isEmpty() && !softValidation) {
                         return new EntityResult(id, "FAILED", joinWarnings(warnings));
                     }
@@ -460,6 +462,7 @@ public class AdminApplyController {
         Model model = ConfigResourceController.treeToEntity(entry.spec(), Model.class);
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
+        UpstreamExtraDataMerger.validateNoOverlap(model);
         boolean invalid = !warnings.isEmpty();
         if (invalid && !softValidation) {
             return new EntityResult(id, "FAILED", joinWarnings(warnings));

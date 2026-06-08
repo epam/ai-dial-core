@@ -20,6 +20,7 @@ import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.server.security.Operation;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -716,6 +717,7 @@ public class ConfigResourceController implements Controller {
         }
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validateCrossReferences(entity, snapshot, warnings);
+        UpstreamExtraDataMerger.validateNoOverlap(entity);
         if (warnings.isEmpty()) {
             return;
         }

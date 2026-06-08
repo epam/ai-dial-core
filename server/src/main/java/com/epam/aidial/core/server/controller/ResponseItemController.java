@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -83,7 +84,7 @@ public class ResponseItemController implements Controller {
                 .compose(request -> {
                     request.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey())
                             .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getResponsesEndpoint())
-                            .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, upstream.getExtraData());
+                            .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, UpstreamExtraDataMerger.merge(upstream));
 
                     return request.send();
                 })

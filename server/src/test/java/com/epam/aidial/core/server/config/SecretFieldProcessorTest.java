@@ -140,7 +140,7 @@ class SecretFieldProcessorTest {
     void decryptFields_walksIntoNestedUpstreams() {
         Upstream up = new Upstream();
         up.setKey("ENC[" + Base64.getEncoder().encodeToString("up-cipher".getBytes(StandardCharsets.UTF_8)) + "]");
-        up.setExtraData("ENC[" + Base64.getEncoder().encodeToString("xd-cipher".getBytes(StandardCharsets.UTF_8)) + "]");
+        up.setSecretExtraData("ENC[" + Base64.getEncoder().encodeToString("xd-cipher".getBytes(StandardCharsets.UTF_8)) + "]");
         Model model = new Model();
         model.setUpstreams(List.of(up));
         when(encryptionService.decrypt(eq(BUCKET), any(byte[].class), any(byte[].class)))
@@ -153,7 +153,7 @@ class SecretFieldProcessorTest {
         processor.decryptFields(model, descriptor);
 
         assertEquals("plain-up-cipher", model.getUpstreams().get(0).getKey());
-        assertEquals("plain-xd-cipher", model.getUpstreams().get(0).getExtraData());
+        assertEquals("plain-xd-cipher", model.getUpstreams().get(0).getSecretExtraData());
     }
 
     @Test
@@ -229,13 +229,15 @@ class SecretFieldProcessorTest {
     @Test
     void stripEncryptedFields_recursesIntoUpstreams() throws Exception {
         ObjectNode payload = (ObjectNode) M.readTree(
-                "{\"name\":\"m\",\"upstreams\":[{\"endpoint\":\"e\",\"key\":\"sk-leak\",\"extraData\":\"{\\\"region\\\":\\\"us\\\"}\"}]}");
+                "{\"name\":\"m\",\"upstreams\":[{\"endpoint\":\"e\",\"key\":\"sk-leak\","
+                        + "\"extraData\":\"{\\\"region\\\":\\\"us\\\"}\",\"secretExtraData\":\"sk-secret\"}]}");
 
         ObjectNode stripped = SecretFieldProcessor.stripEncryptedFields(payload, Model.class);
 
         ObjectNode up = (ObjectNode) stripped.get("upstreams").get(0);
         assertFalse(up.has("key"), () -> "upstream key must be removed: " + up);
-        assertFalse(up.has("extraData"), () -> "upstream extraData must be removed: " + up);
+        assertFalse(up.has("secretExtraData"), () -> "upstream secretExtraData must be removed: " + up);
+        assertEquals("{\"region\":\"us\"}", up.get("extraData").asText(), () -> "upstream extraData must be kept: " + up);
         assertEquals("e", up.get("endpoint").asText());
     }
 
@@ -316,17 +318,17 @@ class SecretFieldProcessorTest {
     }
 
     @Test
-    void extraDataAlsoPreservedByEndpoint() throws Exception {
+    void secretExtraDataAlsoPreservedByEndpoint() throws Exception {
         ObjectNode existing = (ObjectNode) M.readTree(
-                "{\"upstreams\":[{\"endpoint\":\"A\",\"extraData\":\"ENC[xa]\"},"
-                        + "{\"endpoint\":\"B\",\"extraData\":\"ENC[xb]\"}]}");
+                "{\"upstreams\":[{\"endpoint\":\"A\",\"secretExtraData\":\"ENC[xa]\"},"
+                        + "{\"endpoint\":\"B\",\"secretExtraData\":\"ENC[xb]\"}]}");
         ObjectNode request = (ObjectNode) M.readTree(
                 "{\"upstreams\":[{\"endpoint\":\"B\"},{\"endpoint\":\"A\"}]}");
 
         ObjectNode merged = processor.mergePreservingOmittedSecrets(existing, request, Model.class);
 
-        assertEquals("ENC[xb]", merged.get("upstreams").get(0).get("extraData").asText());
-        assertEquals("ENC[xa]", merged.get("upstreams").get(1).get("extraData").asText());
+        assertEquals("ENC[xb]", merged.get("upstreams").get(0).get("secretExtraData").asText());
+        assertEquals("ENC[xa]", merged.get("upstreams").get(1).get("secretExtraData").asText());
     }
 
     @Test

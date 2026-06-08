@@ -165,6 +165,149 @@ public class ModelWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testExtraDataVisibleOnGet() {
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "upstreams": [
+                    {"endpoint": "http://localhost:7001", "extraData": {"region": "us"}}
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-ed-visible", null, body,
+                "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response get = send(HttpMethod.GET, "/v1/models/public/test-model-ed-visible", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        // extraData is stored as a JSON-string (JsonToStringDeserializer), so it round-trips as an
+        // escaped string value on the response, not as a nested object.
+        assertTrue(get.body().contains("\"extraData\":\"{\\\"region\\\":\\\"us\\\"}\""),
+                () -> "extraData must be visible on GET: " + get.body());
+        assertFalse(get.body().contains("secretExtraData"),
+                () -> "secretExtraData must be absent on GET: " + get.body());
+    }
+
+    @Test
+    void testSecretExtraDataDroppedOnGet() {
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "upstreams": [
+                    {"endpoint": "http://localhost:7001", "secretExtraData": {"region": "us"}}
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-sed-dropped", null, body,
+                "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response get = send(HttpMethod.GET, "/v1/models/public/test-model-sed-dropped", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertFalse(get.body().contains("secretExtraData"),
+                () -> "secretExtraData must be absent on GET: " + get.body());
+    }
+
+    @Test
+    void testSecretExtraDataPreserveOnOmit() {
+        String withSecret = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "upstreams": [
+                    {"endpoint": "http://localhost:7001", "secretExtraData": {"token": "abc"}}
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-sed-omit", null, withSecret,
+                "authorization", "admin", "If-None-Match", "*"), 200);
+
+        String omitSecret = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "upstreams": [
+                    {"endpoint": "http://localhost:7001"}
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-sed-omit", null, omitSecret,
+                "authorization", "admin"), 200);
+
+        Response get = send(HttpMethod.GET, "/v1/models/public/test-model-sed-omit", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertFalse(get.body().contains("secretExtraData"),
+                () -> "secretExtraData must be absent on GET (WRITE_ONLY): " + get.body());
+        assertFalse(get.body().contains("abc"),
+                () -> "secret value must never leak on GET: " + get.body());
+    }
+
+    @Test
+    void testExtraDataSecretExtraDataOverlapReturns422() {
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "upstreams": [
+                    {"endpoint": "http://localhost:7001", "extraData": {"k": "a"}, "secretExtraData": {"k": "b"}}
+                  ]
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/models/public/test-model-overlap", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 422);
+    }
+
+    @Test
+    void testExtraDataSecretExtraDataNoOverlapAccepted() {
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "upstreams": [
+                    {"endpoint": "http://localhost:7001", "extraData": {"region": "us"}, "secretExtraData": {"token": "x"}}
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-no-overlap", null, body,
+                "authorization", "admin", "If-None-Match", "*"), 200);
+    }
+
+    @Test
+    void testSecretExtraDataScalarAccepted() {
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "upstreams": [
+                    {"endpoint": "http://localhost:7001", "secretExtraData": "opaque"}
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/models/public/test-model-sed-scalar", null, body,
+                "authorization", "admin", "If-None-Match", "*"), 200);
+    }
+
+    @Test
+    void testBothScalarReturns422() {
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "upstreams": [
+                    {"endpoint": "http://localhost:7001", "extraData": "a", "secretExtraData": "b"}
+                  ]
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/models/public/test-model-both-scalar", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 422);
+    }
+
+    @Test
     void testDelete204HappyPath() {
         verify(send(HttpMethod.PUT, "/v1/models/public/test-model-delete", null, MODEL_BODY_NO_SECRET,
                 "authorization", "admin", "If-None-Match", "*"), 200);

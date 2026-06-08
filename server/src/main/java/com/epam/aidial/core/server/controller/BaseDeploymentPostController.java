@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -199,7 +200,7 @@ public class BaseDeploymentPostController {
             Upstream upstream = Objects.requireNonNull(context.getUpstreamRoute().get());
             proxyRequest.putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstreamSelector.apply(upstream))
                     .putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey())
-                    .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, upstream.getExtraData())
+                    .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, UpstreamExtraDataMerger.merge(upstream))
                     .putHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH, context.getUpstreamRoute().getBreakpointPath())
                     .putHeader(Proxy.HEADER_CACHE_EXTRA_METADATA, context.getUpstreamRoute().getExtraMetadata());
         }

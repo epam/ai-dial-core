@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.config.Upstream;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -20,6 +21,14 @@ class JsonToStringDeserializerTest {
 
         assertNotNull(upstream);
         assertEquals(upstream.getExtraData(), expected);
+    }
+
+    @Test
+    void deserializeSecretExtraDataObjectAsString() throws IOException {
+        var upstream = ProxyUtil.MAPPER.readValue("{\"secretExtraData\":{\"key\":\"value\"}}", Upstream.class);
+
+        assertNotNull(upstream);
+        assertEquals("{\"key\":\"value\"}", upstream.getSecretExtraData());
     }
 
     private static List<Arguments> datasource() {

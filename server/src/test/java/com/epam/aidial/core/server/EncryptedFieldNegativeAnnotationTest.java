@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * Locks the slice 2S.10 invariant on which entity fields carry {@link EncryptedField}: the
- * full-blob secrets ({@code Key.key}, {@code Upstream.key}, {@code Upstream.extraData}) and
+ * full-blob secrets ({@code Key.key}, {@code Upstream.key}, {@code Upstream.secretExtraData}) and
  * nothing else. In particular, {@code ResourceAuthSettings.clientSecret} and
  * {@code ResourceAuthSettings.codeVerifier} must NOT carry the marker — they go through
  * {@code ResourceAuthSettingsEncryptionService} (3S.0-pre extension), not {@link
@@ -57,7 +57,7 @@ class EncryptedFieldNegativeAnnotationTest {
         Set<String> expected = Set.of(
                 "com.epam.aidial.core.config.Key#key",
                 "com.epam.aidial.core.config.Upstream#key",
-                "com.epam.aidial.core.config.Upstream#extraData");
+                "com.epam.aidial.core.config.Upstream#secretExtraData");
 
         Set<String> actual = new java.util.HashSet<>();
         for (Class<?> cls : CONFIG_CLASSES) {
@@ -69,7 +69,7 @@ class EncryptedFieldNegativeAnnotationTest {
         }
 
         assertEquals(expected, actual,
-                "@EncryptedField is only expected on Key.key, Upstream.key, Upstream.extraData; "
+                "@EncryptedField is only expected on Key.key, Upstream.key, Upstream.secretExtraData; "
                         + "any divergence requires an architect plan update.");
     }
 
