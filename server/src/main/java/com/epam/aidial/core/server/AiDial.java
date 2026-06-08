@@ -148,6 +148,9 @@ public class AiDial {
     private RedissonClient redis;
     private Proxy proxy;
 
+    private PrometheusMeterRegistry prometheusRegistry;
+    private OtlpMeterRegistry otlpRegistry;
+
     private AccessTokenValidator accessTokenValidator;
 
     private BlobStorage storage;
@@ -382,7 +385,21 @@ public class AiDial {
             close(server, HttpServer::close);
             close(client, HttpClient::close);
             close(resourceService);
+            // Unhook from the global composite before vertx.close() so its shutdown metrics
+            // stop flowing here; close the registries only after vertx has flushed its own.
+            if (prometheusRegistry != null) {
+                Metrics.removeRegistry(prometheusRegistry);
+            }
+            if (otlpRegistry != null) {
+                Metrics.removeRegistry(otlpRegistry);
+            }
             close(vertx, Vertx::close);
+            if (prometheusRegistry != null) {
+                prometheusRegistry.close();
+            }
+            if (otlpRegistry != null) {
+                otlpRegistry.close();
+            }
             close(storage);
             close(redis);
             log.info("Proxy stopped");
@@ -526,7 +543,7 @@ public class AiDial {
         }, "shutdown-hook"));
     }
 
-    private static void setupMetrics(VertxOptions options) {
+    private void setupMetrics(VertxOptions options) {
         MetricsOptions metrics = options.getMetricsOptions();
         if (metrics == null || !metrics.isEnabled()) {
             return;
@@ -540,6 +557,7 @@ public class AiDial {
             prometheusReg.config().meterFilter(new RouteNormalizingMeterFilter());
             micrometer.setMicrometerRegistry(prometheusReg);
             Metrics.addRegistry(prometheusReg);
+            this.prometheusRegistry = prometheusReg;
         }
 
         JsonObject oltp = metrics.toJson().getJsonObject("oltpOptions", new JsonObject());
@@ -548,6 +566,7 @@ public class AiDial {
             otlpReg.config().meterFilter(new RouteNormalizingMeterFilter());
             micrometer.setMicrometerRegistry(otlpReg);
             Metrics.addRegistry(otlpReg);
+            this.otlpRegistry = otlpReg;
         }
 
         options.setMetricsOptions(micrometer);
