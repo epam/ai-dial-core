@@ -19,6 +19,11 @@
     <logger name="io.opentelemetry" level="DEBUG"/>
     <logger name="org.redisson" level="WARN"/>
 
+    <!-- TEMPORARY DIAGNOSTIC — REMOVE before merge (investigating Snowflake invalid_client #1527).
+         Set AIDIAL_AUTH_DUMP_LEVEL=DEBUG to dump outbound auth-server requests/responses, including the
+         Authorization header (Base64(client_id:client_secret)) — SENSITIVE. OFF by default. -->
+    <logger name="DIAL_AUTH_REQUEST_DUMP" level="${AIDIAL_AUTH_DUMP_LEVEL:-OFF}"/>
+
     <!-- Root logger -->
     <root level="${AIDIAL_LOG_LEVEL}">
         <appender-ref ref="CONSOLE_JSON"/>

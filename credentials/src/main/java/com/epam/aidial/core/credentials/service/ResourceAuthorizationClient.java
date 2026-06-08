@@ -9,6 +9,8 @@ import com.google.common.annotations.VisibleForTesting;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.core5.http.ContentType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.ConnectException;
 import java.net.ProxySelector;
@@ -28,6 +30,14 @@ public class ResourceAuthorizationClient {
 
     private final HttpClient httpClient;
     private final HttpHeadersHandler httpHeadersHandler;
+
+    // ===== TEMPORARY DIAGNOSTIC — REMOVE before merge (investigating Snowflake invalid_client #1527) =====
+    // Dedicated logger for the request/response dump below. OFF by default. The dump prints the
+    // Authorization header (Base64(client_id:client_secret)) — SENSITIVE. The logger name is OUTSIDE the
+    // com.epam.aidial.* hierarchy so raising the credentials package to DEBUG will NOT enable it; only
+    // explicitly setting AIDIAL_AUTH_DUMP_LEVEL=DEBUG (see logback.xml) does. Never leave on in production.
+    private static final Logger AUTH_DUMP = LoggerFactory.getLogger("DIAL_AUTH_REQUEST_DUMP");
+    // ===== END TEMPORARY DIAGNOSTIC =====
 
     public ResourceAuthorizationClient(@Nullable ProxySelector proxySelector) {
         HttpClient.Builder builder = HttpClient.newBuilder();
@@ -79,6 +89,15 @@ public class ResourceAuthorizationClient {
                 .POST(HttpRequest.BodyPublishers.ofString(stringPayload, StandardCharsets.UTF_8))
                 .build();
 
+        // ===== TEMPORARY DIAGNOSTIC — REMOVE before merge (investigating Snowflake invalid_client #1527) =====
+        // Full outbound request dump (method, URL, headers, body), mirroring a Postman console capture.
+        // The Authorization header carries Base64(client_id:client_secret) — SENSITIVE.
+        if (AUTH_DUMP.isDebugEnabled()) {
+            AUTH_DUMP.debug("[TEMP outbound request] {} {} | headers={} | body={}",
+                    request.method(), request.uri(), request.headers().map(), stringPayload);
+        }
+        // ===== END TEMPORARY DIAGNOSTIC =====
+
         return execute(request, responseType);
     }
 
@@ -86,6 +105,15 @@ public class ResourceAuthorizationClient {
     private <R> R execute(HttpRequest request, Class<R> responseType) {
         try {
             HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+
+            // ===== TEMPORARY DIAGNOSTIC — REMOVE before merge (investigating Snowflake invalid_client #1527) =====
+            // Response + TLS dump (mirrors Postman's Network/Response sections). Confirms which endpoint
+            // actually answered (peer cert) and what came back. Body is logged separately on error only.
+            if (AUTH_DUMP.isDebugEnabled()) {
+                AUTH_DUMP.debug("[TEMP inbound response] {} {} status={} | tls=[{}] | headers={}",
+                        request.method(), request.uri(), response.statusCode(), describeTls(response), response.headers().map());
+            }
+            // ===== END TEMPORARY DIAGNOSTIC =====
 
             int status = response.statusCode();
             String body = decodeBody(response);
@@ -138,6 +166,22 @@ public class ResourceAuthorizationClient {
     private java.time.Duration createRequestConfig() {
         return java.time.Duration.ofSeconds(30);
     }
+
+    // ===== TEMPORARY DIAGNOSTIC — REMOVE before merge (investigating Snowflake invalid_client #1527) =====
+    // Summarizes the negotiated TLS session: protocol, cipher and the peer (server) certificate subject.
+    // The peer subject confirms exactly which Snowflake endpoint answered (e.g. a privatelink SAN).
+    private static String describeTls(HttpResponse<?> response) {
+        return response.sslSession().map(session -> {
+            String peer;
+            try {
+                peer = session.getPeerPrincipal().getName();
+            } catch (Exception e) {
+                peer = "unknown (" + e.getClass().getSimpleName() + ")";
+            }
+            return "protocol=" + session.getProtocol() + ", cipher=" + session.getCipherSuite() + ", peer=" + peer;
+        }).orElse("no-tls");
+    }
+    // ===== END TEMPORARY DIAGNOSTIC =====
 
     /**
      * Some OAuth Authorization Servers return HTTP 200 with an error payload
