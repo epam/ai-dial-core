@@ -33,22 +33,24 @@ class DualMapperTest {
     }
 
     @Test
-    void apiMapperDropsUpstreamKeyAndExtraData() throws Exception {
+    void apiMapperKeepsExtraDataDropsKeyAndSecretExtraData() throws Exception {
         Upstream up = new Upstream();
         up.setEndpoint("http://x");
         up.setKey("plain-key");
         up.setExtraData("extra");
+        up.setSecretExtraData("secret");
 
         String json = ProxyUtil.MAPPER.writeValueAsString(up);
         JsonNode node = ProxyUtil.MAPPER.readTree(json);
 
         assertEquals("http://x", node.get("endpoint").asText());
         assertFalse(node.has("key"), () -> "key must be absent: " + json);
-        assertFalse(node.has("extraData"), () -> "extraData must be absent: " + json);
+        assertEquals("extra", node.get("extraData").asText(), () -> "extraData must be visible: " + json);
+        assertFalse(node.has("secretExtraData"), () -> "secretExtraData must be absent: " + json);
     }
 
     @Test
-    void apiMapperDropsNullSecrets() throws Exception {
+    void apiMapperDropsNullExtraDataAndSecrets() throws Exception {
         Upstream up = new Upstream();
         up.setEndpoint("http://x");
 
@@ -57,6 +59,7 @@ class DualMapperTest {
 
         assertFalse(node.has("key"), () -> "key must be absent when null: " + json);
         assertFalse(node.has("extraData"), () -> "extraData must be absent when null: " + json);
+        assertFalse(node.has("secretExtraData"), () -> "secretExtraData must be absent when null: " + json);
     }
 
     @Test
@@ -64,27 +67,31 @@ class DualMapperTest {
         Upstream up = new Upstream();
         up.setEndpoint("http://x");
         up.setKey("ENC[abcd]");
-        up.setExtraData("ENC[efgh]");
+        up.setExtraData("plain-extra");
+        up.setSecretExtraData("ENC[efgh]");
 
         String json = ProxyUtil.BLOB_MAPPER.writeValueAsString(up);
         JsonNode node = ProxyUtil.BLOB_MAPPER.readTree(json);
 
         assertEquals("ENC[abcd]", node.get("key").asText());
-        assertEquals("ENC[efgh]", node.get("extraData").asText());
+        assertEquals("plain-extra", node.get("extraData").asText());
+        assertEquals("ENC[efgh]", node.get("secretExtraData").asText());
     }
 
     @Test
-    void blobMapperRoundTripsExtraData() throws Exception {
+    void blobMapperRoundTripsSecretExtraData() throws Exception {
         Upstream up = new Upstream();
         up.setEndpoint("http://x");
         up.setKey("ENC[k]");
-        up.setExtraData("ENC[xd]");
+        up.setExtraData("plain-extra");
+        up.setSecretExtraData("ENC[xd]");
 
         String json = ProxyUtil.BLOB_MAPPER.writeValueAsString(up);
         Upstream restored = ProxyUtil.BLOB_MAPPER.readValue(json, Upstream.class);
 
         assertEquals("ENC[k]", restored.getKey());
-        assertEquals("ENC[xd]", restored.getExtraData());
+        assertEquals("plain-extra", restored.getExtraData());
+        assertEquals("ENC[xd]", restored.getSecretExtraData());
     }
 
     @Test
@@ -93,6 +100,7 @@ class DualMapperTest {
         up.setEndpoint("http://x");
         up.setKey("plain");
         up.setExtraData("xd");
+        up.setSecretExtraData("sxd");
         Model model = new Model();
         model.setUpstreams(List.of(up));
 
@@ -101,6 +109,7 @@ class DualMapperTest {
         JsonNode upstream = node.get("upstreams").get(0);
 
         assertFalse(upstream.has("key"), () -> "upstream key must be absent: " + upstream);
-        assertFalse(upstream.has("extraData"), () -> "upstream extraData must be absent: " + upstream);
+        assertEquals("xd", upstream.get("extraData").asText(), () -> "upstream extraData must be visible: " + upstream);
+        assertFalse(upstream.has("secretExtraData"), () -> "upstream secretExtraData must be absent: " + upstream);
     }
 }

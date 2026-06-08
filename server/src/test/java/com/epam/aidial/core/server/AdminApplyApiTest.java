@@ -178,6 +178,41 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testApplyPrecheckFalseRejectsExtraDataOverlap() {
+        // precheck=false must still reject an upstream whose extraData/secretExtraData share a
+        // top-level key — overlap is a hard 422, never silently merged (no silent precedence).
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "apply-overlap-bad",
+                      "spec": {
+                        "type": "chat",
+                        "upstreams": [
+                          {
+                            "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                            "extraData": {"region": "us"},
+                            "secretExtraData": {"region": "secret"}
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/public/apply-overlap-bad", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
     void testApplyBundleKindReturns400() {
         String body = """
                 {

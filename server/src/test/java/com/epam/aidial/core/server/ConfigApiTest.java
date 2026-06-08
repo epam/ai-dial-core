@@ -31,6 +31,7 @@ public class ConfigApiTest extends ResourceBaseTest {
                 // Slice U.4: @EncryptedField + @JsonProperty(WRITE_ONLY) drops the value on
                 // response — Jackson deserializes the absent property as null.
                 assertNull(upstream.getKey());
+                assertNull(upstream.getSecretExtraData());
             }
         }
         assertTrue(config.getKeys().isEmpty());
