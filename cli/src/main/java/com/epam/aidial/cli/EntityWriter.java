@@ -371,11 +371,13 @@ public final class EntityWriter {
         }
         TemplateContext effective = new TemplateContext(envelopeTemplate, envelopeParams,
                 tpl.vars(), tpl.entityCtx(), tpl.templates());
-        JsonNode resolved = TemplateResolver.resolve(rawSpec, effective);
         try {
+            JsonNode resolved = TemplateResolver.resolve(rawSpec, effective);
             return JSON.writeValueAsString(resolved);
+        } catch (TemplateException e) {
+            throw CliException.validation(e.getMessage());
         } catch (JsonProcessingException e) {
-            throw CliException.network("Failed to serialize resolved spec: " + e.getMessage());
+            throw CliException.jsonProcessing("Failed to serialize resolved spec: " + e.getMessage());
         }
     }
 
