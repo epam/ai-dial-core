@@ -1184,7 +1184,7 @@ class ApplyCommandTest {
         Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
 
         assertEquals(0, r.exitCode, r.err);
-        // Per design 05 §5.3: bundle params win on conflict.
+        // Bundle params win on conflict.
         assertTrue(applyBody.get().contains("\"endpoint\":\"http://x.bundle-region\""), applyBody.get());
         assertFalse(applyBody.get().contains("entity-region"), applyBody.get());
     }

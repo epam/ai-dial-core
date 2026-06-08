@@ -46,7 +46,7 @@ public class ApplyCommand implements Callable<Integer> {
     @Option(names = "--overlay",
             description = "Overlay directory (kind: <Entity>Overlay manifests applying RFC 7396 JSON Merge Patch on base spec,"
                     + " plus empty .disable marker files removing matched base entities). .disable markers require -f to"
-                    + " be a directory. See design 05 §5.2.")
+                    + " be a directory.")
     Path overlay;
 
     @Option(names = "--param",
@@ -160,7 +160,7 @@ public class ApplyCommand implements Callable<Integer> {
     }
 
     // Fetch the target entity's current spec for a Bundle `patch:` entry. Returns an empty
-    // ObjectNode on 404 (design 05 §5.3: patch on missing entity merges into `{}`). Returns
+    // ObjectNode on 404 (patch on missing entity merges into `{}`). Returns
     // null on hard failure — the caller surfaces a non-zero exit so the bundle apply aborts
     // rather than silently using stale or partial state.
     private JsonNode fetchCurrentForPatch(CliHttpClient http, ManifestLoader.Manifest m, PrintWriter err) {

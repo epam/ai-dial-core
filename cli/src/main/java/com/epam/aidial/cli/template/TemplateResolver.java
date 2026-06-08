@@ -64,7 +64,7 @@ public final class TemplateResolver {
         return TemplateComposer.deepMergeNodes(resolvedTemplate, resolvedSpec);
     }
 
-    /** Public seam for callers that need a template-wins merge (e.g. promote — design 05 §4 step 4). */
+    /** Public seam for callers that need a template-wins merge (e.g. promote). */
     public static JsonNode deepMerge(JsonNode base, JsonNode overlay) {
         return TemplateComposer.deepMergeNodes(base, overlay);
     }
@@ -72,7 +72,7 @@ public final class TemplateResolver {
     /**
      * Resolve a named template against {@code tpl}'s scopes and return only the resolved
      * {@code fields} block — no spec merge. Inverse of {@link #resolve}'s spec-wins semantics
-     * (design 05 §3.5); used by promote (design 05 §4) where the template overrides source.
+     * Used by promote where the template overrides source.
      */
     public static JsonNode resolveTemplate(TemplateContext tpl) {
         String templateName = tpl.templateName();

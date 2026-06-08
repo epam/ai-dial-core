@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.function.BiFunction;
 
 /**
- * Single-dispatch table of the seven built-in template functions per design 05 §3.3.
+ * Single-dispatch table of the seven built-in template functions.
  * Each function takes an already-resolved positional argument list and the full context map
  * (vars / params / entity / loop bindings) so {@code default} can re-resolve a missing key
  * without throwing.

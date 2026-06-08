@@ -28,7 +28,7 @@ public final class EntityWriter {
     private static final YAMLMapper YAML = new YAMLMapper();
 
     /**
-     * Controller-projected fields the server adds on GET responses (design 03 §4 + §1.5) but
+     * Controller-projected fields the server adds on GET responses but
      * rejects on write — `name` is synthesized from the URL, `status` /
      * `validationWarnings` are projection metadata, never persisted. Stripping them lets a
      * GET → merge → PUT round-trip succeed without a {@code "Unrecognized field"} 400.
@@ -392,7 +392,7 @@ public final class EntityWriter {
 
     /**
      * Reverse-match the source entity against every template in the source env's catalog
-     * (design 05 §4 lines 308–318). Returns names of templates whose resolved fields all
+     * Returns names of templates whose resolved fields all
      * appear verbatim in {@code sourceSpec}. Templates that fail to resolve (e.g. unresolved
      * {@code ${params.*}} the operator didn't supply) are silently skipped — auto is
      * best-effort; operators with param-using templates pass {@code --template <name>}
@@ -436,7 +436,7 @@ public final class EntityWriter {
         } catch (TemplateException e) {
             throw CliException.validation(e.getMessage());
         }
-        // Template-wins merge (design 05 §4 step 4) — inverse of TemplateResolver.resolve's spec-wins (§3.5).
+        // Template-wins merge — inverse of TemplateResolver.resolve's spec-wins semantics.
         return TemplateResolver.deepMerge(sourceSpec, resolvedTemplate);
     }
 

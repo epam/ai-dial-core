@@ -120,7 +120,7 @@ public final class ControlFlowExpander {
 
     private static JsonNode expandObject(ObjectNode obj, Map<String, Object> ctx) {
         // Single-key '!for' as the only mapping key collapses the parent into the expanded
-        // array (design 05 §3.3 — 'upstreams: !for ...:' produces 'upstreams: [...]').
+        // array — 'upstreams: !for ...:' produces 'upstreams: [...]'.
         if (obj.size() == 1) {
             String only = obj.fieldNames().next();
             if (only.startsWith(FOR_SENTINEL + " ")) {

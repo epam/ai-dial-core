@@ -197,7 +197,7 @@ class TemplateResolutionTest {
         Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
 
         assertEquals(0, r.exitCode, r.err);
-        // Order: C (outer-most parent) → B → A. Later wins per design 05 §3.2.
+        // Order: C (outer-most parent) → B → A. Later wins.
         assertTrue(applyBody.get().contains("\"a\":\"from-C\""), applyBody.get());
         assertTrue(applyBody.get().contains("\"b\":\"from-B\""), applyBody.get());
         assertTrue(applyBody.get().contains("\"c\":\"from-A\""), applyBody.get());

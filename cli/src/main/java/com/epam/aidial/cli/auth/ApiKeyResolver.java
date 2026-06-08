@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import java.util.function.Function;
 
 /**
- * Resolves an API key using design 06 §2.1's priority chain: --api-key-file → env var → no-echo prompt.
+ * Resolves an API key via priority chain: --api-key-file → env var → no-echo prompt.
  */
 public class ApiKeyResolver {
 

@@ -95,7 +95,7 @@ final class PlaceholderSubstitutor {
                 throw new TemplateException("Unknown template function: '" + fnName + "'.");
             }
             // 'default' tolerates a missing first argument (that's its whole purpose);
-            // every other function fails loud per design 05 §3.3.
+            // every other function fails loud.
             boolean softMissing = "default".equals(fnName);
             List<String> args = parseArgs(argsRaw, softMissing);
             return FunctionApplicator.apply(fnName, args, ctx);
@@ -168,7 +168,7 @@ final class PlaceholderSubstitutor {
         String[] parts = path.split("\\.", -1);
         // Single-segment path: a '!for' loop binding (e.g. '${region}') lives at the top of
         // the context map alongside 'vars'/'params'/'entity'. When neither matches, fall back
-        // to the shell environment (design 05 §5.1 — `${ENV_VAR}` for CI/CD).
+        // to the shell environment (`${ENV_VAR}` for CI/CD).
         if (parts.length == 1) {
             Object value = ctx.get(parts[0]);
             if (value != null) {

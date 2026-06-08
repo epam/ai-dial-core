@@ -95,7 +95,7 @@ class PlaceholderSubstitutorTest {
 
     @Test
     void base64FunctionResolvesSecretArg() {
-        // ${base64(SECRET:foo)} per design 05 §3.3. The function-call branch in
+        // ${base64(SECRET:foo)} — the function-call branch in
         // resolveExpression dispatches arg parsing to parseArgs → resolvePath, which catches
         // SECRET: at its top; the resolved value is then base64-encoded by FunctionApplicator.
         PlaceholderSubstitutor sub = new PlaceholderSubstitutor(baseCtx(),

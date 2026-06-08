@@ -304,7 +304,7 @@ final class ManifestLoader {
             String simpleName = parseSimpleName(entry, entryKind, entryWhere);
             String templateName = parseTemplateName(entry, entryWhere);
             Map<String, Object> entryParams = parseParams(entry, entryWhere);
-            // Bundle params win on conflict (design 05 §5.3): merge bundle on top of entity.
+            // Bundle params win on conflict: merge bundle on top of entity.
             Map<String, Object> merged = new HashMap<>(entryParams);
             merged.putAll(bundleParams);
             out.add(new Manifest(entryKind, simpleName,

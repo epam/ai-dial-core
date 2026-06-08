@@ -147,7 +147,7 @@ class OverlayResolverTest {
 
     @Test
     void disableYamlSuffixMarkerStemMustNotIncludeExtension(@TempDir Path tmp) throws Exception {
-        // Per design 05 §5.2 row 3: marker stem 'anthropic.claude-sonnet-4-6.yaml' does NOT match
+        // Marker stem 'anthropic.claude-sonnet-4-6.yaml' does NOT match
         // base stem 'anthropic.claude-sonnet-4-6'. Strip-last-suffix only.
         Path baseRoot = tmp.resolve("base");
         Path overlayRoot = tmp.resolve("overlay");

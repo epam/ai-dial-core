@@ -14,7 +14,7 @@ import java.util.Map;
  * the template's own {@code fields} on top. Cycles are detected via a name-set on the
  * extends DFS and rejected with a {@link TemplateException} that names both endpoints.
  *
- * <p>Per design 05 §3.2 the effective merge order, top to bottom, is:
+ * <p>The effective merge order, top to bottom, is:
  * <ol>
  *     <li>{@code extends} chain (outer-most parent first)</li>
  *     <li>{@code includes} (in listed order)</li>
