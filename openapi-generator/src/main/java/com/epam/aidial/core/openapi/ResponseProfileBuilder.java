@@ -85,6 +85,7 @@ final class ResponseProfileBuilder {
             case NONE -> {
                 // no-op
             }
+            default -> throw new IllegalStateException("Unexpected profile: " + profile);
         }
     }
 }
