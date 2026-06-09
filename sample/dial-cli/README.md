@@ -138,6 +138,22 @@ dial-cli apply -f manifests-json/ --env local --dry-run
 | `forward-auth-when-enabled` | mixin (`!if` guard) | Conditional `forwardAuthToken` based on `${vars.forward_auth_token}` |
 | `bedrock-chat` | `extends: chat-base` + `includes: [forward-auth-when-enabled]` | `!for` over `${params.regions}`, `${entity.name}` substitution, `default(…)` and `replace(…)` function calls |
 
+### Template functions
+
+All seven built-in functions may be used inside `${…}` expressions:
+
+| Function  | Signature                             | Description                                                                                                                                   |
+|-----------|---------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+| `default` | `default(value, fallback)`            | Returns `value` if it is non-null and non-empty; otherwise returns `fallback`. Useful for optional vars: `${default(vars.icon_base_url, '')}` |
+| `lower`   | `lower(value)`                        | Converts the string to lower-case: `${lower(entity.name)}`                                                                                    |
+| `upper`   | `upper(value)`                        | Converts the string to upper-case: `${upper(entity.name)}`                                                                                    |
+| `trim`    | `trim(value)`                         | Strips leading and trailing whitespace: `${trim(vars.HOST)}`                                                                                  |
+| `join`    | `join(list, separator)`               | Joins a list into a single string: `${join(params.regions, ',')}`                                                                             |
+| `base64`  | `base64(value)`                       | Base64-encodes the string (standard, no padding strip): `${base64(vars.SECRET_TOKEN)}`                                                        |
+| `replace` | `replace(value, target, replacement)` | Replaces every occurrence of `target` with `replacement`: `${replace(entity.name, '-', '_')}`                                                 |
+
+Functions may not be nested (e.g. `${lower(default(…))}` is rejected at write time with exit code 2).
+
 `manifests/base/06-model.yaml` references the template:
 
 ```yaml
