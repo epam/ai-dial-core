@@ -489,7 +489,7 @@ The server returns the ETag in the HTTP `ETag` **response header** — it is not
 ```shell
 curl -si \
   -H "Authorization: Bearer $DIAL_review_API_KEY" \
-  "http://reviewhost:8080/v1/admin/models/public/example-chat-model" \
+  "http://host:8080/v1/models/public/example-chat-model" \
   | grep -i '^etag:'
 # → etag: "abc123"
 ```
@@ -499,7 +499,7 @@ Then update guarded by that ETag:
 **Input:**
 ```shell
 dial-cli model update models/public/example-chat-model \
-  --set maxTotalTokens=128000 \
+  --set limits.maxTotalTokens=128000 \
   --if-match '"abc123"'
 ```
 
