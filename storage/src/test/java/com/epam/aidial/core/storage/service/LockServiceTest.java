@@ -53,6 +53,39 @@ class LockServiceTest {
     }
 
     @Test
+    void testTryCreateClaimAsync() throws Exception {
+        String key = "test-create-claim-key";
+        String owner1 = "lock-id-a";
+        String owner2 = "lock-id-b";
+        long ttl = 5_000L;
+
+        long r1 = service.tryCreateClaimAsync(key, owner1, ttl).get();
+        Assertions.assertEquals(0L, r1, "first create should return 0");
+
+        long r2 = service.tryCreateClaimAsync(key, owner1, ttl).get();
+        Assertions.assertTrue(r2 > 0, "second create by same id should return positive TTL (key exists)");
+
+        long r3 = service.tryCreateClaimAsync(key, owner2, ttl).get();
+        Assertions.assertTrue(r3 > 0, "create by different id should return positive TTL (held by another)");
+    }
+
+    @Test
+    void testTryUpdateClaimAsync() throws Exception {
+        String key = "test-update-claim-key";
+        String owner1 = "lock-id-x";
+        String owner2 = "lock-id-y";
+        long ttl = 5_000L;
+
+        service.tryCreateClaimAsync(key, owner1, ttl).get();
+
+        boolean updated = service.tryUpdateClaimAsync(key, owner1, ttl).get();
+        Assertions.assertTrue(updated, "update by matching owner should return true");
+
+        boolean rejected = service.tryUpdateClaimAsync(key, owner2, ttl).get();
+        Assertions.assertFalse(rejected, "update by non-owner should return false");
+    }
+
+    @Test
     void testLock() {
         for (int i = 0; i < 10; i++) {
             LockService.Lock lock = service.lock("key");

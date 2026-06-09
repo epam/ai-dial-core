@@ -101,10 +101,6 @@ public class BaseDeploymentPostController {
     }
 
     protected void finalizeRequest() {
-        if (context.isBackgroundJob() && !context.isStreamingRequest()) {
-            return;
-        }
-
         proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {

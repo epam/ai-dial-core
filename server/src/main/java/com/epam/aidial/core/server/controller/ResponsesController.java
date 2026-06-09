@@ -260,7 +260,18 @@ public class ResponsesController extends BaseDeploymentPostController {
         if (!context.isStreamingRequest()) {
             // Read the entire response to replace the response ID with the DIAL ID
             proxyResponse.body()
-                    .compose(body -> handleNonStreamingResponse(proxyResponse, body))
+                    .compose(body -> rewriteResponseId(proxyResponse, body)
+                            .compose(rewritten -> {
+                                context.setResponseBody(rewritten);
+                                context.setResponseBodyTimestamp(System.currentTimeMillis());
+                                HttpServerResponse response = context.getResponse();
+                                ProxyUtil.copyResponse(response, proxyResponse);
+                                response.setChunked(false);
+                                response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
+                                response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+                                return response;
+                            }))
+                    .onSuccess(this::finishNonStreamingResponse)
                     .onFailure(this::handleProxyConnectionError);
             return;
         }
@@ -279,32 +290,29 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .endOnFailure(false)
                 .endOnSuccess(false)
                 .to(response)
-                .onSuccess(ignored -> handleResponse(responseStream))
+                .onSuccess(ignored -> handleStreamingResponse(responseStream))
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
-        return rewriteResponseId(proxyResponse, body)
-                .compose(rewritten -> {
-                    context.setResponseBody(rewritten);
-                    context.setResponseBodyTimestamp(System.currentTimeMillis());
-                    HttpServerResponse response = context.getResponse();
-                    ProxyUtil.copyResponse(response, proxyResponse);
-                    response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
-                    response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
-                    return collectTokenUsage(rewritten)
+    private Future<Void> finishNonStreamingResponse(HttpServerResponse response) {
+        Buffer responseBody = context.getResponseBody();
+        if (context.isBackgroundJob()) {
+            proxy.getBackgroundJobService().saveJob(context)
+                    .onSuccess(jobId -> proxy.getBackgroundJobService().submit(jobId));
+            response.end(responseBody);
+        } else {
+            collectTokenUsage(responseBody)
                             .transform(result -> {
                                 if (result.failed()) {
                                     log.warn("Failed to collect token usage", result.cause());
                                 }
-                                return collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
+                                return collectResponseAttachments(responseBody, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
                             })
-                            .transform(result -> {
+                            .onComplete(result -> {
                                 if (result.failed()) {
                                     log.warn("Failed to collect attachments from response", result.cause());
                                 }
-                                completeProxyResponse(() -> response.end(rewritten));
-                                return Future.<Void>succeededFuture();
+                                completeProxyResponse(() -> response.end(responseBody));
                             });
                 });
     }
@@ -330,15 +338,12 @@ public class ResponsesController extends BaseDeploymentPostController {
                         .deploymentName(context.getDeployment().getName())
                         .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
                         .build();
-                return rewriteId(proxy, context, mapping)
-                        .compose(dialId -> {
-                            Future<Void> jobFuture = context.isBackgroundJob()
-                                    ? proxy.getBackgroundJobService().saveJob(context, dialId, mapping)
-                                    : Future.succeededFuture();
-                            return jobFuture.map(ignored -> {
-                                object.put("id", dialId);
-                                return Buffer.buffer(JsonUtil.serialize(object));
-                            });
+                return proxy.getTaskExecutor()
+                        .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
+                        .map(dialId -> {
+                            object.put("id", dialId);
+                            context.setResponseId(dialId);
+                            return Buffer.buffer(JsonUtil.serialize(object));
                         });
             }
         }
@@ -346,7 +351,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         return Future.succeededFuture(body);
     }
 
-    private void handleResponse(BufferingReadStream responseStream) {
+    private void handleStreamingResponse(BufferingReadStream responseStream) {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
@@ -389,11 +394,6 @@ public class ResponsesController extends BaseDeploymentPostController {
                 error);
 
         sendRequest(); // try next
-    }
-
-    private static Future<String> rewriteId(Proxy proxy, ProxyContext context, ResponseMapping mapping) {
-        return proxy.getTaskExecutor()
-                .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping));
     }
 
 }

@@ -167,13 +167,10 @@ public class ResponseItemController implements Controller {
                 .setIdleTimeout(proxy.getClientOptions().getIdleTimeout());
 
         return proxy.getClient().request(options)
-                .compose(request -> {
-                    request.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey())
-                            .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getResponsesEndpoint())
-                            .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, UpstreamExtraDataMerger.merge(upstream));
-
-                    return request.send();
-                })
+                .compose(request -> request.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey())
+                        .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getResponsesEndpoint())
+                        .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, UpstreamExtraDataMerger.merge(upstream))
+                        .send())
                 .compose(response -> {
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
                     if (operation == Operation.GET

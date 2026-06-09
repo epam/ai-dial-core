@@ -194,24 +194,30 @@ public class LockService {
         }
     }
 
-    public RFuture<Long> tryClaimOrRenewAsync(String key, String ownerId, long ttlMs) {
+    public RFuture<Long> tryCreateClaimAsync(String key, String lockId, long ttlMs) {
         return script.evalAsync(RScript.Mode.READ_WRITE,
                 """
-                        local current = redis.call('get', KEYS[1])
-                        if current == false then
-                            redis.call('set', KEYS[1], ARGV[1], 'px', ARGV[2])
-                            return 0
-                        elseif current == ARGV[1] then
-                            redis.call('pexpire', KEYS[1], ARGV[2])
-                            return 0
-                        else
-                            local ttl = redis.call('pttl', KEYS[1])
-                            return ttl > 0 and ttl or tonumber(ARGV[2])
+                        local ttl = redis.call('pttl', KEYS[1])
+                        if ttl >= 0 then
+                            return ttl > 0 and ttl or 1
                         end
-                        """, RScript.ReturnType.INTEGER, List.of(id(key)), ownerId, String.valueOf(ttlMs));
+                        redis.call('set', KEYS[1], ARGV[1], 'px', ARGV[2])
+                        return 0
+                        """, RScript.ReturnType.INTEGER, List.of(id(key)), lockId, String.valueOf(ttlMs));
     }
 
-    public RFuture<Boolean> releaseClaimAsync(String key, String ownerId) {
+    public RFuture<Boolean> tryUpdateClaimAsync(String key, String lockId, long ttlMs) {
+        return script.evalAsync(RScript.Mode.READ_WRITE,
+                """
+                        if redis.call('get', KEYS[1]) == ARGV[1] then
+                            redis.call('pexpire', KEYS[1], ARGV[2])
+                            return true
+                        end
+                        return false
+                        """, RScript.ReturnType.BOOLEAN, List.of(id(key)), lockId, String.valueOf(ttlMs));
+    }
+
+    public RFuture<Boolean> releaseClaimAsync(String key, String lockId) {
         return script.evalAsync(RScript.Mode.READ_WRITE,
                 """
                         if redis.call('get', KEYS[1]) == ARGV[1] then
@@ -219,7 +225,7 @@ public class LockService {
                             return true
                         end
                         return false
-                        """, RScript.ReturnType.BOOLEAN, List.of(id(key)), ownerId);
+                        """, RScript.ReturnType.BOOLEAN, List.of(id(key)), lockId);
     }
 
     private static String id(String key) {
