@@ -335,8 +335,8 @@ class ModelCommandTest {
                 "model", "add", "--name", "models/public/new-model", "--from-file", body.toString());
 
         assertEquals(0, r.exitCode, r.err);
-        assertTrue(r.out.contains("\"endpoint\":\"http://x\""), r.out);
-        assertTrue(!hit.get(), "Server should not be called on --dry-run");
+        assertTrue(r.out.contains("\"endpoint\" : \"http://x\""), r.out);
+        assertFalse(hit.get(), "Server should not be called on --dry-run");
     }
 
     @Test
@@ -740,8 +740,8 @@ class ModelCommandTest {
                 "model", "update", "models/public/m", "--set", "endpoint=http://new");
 
         assertEquals(0, r.exitCode, r.err);
-        assertTrue(r.out.contains("\"endpoint\":\"http://new\""), r.out);
-        assertTrue(!putHit.get(), "PUT must not fire on --dry-run");
+        assertTrue(r.out.contains("\"endpoint\" : \"http://new\""), r.out);
+        assertFalse(putHit.get(), "PUT must not fire on --dry-run");
     }
 
     @Test
@@ -1086,9 +1086,9 @@ class ModelCommandTest {
 
         assertEquals(0, r.exitCode, r.err);
         assertTrue(r.out.contains("\"manifests\""), r.out);
-        assertTrue(r.out.contains("\"kind\":\"Model\""), r.out);
-        assertTrue(r.out.contains("\"precheck\":true"), r.out);
-        assertTrue(!hit.get(), "Server must not be called on --dry-run");
+        assertTrue(r.out.contains("\"kind\" : \"Model\""), r.out);
+        assertTrue(r.out.contains("\"precheck\" : true"), r.out);
+        assertFalse(hit.get(), "Server must not be called on --dry-run");
     }
 
     @Test
@@ -1107,7 +1107,7 @@ class ModelCommandTest {
 
         assertEquals(0, r.exitCode, r.err);
         assertTrue(sentBody.get().contains("\"endpoint\":\"http://yaml-host\""), sentBody.get());
-        assertTrue(!sentBody.get().contains("type: chat"), "Spec must be JSON, not YAML");
+        assertFalse(sentBody.get().contains("type: chat"), "Spec must be JSON, not YAML");
     }
 
     @Test
@@ -1339,8 +1339,8 @@ class ModelCommandTest {
 
             assertEquals(0, r.exitCode, r.err);
             assertTrue(r.out.contains("\"manifests\""), r.out);
-            assertTrue(r.out.contains("\"kind\":\"Model\""), r.out);
-            assertTrue(r.out.contains("\"precheck\":true"), r.out);
+            assertTrue(r.out.contains("\"kind\" : \"Model\""), r.out);
+            assertTrue(r.out.contains("\"precheck\" : true"), r.out);
             assertFalse(targetHit.get(), "Target apply must not fire on --dry-run");
         } finally {
             target.stop(0);

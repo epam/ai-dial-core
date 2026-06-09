@@ -137,7 +137,11 @@ public class ApplyCommand implements Callable<Integer> {
         }
 
         if (parent.dryRun) {
-            out.println(body);
+            try {
+                out.println(JSON.writerWithDefaultPrettyPrinter().writeValueAsString(envelope));
+            } catch (JsonProcessingException e) {
+                out.println(body);
+            }
             return 0;
         }
 

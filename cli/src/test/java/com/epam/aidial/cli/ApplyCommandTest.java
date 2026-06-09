@@ -235,8 +235,8 @@ class ApplyCommandTest {
         assertEquals(0, r.exitCode, r.err);
         assertEquals(0, anyHits.get(), "dry-run must not call the server");
         assertTrue(r.out.contains("\"manifests\""), r.out);
-        assertTrue(r.out.contains("\"name\":\"gpt-4\""), r.out);
-        assertTrue(r.out.contains("\"precheck\":true"), r.out);
+        assertTrue(r.out.contains("\"name\" : \"gpt-4\""), r.out);
+        assertTrue(r.out.contains("\"precheck\" : true"), r.out);
     }
 
     @Test
@@ -748,9 +748,9 @@ class ApplyCommandTest {
 
         assertEquals(0, r.exitCode, r.err);
         assertEquals(0, anyHits.get());
-        int posA = r.out.indexOf("\"name\":\"a\"");
-        int posB = r.out.indexOf("\"name\":\"b\"");
-        int posC = r.out.indexOf("\"name\":\"c\"");
+        int posA = r.out.indexOf("\"name\" : \"a\"");
+        int posB = r.out.indexOf("\"name\" : \"b\"");
+        int posC = r.out.indexOf("\"name\" : \"c\"");
         assertTrue(posA >= 0 && posB >= 0 && posC >= 0, r.out);
         assertTrue(posA < posB && posB < posC, "expected a < b < c in payload, got: " + r.out);
     }
@@ -1277,9 +1277,9 @@ class ApplyCommandTest {
         assertEquals(1, getHits.get(), "dry-run still GETs target state for patch resolution");
         assertEquals(0, applyHits.get(), "dry-run must not POST /v1/admin/apply");
         // Envelope on stdout includes both expanded entries as `spec:`.
-        assertTrue(r.out.contains("\"kind\":\"Model\""), r.out);
-        assertTrue(r.out.contains("\"kind\":\"Role\""), r.out);
-        assertTrue(r.out.contains("\"minute\":\"1\""), r.out);
+        assertTrue(r.out.contains("\"kind\" : \"Model\""), r.out);
+        assertTrue(r.out.contains("\"kind\" : \"Role\""), r.out);
+        assertTrue(r.out.contains("\"minute\" : \"1\""), r.out);
     }
 
     @Test
@@ -1310,9 +1310,9 @@ class ApplyCommandTest {
 
         assertEquals(0, r.exitCode, r.err);
         assertEquals(0, anyHits.get());
-        assertTrue(r.out.contains("\"name\":\"my-model\""), r.out);
+        assertTrue(r.out.contains("\"name\" : \"my-model\""), r.out);
         assertFalse(r.out.contains("${params.model_name}"), "no placeholder must remain in output: " + r.out);
-        assertTrue(r.out.contains("\"endpoint\":\"http://api/my-model\""), r.out);
+        assertTrue(r.out.contains("\"endpoint\" : \"http://api/my-model\""), r.out);
     }
 
     @Test

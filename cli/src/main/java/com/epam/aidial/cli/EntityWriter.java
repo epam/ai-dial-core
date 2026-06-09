@@ -49,7 +49,7 @@ public final class EntityWriter {
         TemplateContext tpl = new TemplateContext(templateName, params, resolved.vars(), entityCtx, resolved.templates());
         String body = loadSpecOrFail(fromFile, kind, canonicalId, spec.commandLine().getErr(), tpl);
         if (root.dryRun) {
-            spec.commandLine().getOut().println(body);
+            spec.commandLine().getOut().println(toPrettyJson(body));
             return;
         }
         String path = "/v1/" + type + "/" + bucket + "/" + name;
@@ -95,7 +95,7 @@ public final class EntityWriter {
             throw CliException.network("Failed to serialize merged body: " + e.getMessage());
         }
         if (root.dryRun) {
-            spec.commandLine().getOut().println(body);
+            spec.commandLine().getOut().println(toPrettyJson(body));
             return;
         }
         String etag = (ifMatch != null && !ifMatch.isBlank()) ? ifMatch : getResp.etag();
@@ -169,7 +169,7 @@ public final class EntityWriter {
             throw CliException.network("Failed to serialize apply envelope: " + e.getMessage());
         }
         if (root.dryRun) {
-            spec.commandLine().getOut().println(body);
+            spec.commandLine().getOut().println(toPrettyJson(body));
             return 0;
         }
         CliHttpClient.Response applyResp =
@@ -234,7 +234,7 @@ public final class EntityWriter {
             throw CliException.network("Failed to serialize validate envelope: " + e.getMessage());
         }
         if (root.dryRun) {
-            spec.commandLine().getOut().println(body);
+            spec.commandLine().getOut().println(toPrettyJson(body));
             return 0;
         }
         CliHttpClient.Response resp =
@@ -499,6 +499,14 @@ public final class EntityWriter {
                             + "Consider using --template to transform env-specific fields.");
                 }
             }
+        }
+    }
+
+    private static String toPrettyJson(String value) {
+        try {
+            return JSON.writerWithDefaultPrettyPrinter().writeValueAsString(JSON.readTree(value));
+        } catch (JsonProcessingException e) {
+            return value;
         }
     }
 
