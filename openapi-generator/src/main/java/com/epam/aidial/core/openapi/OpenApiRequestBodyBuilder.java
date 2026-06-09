@@ -5,13 +5,15 @@ import io.swagger.v3.oas.models.media.MediaType;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.parameters.RequestBody;
 
+import java.util.Arrays;
+
 public final class OpenApiRequestBodyBuilder {
 
     private OpenApiRequestBodyBuilder() {
     }
 
     public static RequestBody build(EndpointMetadata.Endpoint endpoint, DtoSchemaGenerator schemaGenerator) {
-        if (!ResponseSchemaFactory.hasBodyType(endpoint.requestBody())) {
+        if (!ResponseSchemaFactory.hasBodyType(endpoint.requestBody()) && !ResponseSchemaFactory.hasRequestOneOf(endpoint)) {
             return null;
         }
 
@@ -24,7 +26,12 @@ public final class OpenApiRequestBodyBuilder {
         if (ResponseSchemaFactory.isMultipartBinaryUpload(endpoint.requestBody(), endpoint.contentType())) {
             schema = ResponseSchemaFactory.multipartBinaryFileUploadSchema();
         } else {
-            schema = ResponseSchemaFactory.forBody(endpoint.requestBody(), schemaGenerator);
+            if (endpoint.requestOneOf() != null && endpoint.requestOneOf().length > 0) {
+
+                schema = ResponseSchemaFactory.oneOf(endpoint.requestOneOf(), schemaGenerator);
+            } else {
+                schema = ResponseSchemaFactory.forBody(endpoint.requestBody(), schemaGenerator);
+            }
         }
         mediaType.setSchema(schema);
         content.addMediaType(endpoint.contentType(), mediaType);
@@ -32,10 +39,17 @@ public final class OpenApiRequestBodyBuilder {
         return requestBody;
     }
 
-    public static void registerRequestBodySchemas(
-            EndpointMetadata.Endpoint endpoint,
-            DtoSchemaGenerator schemaGenerator
-    ) {
+    public static void registerRequestBodySchemas(EndpointMetadata.Endpoint endpoint, DtoSchemaGenerator schemaGenerator) {
+        if (endpoint.requestOneOf() != null && endpoint.requestOneOf().length > 0) {
+            for (Class<?> type : endpoint.requestOneOf()) {
+                if (type.isArray()) {
+                    schemaGenerator.processType(type.getComponentType());
+                } else {
+                    schemaGenerator.processType(type);
+                }
+            }
+            return;
+        }
         ResponseSchemaFactory.registerRequestBody(
                 endpoint.requestBody(),
                 endpoint.contentType(),

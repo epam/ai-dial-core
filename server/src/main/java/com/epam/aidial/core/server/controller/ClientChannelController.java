@@ -67,11 +67,11 @@ public class ClientChannelController {
             contentType = "text/event-stream",
             tags = {"Client channel"},
             parameters = {
-                    @ApiParameter(name = "X-DIAL-CLIENT-CHANNEL-ID", in = ParameterIn.HEADER,
+                    @ApiParameter(name = Proxy.HEADER_CLIENT_CHANNEL_ID, in = ParameterIn.HEADER,
                             description = OpenApiDescriptions.CLIENT_CHANNEL_ID_RECONNECT)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
+                    @ApiResponse(code = 200, description = "Success", body = String.class, contentTypes = {"text/event-stream"})
             },
             responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST
     )
@@ -112,7 +112,7 @@ public class ClientChannelController {
             requestBody = RpcResponse.class,
             tags = {"Client channel"},
             parameters = {
-                    @ApiParameter(name = "X-DIAL-CLIENT-CHANNEL-ID", in = ParameterIn.HEADER, required = true,
+                    @ApiParameter(name = Proxy.HEADER_CLIENT_CHANNEL_ID, in = ParameterIn.HEADER, required = true,
                             description = OpenApiDescriptions.CLIENT_CHANNEL_ID)
             },
             responses = {
@@ -146,7 +146,7 @@ public class ClientChannelController {
             operationId = "unsubscribeClientChannel",
             tags = {"Client channel"},
             parameters = {
-                    @ApiParameter(name = "X-DIAL-CLIENT-CHANNEL-ID", in = ParameterIn.HEADER, required = true,
+                    @ApiParameter(name = Proxy.HEADER_CLIENT_CHANNEL_ID, in = ParameterIn.HEADER, required = true,
                             description = OpenApiDescriptions.CLIENT_CHANNEL_ID)
             },
             responses = {
@@ -178,15 +178,16 @@ public class ClientChannelController {
             method = "POST",
             path = "/v1/ops/client-channel/interact",
             operationId = "interactClientChannel",
-            requestBody = RpcRequest.class,
-            contentType = "text/event-stream",
+            requestOneOf = {RpcRequest.class, RpcRequest[].class},
+            contentType = "application/json",
+
             tags = {"Client channel"},
             parameters = {
-                    @ApiParameter(name = "X-DIAL-CLIENT-CHANNEL-ID", in = ParameterIn.HEADER, required = true,
+                    @ApiParameter(name = Proxy.HEADER_CLIENT_CHANNEL_ID, in = ParameterIn.HEADER, required = true,
                             description = OpenApiDescriptions.CLIENT_CHANNEL_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
+                    @ApiResponse(code = 200, description = "Success", contentTypes = "text/event-stream", body = String.class)
             },
             responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST
     )

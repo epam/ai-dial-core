@@ -14,6 +14,7 @@ public final class EndpointMetadata {
             String path,
             String operationId,
             Type requestBody,
+            Class<?>[] requestOneOf,
             String[] tags,
             String contentType,
             ApiParameter[] parameters,

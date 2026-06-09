@@ -17,6 +17,19 @@ import java.util.Set;
 @Data
 @NoArgsConstructor
 @Accessors(chain = true)
+@ApiSubTypes(
+        discriminatorProperty = "nodeType",
+        value = {
+            @ApiSubType(
+                discriminatorValue = "FOLDER",
+                type = ResourceFolderMetadata.class
+                ),
+            @ApiSubType(
+                discriminatorValue = "ITEM",
+                type = ResourceItemMetadata.class
+                )
+        }
+)
 public abstract class MetadataBase {
     public static final String MIME_TYPE = "application/vnd.dial.metadata+json";
 

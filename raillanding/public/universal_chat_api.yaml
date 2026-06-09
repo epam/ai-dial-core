@@ -2571,16 +2571,33 @@ paths:
                     bucket: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST
                     url: applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/
                     nodeType: FOLDER
+                    resourceType: APPLICATION
                     permissions:
                     - READ
                     - WRITE
+                    items:
+                    - name: application_name
+                      parentPath: folder1/folder2
+                      bucket: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST
+                      url: applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/application_name
+                      nodeType: ITEM
+                      resourceType: APPLICATION
+                      updatedAt: 1707876435000
+                      permissions:
+                      - READ
+                      - WRITE
                 Application:
                   value:
                     name: application_name
+                    author: the name of the app creator
                     parentPath: folder1/folder2
                     bucket: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST
                     url: applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/application_name
                     nodeType: ITEM
+                    resourceType: APPLICATION
+                    etag: 7dfb93c3c62b88e9a75ff36a6af6c7eb
+                    updatedAt: 1707876435000
+                    createdAt: 1707876435000
                     permissions:
                     - READ
                     - WRITE
@@ -3045,6 +3062,7 @@ paths:
       tags:
       - Client channel
       summary: /v1/ops/client-channel/interact
+      description: "**Note**: This endpoint is in PREVIEW - it can be removed or modified in nearest future. Call this endpoint to send RPC request to client channel and wait for RPC response.    \n"
       operationId: interactClientChannel
       parameters:
       - name: X-DIAL-CLIENT-CHANNEL-ID
@@ -3055,13 +3073,32 @@ paths:
           type: string
       requestBody:
         content:
-          text/event-stream:
+          application/json:
             schema:
-              $ref: "#/components/schemas/RpcRequest"
+              oneOf:
+              - $ref: "#/components/schemas/RpcRequest"
+              - type: array
+                items:
+                  $ref: "#/components/schemas/RpcRequest"
         required: true
       responses:
         "200":
           description: Success
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Server-Sent Events stream. Data is sent as a sequence of
+                  heartbeat comments / "data:" lines separated by blank lines.
+              examples:
+                rpcResponseStream:
+                  summary: Example of SSE stream
+                  value: |
+                    : heartbeat
+                    : heartbeat
+                    : heartbeat
+                    data: [{"jsonrpc":"2.0","result":"success","id":"1"},{"jsonrpc":"2.0","result":"denied","id":"2"}]
         "400":
           description: Bad request
           content:
@@ -3074,11 +3111,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+    x-codeSamples:
+    - lang: cURL
+      label: CURL
+      source: "curl -X POST https://chat.<company>.com/v1/ops/client-channel/interact \\\n  -H \"Api-Key: DIAL_API_KEY\" \\\n  -H \"X-DIAL-CLIENT-CHANNEL-ID: 12345\"\n  -d '[{\"jsonrpc\": \"2.0\", \"method\": \"toolset/signin\", \"params\": {\"toolsetId\": \"toolsets/public/toolset2\"}, \"id\": \"1\"},{\"jsonrpc\": \"2.0\", \"method\": \"toolset/signin\", \"params\": {\"toolsetId\": \"toolsets/public/my-toolset\"}, \"id\": \"2\"}]'                  \n"
   /v1/ops/client-channel/report:
     post:
       tags:
       - Client channel
       summary: /v1/ops/client-channel/report
+      description: "**Note**: This endpoint is in PREVIEW - it can be removed or modified in nearest future. Call this endpoint to report RPC response to client channel.     \n"
       operationId: reportClientChannel
       parameters:
       - name: X-DIAL-CLIENT-CHANNEL-ID
@@ -3108,6 +3150,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+    x-codeSamples:
+    - lang: cURL
+      label: CURL
+      source: "curl -X POST https://chat.<company>.com/v1/ops/client-channel/report \\\n  -H \"Api-Key: DIAL_API_KEY\" \\\n  -H \"X-DIAL-CLIENT-CHANNEL-ID: 12345\"\n  -d '{\"jsonrpc\":\"2.0\",\"result\":\"success\",\"id\":\"1\"}'            \n"
   /v1/ops/client-channel/subscribe:
     post:
       tags:
@@ -3124,6 +3170,24 @@ paths:
       responses:
         "200":
           description: Success
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Server-Sent Events stream. Data is sent as a sequence of
+                  heartbeat comments / "data:" lines separated by blank lines.
+              examples:
+                rpcRequestStream:
+                  summary: Example of SSE stream
+                  value: |
+                    : heartbeat
+                    : heartbeat
+                    : heartbeat
+                    data: {"jsonrpc": "2.0", "method": "toolset/signin", "params": {"toolsetId": "toolsets/public/toolset2"}, "id": "1"}
+                    : heartbeat
+                    : heartbeat
+                    data: {"jsonrpc": "2.0", "method": "toolset/signin", "params": {"toolsetId": "toolsets/public/my-toolset"}, "id": "2"}
         "400":
           description: Bad request
           content:
@@ -3136,11 +3200,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+    x-codeSamples:
+    - lang: cURL
+      label: CURL
+      source: "curl -X POST https://chat.<company>.com/v1/ops/client-channel/subscribe \\\n  -H \"Api-Key: DIAL_API_KEY\"            \n"
   /v1/ops/client-channel/unsubscribe:
     post:
       tags:
       - Client channel
       summary: /v1/ops/client-channel/unsubscribe
+      description: "**Note**: This endpoint is in PREVIEW - it can be removed or modified in nearest future. Call this endpoint to remove subscription on events from client channel.     \n"
       operationId: unsubscribeClientChannel
       parameters:
       - name: X-DIAL-CLIENT-CHANNEL-ID
@@ -3164,17 +3233,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+    x-codeSamples:
+    - lang: cURL
+      label: CURL
+      source: "curl -X POST https://chat.<company>.com/v1/ops/client-channel/unsubscribe \\\n  -H \"Api-Key: DIAL_API_KEY\" \\\n  -H \"X-DIAL-CLIENT-CHANNEL-ID: 12345\"                \n"
   /v1/ops/code_interpreter/close_session:
     post:
       tags:
       - Code interpreter
       summary: /v1/ops/code_interpreter/close_session
+      description: Call this endpoint to close session for code interpreter application
       operationId: closeSession
       requestBody:
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/CodeInterpreterSessionId"
+            examples:
+              ExampleUser:
+                value:
+                  sessionId: 3CcedGxCx23EwiVbV
         required: true
       responses:
         "200":
@@ -3183,6 +3261,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CodeInterpreterSession"
+              examples:
+                Session:
+                  value:
+                    sessionId: 3CcedGxCx23EwiVbV
         "400":
           description: Bad request
           content:
@@ -3218,6 +3300,7 @@ paths:
       tags:
       - Code interpreter
       summary: /v1/ops/code_interpreter/download_file
+      description: Call this endpoint to download file from code interpreter container
       operationId: downloadFileFromCodeInterpreter
       requestBody:
         content:
@@ -3228,6 +3311,11 @@ paths:
       responses:
         "200":
           description: Successful response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
         "401":
           description: Invalid Authentication
           content:
@@ -3308,12 +3396,17 @@ paths:
       tags:
       - Code interpreter
       summary: /v1/ops/code_interpreter/get_session
+      description: "Call this endpoint to get a session description. Note, this API does not reset TTL for a session."
       operationId: getSession
       requestBody:
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/CodeInterpreterSessionId"
+            examples:
+              Example:
+                value:
+                  sessionId: 123456A
         required: true
       responses:
         "200":
@@ -3357,6 +3450,7 @@ paths:
       tags:
       - Code interpreter
       summary: /v1/ops/code_interpreter/list_files
+      description: Call this endpoint to list files from code interpreter container
       operationId: listFilesFromCodeInterpreter
       requestBody:
         content:
@@ -3367,6 +3461,17 @@ paths:
       responses:
         "200":
           description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodeInterpreterFiles"
+              examples:
+                UploadFile:
+                  value:
+                    files:
+                    - sessionId: 2e2e329dided
+                      path: files/21jen1j12e/myfile.txt
+                      size: 512
         "400":
           description: Bad request
           content:
@@ -3402,12 +3507,17 @@ paths:
       tags:
       - Code interpreter
       summary: /v1/ops/code_interpreter/open_session
+      description: Call this endpoint to open session for code interpreter application
       operationId: openSession
       requestBody:
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/CodeInterpreterSessionId"
+            examples:
+              ExampleUser:
+                value:
+                  sessionId: 3CcedGxCx23EwiVbV
         required: true
       responses:
         "200":
@@ -3451,6 +3561,7 @@ paths:
       tags:
       - Code interpreter
       summary: /v1/ops/code_interpreter/transfer_input_file
+      description: Call this endpoint to transfer file from Core storage to code interpreter container
       operationId: transferInputFile
       requestBody:
         content:
@@ -3465,6 +3576,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CodeInterpreterFile"
+              examples:
+                UploadFile:
+                  value:
+                    sessionId: 2e2e329dided
+                    path: files/21jen1j12e/myfile.txt
+                    size: 512
         "400":
           description: Bad request
           content:
@@ -3545,6 +3662,7 @@ paths:
       tags:
       - Code interpreter
       summary: /v1/ops/code_interpreter/upload_file
+      description: Call this endpoint to upload file to code interpreter container
       operationId: uploadFileToCodeInterpreter
       responses:
         "200":
@@ -3583,6 +3701,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              required:
+              - file
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+        required: true
   /v1/ops/config/reload:
     post:
       tags:
@@ -6535,13 +6665,6 @@ components:
     InvitationCollection:
       type: object
       properties:
-        invitations:
-          type: array
-          items:
-            $ref: "#/components/schemas/Invitation"
-    MetadataBase:
-      type: object
-      properties:
         bucket:
           type: string
         name:
@@ -6566,6 +6689,20 @@ components:
             $ref: "#/components/schemas/ShareMetadata"
         url:
           type: string
+        invitations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Invitation"
+      required:
+      - nodeType
+      discriminator:
+        propertyName: nodeType
+        mapping:
+          FOLDER: "#/components/schemas/ResourceFolderMetadata"
+          ITEM: "#/components/schemas/ResourceItemMetadata"
+      oneOf:
+      - $ref: "#/components/schemas/ResourceFolderMetadata"
+      - $ref: "#/components/schemas/ResourceItemMetadata"
     ResourceLink:
       type: object
       properties:
@@ -7483,6 +7620,57 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MetadataBase"
+    ResourceFolderMetadata:
+      type: object
+      properties:
+        bucket:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MetadataBase"
+        name:
+          type: string
+        nextToken:
+          type: string
+        nodeType:
+          $ref: "#/components/schemas/NodeType"
+        parentPath:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceAccessType"
+        resourceType:
+          $ref: "#/components/schemas/ResourceType"
+        sharedBy:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShareMetadata"
+        sharedWith:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShareMetadata"
+        url:
+          type: string
+    MetadataBase:
+      required:
+      - nodeType
+      discriminator:
+        propertyName: nodeType
+        mapping:
+          FOLDER: "#/components/schemas/ResourceFolderMetadata"
+          ITEM: "#/components/schemas/ResourceItemMetadata"
+      oneOf:
+      - $ref: "#/components/schemas/ResourceFolderMetadata"
+      - $ref: "#/components/schemas/ResourceItemMetadata"
+    CodeInterpreterFiles:
+      type: object
+      properties:
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodeInterpreterFile"
   securitySchemes:
     ApiKeyAuth:
       type: apiKey

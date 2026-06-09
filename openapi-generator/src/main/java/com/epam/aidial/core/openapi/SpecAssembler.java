@@ -10,6 +10,7 @@ import io.swagger.v3.oas.models.PathItem;
 import io.swagger.v3.oas.models.Paths;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.License;
+import io.swagger.v3.oas.models.media.Discriminator;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.parameters.RequestBody;
@@ -329,6 +330,27 @@ public class SpecAssembler {
             } else if (addPropsNode instanceof ObjectNode on) {
                 schema.setAdditionalProperties(convertToSwaggerSchema(on));
             }
+        }
+
+        if (jsonSchemaNode.has("discriminator")) {
+            JsonNode discriminatorNode = jsonSchemaNode.get("discriminator");
+            Discriminator discriminator = new Discriminator();
+            if (discriminatorNode.has("propertyName")) {
+                discriminator.setPropertyName(
+                        discriminatorNode.get("propertyName").asText()
+                );
+            }
+            if (discriminatorNode.has("mapping")) {
+                Map<String, String> mapping = new LinkedHashMap<>();
+                Iterator<Map.Entry<String, JsonNode>> fields = discriminatorNode.get("mapping").fields();
+
+                while (fields.hasNext()) {
+                    Map.Entry<String, JsonNode> field = fields.next();
+                    mapping.put(field.getKey(), field.getValue().asText());
+                }
+                discriminator.setMapping(mapping);
+            }
+            schema.setDiscriminator(discriminator);
         }
 
         return schema;

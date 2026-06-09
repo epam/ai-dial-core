@@ -1,5 +1,6 @@
 package com.epam.aidial.core.openapi;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
@@ -92,4 +93,14 @@ class DtoSchemaGeneratorTest {
             node.forEach(this::checkRefsRecursive);
         }
     }
+
+//    private void checkRefsRecursive(com.fasterxml.jackson.databind.JsonNode node) {
+//        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+//        JsonNode schema = generator.(MetadataBase.class);
+//
+//        System.out.println(
+//            objectMapper.writerWithDefaultPrettyPrinter()
+//                .writeValueAsString(schema)
+//        );
+//    }
 }

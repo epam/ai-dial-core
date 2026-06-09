@@ -2,15 +2,12 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.DeploymentData;
-import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteRequest;
-import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFile;
-import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterInputFile;
-import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterOutputFile;
-import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterSession;
-import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterSessionId;
+import com.epam.aidial.core.server.data.codeinterpreter.*;
 import com.epam.aidial.core.server.openapi.ApiOperation;
 import com.epam.aidial.core.server.openapi.ApiResponse;
+import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
 import com.epam.aidial.core.server.openapi.ResponseProfile;
+import com.epam.aidial.core.server.openapi.schema.OpenApiBinary;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
@@ -153,6 +150,8 @@ public class CodeInterpreterController {
             path = "/v1/ops/code_interpreter/upload_file",
             operationId = "uploadFileToCodeInterpreter",
             tags = {"Code interpreter"},
+            contentType = "multipart/form-data",
+            requestBody = OpenApiBinary.class,
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = CodeInterpreterFile.class)
             },
@@ -196,7 +195,8 @@ public class CodeInterpreterController {
             requestBody = CodeInterpreterFile.class,
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                        body = OpenApiBinary.class, contentTypes = {"application/octet-stream"}),
             },
             responseProfile = ResponseProfile.CODE_INTERPRETER
     )
@@ -233,7 +233,7 @@ public class CodeInterpreterController {
             requestBody = CodeInterpreterSessionId.class,
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
+                    @ApiResponse(code = 200, description = "Success", body = CodeInterpreterFiles.class)
             },
             responseProfile = ResponseProfile.CODE_INTERPRETER
     )

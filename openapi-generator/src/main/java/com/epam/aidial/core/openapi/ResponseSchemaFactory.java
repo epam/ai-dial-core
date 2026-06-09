@@ -1,7 +1,10 @@
 package com.epam.aidial.core.openapi;
 
 import com.epam.aidial.core.server.openapi.schema.OpenApiBinary;
+import io.swagger.v3.oas.models.media.ArraySchema;
+import io.swagger.v3.oas.models.media.ComposedSchema;
 import io.swagger.v3.oas.models.media.Schema;
+import io.swagger.v3.oas.models.media.StringSchema;
 import org.apache.commons.lang3.StringUtils;
 
 import java.lang.reflect.Type;
@@ -19,18 +22,20 @@ final class ResponseSchemaFactory {
     private ResponseSchemaFactory() {
     }
 
-    static Schema<?> forContentType(String contentType, String schemaRef, Type body, DtoSchemaGenerator schemaGenerator) {
+    public static Schema<?> forContentType(String contentType, String schemaRef, Type body, DtoSchemaGenerator schemaGenerator) {
         if (TEXT_EVENT_STREAM.equals(contentType)) {
-            return streamArray(schemaRef, body, schemaGenerator);
+            return StringUtils.isBlank(schemaRef) && (body == null || body == Void.class || body == String.class)
+                ? new StringSchema()
+                : streamArray(schemaRef, body, schemaGenerator);
         }
         return forBody(schemaRef, body, schemaGenerator);
     }
 
-    static Schema<?> forBody(Type body, DtoSchemaGenerator schemaGenerator) {
+    public static Schema<?> forBody(Type body, DtoSchemaGenerator schemaGenerator) {
         return forBody(null, body, schemaGenerator);
     }
 
-    static Schema<?> forBody(String schemaRef, Type body, DtoSchemaGenerator schemaGenerator) {
+    public static Schema<?> forBody(String schemaRef, Type body, DtoSchemaGenerator schemaGenerator) {
         if (StringUtils.isNotBlank(schemaRef)) {
             Schema<Object> schema = new Schema<>();
             schema.set$ref(COMPONENTS_SCHEMAS_PREFIX + schemaRef);
@@ -46,13 +51,26 @@ final class ResponseSchemaFactory {
             if (OpenApiParameterBuilder.isInlinePrimitiveType(clazz)) {
                 return OpenApiParameterBuilder.inlinePrimitiveSchema(clazz);
             }
+            if (clazz.isArray()) {
+                ArraySchema schema = new ArraySchema();
+                schema.setItems(forBody(null, clazz.getComponentType(), schemaGenerator));
+                return schema;
+            }
         }
         Schema<Object> refSchema = new Schema<>();
         refSchema.set$ref(COMPONENTS_SCHEMAS_PREFIX + schemaGenerator.resolveTypeName(body));
         return refSchema;
     }
 
-    static Schema<?> streamArray(String schemaRef, Type body, DtoSchemaGenerator schemaGenerator) {
+    public static Schema<?> oneOf(Class<?>[] types, DtoSchemaGenerator schemaGenerator) {
+        ComposedSchema schema = new ComposedSchema();
+        for (Class<?> type : types) {
+            schema.addOneOfItem(forBody(type, schemaGenerator));
+        }
+        return schema;
+    }
+
+    public static Schema<?> streamArray(String schemaRef, Type body, DtoSchemaGenerator schemaGenerator) {
         if (StringUtils.isNotBlank(schemaRef)) {
             Schema<Object> arraySchema = new Schema<>();
             arraySchema.setType("array");
@@ -82,24 +100,29 @@ final class ResponseSchemaFactory {
         return arraySchema;
     }
 
-    static boolean hasBodyType(Type type) {
+    public static boolean hasBodyType(Type type) {
         return type != null && !(type instanceof Class<?> clazz && clazz == Void.class);
     }
 
-    static Schema<byte[]> binaryStringSchema() {
+    public static boolean hasRequestOneOf(EndpointMetadata.Endpoint endpoint) {
+        return endpoint.requestOneOf() != null
+            && endpoint.requestOneOf().length > 0;
+    }
+
+    public static Schema<byte[]> binaryStringSchema() {
         Schema<byte[]> schema = new Schema<>();
         schema.setType("string");
         schema.setFormat("binary");
         return schema;
     }
 
-    static boolean isMultipartBinaryUpload(Type body, String contentType) {
+    public static boolean isMultipartBinaryUpload(Type body, String contentType) {
         return MULTIPART_FORM_DATA.equals(contentType)
                 && body instanceof Class<?> clazz
                 && clazz == OpenApiBinary.class;
     }
 
-    static Schema<?> multipartBinaryFileUploadSchema() {
+    public static Schema<?> multipartBinaryFileUploadSchema() {
         Schema<Object> objectSchema = new Schema<>();
         objectSchema.setType("object");
         Map<String, Schema> properties = new LinkedHashMap<>();
@@ -109,7 +132,7 @@ final class ResponseSchemaFactory {
         return objectSchema;
     }
 
-    static void registerRequestBody(Type body, String contentType, DtoSchemaGenerator schemaGenerator) {
+    public static void registerRequestBody(Type body, String contentType, DtoSchemaGenerator schemaGenerator) {
         if (!hasBodyType(body) || isMultipartBinaryUpload(body, contentType)) {
             return;
         }
@@ -120,7 +143,7 @@ final class ResponseSchemaFactory {
         schemaGenerator.processType(body);
     }
 
-    static void registerResponseBody(Type body, DtoSchemaGenerator schemaGenerator) {
+    public static void registerResponseBody(Type body, DtoSchemaGenerator schemaGenerator) {
         if (!hasBodyType(body) || body instanceof Class<?> clazz
                 && (clazz == OpenApiBinary.class || OpenApiParameterBuilder.isInlinePrimitiveType(clazz))) {
             return;

@@ -1,12 +1,16 @@
 package com.epam.aidial.core.openapi;
 
+import com.epam.aidial.core.storage.data.ApiSubType;
+import com.epam.aidial.core.storage.data.ApiSubTypes;
 import com.fasterxml.classmate.ResolvedType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
+import com.github.victools.jsonschema.generator.CustomDefinition;
 import com.github.victools.jsonschema.generator.Option;
 import com.github.victools.jsonschema.generator.OptionPreset;
+import com.github.victools.jsonschema.generator.SchemaGenerationContext;
 import com.github.victools.jsonschema.generator.SchemaGenerator;
 import com.github.victools.jsonschema.generator.SchemaGeneratorConfig;
 import com.github.victools.jsonschema.generator.SchemaGeneratorConfigBuilder;
@@ -39,42 +43,32 @@ public class DtoSchemaGenerator {
                 JacksonOption.RESPECT_JSONPROPERTY_REQUIRED,
                 JacksonOption.FLATTENED_ENUMS_FROM_JSONVALUE
         );
-
         SchemaGeneratorConfigBuilder configBuilder = new SchemaGeneratorConfigBuilder(
                 SchemaVersion.DRAFT_2020_12,
                 OptionPreset.PLAIN_JSON
         );
-        configBuilder.forTypesInGeneral()
-                .withDefinitionNamingStrategy((key, context) -> {
-                    ResolvedType type = key.getType();
-                    Class<?> clazz = type.getErasedType();
-                    if (Map.class.isAssignableFrom(clazz)) {
-                        StringBuilder sb = new StringBuilder(clazz.getSimpleName());
-                        for (ResolvedType param : type.getTypeParameters()) {
-                            sb.append(buildSchemaName(param.getErasedType()));
-                        }
-                        return sb.toString();
-                    }
-                    return buildSchemaName(clazz);
-                });
+        configBuilder.forTypesInGeneral().withDefinitionNamingStrategy((key, context) -> {
+            ResolvedType type = key.getType();
+            Class<?> clazz = type.getErasedType();
+            if (Map.class.isAssignableFrom(clazz)) {
+                StringBuilder sb = new StringBuilder(clazz.getSimpleName());
+                for (ResolvedType param : type.getTypeParameters()) {
+                    sb.append(buildSchemaName(param.getErasedType()));
+                }
+                return sb.toString();
+            }
+            return buildSchemaName(clazz);
+        });
         configBuilder.with(jacksonModule);
         configBuilder.with(Option.DEFINITIONS_FOR_ALL_OBJECTS);
         configBuilder.without(Option.SCHEMA_VERSION_INDICATOR);
 
         configBuilder.forTypesInGeneral().withCustomDefinitionProvider((javaType, context) -> {
-            if (javaType.isInstanceOf(Map.class)) {
-                var typeParams = javaType.getTypeParameters();
-                if (typeParams != null && typeParams.size() == 2) {
-                    var valueType = typeParams.get(1);
-                    ObjectNode schema = context.getGeneratorConfig().createObjectNode();
-                    schema.put("type", "object");
-                    schema.set("additionalProperties",
-                            context.createDefinitionReference(valueType));
-                    return new com.github.victools.jsonschema.generator
-                            .CustomDefinition(schema);
-                }
+            CustomDefinition definition = createMapSchemaDefinition(javaType, context);
+            if (definition != null) {
+                return definition;
             }
-            return null;
+            return createPolymorphicDefinition(javaType, context);
         });
 
         SchemaGeneratorConfig config = configBuilder.build();
@@ -91,6 +85,14 @@ public class DtoSchemaGenerator {
         }
         if (type instanceof Class<?> clazz && OpenApiParameterBuilder.isInlinePrimitiveType(clazz)) {
             return;
+        }
+        if (type instanceof Class<?> clazz) {
+            ApiSubTypes subTypes = clazz.getAnnotation(ApiSubTypes.class);
+            if (subTypes != null) {
+                for (ApiSubType subtype : subTypes.value()) {
+                    processType(subtype.type());
+                }
+            }
         }
         JsonNode schema = generator.generateSchema(type);
         if (!(schema instanceof ObjectNode rootNode)) {
@@ -124,6 +126,64 @@ public class DtoSchemaGenerator {
         externalSchemaRegistry.register(schemaName);
     }
 
+    private CustomDefinition createMapSchemaDefinition(ResolvedType javaType, SchemaGenerationContext context) {
+        if (!javaType.isInstanceOf(Map.class)) {
+            return null;
+        }
+
+        var params = javaType.getTypeParameters();
+        if (params == null || params.size() != 2) {
+            return null;
+        }
+
+        ObjectNode schema = context.getGeneratorConfig().createObjectNode();
+        schema.put("type", "object");
+        schema.set("additionalProperties",
+                context.createDefinitionReference(params.get(1)));
+
+        return new CustomDefinition(schema);
+    }
+
+    private CustomDefinition createPolymorphicDefinition(ResolvedType javaType, SchemaGenerationContext context) {
+        ApiSubTypes subTypes = javaType.getErasedType().getAnnotation(ApiSubTypes.class);
+        if (subTypes == null) {
+            return null;
+        }
+        ObjectNode schema = context.getGeneratorConfig().createObjectNode();
+        schema.set("oneOf", createOneOf(subTypes, context));
+        schema.set("required", createRequired(subTypes, context));
+        schema.set("discriminator", createDiscriminator(subTypes, context));
+        return new CustomDefinition(schema);
+    }
+
+    private ArrayNode createOneOf(ApiSubTypes subTypes, SchemaGenerationContext context) {
+        ArrayNode oneOf = context.getGeneratorConfig().createArrayNode();
+
+        for (ApiSubType subtype : subTypes.value()) {
+            ObjectNode ref = context.getGeneratorConfig().createObjectNode();
+            ref.put("$ref", "#/$defs/" + buildSchemaName(subtype.type()));
+            oneOf.add(ref);
+        }
+        return oneOf;
+    }
+
+    private ArrayNode createRequired(ApiSubTypes subTypes, SchemaGenerationContext context) {
+        ArrayNode required = context.getGeneratorConfig().createArrayNode();
+        required.add(subTypes.discriminatorProperty());
+        return required;
+    }
+
+    private ObjectNode createDiscriminator(ApiSubTypes subTypes, SchemaGenerationContext context) {
+        ObjectNode discriminator = context.getGeneratorConfig().createObjectNode();
+        discriminator.put("propertyName", subTypes.discriminatorProperty());
+        ObjectNode mapping = context.getGeneratorConfig().createObjectNode();
+        for (ApiSubType subtype : subTypes.value()) {
+            mapping.put(subtype.discriminatorValue(), "#/$defs/" + buildSchemaName(subtype.type()));
+        }
+        discriminator.set("mapping", mapping);
+        return discriminator;
+    }
+
     private void registerDefinitions(ObjectNode rootNode) {
         // Extract $defs into the shared schemas map
         if (!rootNode.has(DEFS_KEY)) {
@@ -153,6 +213,21 @@ public class DtoSchemaGenerator {
                 if (refValue.startsWith(DEFS_PREFIX)) {
                     String schemaName = sanitizeSchemaName(refValue.substring(DEFS_PREFIX.length()));
                     objNode.set(REF_KEY, new TextNode(COMPONENTS_PREFIX + schemaName));
+                }
+            }
+            if (objNode.has("discriminator")) {
+                JsonNode discriminator = objNode.get("discriminator");
+                if (discriminator.isObject() && discriminator.has("mapping")) {
+                    ObjectNode mapping = (ObjectNode) discriminator.get("mapping");
+                    Iterator<Map.Entry<String, JsonNode>> entries = mapping.fields();
+                    while (entries.hasNext()) {
+                        Map.Entry<String, JsonNode> entry = entries.next();
+                        String value = entry.getValue().asText();
+                        if (value.startsWith(DEFS_PREFIX)) {
+                            String schemaName = sanitizeSchemaName(value.substring(DEFS_PREFIX.length()));
+                            mapping.put(entry.getKey(), COMPONENTS_PREFIX + schemaName);
+                        }
+                    }
                 }
             }
             Iterator<Map.Entry<String, JsonNode>> fields = objNode.fields();
