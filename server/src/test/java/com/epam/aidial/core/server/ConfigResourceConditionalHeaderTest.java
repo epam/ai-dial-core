@@ -65,6 +65,20 @@ public class ConfigResourceConditionalHeaderTest extends ResourceBaseTest {
         verify(stale, 200);
         assertTrue(stale.body().contains("\"name\":\"models/public/cond-stale\""),
                 () -> "Expected full body on stale If-None-Match: " + stale.body());
+        assertNotNull(stale.headers().get("etag"),
+                () -> "GET 200 must include ETag header even on stale If-None-Match: " + stale.headers());
+    }
+
+    @Test
+    void testGet200IncludesEtagHeader() {
+        verify(send(HttpMethod.PUT, "/v1/models/public/cond-etag-get", null, MODEL_BODY,
+                "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response get = send(HttpMethod.GET, "/v1/models/public/cond-etag-get", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertNotNull(get.headers().get("etag"),
+                () -> "Plain GET 200 must include ETag header: " + get.headers());
     }
 
     @Test
