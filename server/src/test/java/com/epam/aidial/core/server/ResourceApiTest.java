@@ -85,7 +85,8 @@ class ResourceApiTest extends ResourceBaseTest {
                   "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                   "action" : "CREATE",
                   "timestamp" : "@ignore",
-                  "etag" : "\\"7c2fb99c2a57e8f50360f659f9f8a163\\""
+                  "etag" : "\\"7c2fb99c2a57e8f50360f659f9f8a163\\"",
+                  "senderPodId" : "@ignore"
                 }
                 """, events.take());
 
@@ -94,7 +95,8 @@ class ResourceApiTest extends ResourceBaseTest {
                   "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                   "action" : "UPDATE",
                   "timestamp" : "@ignore",
-                  "etag" : "\\"9295391fd4aab5bd32f63749b228b3f5\\""
+                  "etag" : "\\"9295391fd4aab5bd32f63749b228b3f5\\"",
+                  "senderPodId" : "@ignore"
                 }
                 """, events.take());
 
@@ -102,7 +104,8 @@ class ResourceApiTest extends ResourceBaseTest {
                 {
                   "url" : "conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation",
                   "action" : "DELETE",
-                  "timestamp" : "@ignore"
+                  "timestamp" : "@ignore",
+                  "senderPodId" : "@ignore"
                 }
                 """, events.take());
 

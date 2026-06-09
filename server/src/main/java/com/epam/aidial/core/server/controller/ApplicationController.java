@@ -2,6 +2,8 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
@@ -34,6 +36,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 
@@ -82,11 +85,15 @@ public class ApplicationController {
                 .map(deployment -> {
                     if (deployment instanceof Application application) {
                         boolean applicationRequestInfoAboutItSelf = applicationId.equals(context.getDecodedSourceDeployment());
+                        if (application.hasApplicationTypeSchemaId()) {
+                            application.setMcp(applicationSchemaService.getMcp(application));
+                            application.setViewerUrl(applicationSchemaService.getStringProperty(application, MetaSchemaHolder.APPLICATION_TYPE_VIEWER_URL));
+                        }
                         return applicationSchemaService.modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
                     }
                     throw new ResourceNotFoundException("Application is not found: " + applicationId);
                 })
-                .map(ApplicationController::mapApplication)
+                .map(this::mapApplication)
                 .onSuccess(data -> context.respond(HttpStatus.OK, data))
                 .onFailure(this::respondError);
 
@@ -119,7 +126,7 @@ public class ApplicationController {
             if (applicationService.isIncludeCustomApps()) {
                 list.addAll(deploymentService.listDeployments(context, ResourceTypes.APPLICATION, deploymentExtractor));
             }
-            return list.stream().map(ApplicationController::mapApplication).toList();
+            return list.stream().map(this::mapApplication).toList();
         }).onSuccess(apps -> context.respond(HttpStatus.OK, new ListData<>(apps)))
                 .onFailure(this::respondError);
     }
@@ -262,19 +269,43 @@ public class ApplicationController {
     }
 
     private void respondError(Throwable error) {
-        if (error instanceof IllegalArgumentException) {
-            context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
-        } else if (error instanceof PermissionDeniedException) {
-            context.respond(HttpStatus.FORBIDDEN, error.getMessage());
-        } else if (error instanceof ResourceNotFoundException) {
-            context.respond(HttpStatus.NOT_FOUND, error.getMessage());
-        } else {
-            context.respond(error, "Internal error");
-            log.error("Failed to handle application request", error);
+        switch (error) {
+            case IllegalArgumentException ignored ->
+                    context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
+            case PermissionDeniedException ignored ->
+                    context.respond(HttpStatus.FORBIDDEN, error.getMessage());
+            case ResourceNotFoundException ignored ->
+                    context.respond(HttpStatus.NOT_FOUND, error.getMessage());
+            case null, default -> {
+                context.respond(error, "Internal error");
+                log.error("Failed to handle application request", error);
+            }
         }
     }
 
-    private static ApplicationData mapApplication(Application application) {
+    private boolean hasWriteAccess(Application application) {
+        String appName = application.getName();
+        if (appName != null && appName.equals(context.getDecodedSourceDeployment())) {
+            return true;
+        }
+        if (appName != null) {
+            try {
+                ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(appName, encryptionService);
+                if (resource.getType() == ResourceTypes.APPLICATION) {
+                    return accessService.hasWriteAccess(resource, context);
+                }
+            } catch (Exception e) {
+                // appName is not DIAL resource url, fall through to admin check
+            }
+        }
+        return accessService.hasAdminAccess(context);
+    }
+
+    private static void clearUpstreams(Map<String, Route> routes) {
+        routes.forEach((name, route) -> route.setUpstreams(null));
+    }
+
+    private ApplicationData mapApplication(Application application) {
         ApplicationData data = new ApplicationData();
         data.setInvalid(application.getInvalid());
         data.setId(application.getName());
@@ -313,7 +344,17 @@ public class ApplicationController {
             data.setUpdatedAt(application.getUpdatedAt());
         }
 
-        data.setRoutes(application.getRoutes());
+        Map<String, Route> routes = null;
+        if (application.hasApplicationTypeSchemaId()) {
+            routes = applicationSchemaService.getRoutes(application);
+        }
+        if (routes == null) {
+            routes = application.getRoutes();
+        }
+        if (!hasWriteAccess(application) && routes != null) {
+            clearUpstreams(routes);
+        }
+        data.setRoutes(routes);
         data.setViewerUrl(application.getViewerUrl());
         data.setEditorUrl(application.getEditorUrl());
 

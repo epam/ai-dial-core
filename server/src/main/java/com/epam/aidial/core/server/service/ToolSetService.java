@@ -88,8 +88,11 @@ public class ToolSetService {
         return toolSet;
     }
 
-    public Pair<ResourceItemMetadata, ToolSet> putToolSet(ResourceDescriptor resource, EtagHeader etag, String author, ToolSet toolSet) {
-        toolSet.setForwardAuthToken(false);
+    public Pair<ResourceItemMetadata, ToolSet> putToolSet(ResourceDescriptor resource, EtagHeader etag, String author, ToolSet toolSet,
+                                                          boolean preserveForwardAuthToken) {
+        if (!preserveForwardAuthToken) {
+            toolSet.setForwardAuthToken(false);
+        }
         toolSet.setName(resource.getUrl());
         if (toolSet.getReference() == null) {
             toolSet.setReference(ProxyUtil.generateReference());

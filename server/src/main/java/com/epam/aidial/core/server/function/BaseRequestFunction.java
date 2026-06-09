@@ -59,6 +59,23 @@ public abstract class BaseRequestFunction<T> extends BaseFunction<T, Boolean> {
         }
     }
 
+    void shareApplicationPrompts(Application application) {
+        List<ResourceDescriptor> prompts = proxy.getApplicationSchemaService().getPrompts(application);
+        ApiKeyData apiKeyData = context.getProxyApiKeyData();
+        AccessService accessService = proxy.getAccessService();
+        for (ResourceDescriptor resource : prompts) {
+            if (resource.isPublic()) {
+                continue;
+            }
+            String resourceUrl = resource.getUrl();
+            if (accessService.hasReadAccess(resource, context)) {
+                apiKeyData.getAttachedPrompts().put(resourceUrl, new AutoSharedData(ResourceAccessType.READ_ONLY));
+            } else {
+                throw new HttpException(HttpStatus.FORBIDDEN, "Access denied to the prompt %s".formatted(resourceUrl));
+            }
+        }
+    }
+
     void shareApplicationFiles(Application application) {
         List<ResourceDescriptor> files = proxy.getApplicationSchemaService().getFiles(application);
         ApiKeyData apiKeyData = context.getProxyApiKeyData();

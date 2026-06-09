@@ -39,6 +39,14 @@ An object containing parameters for each [model](#models).
 * `createdAt`: The date of the model creation.
 * `updatedAt`: The date of the last model update.
 * `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.
+* `responsesEndpoint`: Endpoint of the model adapter that supports the OpenAI Responses API. Currently only OpenAI adapters support this. When set, DIAL Core proxies the following Responses API operations to this endpoint:
+  * `POST /openai/v1/responses` — create a response (streaming and non-streaming, including background mode).
+  * `GET /openai/v1/responses/{id}` — retrieve a response by its DIAL-assigned ID; supports streaming via SSE.
+  * `DELETE /openai/v1/responses/{id}` — delete a response and remove its stored ID mapping.
+  * `POST /openai/v1/responses/{id}/cancel` — cancel an in-progress background response.
+
+  DIAL Core rewrites upstream response IDs to stable `resp_dial_*` identifiers and uses sticky routing to ensure follow-up requests are forwarded to the same upstream instance that handled the original request. `previous_response_id`, conversations, prompts, and files are not supported.
+* `responsesDefaults`: Default parameters applied if a request doesn't contain them in an OpenAI Responses API call. Works the same way as `defaults` for the chat completions API.
 * `interceptors`: A list of interceptors to be triggered for the given model. Refer to [Interceptors](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/6.interceptors.md) to learn more.
 * `fieldsHashingOrder`: A list of chat completion request components that defines an order in which they are used to compute a hash of the request. The components of the request are identified by strings `prefix.body.tools` and `prefix.body.messages`. The default value of the parameter is ["prefix.body.tools", "prefix.body.messages"], meaning the hash is first computed for the tools definitions, then extended with the hash of the messages. It reflects the relative order of tools and messages components when they are converted to tokens and fed into a typical LLM. The hash is used uniquely identify prefixes of the request that are marked by [cache breakpoints](https://docs.dialx.ai/tutorials/developers/prompt-caching). It enables DIAL Core to redirect independent requests that are sharing the same prefix to the same upstream endpoint. This is essential to enable context caching feature of LLM since their caching scope is limited to a simple upstream endpoint.
 * `features`: An object with the model features that define optional capabilities of the model. Refer to [models.<model_name>.features](#modelsmodel_namefeatures).
@@ -104,6 +112,10 @@ An object containing parameters for each [model](#models).
                 "paramBool": true,
                 "paramInt": 123,
                 "paramFloat": 0.25
+            },
+            "responsesEndpoint": "http://localhost:7001/openai/v1/responses",
+            "responsesDefaults": {
+                "store": false
             },
             "interceptors": ["interceptor1"]
         },
@@ -185,11 +197,15 @@ Some models adapters expose specialized HTTP endpoints for tokenization, rate es
 * `folderAttachmentsSupported`: A boolean parameter to enable/disable attaching folders (batching multiple files). Default is `false`.
 * `accessibleByPerRequestKey`: A boolean parameter to enable/disable access to the model with a [per-request API key](https://docs.dialx.ai/platform/core/per-request-keys). Default is `true`.
 * `contentPartsSupported`: A boolean parameter that indicates whether the deployment supports requests with content parts. Default is `false`.
+* `maxTokensSupported`: A boolean parameter that indicates whether the upstream accepts the legacy `max_tokens` parameter in chat completions requests. Default is `true`.
+* `maxCompletionTokensSupported`: A boolean parameter that indicates whether the upstream accepts `max_completion_tokens` parameter in chat completions requests. Default is `false`.
+* `customTemperatureSupported`: A boolean parameter that indicates whether arbitrary `temperature` values are accepted. If `false`, only the API default (usually `1`) should be used and the client is recommended not to send the `temperature` parameter. Default is `true`.
 * `cacheSupported`: A boolean parameter that indicates whether the deployment supports [LLM caching](https://docs.dialx.ai/tutorials/developers/prompt-caching). Default is `false`.
 * `autoCachingSupported`: A boolean parameter that indicates whether the deployment supports [automatic caching](https://docs.dialx.ai/tutorials/developers/prompt-caching), where it's possible. Default is `false`.
 * `parallelToolCallsSupported`: A boolean parameter that indicates whether the deployment supports `parallel_tool_calls` parameter in a chat completion request. Default is `true`.
 * `assistantAttachmentsInRequestSupported`: A boolean parameter that indicates whether the deployment supports DIAL attachments in the assistant messages. Default is `false`. When set to `true`, DIAL Chat must preserve attachments in the assistant messages, instead of removing them. The feature is especially useful for models that can generate attachments as well as take attachments in its input. A typical example of such a model is an image-editing model.
 * `supportCommentInRateResponse`: A boolean parameters that indicates whether the application supports the field `comment` in rate response payload.
+* `reasoningEffortsSupported`: A boolean parameter that indicates whether the deployment supports the `effort` parameter in chat completions requests. When enabled, clients can specify the reasoning effort level (e.g., `low`, `medium`, `high`) for reasoning models. Default is `false`.
 
 **Example**
 
@@ -201,6 +217,9 @@ Some models adapters expose specialized HTTP endpoints for tokenization, rate es
                 "tokenizeEndpoint": "http://host/tokinize",
                 "truncatePromptEndpoint": "http://host/truncate",
                 "configurationEndpoint": "http://host/configure",
+                "maxTokensSupported": true,
+                "maxCompletionTokensSupported": false,
+                "customTemperatureSupported": true,
                 "systemPromptSupported": false,
                 "toolsSupported": false,
                 "seedSupported":false,
@@ -208,7 +227,8 @@ Some models adapters expose specialized HTTP endpoints for tokenization, rate es
                 "folderAttachmentsSupported": false,
                 "accessibleByPerRequestKey": true,
                 "contentPartsSupported": false,
-                "assistantAttachmentsInRequestSupported": false
+                "assistantAttachmentsInRequestSupported": false,
+                "reasoningEffortsSupported": false
             },
         }
 }
@@ -218,7 +238,9 @@ Some models adapters expose specialized HTTP endpoints for tokenization, rate es
 
 Upstreams configurations. Use to configure [load balancing](https://docs.dialx.ai/platform/core/load-balancer).
 
-* `endpoint`: One or more backend URLs to send requests to. Enables round-robin load balancing or fallback among multiple hosts.
+* `endpoint`: The upstream backend URL for the chat completions API. Passed to the model adapter in the `X-UPSTREAM-ENDPOINT` header.
+* `responsesEndpoint`: The upstream backend URL for the Responses API. Passed to the model adapter in the `X-UPSTREAM-ENDPOINT` header when routing Responses API requests.
+* `id`: A stable identifier for this upstream. Clients can set the `X-UPSTREAM-ID` request header to this value to pin a request to a specific upstream (supported in chat completions and Responses API). When the Responses API is enabled (via the model-level `responsesEndpoint`), `id` is required — it is used to route Responses API follow-up requests (retrieve, cancel, delete) back to the same upstream that handled the initial request.
 * `key`: API key, token, or credential passed to the upstream.
 * `weight`: Weight for upstream endpoint; positive number represents an endpoint capacity, zero or negative disables this endpoint from routing. Higher = more traffic share. Default value: 1.
 * `tier`: Specifies tier group for the endpoint. Only positive numbers allowed. All requests will be routed to the endpoints with the highest tier (the lowest tier value), other endpoints (with lower tier/higher tier value) may be used only if the highest tier endpoints are unavailable. Default value: 0 - highest tier. Refer to [load balancing](https://docs.dialx.ai/platform/core/load-balancer) to learn more.
@@ -228,18 +250,21 @@ Upstreams configurations. Use to configure [load balancing](https://docs.dialx.a
 
 ```json
 "models": {
-        "chat-gpt-35-turbo": {
+        "gpt-5.4-2026-03-05": {
             "upstreams": [
                 {
-                    "endpoint": "http://localhost:7001",
+                    "endpoint": "http://localhost:7001/openai/deployments/gpt-5.4-2026-03-05/chat/completions",
+                    "responsesEndpoint": "http://localhost:7001/openai/v1/responses",
                     "key": "modelKey1"
                 },
                 {
-                    "endpoint": "http://localhost:7002",
+                    "endpoint": "http://localhost:7002/openai/deployments/gpt-5.4-2026-03-05/chat/completions",
+                    "responsesEndpoint": "http://localhost:7002/openai/v1/responses",
                     "key": "modelKey2"
                 },
                 {
-                    "endpoint": "http://localhost:7003",
+                    "endpoint": "http://localhost:7003/openai/deployments/gpt-5.4-2026-03-05/chat/completions",
+                    "responsesEndpoint": "http://localhost:7003/openai/v1/responses",
                     "key": "modelKey3"
                 }
             ],

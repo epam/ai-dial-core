@@ -150,6 +150,12 @@ public class ApplicationTypeSchemaController {
                 if (schemaNode.has(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT)) {
                     filteredNode.set(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT, schemaNode.get(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT));
                 }
+                if (schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_ROUTES)) {
+                    filteredNode.set(MetaSchemaHolder.APPLICATION_TYPE_ROUTES, schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_ROUTES));
+                }
+                if (schemaNode.has(MetaSchemaHolder.DIAL_APPLICATION_TYPE_MCP)) {
+                    filteredNode.set(MetaSchemaHolder.DIAL_APPLICATION_TYPE_MCP, schemaNode.get(MetaSchemaHolder.DIAL_APPLICATION_TYPE_MCP));
+                }
 
                 filteredSchemas.add(filteredNode);
             }

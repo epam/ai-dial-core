@@ -20,6 +20,8 @@ public class ResourceDescriptor {
     public static final String PATH_SEPARATOR = "/";
     public static final String PUBLIC_BUCKET = "public";
     public static final String PUBLIC_LOCATION = PUBLIC_BUCKET + PATH_SEPARATOR;
+    public static final String PLATFORM_BUCKET = "platform";
+    public static final String PLATFORM_LOCATION = PLATFORM_BUCKET + PATH_SEPARATOR;
 
     ResourceType type;
     /**
@@ -48,7 +50,7 @@ public class ResourceDescriptor {
      */
     public String getUrl() {
         StringBuilder builder = new StringBuilder();
-        builder.append(UrlUtil.encodePathSegment(type.group()))
+        builder.append(UrlUtil.encodePathSegment(type.urlSegment()))
                 .append(PATH_SEPARATOR)
                 .append(UrlUtil.encodePathSegment(bucketName))
                 .append(PATH_SEPARATOR);
@@ -77,7 +79,7 @@ public class ResourceDescriptor {
      */
     public String getDecodedUrl() {
         StringBuilder builder = new StringBuilder();
-        builder.append(type.group())
+        builder.append(type.urlSegment())
                 .append(PATH_SEPARATOR)
                 .append(bucketName)
                 .append(PATH_SEPARATOR);

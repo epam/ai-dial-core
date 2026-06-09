@@ -4,13 +4,12 @@ import com.epam.aidial.core.credentials.service.metadata.HttpHeadersHandler;
 import com.epam.aidial.core.credentials.util.JsonMapperUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.util.Compression;
 import com.google.common.annotations.VisibleForTesting;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.Strings;
 import org.apache.hc.core5.http.ContentType;
 
-import java.io.ByteArrayInputStream;
 import java.net.ConnectException;
 import java.net.ProxySelector;
 import java.net.URI;
@@ -21,10 +20,7 @@ import java.nio.channels.UnresolvedAddressException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
-import java.util.zip.GZIPInputStream;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -60,6 +56,11 @@ public class ResourceAuthorizationClient {
     }
 
     public <R> R executePost(String url, Object requestPayload, String contentType, Class<R> responseType) {
+        return executePost(url, requestPayload, contentType, Map.of(), responseType);
+    }
+
+    public <R> R executePost(String url, Object requestPayload, String contentType,
+                             Map<String, String> extraHeaders, Class<R> responseType) {
         String stringPayload;
         if (contentType.equals(ContentType.APPLICATION_JSON.toString())) {
             stringPayload = JsonMapperUtil.convertToString(requestPayload);
@@ -68,11 +69,13 @@ public class ResourceAuthorizationClient {
         }
 
         assert stringPayload != null;
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .timeout(createRequestConfig())
                 .header("Content-Type", contentType)
-                .header("Accept", ContentType.APPLICATION_JSON.toString())
+                .header("Accept", ContentType.APPLICATION_JSON.toString());
+        extraHeaders.forEach(requestBuilder::header);
+        HttpRequest request = requestBuilder
                 .POST(HttpRequest.BodyPublishers.ofString(stringPayload, StandardCharsets.UTF_8))
                 .build();
 
@@ -123,31 +126,13 @@ public class ResourceAuthorizationClient {
 
     // Some OAuth servers (e.g., CDN-fronted) return Content-Encoding: gzip even when the client
     // did not request it. Java's built-in HttpClient does not auto-decompress, so we do it here.
-    // Per RFC 9110 §8.4, any coding we do not understand MUST be treated as undeliverable, and
-    // §8.4.1.3 requires "x-gzip" be considered equivalent to "gzip".
-    @SneakyThrows
     private static String decodeBody(HttpResponse<byte[]> response) {
-        byte[] body = response.body();
-        if (body == null || body.length == 0) {
-            return "";
+        try {
+            byte[] decoded = Compression.decodeHttpBody(response.headers().allValues("Content-Encoding"), response.body());
+            return decoded == null ? "" : new String(decoded, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
         }
-        List<String> codings = response.headers().allValues("Content-Encoding").stream()
-                .flatMap(value -> Arrays.stream(value.split(",")))
-                .map(String::trim)
-                .filter(coding -> !coding.isEmpty())
-                .toList();
-        if (codings.isEmpty() || (codings.size() == 1 && Strings.CI.equals(codings.getFirst(), "identity"))) {
-            return new String(body, StandardCharsets.UTF_8);
-        }
-        if (codings.size() == 1 && (Strings.CI.equals(codings.getFirst(), "gzip")
-                || Strings.CI.equals(codings.getFirst(), "x-gzip"))) {
-            try (GZIPInputStream gzip = new GZIPInputStream(new ByteArrayInputStream(body))) {
-                return new String(gzip.readAllBytes(), StandardCharsets.UTF_8);
-            }
-        }
-        throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Unsupported Content-Encoding '%s' from authorization server".formatted(String.join(", ", codings)),
-                Map.of(), "");
     }
 
     private java.time.Duration createRequestConfig() {

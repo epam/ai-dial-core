@@ -1,5 +1,6 @@
 package com.epam.aidial.core.config;
 
+import com.epam.aidial.core.config.annotation.EncryptedField;
 import com.epam.aidial.core.config.databind.JsonToStringDeserializer;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -22,13 +23,24 @@ public class Upstream {
     private String responsesEndpoint;
     @ToString.Exclude
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @EncryptedField
     @JsonAlias({"key", "dial:key"})
     private String key;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonDeserialize(using = JsonToStringDeserializer.class)
     @JsonAlias({"extraData", "dial:extraData"})
     private String extraData;
+    @ToString.Exclude
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @EncryptedField
+    @JsonDeserialize(using = JsonToStringDeserializer.class)
+    @JsonAlias({"secretExtraData", "dial:secretExtraData"})
+    private String secretExtraData;
     @JsonAlias({"weight", "dial:weight"})
     private int weight = 1;
     @JsonAlias({"tier", "dial:tier"})
     private int tier = 0;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonAlias({"id", "dial:id"})
+    private String id;
 }

@@ -172,6 +172,47 @@ class ChatCompletionRequestTest {
     }
 
     @Test
+    void testCollectAttachedFiles_AnnotationCitationAttachment() throws IOException {
+        String body = """
+                {
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "Summarize the document.",
+                      "custom_content": {
+                        "annotations": [
+                          {
+                            "index": 0,
+                            "body": {
+                              "source": {
+                                "attachment": {
+                                  "type": "application/pdf",
+                                  "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/docs/report.pdf"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "index": 1,
+                            "body": {
+                              "title": "Pure annotation - no source"
+                            }
+                          },
+                          {
+                            "index": 2
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """;
+        ChatCompletionRequest request = request(body);
+        Set<String> actual = request.collectAttachments();
+        assertEquals(Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/docs/report.pdf"), actual);
+    }
+
+    @Test
     void testCollectAttachedFiles_EmbeddingRequest_valid() throws IOException {
         String content = """
                 {

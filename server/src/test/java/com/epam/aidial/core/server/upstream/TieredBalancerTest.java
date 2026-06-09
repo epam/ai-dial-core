@@ -47,8 +47,8 @@ public class TieredBalancerTest {
     @Test
     void testTierPriority() {
         List<Upstream> upstreams = List.of(
-                new Upstream("endpoint1", null, null, null, 1, 0),
-                new Upstream("endpoint2", null, null, null, 9, 1)
+                new Upstream("endpoint1", null, null, null, null, 1, 0, null),
+                new Upstream("endpoint2", null, null, null, null, 9, 1, null)
         );
         TieredBalancer balancer = new TieredBalancer("model1", upstreams, generator);
 
@@ -63,8 +63,8 @@ public class TieredBalancerTest {
     @Test
     void testFail() throws InterruptedException {
         List<Upstream> upstreams = List.of(
-                new Upstream("endpoint1", null, null, null, 1, 0),
-                new Upstream("endpoint2", null, null, null, 9, 1)
+                new Upstream("endpoint1", null, null, null, null, 1, 0, null),
+                new Upstream("endpoint2", null, null, null, null, 9, 1, null)
         );
         TieredBalancer balancer = new TieredBalancer("model1", upstreams, generator);
 
@@ -93,8 +93,8 @@ public class TieredBalancerTest {
     @Test
     void test5xxErrorsHandling() {
         List<Upstream> upstreams = List.of(
-                new Upstream("endpoint0", null, null, null, 1, 0),
-                new Upstream("endpoint1", null, null, null, 1, 1)
+                new Upstream("endpoint0", null, null, null, null, 1, 0, null),
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null)
         );
         TieredBalancer balancer = new TieredBalancer("model1", upstreams, generator);
 
@@ -118,7 +118,7 @@ public class TieredBalancerTest {
         Model model = new Model();
         model.setName("model1");
         List<Upstream> upstreams = Stream.of(1, 2, 3, 4)
-                .map(index  -> new Upstream("endpoint" + index, null, null, null, 1, 1))
+                .map(index  -> new Upstream("endpoint" + index, null, null, null, null, 1, 1, null))
                 .toList();
         model.setUpstreams(upstreams);
         AtomicInteger counter = new AtomicInteger(-1);

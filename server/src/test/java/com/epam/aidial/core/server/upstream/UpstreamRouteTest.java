@@ -58,10 +58,10 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, null, null, 1, 1),
-                new Upstream("endpoint2", null, null, null, 1, 1),
-                new Upstream("endpoint3", null, null, null, 1, 1),
-                new Upstream("endpoint4", null, null, null, 1, 1)
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 1, null),
+                new Upstream("endpoint3", null, null, null, null, 1, 1, null),
+                new Upstream("endpoint4", null, null, null, null, 1, 1, null)
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
@@ -108,8 +108,8 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, null, null, 1, 1),
-                new Upstream("endpoint2", null, null, null, 1, 1)
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 1, null)
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
@@ -141,13 +141,13 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, null, null, 1, 1),
-                new Upstream("endpoint2", null, null, null, 1, 1)
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 1, null)
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
-        CachedUpstreamEntry entry = new CachedUpstreamEntry("endpoint2", "prefix", null);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("endpoint2", null, "prefix", null);
         when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
         UpstreamRoute route = upstreamRouteProvider.get(model, cacheBreakpointContext);
         assertNotNull(route.next());
@@ -165,13 +165,13 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, null, null, 1, 1),
-                new Upstream("endpoint2", null, null, null, 1, 1)
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 1, null)
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.CACHE_PRIORITY);
-        CachedUpstreamEntry entry = new CachedUpstreamEntry("endpoint2", "prefix", null);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("endpoint2", null, "prefix", null);
         when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
         UpstreamRoute route = upstreamRouteProvider.get(model, cacheBreakpointContext);
         assertNotNull(route.next());
@@ -189,13 +189,13 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, null, null, 1, 1),
-                new Upstream("endpoint2", null, null, null, 1, 1)
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 1, null)
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of("prefix"), Map.of("prefix", "hash"), CachePolicy.CACHE_PRIORITY);
-        CachedUpstreamEntry entry = new CachedUpstreamEntry("endpoint2", "prefix", null);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("endpoint2", null, "prefix", null);
         when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
         UpstreamRoute route = upstreamRouteProvider.get(model, cacheBreakpointContext);
         assertNotNull(route.next());
@@ -222,13 +222,13 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, null, null, 1, 1),
-                new Upstream("endpoint2", null, null, null, 1, 1)
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 1, null)
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
         CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of("prefix"), Map.of("prefix", "hash"), CachePolicy.CACHE_PRIORITY);
-        CachedUpstreamEntry entry = new CachedUpstreamEntry("endpoint2", "prefix", null);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("endpoint2", null, "prefix", null);
         when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
         UpstreamRoute route = upstreamRouteProvider.get(model, cacheBreakpointContext);
         assertNotNull(route.next());
@@ -252,8 +252,8 @@ public class UpstreamRouteTest {
         Model model = new Model();
         model.setName("model1");
         model.setUpstreams(List.of(
-                new Upstream("endpoint1", null, null, null, 1, 1),
-                new Upstream("endpoint2", null, null, null, 1, 0)
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 0, null)
         ));
 
         UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);

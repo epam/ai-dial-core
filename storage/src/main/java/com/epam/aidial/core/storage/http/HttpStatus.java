@@ -8,6 +8,8 @@ import lombok.RequiredArgsConstructor;
 public enum HttpStatus {
 
     OK(200),
+    CREATED(201),
+    NO_CONTENT(204),
     NOT_MODIFIED(304),
     BAD_REQUEST(400),
     UNAUTHORIZED(401),
@@ -20,6 +22,7 @@ public enum HttpStatus {
     REQUEST_ENTITY_TOO_LARGE(413),
     UNSUPPORTED_MEDIA_TYPE(415),
     UNPROCESSABLE_ENTITY(422),
+    FAILED_DEPENDENCY(424),
     TOO_MANY_REQUESTS(429),
     INTERNAL_SERVER_ERROR(500),
     BAD_GATEWAY(502),
@@ -44,6 +47,8 @@ public enum HttpStatus {
     public static HttpStatus fromStatusCode(int code, HttpStatus fallback) {
         return switch (code) {
             case 200 -> OK;
+            case 201 -> CREATED;
+            case 204 -> NO_CONTENT;
             case 304 -> NOT_MODIFIED;
             case 400 -> BAD_REQUEST;
             case 401 -> UNAUTHORIZED;

@@ -255,7 +255,6 @@ public class DeploymentFeatureController {
                 ProxyUtil.contentLength(proxyResponse, 1024));
 
         context.setProxyResponse(proxyResponse);
-        context.setResponseStream(proxyResponseStream);
 
         HttpServerResponse response = context.getResponse();
         response.setChunked(true);
@@ -265,15 +264,15 @@ public class DeploymentFeatureController {
         proxyResponseStream.pipe()
                 .endOnFailure(false)
                 .to(response)
-                .onSuccess(ignored -> handleResponse())
+                .onSuccess(ignored -> handleResponse(proxyResponseStream))
                 .onFailure(this::handleResponseError);
     }
 
     /**
      * Called when proxy sent response from the origin to the client.
      */
-    private void handleResponse() {
-        Buffer proxyResponseBody = context.getResponseStream().getContent();
+    private void handleResponse(BufferingReadStream responseStream) {
+        Buffer proxyResponseBody = responseStream.getContent();
         context.setResponseBody(proxyResponseBody);
         proxy.getLogStore().save(context);
         finalizeRequest();

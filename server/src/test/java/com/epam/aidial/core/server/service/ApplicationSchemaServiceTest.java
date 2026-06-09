@@ -318,18 +318,17 @@ public class ApplicationSchemaServiceTest {
     @Test
     void consumeMetadataProperties_returnsEmptyMap_whenSchemaIsNull() {
         application.setApplicationTypeSchemaId(null);
+        application.setApplicationProperties(Map.of());
 
         service.consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
-            Assertions.assertEquals(Collections.emptyMap(), properties);
+            Assertions.assertTrue(properties.isEmpty());
             Assertions.assertTrue(appendApplicationPropertiesHeader);
         });
     }
 
     @Test
     void consumeMetadataProperties_throws_whenSchemaNotFound() {
-        when(configStore.get()).thenReturn(config);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
-        when(config.getCustomApplicationSchema(any())).thenReturn(null);
 
         assertThrows(ApplicationTypeSchemaValidationException.class, () ->
                 service.consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
@@ -672,6 +671,46 @@ public class ApplicationSchemaServiceTest {
         Assertions.assertEquals(2, result.size());
         var sorted = result.stream().map(ResourceDescriptor::getName).sorted().toList();
         Assertions.assertEquals(List.of("my-app", "my-toolset"), sorted);
+    }
+
+    @Test
+    public void getPrompts_returnsListOfPrompts_whenSchemaHasDialResourcePrompts() {
+        customProperties.put("toolset", Map.of("name", "my-prompt", "dial_id", "prompts/bucket/my-prompt"));
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        application.setApplicationProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        when(resourceService.hasResource(any())).thenReturn(true);
+        when(encryptionService.decrypt(anyString())).thenReturn("/Users/123/");
+
+        List<ResourceDescriptor> result = service.getPrompts(application);
+
+        Assertions.assertEquals(1, result.size());
+        Assertions.assertEquals("my-prompt", result.getFirst().getName());
+    }
+
+    @Test
+    public void getPrompts_whenPromptUrlIsFolder() {
+        customProperties.put("toolset", Map.of("name", "my-prompt", "dial_id", "prompts/bucket/my-folder/"));
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        application.setApplicationProperties(customProperties);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        when(encryptionService.decrypt(anyString())).thenReturn("/Users/123/");
+
+        List<ResourceDescriptor> result = service.getPrompts(application);
+
+        Assertions.assertEquals(1, result.size());
+        Assertions.assertEquals("my-folder", result.getFirst().getName());
+    }
+
+    @Test
+    public void getPrompts_returnsEmptyList_whenSchemaIsNull() {
+        application.setApplicationTypeSchemaId(null);
+
+        List<ResourceDescriptor> result = service.getPrompts(application);
+
+        Assertions.assertTrue(result.isEmpty());
     }
 
     @Test

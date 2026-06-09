@@ -80,7 +80,6 @@ public class ProxyContext {
     private HttpClientResponse proxyResponse;
     private Buffer requestBody;
     private Buffer responseBody;
-    private BufferingReadStream responseStream; // received from origin
     private long requestTimestamp;
     private long requestBodyTimestamp;
     private long proxyConnectTimestamp;
@@ -98,6 +97,7 @@ public class ProxyContext {
     private String userDisplayName;
     private CacheBreakpointContext cacheBreakpointContext;
     private ServerWebSocket serverWebSocket;
+    private boolean storeResponse;
 
     public ProxyContext(Proxy proxy, Config config, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {

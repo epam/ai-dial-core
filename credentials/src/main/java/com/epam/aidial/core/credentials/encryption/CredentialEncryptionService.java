@@ -41,6 +41,16 @@ public class CredentialEncryptionService {
         return encryptOrDecrypt(bucketInfo, data, aad, false);
     }
 
+    /**
+     * Minimum length, in bytes, of a payload produced by {@link #encrypt}; any shorter byte sequence
+     * cannot be a ciphertext from this service. Delegates to {@link DataEncryptionService#minEncryptedLength()}.
+     *
+     * @return the minimum encrypted payload length in bytes
+     */
+    public int minEncryptedLength() {
+        return dataEncryptionService.minEncryptedLength();
+    }
+
     private byte[] encryptOrDecrypt(BucketInfo bucketInfo, byte[] data, byte[] aad, boolean isEncrypt) {
         byte[] existentContentEncryptionKey = contentEncryptionKeyService.getOrCreateKey(bucketInfo);
         return isEncrypt

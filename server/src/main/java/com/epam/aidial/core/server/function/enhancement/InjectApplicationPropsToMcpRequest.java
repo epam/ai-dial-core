@@ -23,7 +23,6 @@ public class InjectApplicationPropsToMcpRequest extends BaseRequestFunction<Obje
     public Boolean apply(ObjectNode tree) {
         Deployment deployment = context.getDeployment();
         if (deployment instanceof Application application
-                && application.hasApplicationTypeSchemaId()
                 && application.getMcp().getConfigDelivery() == Application.McpConfigDelivery.META) {
             Map<String, Object> props = application.getApplicationProperties();
             if (props == null || props.isEmpty()) {

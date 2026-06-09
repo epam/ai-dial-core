@@ -25,6 +25,7 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.util.Compression;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
@@ -248,7 +249,8 @@ public class McpProxyController implements Controller {
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
         if (Strings.CI.contains(contentType, HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
             ProxyUtil.copyHeaders(proxyResponse.headers(), response.headers());
-            proxyResponse.body().onSuccess(body -> handleResponse(responseStatusCode, body))
+            List<String> contentEncodings = proxyResponse.headers().getAll(HttpHeaders.CONTENT_ENCODING);
+            proxyResponse.body().onSuccess(body -> handleResponse(responseStatusCode, body, contentEncodings))
                     .onFailure(this::handleResponseError);
         } else {
             handleSseProxyResponse(proxyResponse);
@@ -259,14 +261,13 @@ public class McpProxyController implements Controller {
         BufferingReadStream.BaseEventListener eventListener = null;
         if (requireToolFiltering()) {
             FilterAllowedToolsFn fn = new FilterAllowedToolsFn(proxy, context);
-            eventListener = new BufferingReadStream.BaseEventListener(fn);
+            eventListener = new BufferingReadStream.BaseEventListener(List.of(fn));
         }
 
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024), eventListener);
 
         context.setProxyResponse(proxyResponse);
-        context.setResponseStream(proxyResponseStream);
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
@@ -274,7 +275,7 @@ public class McpProxyController implements Controller {
         proxyResponseStream.pipe()
                 .endOnFailure(false)
                 .to(response)
-                .onSuccess(ignored -> handleResponse())
+                .onSuccess(ignored -> handleResponse(proxyResponseStream))
                 .onFailure(this::handleResponseError);
     }
 
@@ -291,20 +292,24 @@ public class McpProxyController implements Controller {
     /**
      * Called when proxy sent response from the origin to the client.
      */
-    private void handleResponse() {
-        Buffer proxyResponseBody = context.getResponseStream().getContent();
+    private void handleResponse(BufferingReadStream responseStream) {
+        Buffer proxyResponseBody = responseStream.getContent();
         context.setResponseBody(proxyResponseBody);
         finalizeRequest();
         logStore.save(context);
     }
 
-    private void handleResponse(int responseStatus, Buffer proxyResponseBody) {
+    private void handleResponse(int responseStatus, Buffer proxyResponseBody, List<String> contentEncodings) {
         Future<Buffer> future;
         if (requireToolFiltering()) {
-            try (InputStream stream = new ByteBufInputStream(proxyResponseBody.getByteBuf())) {
-                JsonNode tree = ProxyUtil.MAPPER.readTree(stream);
+            try {
+                byte[] decoded = Compression.decodeHttpBody(contentEncodings, proxyResponseBody.getBytes());
+                JsonNode tree = ProxyUtil.MAPPER.readTree(decoded);
                 FilterAllowedToolsFn fn = new FilterAllowedToolsFn(proxy, context);
                 future = fn.apply(tree).map(result -> Buffer.buffer(result.toString()));
+                // We re-serialize the filtered tool list as plain JSON, so the Content-Encoding
+                // copied from the origin no longer describes the body we send to the client.
+                context.getResponse().headers().remove(HttpHeaders.CONTENT_ENCODING);
             } catch (Throwable e) {
                 if (e instanceof HttpException httpException) {
                     respond(httpException.getStatus(), httpException.getMessage());

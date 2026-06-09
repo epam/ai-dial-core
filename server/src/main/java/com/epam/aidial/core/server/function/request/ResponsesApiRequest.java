@@ -69,4 +69,9 @@ public class ResponsesApiRequest implements RequestObject {
     public byte[] serialize() throws JsonProcessingException {
         return ProxyUtil.MAPPER.writeValueAsBytes(tree);
     }
+
+    @Override
+    public boolean isStore() {
+        return tree.path("store").asBoolean(true);
+    }
 }

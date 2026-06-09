@@ -294,7 +294,14 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             return;
         }
 
-        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext());
+        String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
+        UpstreamRoute upstreamRoute;
+        try {
+            upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext(), upstreamId);
+        } catch (HttpException e) {
+            respond(e.getStatus(), e.getMessage());
+            return;
+        }
         context.setUpstreamRoute(upstreamRoute);
 
         sendRequest();
@@ -305,10 +312,6 @@ public class DeploymentPostController extends BaseDeploymentPostController {
      */
     @VisibleForTesting
     void handleProxyRequest(HttpClientRequest proxyRequest) {
-        log.info("Connected to origin. Deployment: {}. Address: {}",
-                context.getDeployment().getName(),
-                proxyRequest.connection().remoteAddress());
-
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
@@ -349,7 +352,6 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
-        context.setResponseStream(responseStream);
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
@@ -368,7 +370,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
      */
     @VisibleForTesting
     void handleResponse(BufferingReadStream responseStream) {
-        Buffer responseBody = context.getResponseStream().getContent();
+        Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         Future<TokenUsage> tokenUsageFuture = collectTokenUsage(responseBody);
@@ -439,7 +441,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                         context.getProxyRequest().reset(); // drop connection to stop origin response
                     })
                     .compose(ignore -> {
-                        Buffer responseBody = context.getResponseStream().getContent();
+                        Buffer responseBody = responseStream.getContent();
                         context.setResponseBody(responseBody);
                         context.setResponseBodyTimestamp(System.currentTimeMillis());
                         return collectTokenUsage(responseBody);
@@ -457,7 +459,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         public static final String CHAT_COMPLETION_FINAL_MESSAGE = "[DONE]";
 
         public ChatCompletionSseListener(BaseResponseFunction function) {
-            super(function);
+            super(List.of(function));
         }
 
         @Override

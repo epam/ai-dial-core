@@ -76,6 +76,95 @@ class CollectResponseChatCompletionAttachmentsFnTest {
     }
 
     @Test
+    public void testCollectAttachmentsFromResponse_AnnotationCitationInMessage() throws JsonProcessingException {
+        String response = """
+                {
+                  "choices": [
+                    {
+                      "index": 0,
+                      "finish_reason": "stop",
+                      "message": {
+                        "role": "assistant",
+                        "content": "Here is the summary.",
+                        "custom_content": {
+                          "annotations": [
+                            {
+                              "index": 0,
+                              "body": {
+                                "title": "Source doc",
+                                "source": {
+                                  "attachment": {
+                                    "type": "application/pdf",
+                                    "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/docs/report.pdf"
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "index": 1,
+                              "body": {
+                                "title": "Pure annotation - no source attachment"
+                              }
+                            },
+                            {
+                              "index": 2
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+                """;
+        when(context.isStreamingRequest()).thenReturn(false);
+
+        Set<String> files = new CollectResponseChatCompletionAttachmentsFn(null, context)
+                .collectAttachments((ObjectNode) ProxyUtil.MAPPER.readTree(response));
+
+        assertEquals(Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/docs/report.pdf"), files);
+    }
+
+    @Test
+    public void testCollectAttachmentsFromResponse_AnnotationCitationInDelta() throws JsonProcessingException {
+        String response = """
+                {
+                  "choices": [
+                    {
+                      "index": 0,
+                      "finish_reason": "stop",
+                      "delta": {
+                        "role": "assistant",
+                        "content": "Here is the summary.",
+                        "custom_content": {
+                          "annotations": [
+                            {
+                              "index": 0,
+                              "body": {
+                                "title": "Source doc",
+                                "source": {
+                                  "attachment": {
+                                    "type": "application/pdf",
+                                    "url": "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/docs/report.pdf"
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+                """;
+        when(context.isStreamingRequest()).thenReturn(true);
+
+        Set<String> files = new CollectResponseChatCompletionAttachmentsFn(null, context)
+                .collectAttachments((ObjectNode) ProxyUtil.MAPPER.readTree(response));
+
+        assertEquals(Set.of("files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/docs/report.pdf"), files);
+    }
+
+    @Test
     public void testCollectAttachmentsFromResponse_ChatStreamingResponse() throws JsonProcessingException {
         String response = """
                 {

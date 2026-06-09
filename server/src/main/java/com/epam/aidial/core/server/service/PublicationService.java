@@ -269,7 +269,7 @@ public class PublicationService {
                     if (existingResource == null) {
                         ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(resource.getSourceUrl(), encryption);
                         if (!resourceService.hasResource(from)) {
-                            throw new IllegalArgumentException("Source resource does not exists: " + resource.getSourceUrl());
+                            throw new IllegalArgumentException("Source resource does not exist: " + resource.getSourceUrl());
                         }
                         reviewResourcesToAdd.add(resource);
                         ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(resource.getReviewUrl(), encryption);
@@ -323,7 +323,9 @@ public class PublicationService {
                     if (to.getType() == ResourceTypes.APPLICATION) {
                         Application app = applicationService.getApplication(to).getValue();
                         app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
-                        applicationService.putApplication(to, EtagHeader.ANY, null, app);
+                        // Publication-approval is conservative: continue stripping forwardAuthToken.
+                        // The originating user-bucket write already stripped it; this is defense in depth.
+                        applicationService.putApplication(to, EtagHeader.ANY, null, app, false);
                     }
                 }
             }
@@ -547,7 +549,7 @@ public class PublicationService {
         }
 
         if (isPublicationNew && !resourceService.hasResource(source)) {
-            throw new IllegalArgumentException("Source resource does not exists: " + sourceUrl);
+            throw new IllegalArgumentException("Source resource does not exist: " + sourceUrl);
         }
 
         if (resource.getAction() == Publication.ResourceAction.ADD && resourceService.hasResource(target)) {
