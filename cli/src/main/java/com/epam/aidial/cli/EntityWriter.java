@@ -18,14 +18,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public final class EntityWriter {
-
-    private static final ObjectMapper JSON = new ObjectMapper();
-    private static final YAMLMapper YAML = new YAMLMapper();
 
     /**
      * Controller-projected fields the server adds on GET responses but
@@ -34,7 +32,10 @@ public final class EntityWriter {
      * GET → merge → PUT round-trip succeed without a {@code "Unrecognized field"} 400.
      * Note: `source` was retired in U.1 and is no longer present in server responses.
      */
-    private static final String[] PROJECTION_FIELDS = {"name", "status", "validationWarnings"};
+    static final String[] PROJECTION_FIELDS = {"name", "status", "validationWarnings"};
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final YAMLMapper YAML = new YAMLMapper();
 
     private static final String TEMPLATE_AUTO = "auto";
 
@@ -86,7 +87,7 @@ public final class EntityWriter {
         } catch (JsonProcessingException e) {
             throw CliException.network("Failed to parse GET response: " + e.getMessage());
         }
-        merged.remove(java.util.Arrays.asList(PROJECTION_FIELDS));
+        merged.remove(Arrays.asList(PROJECTION_FIELDS));
         JsonPatcher.apply(merged, sets);
         String body;
         try {
@@ -131,7 +132,7 @@ public final class EntityWriter {
         } catch (JsonProcessingException e) {
             throw CliException.network("Failed to parse source " + source.envName() + " response: " + e.getMessage());
         }
-        sourceSpec.remove(java.util.Arrays.asList(PROJECTION_FIELDS));
+        sourceSpec.remove(Arrays.asList(PROJECTION_FIELDS));
         Map<String, Object> entityCtx = entityContext(simpleName, kind);
         String effectiveTemplate = templateName;
         if (TEMPLATE_AUTO.equals(templateName)) {

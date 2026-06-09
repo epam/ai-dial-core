@@ -1105,8 +1105,9 @@ class ApplyCommandTest {
         AtomicInteger getHits = new AtomicInteger();
         server.createContext("/v1/roles/platform/basic", exchange -> {
             getHits.incrementAndGet();
-            // Current target state has an existing limit for an unrelated model.
-            send(exchange, 200, "{\"name\":\"basic\",\"limits\":{\"old-model\":{\"minute\":\"50\"}}}");
+            // Current target state has an existing limit for an unrelated model and includes projection fields the server adds on GET.
+            send(exchange, 200,
+                    "{\"name\":\"basic\",\"status\":\"active\",\"validationWarnings\":[\"w\"],\"limits\":{\"old-model\":{\"minute\":\"50\"}}}");
         });
         AtomicReference<String> applyBody = new AtomicReference<>();
         AtomicInteger applyHits = new AtomicInteger();
@@ -1124,6 +1125,9 @@ class ApplyCommandTest {
         assertTrue(applyBody.get().contains("\"old-model\""), applyBody.get());
         assertTrue(applyBody.get().contains("\"new-model\""), applyBody.get());
         assertTrue(applyBody.get().contains("\"minute\":\"100000\""), applyBody.get());
+        // Projection fields from the GET response must not reach the apply envelope.
+        assertFalse(applyBody.get().contains("\"status\""), "projection field 'status' must be stripped: " + applyBody.get());
+        assertFalse(applyBody.get().contains("\"validationWarnings\""), "projection field 'validationWarnings' must be stripped: " + applyBody.get());
     }
 
     @Test

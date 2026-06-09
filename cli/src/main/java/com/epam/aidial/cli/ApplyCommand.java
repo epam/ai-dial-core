@@ -18,6 +18,7 @@ import picocli.CommandLine.UseDefaultConverter;
 
 import java.io.PrintWriter;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -188,7 +189,11 @@ public class ApplyCommand implements Callable<Integer> {
             return null;
         }
         try {
-            return JSON.readTree(resp.body());
+            JsonNode node = JSON.readTree(resp.body());
+            if (node.isObject()) {
+                ((ObjectNode) node).remove(Arrays.asList(EntityWriter.PROJECTION_FIELDS));
+            }
+            return node;
         } catch (JsonProcessingException e) {
             err.println(resolvedName + ": failed to parse target state: " + e.getMessage());
             return null;
