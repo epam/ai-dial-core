@@ -107,6 +107,8 @@ public class ResourceDescriptorFactory {
 
         if (bucket.equals(ResourceDescriptor.PUBLIC_BUCKET)) {
             location = ResourceDescriptor.PUBLIC_LOCATION;
+        } else if (bucket.equals(ResourceDescriptor.PLATFORM_BUCKET)) {
+            location = ResourceDescriptor.PLATFORM_LOCATION;
         } else if (expectedBucket != null) {
             location = expectedLocation;
         } else if (encryptionService != null) {

@@ -48,6 +48,14 @@ public class ResourceAuthSettingsEncryptionService {
             settings.setClientSecret(processedValue);
         }
 
+        String codeVerifier = settings.getCodeVerifier();
+        if (codeVerifier != null) {
+            String processedValue = encrypt
+                    ? encryptValue(bucketInfo, codeVerifier, aad)
+                    : decryptValueWithLegacyFallback(bucketInfo, codeVerifier, aad);
+            settings.setCodeVerifier(processedValue);
+        }
+
     }
 
     private String encryptValue(@Nonnull BucketInfo bucketInfo, @Nonnull String plainText, @Nullable byte[] aad) {
@@ -67,6 +75,37 @@ public class ResourceAuthSettingsEncryptionService {
             return new String(plain, UTF_8);
         } catch (RuntimeException e) {
             throw new EncryptionException("Failed to decrypt auth settings", e);
+        }
+    }
+
+    /**
+     * Lazy plaintext fallback — pre-Phase-3 toolset blobs may carry the value as plaintext (design 04 §2.7).
+     * Classifies the stored value three ways:
+     * <ol>
+     *   <li>Base64 decode fails — not our ciphertext; returned as-is (legacy plaintext).</li>
+     *   <li>Decoded length is below {@link CredentialEncryptionService#minEncryptedLength()} — too short to be a
+     *       ciphertext from this service; returned as-is (deterministic, no decrypt attempt).</li>
+     *   <li>Decode and length checks pass but AES decryption throws — residual ambiguous branch; logged at WARN
+     *       and the original value is returned (treated as legacy plaintext, re-encrypted on the next write).</li>
+     * </ol>
+     */
+    private String decryptValueWithLegacyFallback(@Nonnull BucketInfo bucketInfo, @Nonnull String value, @Nullable byte[] aad) {
+        byte[] encrypted;
+        try {
+            encrypted = Base64.getDecoder().decode(value);
+        } catch (IllegalArgumentException e) {
+            return value;
+        }
+        if (encrypted.length < encryptionService.minEncryptedLength()) {
+            return value;
+        }
+        try {
+            byte[] plain = encryptionService.decrypt(bucketInfo, encrypted, aad);
+            return new String(plain, UTF_8);
+        } catch (RuntimeException e) {
+            log.warn("codeVerifier failed AES decrypt; treating as legacy plaintext, will re-encrypt on next write; "
+                    + "if this value was expected to be encrypted the blob may be corrupt", e);
+            return value;
         }
     }
 

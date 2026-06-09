@@ -88,6 +88,14 @@ class DataEncryptionServiceTest {
     }
 
     @Test
+    void minEncryptedLength_matchesIvPlusTagFloorAndRealCiphertext() {
+        assertEquals(28, service.minEncryptedLength());
+
+        byte[] encrypted = service.encrypt(new byte[0], key256, null);
+        assertTrue(encrypted.length >= service.minEncryptedLength());
+    }
+
+    @Test
     void encrypt_withNullPlain_shouldThrowIllegalArgumentException() {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> service.encrypt(null, key256, null));

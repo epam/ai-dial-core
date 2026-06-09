@@ -134,7 +134,7 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
         app.setEndpoint("http://localhost:4848/app");
         applicationService.putApplication(
                 ResourceDescriptorFactory.fromPublicUrl("applications/public/annot-test-app"),
-                EtagHeader.ANY, null, app);
+                EtagHeader.ANY, null, app, false);
 
         // Shared state between the two mock handlers that run sequentially
         MutableObject<String> citedFileUrl = new MutableObject<>();

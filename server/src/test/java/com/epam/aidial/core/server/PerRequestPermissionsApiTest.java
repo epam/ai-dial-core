@@ -47,11 +47,11 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
         Application app1 = new Application();
         app1.setEndpoint("http://localhost:17323/app1");
         applicationService.putApplication(ResourceDescriptorFactory.fromPublicUrl("applications/public/app1"),
-                EtagHeader.ANY, null, app1);
+                EtagHeader.ANY, null, app1, false);
         Application app2 = new Application();
         app2.setEndpoint("http://localhost:17323/app2");
         applicationService.putApplication(ResourceDescriptorFactory.fromPublicUrl("applications/public/app2"),
-                EtagHeader.ANY, null, app2);
+                EtagHeader.ANY, null, app2, false);
 
         try (TestWebServer server = new TestWebServer(17323)) {
             MutableObject<String> readFileUrl = new MutableObject<>();

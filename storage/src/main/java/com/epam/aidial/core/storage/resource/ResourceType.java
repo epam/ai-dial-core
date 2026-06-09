@@ -5,6 +5,10 @@ public interface ResourceType {
 
     String group();
 
+    default String urlSegment() {
+        return group();
+    }
+
     boolean requireCompression();
 
     /**

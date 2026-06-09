@@ -183,6 +183,7 @@ public class ResourceBaseTest {
 
             JsonObject settings = AiDial.settings()
                     .mergeIn(new JsonObject(overrides), true);
+            settings.mergeIn(additionalSettingsOverrides(), true);
             DialConfigLocation configLocation = (DialConfigLocation) info.getTestMethod()
                     .flatMap(method -> Arrays.stream(method.getDeclaredAnnotations())
                             .filter(an -> an instanceof DialConfigLocation).findAny()).orElse(null);
@@ -273,6 +274,14 @@ public class ResourceBaseTest {
 
     protected String generate() {
         return "0" + id++;
+    }
+
+    /**
+     * Override in subclasses to inject additional settings overrides before {@code dial.start()}.
+     * Default returns an empty JsonObject. Merged into the runtime settings via {@code mergeIn(true)}.
+     */
+    protected JsonObject additionalSettingsOverrides() {
+        return new JsonObject();
     }
 
     static void verify(Response response, int status) {

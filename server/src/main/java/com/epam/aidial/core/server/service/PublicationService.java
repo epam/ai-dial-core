@@ -323,7 +323,9 @@ public class PublicationService {
                     if (to.getType() == ResourceTypes.APPLICATION) {
                         Application app = applicationService.getApplication(to).getValue();
                         app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
-                        applicationService.putApplication(to, EtagHeader.ANY, null, app);
+                        // Publication-approval is conservative: continue stripping forwardAuthToken.
+                        // The originating user-bucket write already stripped it; this is defense in depth.
+                        applicationService.putApplication(to, EtagHeader.ANY, null, app, false);
                     }
                 }
             }

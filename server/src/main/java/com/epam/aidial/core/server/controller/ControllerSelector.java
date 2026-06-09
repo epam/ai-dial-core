@@ -4,9 +4,12 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.controller.route.ApplicationRouteController;
 import com.epam.aidial.core.server.controller.route.GlobalRouteController;
 import com.epam.aidial.core.server.data.RouteTemplate;
+import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
+import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -78,6 +81,36 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
+        get(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
+        get(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        // Wire POST/PUT/DELETE so the controller can emit a proper 405 + Allow header (RFC 7231)
+        // instead of the router-level 404 for verbs the metadata surface does not implement.
+        post(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        put(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        delete(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        get(RouteTemplate.CONFIG_HEALTH, (proxy, context, pathMatcher) -> {
+            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            AdminHealthConfigController controller = new AdminHealthConfigController(
+                    context, authService, (MergedConfigStore) proxy.getConfigStore());
+            return controller::handle;
+        });
+        ControllerRoute.Initializer fileConfigInitializer = (proxy, context, pathMatcher) -> {
+            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+            String type = pathMatcher.group("type");
+            String name = pathMatcher.group("name");
+            String decodedName = name == null ? null : UrlUtil.decodePath(name);
+            FileConfigController controller = new FileConfigController(
+                    context, authService, mergedConfigStore, type, decodedName);
+            return controller::handle;
+        };
+        get(RouteTemplate.ADMIN_FILE_CONFIG, fileConfigInitializer);
+        // Wire POST/PUT/DELETE so the controller can emit 405 with Allow: GET (RFC 9110 §15.5.6)
+        // instead of falling through to GlobalRouteController, which could match an unintended
+        // configured route in production.
+        post(RouteTemplate.ADMIN_FILE_CONFIG, fileConfigInitializer);
+        put(RouteTemplate.ADMIN_FILE_CONFIG, fileConfigInitializer);
+        delete(RouteTemplate.ADMIN_FILE_CONFIG, fileConfigInitializer);
         get(RouteTemplate.BUCKET, (proxy, context, pathMatcher) -> {
             BucketController controller = new BucketController(proxy, context);
             return controller::getBucket;
@@ -157,6 +190,9 @@ public class ControllerSelector {
         });
 
         // POST routes
+        // POST on the per-entity CONFIG_RESOURCE URL is wired so the controller can emit 405 with
+        // Allow: GET, PUT, DELETE (RFC 9110 §15.5.6) instead of the router-level 404.
+        post(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
         post(RouteTemplate.POST_DEPLOYMENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group("id"));
             DeploymentPostController controller = new DeploymentPostController(proxy, context);
@@ -294,6 +330,28 @@ public class ControllerSelector {
                 default -> null;
             };
         });
+        post(RouteTemplate.CONFIG_VALIDATE, (proxy, context, pathMatcher) -> {
+            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+            AdminValidateController controller = new AdminValidateController(
+                    context, authService, mergedConfigStore,
+                    proxy.getTaskExecutor());
+            return controller::handle;
+        });
+        post(RouteTemplate.CONFIG_APPLY, (proxy, context, pathMatcher) -> {
+            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+            AdminApplyController controller = new AdminApplyController(
+                    context, authService, mergedConfigStore,
+                    proxy.getResourceService(), proxy.getTaskExecutor(),
+                    mergedConfigStore.getSecretFieldProcessor(),
+                    mergedConfigStore.isSoftValidation(),
+                    proxy.getApiKeyStore(),
+                    proxy.getApplicationService(),
+                    proxy.getToolSetService(),
+                    proxy.getLockService());
+            return controller::handle;
+        });
         post(RouteTemplate.CONFIG, (proxy, context, pathMatcher) -> new ConfigController(context));
         post(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
@@ -336,6 +394,7 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
+        delete(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
         delete(RouteTemplate.INVITATION, (proxy, context, pathMatcher) -> {
             String invitationId = UrlUtil.decodePath(pathMatcher.group(1));
             InvitationController controller = new InvitationController(proxy, context);
@@ -364,6 +423,7 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
+        put(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
 
         // add deployment routes
         ControllerRoute.Initializer applicationRouteTemplate = ((proxy, context, pathMatcher) -> {
@@ -414,6 +474,36 @@ public class ControllerSelector {
         ROUTES.add(new ControllerRoute(HttpMethod.DELETE, template.getPattern(), controllerTemplate));
     }
 
+
+    private static Controller configResourceController(Proxy proxy, ProxyContext context, Matcher pathMatcher) {
+        String entityType = pathMatcher.group(1);
+        String bucket = pathMatcher.group("bucket");
+        // The {name} segment carries the entity's human-readable name and is percent-encoded by
+        // clients (e.g. "new model" → "new%20model"). Decode at the route boundary so the canonical
+        // ID and stored entity name match the caller's intent — matches the convention used by the
+        // FILES/RESOURCE routes (see ResourceDescriptorFactory.fromAnyUrl) and the {@code path}
+        // contract on ResourceDescriptorFactory.fromDecoded ("url decoded relative path").
+        String path = UrlUtil.decodePath(pathMatcher.group("path"));
+        ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+        MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+        return new ConfigResourceController(context, authService, mergedConfigStore,
+                proxy.getResourceService(), proxy.getTaskExecutor(),
+                mergedConfigStore.getSecretFieldProcessor(),
+                mergedConfigStore.isSoftValidation(),
+                proxy.getApiKeyStore(),
+                proxy.getLockService(),
+                entityType, bucket, path);
+    }
+
+    private static Controller configResourceMetadataController(Proxy proxy, ProxyContext context, Matcher pathMatcher) {
+        String entityType = pathMatcher.group(1);
+        String bucket = pathMatcher.group("bucket");
+        String path = UrlUtil.decodePath(pathMatcher.group("path"));
+        ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+        return new ConfigResourceMetadataController(context, authService,
+                proxy.getResourceService(), proxy.getTaskExecutor(),
+                entityType, bucket, path);
+    }
 
     private String resourcePath(String url) {
         String prefix = "/v1/";

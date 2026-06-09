@@ -117,6 +117,16 @@ public class DataEncryptionService {
         }
     }
 
+    /**
+     * Minimum length, in bytes, of a payload produced by {@link #encrypt}: the prepended IV plus the GCM
+     * authentication tag. Any shorter byte sequence cannot be a ciphertext from this service.
+     *
+     * @return {@code ivLengthBytes + gcmTagLengthBits / 8}
+     */
+    public int minEncryptedLength() {
+        return ivLengthBytes + (gcmTagLengthBits / 8);
+    }
+
     private static void validateKey(byte[] key) {
         if (key == null) {
             throw new IllegalArgumentException("contentEncryptionKey must not be null");
