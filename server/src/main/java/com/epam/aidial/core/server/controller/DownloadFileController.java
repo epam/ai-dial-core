@@ -1,13 +1,13 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
+import com.epam.aidial.core.openapi.schema.OpenApiBinary;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.openapi.ApiOperation;
-import com.epam.aidial.core.server.openapi.ApiParameter;
-import com.epam.aidial.core.server.openapi.ApiResponse;
-import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
-import com.epam.aidial.core.server.openapi.ParameterIn;
-import com.epam.aidial.core.server.openapi.schema.OpenApiBinary;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.InputStreamReader;
 import com.epam.aidial.core.storage.http.HttpStatus;

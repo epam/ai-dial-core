@@ -1,14 +1,14 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.permission.ListPermissionRequest;
 import com.epam.aidial.core.server.data.permission.PerRequestReceiver;
 import com.epam.aidial.core.server.data.permission.ResourcePermission;
 import com.epam.aidial.core.server.data.permission.ResourcePermissionList;
-import com.epam.aidial.core.server.openapi.ApiOperation;
-import com.epam.aidial.core.server.openapi.ApiResponse;
-import com.epam.aidial.core.server.openapi.ResponseProfile;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;

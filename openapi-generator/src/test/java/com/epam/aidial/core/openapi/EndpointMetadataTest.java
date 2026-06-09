@@ -1,5 +1,6 @@
 package com.epam.aidial.core.openapi;
 
+
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.controller.ControllerSelector;
 import org.junit.jupiter.api.Test;
@@ -14,7 +15,6 @@ import java.util.regex.Pattern;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
-
 class EndpointMetadataTest {
 
     // DEPLOYMENT_ROUTES is a pass-through for custom application routes.

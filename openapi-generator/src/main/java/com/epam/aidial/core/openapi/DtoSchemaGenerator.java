@@ -1,7 +1,8 @@
 package com.epam.aidial.core.openapi;
 
-import com.epam.aidial.core.storage.data.ApiSubType;
-import com.epam.aidial.core.storage.data.ApiSubTypes;
+
+import com.epam.aidial.core.openapi.annotations.ApiSubType;
+import com.epam.aidial.core.openapi.annotations.ApiSubTypes;
 import com.fasterxml.classmate.ResolvedType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;

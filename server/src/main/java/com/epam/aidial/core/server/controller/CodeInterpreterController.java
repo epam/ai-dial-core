@@ -1,13 +1,18 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ResponseProfile;
+import com.epam.aidial.core.openapi.schema.OpenApiBinary;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.DeploymentData;
-import com.epam.aidial.core.server.data.codeinterpreter.*;
-import com.epam.aidial.core.server.openapi.ApiOperation;
-import com.epam.aidial.core.server.openapi.ApiResponse;
-import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
-import com.epam.aidial.core.server.openapi.ResponseProfile;
-import com.epam.aidial.core.server.openapi.schema.OpenApiBinary;
+import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteRequest;
+import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFile;
+import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFiles;
+import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterInputFile;
+import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterOutputFile;
+import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterSession;
+import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterSessionId;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;

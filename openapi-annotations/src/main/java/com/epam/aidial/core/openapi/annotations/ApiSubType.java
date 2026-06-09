@@ -1,4 +1,4 @@
-package com.epam.aidial.core.storage.data;
+package com.epam.aidial.core.openapi.annotations;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;

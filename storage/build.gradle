@@ -1,6 +1,7 @@
 dependencies {
     // Project dependencies (internal modules)
     implementation project(':config')
+    implementation project(':openapi-annotations')
 
     // External dependencies
     implementation("com.amazonaws:aws-java-sdk-core:${aws_java_sdk_version}")

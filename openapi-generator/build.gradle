@@ -1,4 +1,5 @@
 dependencies {
+    implementation project(':openapi-annotations')
     implementation project(':server')
     implementation project(':config')
     implementation project(':storage')

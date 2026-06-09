@@ -1,5 +1,9 @@
 package com.epam.aidial.core.openapi;
 
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiOperations;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.server.controller.ApplicationController;
 import com.epam.aidial.core.server.controller.ApplicationMcpProxyController;
 import com.epam.aidial.core.server.controller.ApplicationTypeSchemaController;
@@ -30,10 +34,6 @@ import com.epam.aidial.core.server.controller.ToolSetMcpProxyController;
 import com.epam.aidial.core.server.controller.ToolSetToolsController;
 import com.epam.aidial.core.server.controller.UploadFileController;
 import com.epam.aidial.core.server.controller.UserInfoController;
-import com.epam.aidial.core.server.openapi.ApiOperation;
-import com.epam.aidial.core.server.openapi.ApiOperations;
-import com.epam.aidial.core.server.openapi.ApiParameter;
-import com.epam.aidial.core.server.openapi.ApiResponse;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;

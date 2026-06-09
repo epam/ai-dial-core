@@ -1,6 +1,6 @@
 package com.epam.aidial.core.openapi;
 
-import com.epam.aidial.core.server.openapi.schema.OpenApiBinary;
+import com.epam.aidial.core.openapi.schema.OpenApiBinary;
 import io.swagger.v3.oas.models.media.ArraySchema;
 import io.swagger.v3.oas.models.media.ComposedSchema;
 import io.swagger.v3.oas.models.media.Schema;

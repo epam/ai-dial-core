@@ -1,7 +1,7 @@
 package com.epam.aidial.core.openapi;
 
-import com.epam.aidial.core.server.openapi.ApiResponse;
-import com.epam.aidial.core.server.openapi.ResponseProfile;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 

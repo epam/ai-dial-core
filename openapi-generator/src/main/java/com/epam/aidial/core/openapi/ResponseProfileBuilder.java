@@ -1,7 +1,7 @@
 package com.epam.aidial.core.openapi;
 
-import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
-import com.epam.aidial.core.server.openapi.ResponseProfile;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 
 final class ResponseProfileBuilder {

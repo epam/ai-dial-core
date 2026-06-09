@@ -3664,6 +3664,18 @@ paths:
       summary: /v1/ops/code_interpreter/upload_file
       description: Call this endpoint to upload file to code interpreter container
       operationId: uploadFileToCodeInterpreter
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              required:
+              - file
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+        required: true
       responses:
         "200":
           description: Success
@@ -3701,18 +3713,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              required:
-              - file
-              type: object
-              properties:
-                file:
-                  type: string
-                  format: binary
-        required: true
   /v1/ops/config/reload:
     post:
       tags:

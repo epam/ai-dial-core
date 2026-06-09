@@ -1,7 +1,7 @@
 package com.epam.aidial.core.openapi;
 
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.server.data.ErrorData;
-import com.epam.aidial.core.server.openapi.OpenApiDescriptions;
 import io.swagger.v3.oas.models.responses.ApiResponse;
 
 /**

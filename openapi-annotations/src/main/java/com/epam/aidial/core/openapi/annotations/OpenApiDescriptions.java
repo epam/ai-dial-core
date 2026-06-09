@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.openapi;
+package com.epam.aidial.core.openapi.annotations;
 
 /**
  * Reusable parameter and response descriptions for OpenAPI annotations.

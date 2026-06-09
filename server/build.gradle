@@ -3,6 +3,7 @@ dependencies {
     implementation project(':config')
     implementation project(':credentials')
     implementation project(':storage')
+    implementation project(':openapi-annotations')
 
     // External dependencies
     implementation("ch.qos.logback:logback-classic:${logback_version}")

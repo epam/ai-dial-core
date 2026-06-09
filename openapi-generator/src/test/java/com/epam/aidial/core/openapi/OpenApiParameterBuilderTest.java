@@ -1,8 +1,8 @@
 package com.epam.aidial.core.openapi;
 
-import com.epam.aidial.core.server.openapi.ApiParameter;
-import com.epam.aidial.core.server.openapi.ParameterIn;
-import com.epam.aidial.core.server.openapi.ResponseProfile;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
+import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import io.swagger.v3.core.util.Yaml;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.media.Schema;
@@ -195,7 +195,7 @@ class OpenApiParameterBuilderTest {
                 new String[0],
                 "application/json",
                 parameters,
-                new com.epam.aidial.core.server.openapi.ApiResponse[0],
+                new com.epam.aidial.core.openapi.annotations.ApiResponse[0],
                 ResponseProfile.NONE
         );
     }
