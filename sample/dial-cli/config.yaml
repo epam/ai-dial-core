@@ -59,7 +59,7 @@ templates:
     includes: [forward-auth-when-enabled]
     fields:
       endpoint: "${vars.adapter_host}/openai/deployments/${entity.name}/chat/completions"
-      iconUrl: "${default(vars.icon_base_url, '')}/${replace(entity.name, '.', '-')}.svg"
+      iconUrl: "${default(vars.icon_base_url, '')}/${replace(entity.name, '-', '--')}.svg"
       upstreams:
         !for { in: "${params.regions}", as: region }:
           - endpoint: "${vars.adapter_host}/openai/deployments/${entity.name}/chat/completions"
