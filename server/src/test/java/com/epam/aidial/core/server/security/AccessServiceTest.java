@@ -457,10 +457,10 @@ public class AccessServiceTest {
     }
 
     @Test
-    public void testGetReadonlyAdminAccess_PrivateResource() {
+    public void testGetGlobalReaderAccess_PrivateResource() {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
-        when(context.getUserRoles()).thenReturn(List.of("readonly-admin"));
+        when(context.getUserRoles()).thenReturn(List.of("global-reader"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
                 applicationSchemaService,
@@ -469,20 +469,20 @@ public class AccessServiceTest {
                  "admin": {
                     "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
                  },
-                 "readonlyAdmin": {
-                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["readonly-admin"]}]
+                 "globalReader": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["global-reader"]}]
                  }
                 }
                 """));
 
-        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getReadonlyAdminAccess(Set.of(resource), context);
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getGlobalReaderAccess(Set.of(resource), context);
 
         assertFalse(result.isEmpty());
         assertEquals(Map.of(resource, ResourceAccessType.READ_ONLY), result);
     }
 
     @Test
-    public void testGetReadonlyAdminAccess_NoRole() {
+    public void testGetGlobalReaderAccess_NoRole() {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         when(context.getUserRoles()).thenReturn(List.of("regular-user"));
@@ -494,19 +494,19 @@ public class AccessServiceTest {
                  "admin": {
                     "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
                  },
-                 "readonlyAdmin": {
-                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["readonly-admin"]}]
+                 "globalReader": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["global-reader"]}]
                  }
                 }
                 """));
 
-        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getReadonlyAdminAccess(Set.of(resource), context);
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getGlobalReaderAccess(Set.of(resource), context);
 
         assertTrue(result.isEmpty());
     }
 
     @Test
-    public void testGetReadonlyAdminAccess_ApplicationContextExcluded() {
+    public void testGetGlobalReaderAccess_ApplicationContextExcluded() {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         ApiKeyData apiKeyData = new ApiKeyData();
@@ -519,19 +519,19 @@ public class AccessServiceTest {
                  "admin": {
                     "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
                  },
-                 "readonlyAdmin": {
-                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["readonly-admin"]}]
+                 "globalReader": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["global-reader"]}]
                  }
                 }
                 """));
 
-        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getReadonlyAdminAccess(Set.of(resource), context);
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getGlobalReaderAccess(Set.of(resource), context);
 
         assertTrue(result.isEmpty());
     }
 
     @Test
-    public void testGetReadonlyAdminAccess_MissingConfigReturnsEmpty() {
+    public void testGetGlobalReaderAccess_MissingConfigReturnsEmpty() {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
@@ -544,7 +544,7 @@ public class AccessServiceTest {
                 }
                 """));
 
-        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getReadonlyAdminAccess(Set.of(resource), context);
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getGlobalReaderAccess(Set.of(resource), context);
 
         assertTrue(result.isEmpty());
     }

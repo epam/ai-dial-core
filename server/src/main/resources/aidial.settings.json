@@ -78,12 +78,12 @@
         }
       ]
     },
-    "readonlyAdmin": {
+    "globalReader": {
       "rules": [
         {
           "function": "CONTAIN",
           "source": "roles",
-          "targets": ["readonly-admin"]
+          "targets": ["global-reader"]
         }
       ]
     }

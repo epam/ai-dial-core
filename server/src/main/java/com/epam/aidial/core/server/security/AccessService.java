@@ -46,9 +46,9 @@ public class AccessService {
     private final ShareService shareService;
     private final RuleService ruleService;
     private final List<Rule> adminRules;
-    private final List<Rule> readonlyAdminRules;
+    private final List<Rule> globalReaderRules;
     private final boolean adminRulesConfigured;
-    private final boolean readonlyAdminRulesConfigured;
+    private final boolean globalReaderRulesConfigured;
 
     private final List<String> createCodeAppRoles;
 
@@ -57,7 +57,7 @@ public class AccessService {
     private final List<PermissionRule> permissionRules = List.of(
             AccessService::getOwnResourcesAccess,
             this::getAdminAccess,
-            this::getReadonlyAdminAccess,
+            this::getGlobalReaderAccess,
             AccessService::getAutoSharedAccess,
             AccessService::getPerRequestPermissions,
             AccessService::getAppResourceAccess,
@@ -77,9 +77,9 @@ public class AccessService {
         this.ruleService = ruleService;
         this.applicationSchemaService = applicationSchemaService;
         this.adminRules = adminRules(settings);
-        this.readonlyAdminRules = readonlyAdminRules(settings);
+        this.globalReaderRules = globalReaderRules(settings);
         this.adminRulesConfigured = !this.adminRules.isEmpty();
-        this.readonlyAdminRulesConfigured = !this.readonlyAdminRules.isEmpty();
+        this.globalReaderRulesConfigured = !this.globalReaderRules.isEmpty();
         this.createCodeAppRoles = getCreateCodeAppRoles(settings);
     }
 
@@ -116,8 +116,7 @@ public class AccessService {
      * @return true - if all provided resources are public and user has permissions to all of them, otherwise - false
      */
     public boolean hasPublicAccess(Set<ResourceDescriptor> resources, ProxyContext context) {
-        return resources.stream().allMatch(ResourceDescriptor::isPublic)
-                && (hasAdminAccess(context) || hasReadonlyAdminAccess(context))
+        return resources.stream().allMatch(ResourceDescriptor::isPublic) && hasAdminAccess(context)
                 || resources.equals(ruleService.getAllowedPublicResources(context, resources));
     }
 
@@ -195,9 +194,9 @@ public class AccessService {
     }
 
     @VisibleForTesting
-    Map<ResourceDescriptor, Set<ResourceAccessType>> getReadonlyAdminAccess(
+    Map<ResourceDescriptor, Set<ResourceAccessType>> getGlobalReaderAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        if (hasReadonlyAdminAccess(context)) {
+        if (hasGlobalReaderAccess(context)) {
             return resources.stream()
                     .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.READ_ONLY));
         }
@@ -398,10 +397,10 @@ public class AccessService {
                 && RuleMatcher.match(context, adminRules);
     }
 
-    public boolean hasReadonlyAdminAccess(ProxyContext context) {
-        return readonlyAdminRulesConfigured
+    public boolean hasGlobalReaderAccess(ProxyContext context) {
+        return globalReaderRulesConfigured
                 && context.getApiKeyData().getPerRequestKey() == null // not application
-                && RuleMatcher.match(context, readonlyAdminRules);
+                && RuleMatcher.match(context, globalReaderRules);
     }
 
     /**
@@ -429,7 +428,7 @@ public class AccessService {
 
     public void filterForbidden(ProxyContext context, ResourceDescriptor descriptor, MetadataBase metadata) {
         if (descriptor.isPublic() && descriptor.isFolder()
-                && !hasAdminAccess(context) && !hasReadonlyAdminAccess(context)) {
+                && !hasAdminAccess(context) && !hasGlobalReaderAccess(context)) {
             ResourceFolderMetadata folder = (ResourceFolderMetadata) metadata;
             ruleService.filterForbidden(context, descriptor, folder);
         }
@@ -472,12 +471,12 @@ public class AccessService {
         return (list == null) ? List.of() : list;
     }
 
-    private static List<Rule> readonlyAdminRules(JsonObject settings) {
-        JsonObject readonlyAdmin = settings.getJsonObject("readonlyAdmin");
-        if (readonlyAdmin == null) {
+    private static List<Rule> globalReaderRules(JsonObject settings) {
+        JsonObject globalReader = settings.getJsonObject("globalReader");
+        if (globalReader == null) {
             return List.of();
         }
-        JsonArray rules = readonlyAdmin.getJsonArray("rules");
+        JsonArray rules = globalReader.getJsonArray("rules");
         if (rules == null) {
             return List.of();
         }
