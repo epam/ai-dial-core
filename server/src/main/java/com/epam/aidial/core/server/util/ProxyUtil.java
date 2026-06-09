@@ -53,12 +53,6 @@ public class ProxyUtil {
             .addModule(new SimpleModule().setSerializerModifier(new EncryptedFieldBlobModifier()))
             .build();
 
-    public static final JsonMapper BLOB_MAPPER = JsonMapper.builder()
-            .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
-            .annotationIntrospector(new EncryptedFieldAnnotationIntrospector())
-            .addModule(new SimpleModule().setSerializerModifier(new EncryptedFieldBlobModifier()))
-            .build();
-
     private static final MultiMap TRACE_HEADERS = MultiMap.caseInsensitiveMultiMap()
             .add("traceparent", "whatever")
             .add("tracestate", "whatever");

@@ -60,6 +60,13 @@ public enum ResourceTypes implements ResourceType {
             case "toolsets" -> TOOL_SET;
             case "credentials" -> CREDENTIALS;
             case "encryption_keys" -> ENCRYPTION_KEYS;
+            case "models" -> MODEL;
+            case "app_type_schemas", "schemas" -> APP_TYPE_SCHEMA;
+            case "interceptors" -> INTERCEPTOR;
+            case "roles" -> ROLE;
+            case "project_keys", "keys" -> PROJECT_KEY;
+            case "routes" -> ROUTE;
+            case "settings" -> GLOBAL_SETTINGS;
             case "response_mappings" -> RESPONSE_MAPPING;
             default -> throw new IllegalArgumentException("Unsupported resource type: " + group);
         };
