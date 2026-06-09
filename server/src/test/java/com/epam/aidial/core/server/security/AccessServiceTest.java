@@ -455,4 +455,97 @@ public class AccessServiceTest {
         assertFalse(missingAdmin.hasExplicitAdminAccess(context));
         assertFalse(missingRules.hasExplicitAdminAccess(context));
     }
+
+    @Test
+    public void testGetReadonlyAdminAccess_PrivateResource() {
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        when(context.getUserRoles()).thenReturn(List.of("readonly-admin"));
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
+                {
+                 "admin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+                 },
+                 "readonlyAdmin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["readonly-admin"]}]
+                 }
+                }
+                """));
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getReadonlyAdminAccess(Set.of(resource), context);
+
+        assertFalse(result.isEmpty());
+        assertEquals(Map.of(resource, ResourceAccessType.READ_ONLY), result);
+    }
+
+    @Test
+    public void testGetReadonlyAdminAccess_NoRole() {
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        when(context.getUserRoles()).thenReturn(List.of("regular-user"));
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
+                {
+                 "admin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+                 },
+                 "readonlyAdmin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["readonly-admin"]}]
+                 }
+                }
+                """));
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getReadonlyAdminAccess(Set.of(resource), context);
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void testGetReadonlyAdminAccess_ApplicationContextExcluded() {
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("per-request-key");
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
+                {
+                 "admin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+                 },
+                 "readonlyAdmin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["readonly-admin"]}]
+                 }
+                }
+                """));
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getReadonlyAdminAccess(Set.of(resource), context);
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void testGetReadonlyAdminAccess_MissingConfigReturnsEmpty() {
+        ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
+        ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+        AccessService accessService = new AccessService(encryptionService, shareService, ruleService,
+                applicationSchemaService,
+                new JsonObject("""
+                {
+                 "admin": {
+                    "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+                 }
+                }
+                """));
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getReadonlyAdminAccess(Set.of(resource), context);
+
+        assertTrue(result.isEmpty());
+    }
 }

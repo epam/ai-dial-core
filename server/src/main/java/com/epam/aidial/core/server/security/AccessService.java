@@ -46,7 +46,9 @@ public class AccessService {
     private final ShareService shareService;
     private final RuleService ruleService;
     private final List<Rule> adminRules;
+    private final List<Rule> readonlyAdminRules;
     private final boolean adminRulesConfigured;
+    private final boolean readonlyAdminRulesConfigured;
 
     private final List<String> createCodeAppRoles;
 
@@ -55,6 +57,7 @@ public class AccessService {
     private final List<PermissionRule> permissionRules = List.of(
             AccessService::getOwnResourcesAccess,
             this::getAdminAccess,
+            this::getReadonlyAdminAccess,
             AccessService::getAutoSharedAccess,
             AccessService::getPerRequestPermissions,
             AccessService::getAppResourceAccess,
@@ -74,7 +77,9 @@ public class AccessService {
         this.ruleService = ruleService;
         this.applicationSchemaService = applicationSchemaService;
         this.adminRules = adminRules(settings);
+        this.readonlyAdminRules = readonlyAdminRules(settings);
         this.adminRulesConfigured = !this.adminRules.isEmpty();
+        this.readonlyAdminRulesConfigured = !this.readonlyAdminRules.isEmpty();
         this.createCodeAppRoles = getCreateCodeAppRoles(settings);
     }
 
@@ -111,7 +116,8 @@ public class AccessService {
      * @return true - if all provided resources are public and user has permissions to all of them, otherwise - false
      */
     public boolean hasPublicAccess(Set<ResourceDescriptor> resources, ProxyContext context) {
-        return resources.stream().allMatch(ResourceDescriptor::isPublic) && hasAdminAccess(context)
+        return resources.stream().allMatch(ResourceDescriptor::isPublic)
+                && (hasAdminAccess(context) || hasReadonlyAdminAccess(context))
                 || resources.equals(ruleService.getAllowedPublicResources(context, resources));
     }
 
@@ -183,6 +189,17 @@ public class AccessService {
                             || PublicationService.isReviewBucket(resource)
                             || ApplicationService.isPublicApplicationSourceDirectory(resource))
                     .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.ALL));
+        }
+
+        return Map.of();
+    }
+
+    @VisibleForTesting
+    Map<ResourceDescriptor, Set<ResourceAccessType>> getReadonlyAdminAccess(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
+        if (hasReadonlyAdminAccess(context)) {
+            return resources.stream()
+                    .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.READ_ONLY));
         }
 
         return Map.of();
@@ -381,6 +398,12 @@ public class AccessService {
                 && RuleMatcher.match(context, adminRules);
     }
 
+    public boolean hasReadonlyAdminAccess(ProxyContext context) {
+        return readonlyAdminRulesConfigured
+                && context.getApiKeyData().getPerRequestKey() == null // not application
+                && RuleMatcher.match(context, readonlyAdminRules);
+    }
+
     /**
      * Fail-closed admin check for the Configuration/Admin API surface. Unlike {@link #hasAdminAccess}
      * — whose empty rule set is treated by {@link RuleMatcher} as allow-all — this returns
@@ -405,7 +428,8 @@ public class AccessService {
     }
 
     public void filterForbidden(ProxyContext context, ResourceDescriptor descriptor, MetadataBase metadata) {
-        if (descriptor.isPublic() && descriptor.isFolder() && !hasAdminAccess(context)) {
+        if (descriptor.isPublic() && descriptor.isFolder()
+                && !hasAdminAccess(context) && !hasReadonlyAdminAccess(context)) {
             ResourceFolderMetadata folder = (ResourceFolderMetadata) metadata;
             ruleService.filterForbidden(context, descriptor, folder);
         }
@@ -441,6 +465,19 @@ public class AccessService {
             return List.of();
         }
         JsonArray rules = admin.getJsonArray("rules");
+        if (rules == null) {
+            return List.of();
+        }
+        List<Rule> list = ProxyUtil.convertToObject(rules.toString(), Rule.LIST_TYPE);
+        return (list == null) ? List.of() : list;
+    }
+
+    private static List<Rule> readonlyAdminRules(JsonObject settings) {
+        JsonObject readonlyAdmin = settings.getJsonObject("readonlyAdmin");
+        if (readonlyAdmin == null) {
+            return List.of();
+        }
+        JsonArray rules = readonlyAdmin.getJsonArray("rules");
         if (rules == null) {
             return List.of();
         }

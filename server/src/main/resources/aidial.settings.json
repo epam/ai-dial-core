@@ -77,6 +77,15 @@
           "targets": ["admin"]
         }
       ]
+    },
+    "readonlyAdmin": {
+      "rules": [
+        {
+          "function": "CONTAIN",
+          "source": "roles",
+          "targets": ["readonly-admin"]
+        }
+      ]
     }
   },
   "perRequestApiKey": {
