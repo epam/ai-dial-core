@@ -277,7 +277,7 @@ public final class ControlFlowExpander {
             Map<String, JsonNode> ordered = new LinkedHashMap<>();
             node.fields().forEachRemaining(e -> ordered.put(e.getKey(), e.getValue()));
             for (Map.Entry<String, JsonNode> e : ordered.entrySet()) {
-                out.set(e.getKey(), substitutePlaceholders(e.getValue(), sub));
+                out.set(sub.substitute(e.getKey()), substitutePlaceholders(e.getValue(), sub));
             }
             return out;
         }

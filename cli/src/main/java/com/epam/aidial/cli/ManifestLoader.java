@@ -316,11 +316,15 @@ final class ManifestLoader {
     }
 
     static String canonicalIdOf(Manifest m) {
-        if ("Settings".equals(m.kind())) {
-            return "settings/platform/" + m.name();
+        return canonicalIdOf(m.kind(), m.name());
+    }
+
+    static String canonicalIdOf(String kind, String name) {
+        if ("Settings".equals(kind)) {
+            return "settings/platform/" + name;
         }
-        String prefix = KIND_CANONICAL_PREFIX.get(m.kind());
-        return prefix == null ? m.kind() + "/" + m.name() : prefix + m.name();
+        String prefix = KIND_CANONICAL_PREFIX.get(kind);
+        return prefix == null ? kind + "/" + name : prefix + name;
     }
 
     static String stripCanonical(String kind, String declared, String where) throws ManifestParseException {

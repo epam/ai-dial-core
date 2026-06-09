@@ -1281,4 +1281,110 @@ class ApplyCommandTest {
         assertTrue(r.out.contains("\"kind\":\"Role\""), r.out);
         assertTrue(r.out.contains("\"minute\":\"1\""), r.out);
     }
+
+    @Test
+    void applyBundleParameterizedNameResolvedInEnvelopeAndSpec(@TempDir Path tmp) throws Exception {
+        // Bug fix: entity names containing ${params.*} must be resolved before being written to
+        // the apply envelope and used to build entity context.
+        Path config = writeProfileAndKey(tmp);
+        Path manifest = tmp.resolve("bundle.yaml");
+        Files.writeString(manifest, """
+                kind: Bundle
+                name: onboard-parameterized
+                params:
+                  model_name: my-model
+                entities:
+                  - kind: Model
+                    name: "models/public/${params.model_name}"
+                    spec:
+                      type: chat
+                      endpoint: "http://api/${params.model_name}"
+                """);
+        AtomicInteger anyHits = new AtomicInteger();
+        server.createContext("/", exchange -> {
+            anyHits.incrementAndGet();
+            send(exchange, 500, "should not be called");
+        });
+
+        Result r = run(config, apiKeyFile(tmp), "--dry-run", "apply", "-f", manifest.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals(0, anyHits.get());
+        assertTrue(r.out.contains("\"name\":\"my-model\""), r.out);
+        assertFalse(r.out.contains("${params.model_name}"), "no placeholder must remain in output: " + r.out);
+        assertTrue(r.out.contains("\"endpoint\":\"http://api/my-model\""), r.out);
+    }
+
+    @Test
+    void applyBundleParameterizedObjectKeyResolvedInSpec(@TempDir Path tmp) throws Exception {
+        // Bug fix: ${params.*} placeholders that appear as object keys (not just values)
+        // must also be substituted during template resolution.
+        Path config = writeProfileAndKey(tmp);
+        Path manifest = tmp.resolve("bundle.yaml");
+        Files.writeString(manifest, """
+                kind: Bundle
+                name: onboard-role
+                params:
+                  model_name: target-model
+                entities:
+                  - kind: Role
+                    name: roles/platform/my-role
+                    spec:
+                      limits:
+                        "models/public/${params.model_name}":
+                          minute: "1000"
+                """);
+        AtomicInteger anyHits = new AtomicInteger();
+        server.createContext("/", exchange -> {
+            anyHits.incrementAndGet();
+            send(exchange, 500, "should not be called");
+        });
+
+        Result r = run(config, apiKeyFile(tmp), "--dry-run", "apply", "-f", manifest.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals(0, anyHits.get());
+        assertTrue(r.out.contains("\"models/public/target-model\""), r.out);
+        assertFalse(r.out.contains("${params.model_name}"), "no placeholder must remain in output: " + r.out);
+    }
+
+    @Test
+    void applyBundlePatchParameterizedNameUsesCorrectGetUrl(@TempDir Path tmp) throws Exception {
+        // Bug fix: fetchCurrentForPatch must use the resolved entity name to build the GET URL,
+        // not the raw manifest name containing an unresolved ${params.*} placeholder.
+        Path config = writeProfileAndKey(tmp);
+        Path manifest = tmp.resolve("bundle.yaml");
+        Files.writeString(manifest, """
+                kind: Bundle
+                name: onboard-patch
+                params:
+                  role_name: my-role
+                entities:
+                  - kind: Role
+                    name: "roles/platform/${params.role_name}"
+                    patch:
+                      limits:
+                        some-model: { minute: "500" }
+                """);
+        AtomicInteger getHits = new AtomicInteger();
+        server.createContext("/v1/roles/platform/my-role", exchange -> {
+            getHits.incrementAndGet();
+            send(exchange, 200, "{\"limits\":{\"existing-model\":{\"minute\":\"100\"}}}");
+        });
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger applyHits = new AtomicInteger();
+        respond("/v1/admin/validate", 200,
+                "{\"valid\":1,\"failed\":0,\"results\":[{\"entityId\":\"roles/platform/my-role\",\"status\":\"valid\"}]}");
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"roles/platform/my-role\",\"status\":\"applied\"}]}",
+                applyBody, applyHits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals(1, getHits.get(), "must GET /v1/roles/platform/my-role (resolved name)");
+        assertTrue(applyBody.get().contains("\"name\":\"my-role\""), applyBody.get());
+        assertTrue(applyBody.get().contains("\"existing-model\""), applyBody.get());
+        assertTrue(applyBody.get().contains("\"some-model\""), applyBody.get());
+    }
 }

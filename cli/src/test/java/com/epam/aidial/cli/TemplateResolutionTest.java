@@ -893,4 +893,55 @@ class TemplateResolutionTest {
         assertFalse(validateBody.get().contains("!if"), "no leftover !if: " + validateBody.get());
         assertFalse(validateBody.get().contains("!for"), "no leftover !for: " + validateBody.get());
     }
+
+    @Test
+    void applyBundleParameterizedNamePopulatesEntityNameForTemplate(@TempDir Path tmp) throws Exception {
+        // Bug fix: when a Bundle entity name contains ${params.*}, the resolved name must be
+        // placed in the entity context before template resolution so that ${entity.name} in
+        // template fields evaluates to the actual name, not the raw placeholder string.
+        String templates = """
+                model-tpl:
+                  fields:
+                    endpoint: "http://${vars.host}/openai/deployments/${entity.name}/v1"
+                    upstreams:
+                      !for { in: "${params.regions}", as: region }:
+                        - endpoint: "http://${vars.host}/${entity.name}"
+                          region: "${region}"
+                """;
+        String vars = "host: \"api.example.com\"";
+        Path config = writeProfile(tmp, templates, vars);
+        Path manifest = tmp.resolve("bundle.yaml");
+        Files.writeString(manifest, """
+                kind: Bundle
+                name: onboard-bundle
+                params:
+                  model_name: resolved-model
+                  regions: [us-east-1, us-west-2]
+                entities:
+                  - kind: Model
+                    name: "models/public/${params.model_name}"
+                    template: model-tpl
+                    spec: { type: chat }
+                """);
+        AtomicReference<String> applyBody = new AtomicReference<>();
+        AtomicInteger applyHits = new AtomicInteger();
+        server.createContext("/v1/admin/validate", x -> send(x, 200,
+                "{\"valid\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/resolved-model\",\"status\":\"valid\"}]}"));
+        recordPost("/v1/admin/apply", 200,
+                "{\"applied\":1,\"failed\":0,\"results\":[{\"entityId\":\"models/public/resolved-model\",\"status\":\"applied\"}]}",
+                applyBody, applyHits);
+
+        Result r = run(config, apiKeyFile(tmp), "apply", "-f", manifest.toString());
+
+        assertEquals(0, r.exitCode, r.err);
+        assertEquals(1, applyHits.get());
+        // Envelope name must be the resolved value.
+        assertTrue(applyBody.get().contains("\"name\":\"resolved-model\""), applyBody.get());
+        // ${entity.name} in the template must resolve to the actual name, not the raw placeholder.
+        assertTrue(applyBody.get().contains(
+                "\"endpoint\":\"http://api.example.com/openai/deployments/resolved-model/v1\""), applyBody.get());
+        // ${entity.name} inside the !for loop body must also be consistent.
+        assertTrue(applyBody.get().contains("\"http://api.example.com/resolved-model\""), applyBody.get());
+        assertFalse(applyBody.get().contains("${"), "no unresolved placeholders: " + applyBody.get());
+    }
 }

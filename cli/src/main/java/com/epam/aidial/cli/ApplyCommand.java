@@ -96,18 +96,20 @@ public class ApplyCommand implements Callable<Integer> {
         ArrayNode arr = envelope.putArray("manifests");
         for (ManifestLoader.Manifest m : manifests) {
             JsonNode resolvedSpec;
+            String resolvedName = m.name();
             try {
                 Map<String, Object> mergedParams = new HashMap<>();
                 if (m.params() != null) {
                     mergedParams.putAll(m.params());
                 }
                 mergedParams.putAll(cliParams);
-                Map<String, Object> entityCtx = EntityWriter.entityContext(m.name(), m.kind());
+                resolvedName = TemplateResolver.resolveString(m.name(), mergedParams, resolved.vars());
+                Map<String, Object> entityCtx = EntityWriter.entityContext(resolvedName, m.kind());
                 TemplateContext tpl = new TemplateContext(m.templateName(), mergedParams,
                         resolved.vars(), entityCtx, resolved.templates());
                 if (m.patch() != null) {
                     JsonNode resolvedPatch = TemplateResolver.resolve(m.patch(), tpl);
-                    JsonNode currentSpec = fetchCurrentForPatch(http, m, err);
+                    JsonNode currentSpec = fetchCurrentForPatch(http, m, resolvedName, err);
                     if (currentSpec == null) {
                         return 1;
                     }
@@ -116,12 +118,12 @@ public class ApplyCommand implements Callable<Integer> {
                     resolvedSpec = TemplateResolver.resolve(m.spec(), tpl);
                 }
             } catch (TemplateException e) {
-                err.println(m.name() + ": " + e.getMessage());
+                err.println(resolvedName + ": " + e.getMessage());
                 return 2;
             }
             ObjectNode entry = arr.addObject();
             entry.put("kind", m.kind());
-            entry.put("name", m.name());
+            entry.put("name", resolvedName);
             entry.set("spec", resolvedSpec);
         }
         envelope.put("precheck", true);
@@ -163,27 +165,28 @@ public class ApplyCommand implements Callable<Integer> {
     // ObjectNode on 404 (patch on missing entity merges into `{}`). Returns
     // null on hard failure — the caller surfaces a non-zero exit so the bundle apply aborts
     // rather than silently using stale or partial state.
-    private JsonNode fetchCurrentForPatch(CliHttpClient http, ManifestLoader.Manifest m, PrintWriter err) {
-        String canonicalId = ManifestLoader.canonicalIdOf(m);
+    private JsonNode fetchCurrentForPatch(CliHttpClient http, ManifestLoader.Manifest m, String resolvedName,
+                                          PrintWriter err) {
+        String canonicalId = ManifestLoader.canonicalIdOf(m.kind(), resolvedName);
         String path = "/v1/" + canonicalId;
         CliHttpClient.Response resp;
         try {
             resp = http.get(path);
         } catch (CliHttpClient.NetworkException e) {
-            err.println(m.name() + ": " + e.getMessage());
+            err.println(resolvedName + ": " + e.getMessage());
             return null;
         }
         if (resp.status() == 404) {
             return JSON.createObjectNode();
         }
         if (resp.status() != 200) {
-            err.println(m.name() + ": GET " + path + " returned HTTP " + resp.status() + " " + resp.body());
+            err.println(resolvedName + ": GET " + path + " returned HTTP " + resp.status() + " " + resp.body());
             return null;
         }
         try {
             return JSON.readTree(resp.body());
         } catch (JsonProcessingException e) {
-            err.println(m.name() + ": failed to parse target state: " + e.getMessage());
+            err.println(resolvedName + ": failed to parse target state: " + e.getMessage());
             return null;
         }
     }

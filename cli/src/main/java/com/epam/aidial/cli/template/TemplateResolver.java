@@ -93,11 +93,29 @@ public final class TemplateResolver {
         return ControlFlowExpander.substitutePlaceholders(expanded, ctx);
     }
 
+    /**
+     * Resolve {@code ${...}} placeholders in a plain string using only the params + vars scopes.
+     * The entity scope is intentionally empty — callers use this to resolve the entity name
+     * itself before the entity context exists.
+     */
+    public static String resolveString(String raw, Map<String, Object> params, Map<String, Object> vars) {
+        if (raw == null || !raw.contains("${")) {
+            return raw;
+        }
+        var ctx = buildContext(vars, params, null);
+        return new PlaceholderSubstitutor(ctx).substitute(raw);
+    }
+
     private static Map<String, Object> buildContext(TemplateContext tpl) {
+        return buildContext(tpl.vars(), tpl.params(), tpl.entityCtx());
+    }
+
+    private static Map<String, Object> buildContext(Map<String, Object> vars, Map<String, Object> params, Map<String, Object> entityCtx) {
         Map<String, Object> ctx = new HashMap<>();
-        ctx.put(NS_VARS, tpl.vars() == null ? Map.of() : tpl.vars());
-        ctx.put(NS_PARAMS, tpl.params() == null ? Map.of() : tpl.params());
-        ctx.put(NS_ENTITY, tpl.entityCtx() == null ? Map.of() : tpl.entityCtx());
+        ctx.put(NS_VARS, vars == null ? Map.of() : vars);
+        ctx.put(NS_PARAMS, params == null ? Map.of() : params);
+        ctx.put(NS_ENTITY, entityCtx == null ? Map.of() : entityCtx);
         return ctx;
     }
+
 }
