@@ -32,6 +32,22 @@ public class ApplicationTypeSchemaApiTest extends ResourceBaseTest {
             Assertions.assertTrue(node.has("dial:applicationTypeDisplayName"));
             Assertions.assertTrue(node.has("dial:applicationTypeViewerUrl"));
         });
+
+        JsonNode specificType = null;
+        for (JsonNode node : jsonNode.get()) {
+            if (node.get("$id").asText().endsWith("/specific_application_type")) {
+                specificType = node;
+                break;
+            }
+        }
+        Assertions.assertNotNull(specificType, "specific_application_type schema must be present");
+        JsonNode routes = specificType.get("dial:applicationTypeRoutes");
+        Assertions.assertNotNull(routes, "dial:applicationTypeRoutes must be exposed in the schema list");
+        Assertions.assertTrue(routes.has("data_sync"));
+
+        JsonNode mcp = specificType.get("dial:applicationTypeMcp");
+        Assertions.assertNotNull(mcp, "dial:applicationTypeMcp must be exposed in the schema list");
+        Assertions.assertTrue(mcp.has("dial:endpoint"));
     }
 
     @Test

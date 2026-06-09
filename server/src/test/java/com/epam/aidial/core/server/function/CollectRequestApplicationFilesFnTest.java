@@ -178,6 +178,49 @@ public class CollectRequestApplicationFilesFnTest {
     }
 
     @Test
+    void apply_appendsPromptsToApiKeyData_whenApplicationHasCustomSchemaId() {
+        String promptUrl = "prompts/bucket/my-prompt";
+        when(context.getDeployment()).thenReturn(application);
+        application.setApplicationTypeSchemaId(URI.create("customSchemaId"));
+        Map<String, Object> customProps = new HashMap<>();
+        customProps.put("prompt", Map.of("name", "my-prompt", "dial_id", promptUrl));
+        application.setApplicationProperties(customProps);
+        when(accessService.hasReadAccess(any(), any())).thenReturn(true);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getProxyApiKeyData()).thenReturn(apiKeyData);
+        when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
+        when(proxy.getAccessService()).thenReturn(accessService);
+        ResourceDescriptor prompt = mock(ResourceDescriptor.class);
+        when(prompt.getUrl()).thenReturn(promptUrl);
+        when(applicationSchemaService.getPrompts(eq(application))).thenReturn(List.of(prompt));
+
+        boolean result = fn.apply(request);
+
+        assertFalse(result);
+        assertNotNull(apiKeyData.getAttachedPrompts().get(promptUrl));
+        assertEquals(1, apiKeyData.getAttachedPrompts().size());
+    }
+
+    @Test
+    void apply_throws_whenAccessServiceHasNoReadAccessToPrompt() {
+        String promptUrl = "prompts/bucket/my-prompt";
+        when(context.getDeployment()).thenReturn(application);
+        application.setApplicationTypeSchemaId(URI.create("customSchemaId"));
+        Map<String, Object> customProps = new HashMap<>();
+        customProps.put("prompt", Map.of("name", "my-prompt", "dial_id", promptUrl));
+        application.setApplicationProperties(customProps);
+        when(proxy.getApplicationSchemaService()).thenReturn(applicationSchemaService);
+        when(proxy.getAccessService()).thenReturn(accessService);
+        ResourceDescriptor prompt = mock(ResourceDescriptor.class);
+        when(applicationSchemaService.getPrompts(eq(application))).thenReturn(List.of(prompt));
+        when(accessService.hasReadAccess(any(), any())).thenReturn(false);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        when(context.getProxyApiKeyData()).thenReturn(apiKeyData);
+
+        Assertions.assertThrows(HttpException.class, () -> fn.apply(request));
+    }
+
+    @Test
     void apply_throws_whenAccessServiceHasNoReadAccess() {
         when(context.getProxyApiKeyData()).thenReturn(new ApiKeyData());
         String serverFile = "files/public/valid-file-path/valid-sub-path/valid%20file%20name2.ext";

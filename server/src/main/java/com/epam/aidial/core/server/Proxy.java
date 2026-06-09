@@ -31,6 +31,7 @@ import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceOperationService;
+import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetService;
@@ -40,6 +41,7 @@ import com.epam.aidial.core.server.service.clientchannel.ClientChannelService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
@@ -70,6 +72,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
 @Slf4j
@@ -90,6 +93,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_API_KEY = "API-KEY";
     public static final String HEADER_JOB_TITLE = "X-JOB-TITLE";
     public static final String HEADER_CONVERSATION_ID = "X-CONVERSATION-ID";
+    public static final String HEADER_UPSTREAM_ID = "X-UPSTREAM-ID";
     public static final String HEADER_UPSTREAM_ENDPOINT = "X-UPSTREAM-ENDPOINT";
     public static final String HEADER_UPSTREAM_KEY = "X-UPSTREAM-KEY";
     public static final String HEADER_UPSTREAM_EXTRA_DATA = "X-UPSTREAM-EXTRA-DATA";
@@ -148,9 +152,13 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ResourceCredentialsService resourceCredentialsService;
     private final PerRequestPermissionService perRequestPermissionService;
     private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
+    private final AuthSettingsResolver authSettingsResolver;
     private final ClientChannelService clientChannelService;
     private final AsyncTaskExecutor taskExecutor;
     private final String version;
+    private final ResponseMappingService responseMappingService;
+    // Generates the unique portion of a DIAL response ID
+    private final Supplier<String> generator;
 
     @Override
     public void handle(HttpServerRequest request) {

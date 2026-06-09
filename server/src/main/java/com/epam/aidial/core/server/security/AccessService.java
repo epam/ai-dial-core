@@ -46,6 +46,7 @@ public class AccessService {
     private final ShareService shareService;
     private final RuleService ruleService;
     private final List<Rule> adminRules;
+    private final boolean adminRulesConfigured;
 
     private final List<String> createCodeAppRoles;
 
@@ -73,6 +74,7 @@ public class AccessService {
         this.ruleService = ruleService;
         this.applicationSchemaService = applicationSchemaService;
         this.adminRules = adminRules(settings);
+        this.adminRulesConfigured = !this.adminRules.isEmpty();
         this.createCodeAppRoles = getCreateCodeAppRoles(settings);
     }
 
@@ -208,6 +210,11 @@ public class AccessService {
         for (ResourceDescriptor resource : resources) {
             String resourceUrl = resource.getUrl();
             AutoSharedData autoSharedData = apiKeyData.getAttachedFiles().get(resourceUrl);
+            if (autoSharedData != null) {
+                result.put(resource, autoSharedData.accessTypes());
+                continue;
+            }
+            autoSharedData = apiKeyData.getAttachedPrompts().get(resourceUrl);
             if (autoSharedData != null) {
                 result.put(resource, autoSharedData.accessTypes());
                 continue;
@@ -374,6 +381,29 @@ public class AccessService {
                 && RuleMatcher.match(context, adminRules);
     }
 
+    /**
+     * Fail-closed admin check for the Configuration/Admin API surface. Unlike {@link #hasAdminAccess}
+     * — whose empty rule set is treated by {@link RuleMatcher} as allow-all — this returns
+     * {@code false} when {@code access.admin.rules} is unconfigured or empty, so an operator who
+     * never configured admin rules denies all config/admin access rather than granting it to everyone.
+     */
+    public boolean hasExplicitAdminAccess(ProxyContext context) {
+        return adminRulesConfigured && hasAdminAccess(context);
+    }
+
+    /**
+     * Returns {@code true} when {@code bucket} equals the caller's encrypted initiator bucket.
+     * Returns {@code false} (does not throw) when no initiator can be resolved — that case is
+     * treated as "not the owner" so the surrounding authz dispatch produces 403 rather than 500.
+     */
+    public boolean isOwnerOf(ProxyContext context, String bucket) {
+        try {
+            return encryptionService.encrypt(BucketBuilder.buildInitiatorBucket(context)).equals(bucket);
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
+    }
+
     public void filterForbidden(ProxyContext context, ResourceDescriptor descriptor, MetadataBase metadata) {
         if (descriptor.isPublic() && descriptor.isFolder() && !hasAdminAccess(context)) {
             ResourceFolderMetadata folder = (ResourceFolderMetadata) metadata;
@@ -406,8 +436,15 @@ public class AccessService {
     }
 
     private static List<Rule> adminRules(JsonObject settings) {
-        String rules = settings.getJsonObject("admin").getJsonArray("rules").toString();
-        List<Rule> list = ProxyUtil.convertToObject(rules, Rule.LIST_TYPE);
+        JsonObject admin = settings.getJsonObject("admin");
+        if (admin == null) {
+            return List.of();
+        }
+        JsonArray rules = admin.getJsonArray("rules");
+        if (rules == null) {
+            return List.of();
+        }
+        List<Rule> list = ProxyUtil.convertToObject(rules.toString(), Rule.LIST_TYPE);
         return (list == null) ? List.of() : list;
     }
 

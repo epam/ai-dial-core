@@ -1,0 +1,29 @@
+{
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "share-limited"
+    },
+    "proxyKey2": {
+      "project": "EPM-RTC-RAIL",
+      "role": "share-limited"
+    },
+    "proxyKey3": {
+      "project": "EPM-RTC-DIAL",
+      "role": "share-limited"
+    }
+  },
+  "roles": {
+    "share-limited": {
+      "limits": {
+        "test-model-v1": {}
+      },
+      "share": {
+        "FILE": {
+          "max_accepted_users": 1,
+          "invitation_ttl": 72
+        }
+      }
+    }
+  }
+}

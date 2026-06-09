@@ -17,4 +17,5 @@ public class ClientRegistration {
     private String redirectUri;
     private String codeChallengeMethod;
     private List<String> scopesSupported;
+    private String tokenEndpointAuthMethod;
 }

@@ -134,6 +134,33 @@ class ResourceAuthorizationClientTest {
     }
 
     @Test
+    void testExecutePost_WithExtraHeaders_SendsThem() throws Exception {
+        // Given
+        String url = "https://example.com/token";
+        HttpResponse<byte[]> httpResponseMock = mock(HttpResponse.class);
+        when(httpClientMock.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(httpResponseMock);
+        when(httpResponseMock.statusCode()).thenReturn(200);
+        when(httpResponseMock.body()).thenReturn("{\"key\":\"v\"}".getBytes(StandardCharsets.UTF_8));
+        when(httpResponseMock.headers()).thenReturn(EMPTY_HEADERS);
+
+        org.mockito.ArgumentCaptor<HttpRequest> requestCaptor = org.mockito.ArgumentCaptor.forClass(HttpRequest.class);
+
+        // When
+        TestResponse actualResponse = resourceAuthorizationClient.executePost(
+                url, "grant_type=refresh_token",
+                "application/x-www-form-urlencoded",
+                Map.of("Authorization", "Basic Zm9vOmJhcg=="),
+                TestResponse.class);
+
+        // Then
+        assertNotNull(actualResponse);
+        org.mockito.Mockito.verify(httpClientMock).send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class));
+        HttpRequest captured = requestCaptor.getValue();
+        assertEquals("Basic Zm9vOmJhcg==", captured.headers().firstValue("Authorization").orElse(null));
+        assertEquals("application/x-www-form-urlencoded", captured.headers().firstValue("Content-Type").orElse(null));
+    }
+
+    @Test
     void testExecutePost_NotFoundStatusStatus() throws Exception {
         // Given
         String url = "https://example.com/resource";

@@ -1,0 +1,34 @@
+{
+  "models": {
+    "valid-model": {
+      "type": "chat",
+      "endpoint": "http://localhost:7001/openai/deployments/valid-model/chat/completions"
+    },
+    "bad/model": {
+      "type": "chat",
+      "endpoint": "http://localhost:7001/openai/deployments/bad/chat/completions"
+    }
+  },
+  "interceptors": {
+    "good-interceptor": {
+      "endpoint": "http://localhost:7001/intercept"
+    },
+    "bad/interceptor": {
+      "endpoint": "http://localhost:7001/intercept"
+    }
+  },
+  "roles": {
+    "good-role": {
+      "limits": {}
+    },
+    "bad/role": {
+      "limits": {}
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "good-role"
+    }
+  }
+}

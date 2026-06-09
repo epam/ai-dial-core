@@ -67,6 +67,9 @@
   "access": {
     "admin": {
       "rules": [{"source": "roles", "function": "EQUAL", "targets": ["admin"]}]
+    },
+    "securityAdmin": {
+      "rules": [{"source": "roles", "function": "EQUAL", "targets": ["security-admin"]}]
     }
   },
   "toolsets": {

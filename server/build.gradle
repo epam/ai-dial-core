@@ -20,6 +20,10 @@ dependencies {
     implementation("com.google.protobuf:protobuf-java:${google_protobuf_version}")
     implementation("com.jayway.jsonpath:json-path:${jayway_jsonpath_version}")
     implementation("com.networknt:json-schema-validator:${networknt_version}")
+    implementation("io.modelcontextprotocol.sdk:mcp-core:${mcp_sdk_version}")
+    implementation("io.modelcontextprotocol.sdk:mcp-json-jackson2:${mcp_sdk_version}") {
+        exclude group: 'com.networknt', module: 'json-schema-validator'
+    }
     implementation("io.micrometer:micrometer-registry-otlp:${micrometer_version}")
     implementation("io.micrometer:micrometer-registry-prometheus:${micrometer_version}")
     implementation("io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0:${opentelemetry_instrumentation_version}")
@@ -31,6 +35,7 @@ dependencies {
     implementation("io.vertx:vertx-core:${vertx_version}")
     implementation("io.vertx:vertx-micrometer-metrics:${vertx_version}")
     implementation("io.vertx:vertx-opentelemetry:${vertx_version}")
+    implementation("io.vertx:vertx-web-client:${vertx_version}")
     implementation("jakarta.validation:jakarta.validation-api:${jakarta_validation_version}") // Ensure you have Jakarta Validation API dependency
     implementation("net.logstash.logback:logstash-logback-encoder:${logstash_logback_version}")
     implementation("org.apache.commons:commons-lang3:${apache_commons_version}")
@@ -50,7 +55,6 @@ dependencies {
     testImplementation("com.squareup.okhttp3:mockwebserver:${squareup_okhttp3_version}")
     testImplementation("commons-io:commons-io:${commons_io_version}")
     testImplementation("io.vertx:vertx-junit5:${vertx_version}")
-    testImplementation("io.vertx:vertx-web-client:${vertx_version}")
     testImplementation("org.junit.jupiter:junit-jupiter-api:${junit_version}")
     testImplementation("org.mockito:mockito-core:${mockito_version}")
     testImplementation("org.mockito:mockito-junit-jupiter:${mockito_version}")

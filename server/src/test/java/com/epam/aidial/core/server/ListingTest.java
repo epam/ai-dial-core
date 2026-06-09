@@ -54,7 +54,9 @@ public class ListingTest extends ResourceBaseTest {
                     , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
                     "content_parts": false, "temperature" : true, "cache" : false,
                     "auto_caching" : false, "parallel_tool_calls": true,
-                    "assistant_attachments_in_request": false, "mcp" : false
+                    "assistant_attachments_in_request": false, "mcp" : false,
+                    "max_tokens_supported": true, "max_completion_tokens_supported": false,
+                    "custom_temperature_supported": true, "reasoning_efforts_supported": false
                     }
                 """));
     }
@@ -68,7 +70,9 @@ public class ListingTest extends ResourceBaseTest {
                     , "configuration": true, "allow_resume": true, "accessible_by_per_request_key": true,
                     "content_parts": false, "temperature" : true, "cache" : false,
                     "auto_caching" : false, "parallel_tool_calls": true,
-                    "assistant_attachments_in_request": false, "mcp" : false
+                    "assistant_attachments_in_request": false, "mcp" : false,
+                    "max_tokens_supported": true, "max_completion_tokens_supported": false,
+                    "custom_temperature_supported": true, "reasoning_efforts_supported": false
                     }
                 """));
     }
@@ -82,7 +86,9 @@ public class ListingTest extends ResourceBaseTest {
                     , "configuration": true, "allow_resume": true, "accessible_by_per_request_key": true,
                     "content_parts": false, "temperature" : true, "cache" : false,
                     "auto_caching" : false, "parallel_tool_calls": true,
-                    "assistant_attachments_in_request": false, "mcp" : false
+                    "assistant_attachments_in_request": false, "mcp" : false,
+                    "max_tokens_supported": true, "max_completion_tokens_supported": false,
+                    "custom_temperature_supported": true, "reasoning_efforts_supported": false
                     }
                 """));
     }

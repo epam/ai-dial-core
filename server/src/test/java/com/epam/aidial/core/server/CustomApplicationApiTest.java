@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -540,7 +541,11 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "auto_caching" : false,
                                 "parallel_tool_calls" : true,
                                 "assistant_attachments_in_request": false,
-                                "mcp" : false
+                                "mcp" : false,
+                                "max_tokens_supported": true,
+                                "max_completion_tokens_supported": false,
+                                "custom_temperature_supported": true,
+                                "reasoning_efforts_supported": false
                                 },
                             "defaults":{},
                             "responses_defaults":{},
@@ -579,7 +584,11 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                "auto_caching" : false,
                                "parallel_tool_calls" : true,
                                "assistant_attachments_in_request": false,
-                               "mcp" : false
+                               "mcp" : false,
+                                "max_tokens_supported": true,
+                                "max_completion_tokens_supported": false,
+                                "custom_temperature_supported": true,
+                                "reasoning_efforts_supported": false
                              },
                              "defaults" : { },
                              "responses_defaults" : { },
@@ -587,18 +596,9 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                              "max_retry_attempts" : 1,
                              "routes" : {
                                "index-search" : {
-                                 "name" : null,
-                                 "userRoles" : null,
-                                 "response" : null,
                                  "rewritePath" : true,
                                  "paths" : [ "/v1/index(/[^/]+)*$" ],
                                  "methods" : [ "DELETE", "POST", "PUT" ],
-                                 "upstreams" : [ {
-                                   "endpoint" : "http://localhost:4848",
-                                   "extraData" : null,
-                                   "weight" : 1,
-                                   "tier" : 0
-                                 } ],
                                  "maxRetryAttempts" : 1,
                                  "order" : 2147483647,
                                  "permissions" : [ ],
@@ -661,7 +661,11 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "auto_caching" : false,
                         "parallel_tool_calls" : true,
                         "assistant_attachments_in_request": false,
-                        "mcp" : false
+                        "mcp" : false,
+                                "max_tokens_supported": true,
+                                "max_completion_tokens_supported": false,
+                                "custom_temperature_supported": true,
+                                "reasoning_efforts_supported": false
                     },
                     "defaults":{},
                     "responses_defaults":{},
@@ -709,7 +713,11 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                                 "auto_caching" : false,
                                 "parallel_tool_calls" : true,
                                 "assistant_attachments_in_request": false,
-                                "mcp" : false
+                                "mcp" : false,
+                                "max_tokens_supported": true,
+                                "max_completion_tokens_supported": false,
+                                "custom_temperature_supported": true,
+                                "reasoning_efforts_supported": false
                                 },
                             "defaults":{},
                             "responses_defaults":{},
@@ -749,7 +757,11 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "auto_caching" : false,
                               "parallel_tool_calls" : true,
                               "assistant_attachments_in_request": false,
-                              "mcp" : false
+                              "mcp" : false,
+                                "max_tokens_supported": true,
+                                "max_completion_tokens_supported": false,
+                                "custom_temperature_supported": true,
+                                "reasoning_efforts_supported": false
                             },
                             "defaults" : { },
                             "responses_defaults" : { },
@@ -757,18 +769,9 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                             "max_retry_attempts" : 1,
                             "routes" : {
                               "index-search" : {
-                                "name" : null,
-                                "userRoles" : null,
-                                "response" : null,
                                 "rewritePath" : true,
                                 "paths" : [ "/v1/index(/[^/]+)*$" ],
                                 "methods" : [ "DELETE", "POST", "PUT" ],
-                                "upstreams" : [ {
-                                  "endpoint" : "http://localhost:4848",
-                                  "extraData" : null,
-                                  "weight" : 1,
-                                  "tier" : 0
-                                } ],
                                 "maxRetryAttempts" : 1,
                                 "order" : 2147483647,
                                 "permissions" : [ ],
@@ -807,7 +810,11 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                               "auto_caching" : false,
                               "parallel_tool_calls" : true,
                               "assistant_attachments_in_request": false,
-                              "mcp" : false
+                              "mcp" : false,
+                                "max_tokens_supported": true,
+                                "max_completion_tokens_supported": false,
+                                "custom_temperature_supported": true,
+                                "reasoning_efforts_supported": false
                             },
                             "defaults" : { },
                             "responses_defaults" : { },
@@ -1309,7 +1316,11 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                        "auto_caching" : false,
                        "parallel_tool_calls" : true,
                        "assistant_attachments_in_request": false,
-                       "mcp" : false
+                       "mcp" : true,
+                       "max_tokens_supported": true,
+                       "max_completion_tokens_supported": false,
+                       "custom_temperature_supported": true,
+                       "reasoning_efforts_supported": false
                      },
                      "defaults" : { },
                      "responses_defaults" : { },
@@ -1317,7 +1328,21 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      "max_retry_attempts" : 1,
                      "invalid" : true,
                      "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
-                     "routes" : { }
+                     "viewer_url" : "https://mydial.somewhere.com/custom_application_schemas/viewer",
+                     "routes" : {
+                       "data_sync" : {
+                         "rewritePath" : true,
+                         "paths" : [ "/v1/index/search" ],
+                         "methods" : [ "POST" ],
+                         "maxRetryAttempts" : 1,
+                         "order" : 5,
+                         "permissions" : [ "WRITE" ],
+                         "attachmentPaths" : {
+                           "requestBody" : [ ],
+                           "responseBody" : [ ]
+                         }
+                       }
+                     }
                 }
                 """);
     }
@@ -1370,6 +1395,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 data: {"id":"chatcmpl-4","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":"stop","delta":{}}], "usage":{"completion_tokens": 20, "prompt_tokens": 20, "total_tokens": 40}}\r
                 data: [DONE]\r
                 """;
+        AtomicReference<String> capturedInterceptorBody = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4848)) {
             TestWebServer.Handler chatCompletionHandler = request -> {
                 MockResponse mockResponse = new MockResponse();
@@ -1379,6 +1405,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
             };
             TestWebServer.Handler interceptorHandler = request -> {
                 try {
+                    capturedInterceptorBody.set(request.getBody().readUtf8());
                     var nextInterceptorRequest = createHttpUriRequest(serverPort,
                             "interceptor", request.getHeader("api-key"));
                     var appResponse = client.execute(nextInterceptorRequest, ResourceBaseTest::toResponse);
@@ -1399,6 +1426,10 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", "proxyKey1");
             response = client.execute(request, ResourceBaseTest::toResponse);
             verify(response, 200);
+
+            assertEquals("""
+                    {"model":"gpt-3-turbo","stream":true,"messages":[{"content":"how are you?","role":"user"}]}""",
+                    capturedInterceptorBody.get());
         }
     }
 
@@ -1456,6 +1487,9 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 }
                 """);
         verify(response, 200);
+
+        response = send(HttpMethod.GET, "/openai/applications/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app");
+        verifyNotExact(response, 200, "\"mcp\":true");
 
         String mcpResponse = """
                 {

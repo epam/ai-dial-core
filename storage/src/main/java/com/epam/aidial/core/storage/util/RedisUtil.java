@@ -79,6 +79,6 @@ public class RedisUtil {
         if (index == -1) {
             throw new IllegalArgumentException("Invalid redis key");
         }
-        return redisKey.substring(0, index);
+        return redisKey.substring(0, index).toUpperCase();
     }
 }

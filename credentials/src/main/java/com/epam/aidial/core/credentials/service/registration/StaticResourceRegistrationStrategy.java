@@ -100,6 +100,7 @@ public class StaticResourceRegistrationStrategy implements ResourceRegistrationS
                 .tokenEndpoint(tokenEndpoint)
                 .codeChallengeMethod(codeChallengeMethod)
                 .scopesSupported(supportedScopes)
+                .tokenEndpointAuthMethod(resourceAuthSettings.getTokenEndpointAuthMethod())
                 .build();
 
         log.info("Finished static registration for Resource: {}", resourceId);

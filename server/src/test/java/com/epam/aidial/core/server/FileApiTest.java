@@ -756,7 +756,8 @@ public class FileApiTest extends ResourceBaseTest {
                   "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin",
                   "action" : "CREATE",
                   "timestamp" : "@ignore",
-                  "etag" : "@ignore"
+                  "etag" : "@ignore",
+                  "senderPodId" : "@ignore"
                 }
                 """, events.take());
         verifyJsonNotExact("""
@@ -764,14 +765,16 @@ public class FileApiTest extends ResourceBaseTest {
                   "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin",
                   "action" : "UPDATE",
                   "timestamp" : "@ignore",
-                  "etag" : "@ignore"
+                  "etag" : "@ignore",
+                  "senderPodId" : "@ignore"
                 }
                 """, events.take());
         verifyJsonNotExact("""
                 {
                   "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.bin",
                   "action" : "DELETE",
-                  "timestamp" : "@ignore"
+                  "timestamp" : "@ignore",
+                  "senderPodId" : "@ignore"
                 }
                 """, events.take());
         events.close();

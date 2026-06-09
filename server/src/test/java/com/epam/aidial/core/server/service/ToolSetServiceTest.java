@@ -97,7 +97,7 @@ class ToolSetServiceTest {
                 .thenReturn(mock(ResourceItemMetadata.class));
 
         // WHEN
-        toolSetService.putToolSet(resource, etag, author, toolSet);
+        toolSetService.putToolSet(resource, etag, author, toolSet, false);
         lambdaCaptor.getValue().apply("input");
 
         // THEN

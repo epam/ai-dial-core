@@ -1,5 +1,8 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.data.InvitationLink;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
@@ -155,6 +158,39 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
 
             verify(appResponse, 200, responseBody);
         }
+    }
+
+    @Test
+    public void testSchemaRichAppRoutesExposedInOpenAiApi() throws Exception {
+        Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
+                {
+                "display_name": "My Custom Application",
+                "display_version": "1.0",
+                "icon_url": "http://application1/icon.svg",
+                "description": "My Custom Application Description",
+                "application_properties" : {
+                    "property1" : "test property1",
+                    "property2" : "test property2"
+                  },
+                "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type"
+                }
+                """);
+        Assertions.assertEquals(200, response.status());
+
+        response = send(HttpMethod.GET,
+                "/openai/applications/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application");
+        Assertions.assertEquals(200, response.status());
+
+        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+        JsonNode routes = body.get("routes");
+        Assertions.assertNotNull(routes, "routes must be present in /openai/applications response");
+        JsonNode dataSync = routes.get("data_sync");
+        Assertions.assertNotNull(dataSync, "schema route data_sync must be exposed");
+        Assertions.assertEquals("/v1/index/search", dataSync.get("paths").get(0).asText());
+        Assertions.assertEquals("POST", dataSync.get("methods").get(0).asText());
+        Assertions.assertEquals(5, dataSync.get("order").asInt());
+        Assertions.assertEquals("WRITE", dataSync.get("permissions").get(0).asText());
+        Assertions.assertEquals("http://localhost:4848", dataSync.get("upstreams").get(0).get("endpoint").asText());
     }
 
     @Test
@@ -321,6 +357,65 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
             verify(response, 200);
         }
 
+    }
+
+    @Test
+    public void testRouteUpstreamsHiddenForReadOnlyUser() throws Exception {
+        // Owner creates an application with routes containing upstreams
+        Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/secure-app", null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "Secure App",
+                "routes": {
+                        "data_sync": {
+                          "paths": ["/v1/data/sync$"],
+                          "methods": ["POST"],
+                          "upstreams": [{"endpoint": "http://localhost:4848"}]
+                      }
+                  }
+                }
+                """);
+        Assertions.assertEquals(200, response.status());
+
+        // Owner GETs the app via OpenAI API - should see upstreams
+        response = send(HttpMethod.GET, "/openai/applications/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/secure-app");
+        Assertions.assertEquals(200, response.status());
+        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+        JsonNode routes = body.get("routes");
+        Assertions.assertNotNull(routes, "routes must be present for owner");
+        JsonNode upstreams = routes.get("data_sync").get("upstreams");
+        Assertions.assertNotNull(upstreams, "upstreams must be present for owner");
+        Assertions.assertFalse(upstreams.isEmpty(), "upstreams must not be empty for owner");
+
+        // Owner shares the app (read-only) with user via invitation
+        response = send(HttpMethod.POST, "/v1/ops/resource/share/create", null, """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    {
+                      "url": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/secure-app"
+                    }
+                  ]
+                }
+                """);
+        Assertions.assertEquals(200, response.status());
+        InvitationLink invitationLink = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        Assertions.assertNotNull(invitationLink);
+
+        // User accepts invitation
+        response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "authorization", "user");
+        Assertions.assertEquals(200, response.status());
+
+        // Read-only user GETs the app via OpenAI API - routes must be present but upstreams null
+        response = send(HttpMethod.GET,
+                "/openai/applications/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/secure-app",
+                null, null, "authorization", "user");
+        Assertions.assertEquals(200, response.status());
+        body = ProxyUtil.MAPPER.readTree(response.body());
+        routes = body.get("routes");
+        Assertions.assertNotNull(routes, "routes must still be present for read-only user");
+        Assertions.assertTrue(routes.get("data_sync").path("upstreams").isMissingNode(),
+                "upstreams must be null for read-only user");
     }
 
 }

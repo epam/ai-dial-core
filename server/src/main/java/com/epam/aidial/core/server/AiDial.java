@@ -29,8 +29,11 @@ import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataVa
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.FileConfigStore;
+import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
+import com.epam.aidial.core.server.config.PlatformEntityLocationStrategy;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
+import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.controller.HealthCheckController;
 import com.epam.aidial.core.server.controller.WellKnownResourceMetadataController;
 import com.epam.aidial.core.server.data.ApiKeyValidation;
@@ -54,6 +57,7 @@ import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.PublicationUtil;
 import com.epam.aidial.core.server.service.ResourceOperationService;
+import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetService;
@@ -65,11 +69,13 @@ import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterServic
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.cache.CacheClientFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -77,6 +83,7 @@ import com.epam.aidial.core.storage.service.TimerService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.micrometer.core.instrument.Clock;
+import io.micrometer.core.instrument.Metrics;
 import io.micrometer.prometheus.PrometheusConfig;
 import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.micrometer.registry.otlp.OtlpMeterRegistry;
@@ -141,6 +148,9 @@ public class AiDial {
     private RedissonClient redis;
     private Proxy proxy;
 
+    private PrometheusMeterRegistry prometheusRegistry;
+    private OtlpMeterRegistry otlpRegistry;
+
     private AccessTokenValidator accessTokenValidator;
 
     private BlobStorage storage;
@@ -187,17 +197,32 @@ public class AiDial {
             LockService lockService = new LockService(redis, storage.getPrefix());
             TimerService timerService = new VertxTimerService(vertx, taskExecutor);
             ResourceService.Settings resourceServiceSettings = getResourceSettings();
-            resourceService = new ResourceService(timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix());
+            String podId = UUID.randomUUID().toString();
+            resourceService = new ResourceService(
+                    timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix(), () -> podId);
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"));
-            ConfigStore configStore = new FileConfigStore(vertx, settings("config"), apiKeyStore);
+            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
+            SecretFieldProcessor secretFieldProcessor = new SecretFieldProcessor(
+                    credentialEncryptionService,
+                    new BucketInfo(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION));
+            String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
+            boolean softValidation = settings("config").getJsonObject("write", new JsonObject())
+                    .getBoolean("softValidation", false);
+            MergedConfigStore mergedConfigStore = new MergedConfigStore(
+                    vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                    secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId);
+            FileConfigStore fileConfigStore = new FileConfigStore(
+                    vertx, settings("config"), null,
+                    List.of(cfg -> mergedConfigStore.requestRebuild()));
+            mergedConfigStore.init(fileConfigStore);
+            ConfigStore configStore = mergedConfigStore;
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(resourceService, configStore, encryptionService, httpProxySelector);
 
             TimeProvider timeProvider = new TimeProvider();
             TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);
             ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient(httpProxySelector);
-            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService();
             List<String> allowedRedirectUris = getAllowedRedirectUris();
             ResourceCredentialsService resourceCredentialsService = getResourceCredentialsService(
                     tokenRefreshStrategyFactory, resourceAuthorizationClient, credentialEncryptionService, timeProvider, allowedRedirectUris);
@@ -206,6 +231,8 @@ public class AiDial {
             AuthorizationHeaderProvider authorizationHeaderProvider = new AuthorizationHeaderProvider(resourceCredentialsService);
             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
                     credentialEncryptionService);
+            AuthSettingsResolver authSettingsResolver = new AuthSettingsResolver(
+                    encryptionService, resourceAuthSettingsEncryptionService);
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
                     resourceAuthSettingsEncryptionService, resourceCredentialsService);
 
@@ -249,6 +276,9 @@ public class AiDial {
             Duration clientChannelTtl = Duration.ofMillis(resourceServiceSettings.getResourceTypesExpiration().get(ResourceTypes.CLIENT_CHANNEL.name()));
             ClientChannelService clientChannelService = new ClientChannelService(lockService, redis, taskExecutor, clock, storage.getPrefix(), clientChannelTtl);
 
+            ResponseMappingService responseMappingService = new ResponseMappingService(generator, resourceService);
+            responseMappingService.init(vertx, taskExecutor);
+
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
@@ -256,7 +286,8 @@ public class AiDial {
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
                     toolSetService, applicationSchemaService, authorizationHeaderProvider, resourceAuthSettingsService, resourceCredentialsService,
-                    perRequestPermissionService, resourceAuthSettingsEncryptionService, clientChannelService, taskExecutor, version());
+                    perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
+                    responseMappingService, generator);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
@@ -354,7 +385,21 @@ public class AiDial {
             close(server, HttpServer::close);
             close(client, HttpClient::close);
             close(resourceService);
+            // Unhook from the global composite before vertx.close() so its shutdown metrics
+            // stop flowing here; close the registries only after vertx has flushed its own.
+            if (prometheusRegistry != null) {
+                Metrics.removeRegistry(prometheusRegistry);
+            }
+            if (otlpRegistry != null) {
+                Metrics.removeRegistry(otlpRegistry);
+            }
             close(vertx, Vertx::close);
+            if (prometheusRegistry != null) {
+                prometheusRegistry.close();
+            }
+            if (otlpRegistry != null) {
+                otlpRegistry.close();
+            }
             close(storage);
             close(redis);
             log.info("Proxy stopped");
@@ -498,7 +543,7 @@ public class AiDial {
         }, "shutdown-hook"));
     }
 
-    private static void setupMetrics(VertxOptions options) {
+    private void setupMetrics(VertxOptions options) {
         MetricsOptions metrics = options.getMetricsOptions();
         if (metrics == null || !metrics.isEnabled()) {
             return;
@@ -511,6 +556,8 @@ public class AiDial {
             var prometheusReg = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
             prometheusReg.config().meterFilter(new RouteNormalizingMeterFilter());
             micrometer.setMicrometerRegistry(prometheusReg);
+            Metrics.addRegistry(prometheusReg);
+            this.prometheusRegistry = prometheusReg;
         }
 
         JsonObject oltp = metrics.toJson().getJsonObject("oltpOptions", new JsonObject());
@@ -518,6 +565,8 @@ public class AiDial {
             var otlpReg = new OtlpMeterRegistry(oltp::getString, Clock.SYSTEM);
             otlpReg.config().meterFilter(new RouteNormalizingMeterFilter());
             micrometer.setMicrometerRegistry(otlpReg);
+            Metrics.addRegistry(otlpReg);
+            this.otlpRegistry = otlpReg;
         }
 
         options.setMetricsOptions(micrometer);

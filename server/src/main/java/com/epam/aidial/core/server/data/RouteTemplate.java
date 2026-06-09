@@ -12,6 +12,14 @@ public enum RouteTemplate {
             "^/+openai/v1/responses$",
             "/openai/v1/responses"
     ),
+    LLM_RESPONSES_API_CANCEL(
+            "^/+openai/v1/responses/(?<id>[^/]+)/cancel$",
+            "/openai/v1/responses/{id}/cancel"
+    ),
+    LLM_RESPONSES_API_BY_ID(
+            "^/+openai/v1/responses/(?<id>[^/]+)$",
+            "/openai/v1/responses/{id}"
+    ),
     POST_DEPLOYMENT(
             "^/+openai/deployments/(?<id>.+?)/(completions|chat/completions|embeddings)$",
             "/openai/deployments/{id}/{action}"
@@ -60,6 +68,36 @@ public enum RouteTemplate {
     RESOURCE_METADATA(
             "^/v1/metadata/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
             "/v1/metadata/{resourceType}/{bucket}/{path}"
+    ),
+
+    CONFIG_RESOURCE(
+            "^/v1/(models|interceptors|roles|keys|routes|schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
+            "/v1/{resourceType}/{bucket}/{path}"
+    ),
+
+    CONFIG_RESOURCE_METADATA(
+            "^/v1/metadata/(models|interceptors|roles|keys|routes|schemas|settings)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
+            "/v1/metadata/{resourceType}/{bucket}/{path}"
+    ),
+
+    CONFIG_HEALTH(
+            "^/v1/admin/health/config$",
+            "/v1/admin/health/config"
+    ),
+
+    ADMIN_FILE_CONFIG(
+            "^/v1/admin/config/file/(?<type>models|interceptors|roles|keys|routes|schemas|settings)(?:/(?<name>.+))?$",
+            "/v1/admin/config/file/{type}/{name}"
+    ),
+
+    CONFIG_VALIDATE(
+            "^/v1/admin/validate$",
+            "/v1/admin/validate"
+    ),
+
+    CONFIG_APPLY(
+            "^/v1/admin/apply$",
+            "/v1/admin/apply"
     ),
 
     BUCKET(

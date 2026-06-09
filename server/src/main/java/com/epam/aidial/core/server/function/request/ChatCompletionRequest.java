@@ -51,6 +51,7 @@ public class ChatCompletionRequest implements RequestObject {
         result.addAll(ChatUtil.collectCustomAttachments(tree, List.of(
                 "$.messages[*].custom_content.attachments[*]",
                 "$.messages[*].custom_content.stages[*].attachments[*]",
+                "$.messages[*].custom_content.annotations[*].body.source.attachment",
                 "$.custom_input[*]")));
         return result;
     }

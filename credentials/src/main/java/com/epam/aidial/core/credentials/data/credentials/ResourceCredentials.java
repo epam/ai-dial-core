@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.CredentialsLevel;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import lombok.Builder;
 import lombok.Data;
+import lombok.ToString;
 import lombok.extern.jackson.Jacksonized;
 
 @Data
@@ -16,8 +17,11 @@ public class ResourceCredentials {
     private CredentialsLevel credentialsLevel;
     private AuthenticationType authenticationType;
     private String apiKeyHeader;
+    @ToString.Exclude
     private String apiKey;
+    @ToString.Exclude
     private String accessToken;
+    @ToString.Exclude
     private String refreshToken;
     private long createdAt;
     private long updatedAt;

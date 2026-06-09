@@ -45,6 +45,10 @@ public class RegexUtil {
             for (String group : groups) {
                 try {
                     int start = matcher.start(group);
+                    if (start < 0) {
+                        // Optional named group inside (?:...)? did not participate in the match.
+                        continue;
+                    }
                     int end = matcher.end(group);
                     regexGroups.add(new RegexGroup(group, start, end));
                 } catch (IllegalStateException | IllegalArgumentException ignored) {

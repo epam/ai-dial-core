@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.data.credentials.AuthorizationHeader;
@@ -23,11 +24,9 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.sse.SseEvent;
-import com.epam.aidial.core.server.sse.SseEventListener;
-import com.epam.aidial.core.server.sse.SseParser;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -38,32 +37,30 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.modelcontextprotocol.client.McpClient;
+import io.modelcontextprotocol.client.McpSyncClient;
+import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
+import io.modelcontextprotocol.client.transport.McpHttpClientTransportAuthorizationException;
+import io.modelcontextprotocol.json.schema.JsonSchemaValidator;
+import io.modelcontextprotocol.spec.McpSchema;
 import io.vertx.core.Future;
-import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClient;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
-import io.vertx.core.http.HttpHeaders;
-import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.RequestOptions;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.Strings;
-import org.apache.commons.lang3.mutable.MutableObject;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 
-import java.util.Iterator;
+import java.net.http.HttpRequest;
+import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-
-import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON;
-import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM;
 
 @Slf4j
 public class ToolSetToolsController implements Controller {
+
+    private static final JsonSchemaValidator NOOP_SCHEMA_VALIDATOR =
+            (Map<String, Object> schema, Object content) ->
+                    JsonSchemaValidator.ValidationResponse.asValid(null);
 
     private final String toolSetId;
     private final boolean filterAllowed;
@@ -72,13 +69,13 @@ public class ToolSetToolsController implements Controller {
     private final ProxyContext context;
     private final AsyncTaskExecutor taskExecutor;
     private final DeploymentService deploymentService;
-    private final HttpClient httpClient;
     private final AuthorizationHeaderProvider authorizationHeaderProvider;
     private final UpstreamRouteProvider upstreamRouteProvider;
     private final ApiKeyStore apiKeyStore;
     private final AccessService accessService;
     private final ResourceCredentialsService resourceCredentialsService;
     private final ApplicationSchemaService applicationSchemaService;
+    private final AuthSettingsResolver authSettingsResolver;
 
     public ToolSetToolsController(Proxy proxy, ProxyContext context, String toolSetId, boolean filterAllowed) {
         this.proxy = proxy;
@@ -87,13 +84,13 @@ public class ToolSetToolsController implements Controller {
         this.filterAllowed = filterAllowed;
         this.taskExecutor = proxy.getTaskExecutor();
         this.deploymentService = proxy.getDeploymentService();
-        this.httpClient = proxy.getClient();
         this.authorizationHeaderProvider = proxy.getAuthorizationHeaderProvider();
         this.upstreamRouteProvider = proxy.getUpstreamRouteProvider();
         this.apiKeyStore = proxy.getApiKeyStore();
         this.accessService = proxy.getAccessService();
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.applicationSchemaService = proxy.getApplicationSchemaService();
+        this.authSettingsResolver = proxy.getAuthSettingsResolver();
         this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
                 UrlUtil.encodePath(toolSetId), context, ResourceTypes.TOOL_SET);
     }
@@ -137,9 +134,7 @@ public class ToolSetToolsController implements Controller {
                 throw new ResourceNotFoundException("Toolset is not found: " + toolSetId);
             }
             UpstreamRoute upstreamRoute = upstreamRouteProvider.get(deployment, null, this::getUpstreamEndpoint);
-            if (!canRetry(upstreamRoute)) {
-                return null;
-            }
+            upstreamRoute.next();
             context.setUpstreamRoute(upstreamRoute);
             context.setDeployment(deployment);
             fetchTools();
@@ -185,177 +180,90 @@ public class ToolSetToolsController implements Controller {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         Upstream upstream = upstreamRoute.get();
         Objects.requireNonNull(upstream);
-
-        Deployment deployment = context.getDeployment();
-        RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(upstream.getEndpoint())
-                .setMethod(HttpMethod.POST)
-                .setTraceOperation("Fetch tools from %s toolset".formatted(deployment.getName()))
-                .setConnectTimeout(proxy.getClientOptions().getConnectTimeout())
-                .setIdleTimeout(proxy.getClientOptions().getIdleTimeout());
-
-        httpClient.request(options).onSuccess(proxyRequest -> taskExecutor.submit(() -> {
-            handleProxyRequest(proxyRequest);
-            return null;
-        }).onFailure(error -> {
-            log.warn("Failed to handle request to MCP server", error);
-            respond(new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to handle request to MCP server"));
-        })).onFailure(this::handleProxyConnectionError);
-    }
-
-    private void handleProxyRequest(HttpClientRequest proxyRequest) {
         Deployment deployment = context.getDeployment();
 
-        injectToolsetCredentials(proxyRequest, deployment);
+        HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
+                .builder(upstream.getEndpoint())
+                .httpRequestCustomizer((builder, method, endpoint, body, transportContext) ->
+                        customizeRequest(builder, deployment))
+                .build();
 
-        proxyRequest.putHeader(HttpHeaders.CONTENT_TYPE, HEADER_CONTENT_TYPE_APPLICATION_JSON);
-        proxyRequest.putHeader(HttpHeaders.ACCEPT, List.of(HEADER_CONTENT_TYPE_APPLICATION_JSON, HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM));
-
-        ObjectNode requestBody = ProxyUtil.MAPPER.createObjectNode();
-        requestBody.put("jsonrpc", "2.0");
-        requestBody.put("method", "tools/list");
-        requestBody.put("id", 1);
-        Buffer proxyRequestBody = Buffer.buffer(requestBody.toString());
-
-        proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
-
-        proxyRequest.send(proxyRequestBody)
-                .onSuccess(this::handleProxyResponse)
-                .onFailure(this::handleProxyRequestError);
-    }
-
-    private void handleProxyRequestError(Throwable error) {
-        log.warn("Can't send request to origin: {}", error.getMessage());
-        UpstreamRoute upstreamRoute = context.getUpstreamRoute();
-        // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
-        upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
-        // get next upstream
-        if (canRetry(upstreamRoute)) {
-            fetchTools(); // try next
-        }
-    }
-
-    private void handleProxyResponse(HttpClientResponse proxyResponse) {
-        int statusCode = proxyResponse.statusCode();
-        String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
-        boolean isSse;
-        if (Strings.CI.contains(contentType, HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
-            isSse = false;
-        } else if (Strings.CI.contains(contentType, HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM)) {
-            isSse = true;
-        } else {
-            String errorMessage = "MCP server returns wrong content-type: " + contentType;
-            log.warn(errorMessage);
-            respond(new HttpException(HttpStatus.BAD_GATEWAY, errorMessage));
-            return;
-        }
-
-        proxyResponse.body().map(responseBody -> {
-            processToolsResponse(responseBody, statusCode, isSse);
-            return null;
-        }).onFailure(error -> {
-            log.warn("Failed to receive response body from MCP server", error);
-            respond(new HttpException(HttpStatus.BAD_GATEWAY, "Failed to receive response body from MCP server"));
-        });
-    }
-
-    /**
-     * Called when proxy failed to connect to the origin.
-     */
-    private void handleProxyConnectionError(Throwable error) {
-        log.warn("Can't connect to origin: {}", error.getMessage());
-        UpstreamRoute upstreamRoute = context.getUpstreamRoute();
-        // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
-        upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
-        // get next upstream
-        if (canRetry(upstreamRoute)) {
-            fetchTools(); // try next
-        }
-    }
-
-    private boolean canRetry(UpstreamRoute route) {
-        try {
-            route.next();
-        } catch (HttpException e) {
-            respond(e);
-            return false;
-        }
-        return true;
-    }
-
-    private void processToolsResponse(Buffer responseBody, int statusCode, boolean isSse) {
-        try {
-            if (statusCode != HttpStatus.OK.getCode()) {
-                context.respond(statusCode, responseBody);
-                finalizeRequest();
-                return;
+        try (McpSyncClient client = McpClient.sync(transport)
+                .clientInfo(new McpSchema.Implementation("DIAL", "1.0"))
+                .requestTimeout(Duration.ofMillis(proxy.getClientOptions().getIdleTimeout()))
+                .jsonSchemaValidator(NOOP_SCHEMA_VALIDATOR)
+                .build()) {
+            client.initialize();
+            if (filterAllowed) {
+                // listTools() auto-paginates all pages via the SDK's expand() chain
+                processUserToolsResult(client.listTools().tools());
+            } else {
+                // listTools(cursor) fetches exactly one page; null = first page
+                String cursor = context.getRequest().getParam("nextCursor");
+                processAdminToolsResult(client.listTools(cursor));
             }
-            JsonNode tree = parseResponseBody(responseBody, isSse);
-            if (!filterAllowed) {
-                respond(tree);
-                return;
-            }
-            JsonNode tools = tree.path("result").path("tools");
-            if (!tools.isArray()) {
-                log.warn("Response doesn't have valid path to tools");
-                respond(new HttpException(HttpStatus.BAD_GATEWAY, "Response doesn't have valid path to tools"));
-                return;
-            }
-            List<String> allowedTools = getAllowedTools(context.getDeployment());
-            if (!allowedTools.isEmpty()) {
-                for (Iterator<JsonNode> iter = tools.iterator(); iter.hasNext(); ) {
-                    JsonNode tool = iter.next();
-                    JsonNode name = tool.get("name");
-                    if (name != null && !allowedTools.contains(name.asText())) {
-                        iter.remove();
-                    }
-                }
-            }
-            respond(tree);
         } catch (Exception e) {
-            log.error("Failed to parse tools/list response from MCP server", e);
-            respond(new HttpException(HttpStatus.BAD_GATEWAY, "Failed to parse tools/list response from MCP server"));
+            McpHttpClientTransportAuthorizationException authError =
+                    ExceptionUtils.throwableOfType(e, McpHttpClientTransportAuthorizationException.class);
+            if (authError != null) {
+                log.warn("Authorization error when fetching tools from MCP server for toolset: {}", toolSetId, e);
+                HttpStatus status = HttpStatus.fromStatusCode(authError.getResponseInfo().statusCode(), HttpStatus.UNAUTHORIZED);
+                throw new HttpException(status, "Authorization required to fetch tools from toolset '"
+                        + toolSetId + "'. Please sign in to the toolset.");
+            }
+            log.error("Failed to fetch tools from MCP server for toolset: {}", toolSetId, e);
+            throw new HttpException(HttpStatus.BAD_GATEWAY, "Failed to fetch tools from MCP server");
         }
     }
 
-    @SneakyThrows
-    private JsonNode parseResponseBody(Buffer responseBody, boolean isSse) {
-        JsonNode tree;
-        if (isSse) {
-            MutableObject<SseEvent> sseEventRef = new MutableObject<>();
-            SseParser parser = new SseParser(512, new SseEventListener() {
-                @Override
-                public void onEvent(SseEvent event) {
-                    if (sseEventRef.get() != null) {
-                        log.warn("Multiple events in a single SSE response");
-                        throw new RuntimeException("Multiple events in a single SSE response");
-                    }
-                    sseEventRef.setValue(event);
+    private void customizeRequest(HttpRequest.Builder builder, Deployment deployment) {
+        if (deployment instanceof ToolSet toolSet) {
+            ResourceAuthSettings authSettings = authSettingsResolver.resolve(toolSet, context);
+            ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
+                    credentialsLocator, authSettings, context.getInitiatorId()
+            );
+            if (resourceCredentials != null) {
+                AuthorizationHeader authorizationHeader =
+                        authorizationHeaderProvider.createAuthorizationHeader(resourceCredentials);
+                if (authorizationHeader != null) {
+                    builder.header(authorizationHeader.getHeaderName(), authorizationHeader.getHeaderValue());
                 }
-
-                @Override
-                public void onComment(String comment) {
-
-                }
-
-                @Override
-                public void onComplete() {
-
-                }
-            });
-            parser.parse(responseBody);
-            parser.finish();
-            tree = Optional.ofNullable(sseEventRef.get()).map(SseEvent::getData).map(json -> {
-                try {
-                    return ProxyUtil.MAPPER.readTree(json);
-                } catch (JsonProcessingException e) {
-                    throw new RuntimeException(e);
-                }
-            }).orElseThrow(() -> new RuntimeException("No SSE event in the response"));
-        } else {
-            tree = ProxyUtil.MAPPER.readTree(responseBody.getBytes());
+            }
+            if (toolSet.isForwardPerRequestKey()) {
+                builder.header(Proxy.HEADER_API_KEY, assignPerRequestKey());
+            }
+        } else if (deployment instanceof Application application) {
+            Application.Mcp mcp = application.getMcp();
+            if (mcp.isForwardPerRequestKey()) {
+                builder.header(Proxy.HEADER_API_KEY, assignPerRequestKey());
+            }
         }
-        return tree;
+    }
+
+    private void processAdminToolsResult(McpSchema.ListToolsResult result) {
+        ObjectNode responseBody = ProxyUtil.MAPPER.createObjectNode();
+        ArrayNode toolsArray = responseBody.putArray("tools");
+        for (McpSchema.Tool tool : result.tools()) {
+            toolsArray.add(ProxyUtil.MAPPER.valueToTree(tool));
+        }
+        if (result.nextCursor() != null) {
+            responseBody.put("nextCursor", result.nextCursor());
+        }
+        finalizeRequest();
+        context.respond(HttpStatus.OK, responseBody);
+    }
+
+    private void processUserToolsResult(List<McpSchema.Tool> tools) {
+        List<String> allowedTools = getAllowedTools(context.getDeployment());
+        ObjectNode responseBody = ProxyUtil.MAPPER.createObjectNode();
+        ArrayNode toolsArray = responseBody.putArray("tools");
+        for (McpSchema.Tool tool : tools) {
+            if (allowedTools.isEmpty() || allowedTools.contains(tool.name())) {
+                toolsArray.add(ProxyUtil.MAPPER.valueToTree(tool));
+            }
+        }
+        finalizeRequest();
+        context.respond(HttpStatus.OK, responseBody);
     }
 
     private List<String> getAllowedTools(Deployment deployment) {
@@ -372,34 +280,6 @@ public class ToolSetToolsController implements Controller {
             return application.getMcp().getEndpoint();
         }
         return deployment.getEndpoint();
-    }
-
-    private void injectToolsetCredentials(HttpClientRequest proxyRequest, Deployment deployment) {
-        if (deployment instanceof ToolSet toolSet) {
-            ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
-                    credentialsLocator, toolSet.getAuthSettings(), context.getInitiatorId()
-            );
-            if (resourceCredentials != null) {
-                addAuthorizationHeader(proxyRequest, resourceCredentials);
-            }
-            if (toolSet.isForwardPerRequestKey()) {
-                String perRequestKey = assignPerRequestKey();
-                proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
-            }
-        } else if (deployment instanceof Application application) {
-            Application.Mcp mcp = application.getMcp();
-            if (mcp.isForwardPerRequestKey()) {
-                String perRequestKey = assignPerRequestKey();
-                proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
-            }
-        }
-    }
-
-    private void addAuthorizationHeader(HttpClientRequest proxyRequest, ResourceCredentials resourceCredentials) {
-        AuthorizationHeader authorizationHeader = authorizationHeaderProvider.createAuthorizationHeader(resourceCredentials);
-        if (authorizationHeader != null) {
-            proxyRequest.putHeader(authorizationHeader.getHeaderName(), authorizationHeader.getHeaderValue());
-        }
     }
 
     private String assignPerRequestKey() {
@@ -423,16 +303,6 @@ public class ToolSetToolsController implements Controller {
                 log.error(errorMsg, error);
             }
         }
-    }
-
-    private void respond(HttpException exception) {
-        finalizeRequest();
-        context.respond(exception);
-    }
-
-    private void respond(JsonNode response) {
-        finalizeRequest();
-        context.respond(HttpStatus.OK, response);
     }
 
     private void finalizeRequest() {
