@@ -207,9 +207,14 @@ public class ConfigResourceController implements Controller {
             // client-supplied tag matches.
             final T matchedItem = item;
             final String matched = canonicalId();
-            return respondNotModifiedIfMatched(matched)
-                    .onSuccess(notModified -> {
-                        if (!notModified) {
+            return evaluateConditionalGet()
+                    .onSuccess(result -> {
+                        if (result.respondNotModified()) {
+                            context.respond(result.notModified());
+                        } else {
+                            if (result.etag() != null) {
+                                context.putHeader(HttpHeaders.ETAG, result.etag()).exposeHeaders();
+                            }
                             context.respond(HttpStatus.OK, projector.apply(matched, matchedItem));
                         }
                     })
@@ -225,38 +230,32 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Emits a {@code 304 Not Modified} if the matched entity's stored blob has an ETag
-     * that matches the client's {@code If-None-Match} header. The blob-metadata fetch
-     * runs on the blocking executor to keep the Vert.x event loop unblocked; the response is
-     * written back on the event loop via the future-chain completion.
+     * Fetches blob metadata and evaluates RFC 7232 conditional headers, returning a
+     * {@link GetResult} that carries the outcome: a 304 exception (when {@code If-None-Match}
+     * matches) or the blob-backed ETag for the caller to include on a 200 response.
+     * The metadata fetch runs on the blocking executor; response dispatch stays on the event loop.
      */
-    private Future<Boolean> respondNotModifiedIfMatched(String matchedKey) {
+    private Future<GetResult> evaluateConditionalGet() {
         ResourceDescriptor descriptor = singleEntityDescriptor();
         if (descriptor == null) {
-            return Future.succeededFuture(false);
+            return Future.succeededFuture(GetResult.withoutEtag());
         }
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
-        return taskExecutor.<HttpException>submit(() -> {
+        return taskExecutor.submit(() -> {
             ResourceItemMetadata meta = resourceService.getResourceMetadata(descriptor);
             if (meta == null || meta.getEtag() == null) {
-                return null;
+                return GetResult.withoutEtag();
             }
             try {
                 etag.validate(meta.getEtag());
             } catch (HttpException e) {
                 if (e.getStatus() == HttpStatus.NOT_MODIFIED) {
-                    return e;
+                    return GetResult.withNotModified(e);
                 }
                 // Other status codes (e.g. If-Match failure) are not surfaced here — GET ignores
                 // If-Match per RFC 7232; only If-None-Match drives 304/200 on GET.
             }
-            return null;
-        }).map(notModified -> {
-            if (notModified != null) {
-                context.respond(notModified);
-                return true;
-            }
-            return false;
+            return GetResult.withEtag(meta.getEtag());
         });
     }
 
@@ -299,7 +298,7 @@ public class ConfigResourceController implements Controller {
         return entityType + "/" + bucket + "/" + path;
     }
 
-    private Future<?> handleSchemaGet(Config config, boolean admin) throws JsonProcessingException {
+    private Future<?> handleSchemaGet(Config config, boolean admin) {
         Map<String, String> schemas = config.getApplicationTypeSchemas();
         Map<String, InvalidEntityRecord> invalid = mergedConfigStore.getInvalidEntities()
                 .getOrDefault(ResourceTypes.APP_TYPE_SCHEMA, Map.of());
@@ -313,9 +312,14 @@ public class ConfigResourceController implements Controller {
         if (schemaJson != null) {
             final String matched = canonicalId();
             final String json = schemaJson;
-            return respondNotModifiedIfMatched(matched)
-                    .onSuccess(notModified -> {
-                        if (!notModified) {
+            return evaluateConditionalGet()
+                    .onSuccess(result -> {
+                        if (result.respondNotModified()) {
+                            context.respond(result.notModified());
+                        } else {
+                            if (result.etag() != null) {
+                                context.putHeader(HttpHeaders.ETAG, result.etag()).exposeHeaders();
+                            }
                             try {
                                 context.respond(HttpStatus.OK, projectSchemaItem(matched, json));
                             } catch (JsonProcessingException e) {
@@ -834,5 +838,26 @@ public class ConfigResourceController implements Controller {
             boolean hasEncryptedFields,
             boolean isKey
     ) {}
+
+    private record GetResult(HttpException notModified, String etag) {
+        static GetResult withNotModified(HttpException e) {
+            if (e.getStatus() != HttpStatus.NOT_MODIFIED) {
+                throw new IllegalArgumentException("Expected 304 NOT_MODIFIED, got: " + e.getStatus());
+            }
+            return new GetResult(e, null);
+        }
+
+        static GetResult withEtag(String etag) {
+            return new GetResult(null, etag);
+        }
+
+        static GetResult withoutEtag() {
+            return new GetResult(null, null);
+        }
+
+        boolean respondNotModified() {
+            return notModified != null;
+        }
+    }
 
 }
