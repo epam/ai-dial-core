@@ -21,15 +21,23 @@ public class ResourceUpload {
     private final String contentType;
     private final long updatedAt;
     private final long createdAt;
+    private final String author;
+    /**
+     * Temporary blob path the multipart upload is assembled at before being moved to the target resource.
+     */
+    private final String tempPath;
     private long contentLength;
     private int chunkNumber = 0;
 
-    public ResourceUpload(BlobStorage blobStorage, MultipartUpload mpu, String contentType, long createdAt, long updatedAt) {
+    public ResourceUpload(BlobStorage blobStorage, MultipartUpload mpu, String contentType,
+                          long createdAt, long updatedAt, String author, String tempPath) {
         this.multipartUpload = mpu;
         this.blobStorage = blobStorage;
         this.contentType = contentType;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+        this.author = author;
+        this.tempPath = tempPath;
     }
 
     public void addChunk(ByteBuf chunk) throws IOException {

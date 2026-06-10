@@ -61,6 +61,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
@@ -86,6 +87,10 @@ public class ResourceService implements AutoCloseable {
     public static final String UPDATED_AT_ATTRIBUTE = "updated_at";
     public static final String CREATED_AT_ATTRIBUTE = "created_at";
     public static final String ETAG_ATTRIBUTE = "etag";
+    /**
+     * System folder large files are uploaded to before being moved to the target resource, see issue #1604.
+     */
+    public static final String TEMP_FOLDER = ".dial-tmp";
     private static final String COMPRESS_ATTRIBUTE = "compress";
     private static final String AUTHOR_ATTRIBUTE = "author";
 
@@ -656,9 +661,25 @@ public class ResourceService implements AutoCloseable {
             long updatedAt = time();
             long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
             Map<String, String> userMetadata = toUserMetadata(null, createdAt, updatedAt, resource.getType().name(), author);
-            MultipartUpload mpu = blobStore.initMultipartUpload(resource.getAbsoluteFilePath(), contentType, userMetadata);
-            return new ResourceUpload(blobStore, mpu, contentType, createdAt, updatedAt);
+            // Assemble the upload in an isolated temporary location to avoid concurrent modifications of the
+            // target key while the multipart upload is in progress (see issue #1604).
+            String tempPath = tempBlobPath(resource);
+            MultipartUpload mpu = blobStore.initMultipartUpload(tempPath, contentType, userMetadata);
+            return new ResourceUpload(blobStore, mpu, contentType, createdAt, updatedAt, author, tempPath);
         }
+    }
+
+    private static String tempBlobPath(ResourceDescriptor resource) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(resource.getBucketLocation())
+                .append(TEMP_FOLDER).append(ResourceDescriptor.PATH_SEPARATOR)
+                .append(resource.getType().group()).append(ResourceDescriptor.PATH_SEPARATOR);
+        String parentPath = resource.getParentPath();
+        if (parentPath != null) {
+            builder.append(parentPath).append(ResourceDescriptor.PATH_SEPARATOR);
+        }
+        builder.append(UUID.randomUUID());
+        return builder.toString();
     }
 
     public FileMetadata finishFileUpload(ResourceDescriptor descriptor, ResourceUpload resourceUpload, EtagHeader etagHeader) {
@@ -677,6 +698,16 @@ public class ResourceService implements AutoCloseable {
             Long createdAt = resourceUpload.getCreatedAt();
 
             String etag = blobStore.completeMultipartUpload(multipartUpload, parts);
+            // Move the assembled blob from the temporary location to the target resource. Pass the user metadata
+            // explicitly so the author/timestamps survive the copy regardless of the blob storage provider.
+            String tempPath = resourceUpload.getTempPath();
+            try {
+                Map<String, String> userMetadata = toUserMetadata(
+                        null, createdAt, updatedAt, descriptor.getType().name(), resourceUpload.getAuthor());
+                blobStore.copy(tempPath, descriptor.getAbsoluteFilePath(), userMetadata);
+            } finally {
+                blobStore.delete(tempPath);
+            }
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
