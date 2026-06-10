@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.controller.BucketController;
 import com.epam.aidial.core.server.controller.ClientChannelController;
 import com.epam.aidial.core.server.controller.CodeInterpreterController;
 import com.epam.aidial.core.server.controller.ConfigController;
+import com.epam.aidial.core.server.controller.ConfigResourceMetadataController;
 import com.epam.aidial.core.server.controller.ConsentController;
 import com.epam.aidial.core.server.controller.DeploymentController;
 import com.epam.aidial.core.server.controller.DeploymentFeatureController;
@@ -51,6 +52,7 @@ public final class AnnotationEndpointCollector {
             ClientChannelController.class,
             CodeInterpreterController.class,
             ConfigController.class,
+            ConfigResourceMetadataController.class,
             ConsentController.class,
             DeploymentController.class,
             DeploymentFeatureController.class,
