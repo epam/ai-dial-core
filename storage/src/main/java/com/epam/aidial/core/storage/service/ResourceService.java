@@ -53,6 +53,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -91,6 +96,22 @@ public class ResourceService implements AutoCloseable {
      * System folder large files are uploaded to before being moved to the target resource, see issue #1604.
      */
     public static final String TEMP_FOLDER = ".dial-tmp";
+    /**
+     * Files uploaded to the {@link #TEMP_FOLDER} are grouped into sub-folders named after the hour they were uploaded
+     * in, e.g. {@code .dial-tmp/2024-01-31 13/<uuid>}.
+     */
+    private static final DateTimeFormatter TEMP_FOLDER_FORMATTER = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd HH")
+            .parseDefaulting(ChronoField.MINUTE_OF_HOUR, 0)
+            .toFormatter();
+    /**
+     * How frequently the scheduled job scans the {@link #TEMP_FOLDER} for expired files.
+     */
+    private static final long TEMP_CLEANUP_PERIOD = Duration.ofHours(24).toMillis();
+    /**
+     * A temp file is considered expired and removed once its upload hour ended more than this duration ago.
+     */
+    private static final Duration TEMP_FILE_TTL = Duration.ofHours(1);
     private static final String COMPRESS_ATTRIBUTE = "compress";
     private static final String AUTHOR_ATTRIBUTE = "author";
 
@@ -129,6 +150,7 @@ public class ResourceService implements AutoCloseable {
     private final int maxSize;
     private final int maxSizeToCache;
     private final TimerService.Timer syncTimer;
+    private final TimerService.Timer tempCleanupTimer;
     private final long syncDelay;
     private final int syncBatch;
     private final Duration cacheExpiration;
@@ -169,12 +191,14 @@ public class ResourceService implements AutoCloseable {
         this.resourceTypeExpiration = Objects.requireNonNullElseGet(settings.resourceTypesExpiration, Map::of);
         this.senderPodIdSupplier = senderPodIdSupplier;
         this.syncTimer = timerService.scheduleWithFixedDelay(settings.syncPeriod, settings.syncPeriod, this::sync);
+        this.tempCleanupTimer = timerService.scheduleWithFixedDelay(TEMP_CLEANUP_PERIOD, TEMP_CLEANUP_PERIOD, this::cleanupTempFolder);
     }
 
     @SneakyThrows
     @Override
     public void close() {
         syncTimer.close();
+        tempCleanupTimer.close();
     }
 
     public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescriptor> resources,
@@ -663,23 +687,77 @@ public class ResourceService implements AutoCloseable {
             Map<String, String> userMetadata = toUserMetadata(null, createdAt, updatedAt, resource.getType().name(), author);
             // Assemble the upload in an isolated temporary location to avoid concurrent modifications of the
             // target key while the multipart upload is in progress (see issue #1604).
-            String tempPath = tempBlobPath(resource);
+            String tempPath = tempBlobPath();
             MultipartUpload mpu = blobStore.initMultipartUpload(tempPath, contentType, userMetadata);
-            return new ResourceUpload(blobStore, mpu, contentType, createdAt, updatedAt, author, tempPath);
+            return new ResourceUpload(blobStore, mpu, contentType, userMetadata, tempPath);
         }
     }
 
-    private static String tempBlobPath(ResourceDescriptor resource) {
-        StringBuilder builder = new StringBuilder();
-        builder.append(resource.getBucketLocation())
-                .append(TEMP_FOLDER).append(ResourceDescriptor.PATH_SEPARATOR)
-                .append(resource.getType().group()).append(ResourceDescriptor.PATH_SEPARATOR);
-        String parentPath = resource.getParentPath();
-        if (parentPath != null) {
-            builder.append(parentPath).append(ResourceDescriptor.PATH_SEPARATOR);
+    private static String tempBlobPath() {
+        String separator = ResourceDescriptor.PATH_SEPARATOR;
+        String folder = LocalDateTime.now().format(TEMP_FOLDER_FORMATTER);
+        return TEMP_FOLDER + separator + folder + separator + UUID.randomUUID();
+    }
+
+    /**
+     * Scans the {@link #TEMP_FOLDER} and removes expired files. A file is expired when the hour denoted by its parent
+     * folder name (see {@link #TEMP_FOLDER_FORMATTER}) ended more than {@link #TEMP_FILE_TTL} ago. The job runs every
+     * {@link #TEMP_CLEANUP_PERIOD} to clean up leftovers from interrupted or abandoned uploads, see issue #1604.
+     */
+    @VisibleForTesting
+    Void cleanupTempFolder() {
+        log.debug("Cleaning up temp folder");
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            String token = null;
+            do {
+                PageSet<? extends StorageMetadata> set = blobStore.list(TEMP_FOLDER, token, PAGE_SIZE, true);
+                for (StorageMetadata meta : set) {
+                    if (meta.getType() != StorageType.BLOB) {
+                        continue;
+                    }
+                    String path = meta.getName();
+                    if (isExpiredTempFile(path, now)) {
+                        try {
+                            blobStore.delete(path);
+                        } catch (Throwable e) {
+                            log.warn("Failed to delete expired temp file: {}", path, e);
+                        }
+                    }
+                }
+                token = set.getNextMarker();
+            } while (token != null);
+        } catch (Throwable e) {
+            log.warn("Failed to clean up temp folder", e);
         }
-        builder.append(UUID.randomUUID());
-        return builder.toString();
+
+        return null;
+    }
+
+    private static boolean isExpiredTempFile(String path, LocalDateTime now) {
+        String prefix = TEMP_FOLDER + ResourceDescriptor.PATH_SEPARATOR;
+        if (!path.startsWith(prefix)) {
+            return false;
+        }
+
+        int folderStart = prefix.length();
+        int folderEnd = path.indexOf(ResourceDescriptor.PATH_SEPARATOR, folderStart);
+        if (folderEnd < 0) {
+            return false;
+        }
+
+        String folder = path.substring(folderStart, folderEnd);
+        LocalDateTime uploadHour;
+        try {
+            uploadHour = LocalDateTime.parse(folder, TEMP_FOLDER_FORMATTER);
+        } catch (DateTimeParseException e) {
+            log.warn("Unexpected folder name in temp folder: {}", folder);
+            return false;
+        }
+
+        // the folder covers a whole hour, so a file is guaranteed to be older than the TTL only once the next hour
+        // plus the TTL has passed
+        return uploadHour.plusHours(1).plus(TEMP_FILE_TTL).isBefore(now);
     }
 
     public FileMetadata finishFileUpload(ResourceDescriptor descriptor, ResourceUpload resourceUpload, EtagHeader etagHeader) {
@@ -694,20 +772,21 @@ public class ResourceService implements AutoCloseable {
             MultipartUpload multipartUpload = resourceUpload.getMultipartUpload();
             List<MultipartPart> parts = resourceUpload.getParts();
 
-            long updatedAt = resourceUpload.getUpdatedAt();
-            Long createdAt = resourceUpload.getCreatedAt();
-
-            String etag = blobStore.completeMultipartUpload(multipartUpload, parts);
+            blobStore.completeMultipartUpload(multipartUpload, parts);
             // Move the assembled blob from the temporary location to the target resource. Pass the user metadata
             // explicitly so the author/timestamps survive the copy regardless of the blob storage provider.
             String tempPath = resourceUpload.getTempPath();
+            String etag = resourceUpload.calculateEtag();
+            Map<String, String> userMetadata = resourceUpload.getUserMetadata();
+            userMetadata.put(ETAG_ATTRIBUTE, etag);
             try {
-                Map<String, String> userMetadata = toUserMetadata(
-                        null, createdAt, updatedAt, descriptor.getType().name(), resourceUpload.getAuthor());
                 blobStore.copy(tempPath, descriptor.getAbsoluteFilePath(), userMetadata);
             } finally {
                 blobStore.delete(tempPath);
             }
+
+            long updatedAt = Long.parseLong(userMetadata.get(UPDATED_AT_ATTRIBUTE));
+            long createdAt = Long.parseLong(userMetadata.get(CREATED_AT_ATTRIBUTE));
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
