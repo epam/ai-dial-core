@@ -28,7 +28,8 @@ public class TokenService {
                                   ResourceSignInRequest resourceSignInRequest) {
         log.debug("Start Resource {} token retrieval", resourceId);
         String redirectUri = resolveRedirectUri(resourceAuthSettings, resourceSignInRequest);
-        TokenEndpointAuthMethod authMethod = TokenEndpointAuthMethod.resolveOrDefault(resourceAuthSettings.getTokenEndpointAuthMethod());
+        TokenEndpointAuthMethod authMethod = TokenEndpointAuthMethod.resolve(
+                resourceAuthSettings.getTokenEndpointAuthMethod(), resourceAuthSettings.getClientSecret());
 
         TokenRequest.TokenRequestBuilder builder = TokenRequest.builder()
                 .code(resourceSignInRequest.getCode())
@@ -50,7 +51,8 @@ public class TokenService {
                                   ResourceAuthSettings resourceAuthSettings,
                                   String refreshToken) {
         log.debug("Start Resource {} refresh token retrieval", resourceId);
-        TokenEndpointAuthMethod authMethod = TokenEndpointAuthMethod.resolveOrDefault(resourceAuthSettings.getTokenEndpointAuthMethod());
+        TokenEndpointAuthMethod authMethod = TokenEndpointAuthMethod.resolve(
+                resourceAuthSettings.getTokenEndpointAuthMethod(), resourceAuthSettings.getClientSecret());
 
         RefreshTokenRequest.RefreshTokenRequestBuilder builder = RefreshTokenRequest.builder()
                 .grantType("refresh_token")
@@ -100,7 +102,13 @@ public class TokenService {
                                                                  Consumer<String> setClientId,
                                                                  Consumer<String> setClientSecret) {
         return switch (authMethod) {
-            case CLIENT_SECRET_BASIC -> Map.of("Authorization", buildBasicAuthHeader(clientId, clientSecret));
+            case CLIENT_SECRET_BASIC -> {
+                // Include client_id in the body too (RFC 6749 §3.2.1 permits it). Some token endpoints
+                // — e.g. FastMCP's OAuth Proxy — look up the client by the BODY client_id even when the
+                // secret is supplied via the Basic header; omitting it yields "Missing client_id".
+                setClientId.accept(clientId);
+                yield Map.of("Authorization", buildBasicAuthHeader(clientId, clientSecret));
+            }
             case NONE -> {
                 setClientId.accept(clientId);
                 yield Map.of();
