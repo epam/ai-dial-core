@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
@@ -26,7 +27,7 @@ public class ResponsesApiClient {
                 .compose(request -> request
                         .putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey())
                         .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getResponsesEndpoint())
-                        .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, upstream.getExtraData())
+                        .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, UpstreamExtraDataMerger.merge(upstream))
                         .send());
     }
 }
