@@ -105,11 +105,13 @@ class BackgroundJobServiceTest {
     void setUp(Vertx vertx) {
         redissonClient.getKeys().flushall();
         LockService lockService = new LockService(redissonClient, null);
+        BackgroundJobService.Settings testSettings = new BackgroundJobService.Settings();
+        testSettings.setPollIntervalMs(TEST_POLL_INTERVAL_MS);
         service = new BackgroundJobService(
                 vertx, redissonClient, PREFIX, () -> UUID.randomUUID().toString(),
                 lockService, configStore, apiKeyStore,
                 rateLimiter, tokenStatsTracker, responseMappingService,
-                poller, TEST_POLL_INTERVAL_MS);
+                poller, testSettings);
 
         lenient().when(proxyContext.getResponseId()).thenReturn(JOB_ID);
         lenient().when(proxyContext.getProxyApiKeyData().getPerRequestKey()).thenReturn("test-per-request-key");

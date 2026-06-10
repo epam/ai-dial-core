@@ -104,5 +104,11 @@
     "collectClaims": false,
     "collectHeaders": false,
     "headersBlacklist": ["authorization", "api-key", "cookie", "proxy-authorization"]
+  },
+  "backgroundJob": {
+    "pollIntervalMs": 10000,
+    "leaseTtlMs": 60000,
+    "maxSequentialPollFailures": 10,
+    "defaultJobTtlMs": 86400000
   }
 }

@@ -20,9 +20,11 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.util.RedisUtil;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RFuture;
 import org.redisson.api.RedissonClient;
@@ -35,14 +37,22 @@ import java.util.function.Supplier;
 
 @Slf4j
 public class BackgroundJobService {
-    public static final long POLL_INTERVAL_MS = TimeUnit.SECONDS.toMillis(10);
-    private static final long LEASE_TTL_MS = TimeUnit.SECONDS.toMillis(60);
-    private static final int MAX_SEQUENTIAL_POLL_FAILURES = 10;
-    private static final long DEFAULT_JOB_TTL_MS = TimeUnit.DAYS.toMillis(1);
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @Data
+    public static class Settings {
+        private long pollIntervalMs = TimeUnit.SECONDS.toMillis(10);
+        private long leaseTtlMs = TimeUnit.SECONDS.toMillis(60);
+        private int maxSequentialPollFailures = 10;
+        private long defaultJobTtlMs = TimeUnit.DAYS.toMillis(1);
+    }
 
     private final ConcurrentHashMap<String, Lease> streamingLeases = new ConcurrentHashMap<>();
 
     private final long pollIntervalMs;
+    private final long leaseTtlMs;
+    private final int maxSequentialPollFailures;
+    private final long defaultJobTtlMs;
     private final Vertx vertx;
     private final RedissonClient redis;
     private final String prefix;
@@ -68,8 +78,11 @@ public class BackgroundJobService {
             TokenStatsTracker tokenStatsTracker,
             ResponseMappingService responseMappingService,
             BackgroundJobPoller poller,
-            long pollIntervalMs) {
-        this.pollIntervalMs = pollIntervalMs;
+            Settings settings) {
+        this.pollIntervalMs = settings.getPollIntervalMs();
+        this.leaseTtlMs = settings.getLeaseTtlMs();
+        this.maxSequentialPollFailures = settings.getMaxSequentialPollFailures();
+        this.defaultJobTtlMs = settings.getDefaultJobTtlMs();
         this.vertx = vertx;
         this.redis = redis;
         this.prefix = prefix;
@@ -205,8 +218,8 @@ public class BackgroundJobService {
                 })
                 .onFailure(error -> {
                     int n = failureCount.incrementAndGet();
-                    if (n < MAX_SEQUENTIAL_POLL_FAILURES) {
-                        log.warn("Poll failed for background job {} ({}/{})", id, n, MAX_SEQUENTIAL_POLL_FAILURES, error);
+                    if (n < maxSequentialPollFailures) {
+                        log.warn("Poll failed for background job {} ({}/{})", id, n, maxSequentialPollFailures, error);
                         scheduleNextPoll(id, mapping, failureCount, done);
                     } else {
                         log.error("Background job {} exceeded max poll failures, giving up", id, error);
@@ -281,7 +294,7 @@ public class BackgroundJobService {
     private Future<Void> persistRecordAsync(String id, BackgroundJobRecord record) {
         String json = ProxyUtil.convertToString(record);
         return toFuture(redis.<String>getBucket(toRedisKey(id), StringCodec.INSTANCE)
-                .setAsync(json, DEFAULT_JOB_TTL_MS, TimeUnit.MILLISECONDS));
+                .setAsync(json, defaultJobTtlMs, TimeUnit.MILLISECONDS));
     }
 
     private Future<Boolean> deleteRecordAsync(String jobId) {
@@ -298,13 +311,13 @@ public class BackgroundJobService {
     private Future<Lease> tryAcquireLeaseAsync(String jobId) {
         String key = "background_job_poll:" + jobId;
         String lockId = generator.get();
-        return toFuture(lockService.tryCreateClaimAsync(key, lockId, LEASE_TTL_MS))
+        return toFuture(lockService.tryCreateClaimAsync(key, lockId, leaseTtlMs))
                 .map(remaining -> {
                     if (remaining != 0L) {
                         return null;
                     }
-                    long timerId = vertx.setPeriodic(LEASE_TTL_MS / 2, id -> {
-                        toFuture(lockService.tryUpdateClaimAsync(key, lockId, LEASE_TTL_MS))
+                    long timerId = vertx.setPeriodic(leaseTtlMs / 2, id -> {
+                        toFuture(lockService.tryUpdateClaimAsync(key, lockId, leaseTtlMs))
                                 .onSuccess(renewed -> {
                                     if (!renewed) {
                                         log.warn("Lease lost for background job {}", jobId);

@@ -320,10 +320,12 @@ public class AiDial {
 
             ResponsesApiClient responsesApiClient = new ResponsesApiClient(client, clientOptions);
             BackgroundJobPoller backgroundJobPoller = new BackgroundJobPoller(configStore, upstreamRouteProvider, responsesApiClient);
+            BackgroundJobService.Settings backgroundJobSettings =
+                    Json.decodeValue(settings("backgroundJob").toBuffer(), BackgroundJobService.Settings.class);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(), generator, lockService,
                     configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
-                    responseMappingService, backgroundJobPoller, BackgroundJobService.POLL_INTERVAL_MS);
+                    responseMappingService, backgroundJobPoller, backgroundJobSettings);
             backgroundJobService.init();
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
