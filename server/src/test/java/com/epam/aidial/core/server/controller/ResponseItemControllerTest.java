@@ -18,15 +18,11 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClient;
-import io.vertx.core.http.HttpClientOptions;
-import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
-import io.vertx.core.http.RequestOptions;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import io.vertx.core.json.JsonObject;
 import io.vertx.junit5.VertxExtension;
@@ -145,8 +141,6 @@ public class ResponseItemControllerTest {
         deployment.setResponsesEndpoint("http://adapter/responses");
         Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-id-123\",\"status\":\"completed\"}");
 
@@ -154,10 +148,8 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getClient()).thenReturn(httpClient);
-        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
-        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
-        when(proxyRequest.send()).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class)))
+                .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
@@ -173,11 +165,11 @@ public class ResponseItemControllerTest {
 
         await(testContext);
 
-        ArgumentCaptor<RequestOptions> optsCaptor = ArgumentCaptor.forClass(RequestOptions.class);
-        verify(httpClient).request(optsCaptor.capture());
-        assertEquals("/responses/upstream-id-123", optsCaptor.getValue().getURI());
-        assertEquals("adapter", optsCaptor.getValue().getHost());
-        assertEquals(HttpMethod.GET, optsCaptor.getValue().getMethod());
+        ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<HttpMethod> methodCaptor = ArgumentCaptor.forClass(HttpMethod.class);
+        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class));
+        assertEquals("http://adapter/responses/upstream-id-123", urlCaptor.getValue());
+        assertEquals(HttpMethod.GET, methodCaptor.getValue());
 
         ArgumentCaptor<Buffer> bodyCaptor = ArgumentCaptor.forClass(Buffer.class);
         verify(response).end(bodyCaptor.capture());
@@ -250,8 +242,6 @@ public class ResponseItemControllerTest {
         deployment.setResponsesEndpoint("http://adapter/responses");
         Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-id-123\",\"status\":\"cancelled\"}");
 
@@ -259,10 +249,8 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getClient()).thenReturn(httpClient);
-        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
-        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
-        when(proxyRequest.send()).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class)))
+                .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
@@ -278,11 +266,11 @@ public class ResponseItemControllerTest {
 
         await(testContext);
 
-        ArgumentCaptor<RequestOptions> optsCaptor = ArgumentCaptor.forClass(RequestOptions.class);
-        verify(httpClient).request(optsCaptor.capture());
-        assertEquals("/responses/upstream-id-123/cancel", optsCaptor.getValue().getURI());
-        assertEquals("adapter", optsCaptor.getValue().getHost());
-        assertEquals(HttpMethod.POST, optsCaptor.getValue().getMethod());
+        ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<HttpMethod> methodCaptor = ArgumentCaptor.forClass(HttpMethod.class);
+        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class));
+        assertEquals("http://adapter/responses/upstream-id-123/cancel", urlCaptor.getValue());
+        assertEquals(HttpMethod.POST, methodCaptor.getValue());
     }
 
     @Test
@@ -298,8 +286,6 @@ public class ResponseItemControllerTest {
         deployment.setResponsesEndpoint("http://adapter/responses");
         Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
@@ -307,10 +293,8 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getClient()).thenReturn(httpClient);
-        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
-        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
-        when(proxyRequest.send()).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class)))
+                .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(null);
@@ -342,8 +326,6 @@ public class ResponseItemControllerTest {
         deployment.setResponsesEndpoint("http://adapter/responses");
         Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
@@ -351,10 +333,8 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getClient()).thenReturn(httpClient);
-        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
-        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
-        when(proxyRequest.send()).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class)))
+                .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(400);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"id\":\"upstream-id-del\"}")));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
@@ -473,18 +453,14 @@ public class ResponseItemControllerTest {
         deployment.setResponsesEndpoint("http://adapter/responses");
         Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getClient()).thenReturn(httpClient);
-        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
-        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
-        when(proxyRequest.send()).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class)))
+                .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer("")));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(null);
@@ -519,8 +495,6 @@ public class ResponseItemControllerTest {
         deployment.setResponsesEndpoint("http://adapter/responses");
         Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
         String upstreamId = "upstream-id-stream";
@@ -538,12 +512,10 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getClient()).thenReturn(httpClient);
-        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class)))
+                .thenReturn(Future.succeededFuture(proxyResponse));
         when(context.getRequest()).thenReturn(serverRequest);
         when(serverRequest.query()).thenReturn("stream=true");
-        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
-        when(proxyRequest.send()).thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("text/event-stream");
         when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
@@ -585,9 +557,9 @@ public class ResponseItemControllerTest {
 
         await(testContext);
 
-        ArgumentCaptor<RequestOptions> optsCaptor = ArgumentCaptor.forClass(RequestOptions.class);
-        verify(httpClient).request(optsCaptor.capture());
-        assertEquals("/responses/upstream-id-stream?stream=true", optsCaptor.getValue().getURI());
+        ArgumentCaptor<String> urlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), any(HttpMethod.class), any(Upstream.class));
+        assertEquals("http://adapter/responses/upstream-id-stream?stream=true", urlCaptor.getValue());
 
         // First event (response.created) forwarded as a regular chunk with rewritten id
         assertEquals(1, writtenChunks.size());

@@ -3,8 +3,6 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.Upstream;
-import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -14,7 +12,6 @@ import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
-import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
@@ -23,15 +20,9 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.util.RedisUtil;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
-import io.vertx.core.http.HttpClient;
-import io.vertx.core.http.HttpClientOptions;
-import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.RequestOptions;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RFuture;
 import org.redisson.api.RedissonClient;
@@ -44,27 +35,26 @@ import java.util.function.Supplier;
 
 @Slf4j
 public class BackgroundJobService {
-    private static final long POLL_INTERVAL_MS = TimeUnit.SECONDS.toMillis(10);
+    public static final long POLL_INTERVAL_MS = TimeUnit.SECONDS.toMillis(10);
     private static final long LEASE_TTL_MS = TimeUnit.SECONDS.toMillis(60);
     private static final int MAX_SEQUENTIAL_POLL_FAILURES = 10;
     private static final long DEFAULT_JOB_TTL_MS = TimeUnit.DAYS.toMillis(1);
 
     private final ConcurrentHashMap<String, Lease> streamingLeases = new ConcurrentHashMap<>();
 
+    private final long pollIntervalMs;
     private final Vertx vertx;
     private final RedissonClient redis;
     private final String prefix;
     private final Supplier<String> generator;
     private final String jobIndexKey;
     private final LockService lockService;
-    private final HttpClient httpClient;
-    private final HttpClientOptions clientOptions;
     private final ConfigStore configStore;
-    private final UpstreamRouteProvider upstreamRouteProvider;
     private final ApiKeyStore apiKeyStore;
     private final RateLimiter rateLimiter;
     private final TokenStatsTracker tokenStatsTracker;
     private final ResponseMappingService responseMappingService;
+    private final BackgroundJobPoller poller;
 
     public BackgroundJobService(
             Vertx vertx,
@@ -72,28 +62,26 @@ public class BackgroundJobService {
             String prefix,
             Supplier<String> generator,
             LockService lockService,
-            HttpClient httpClient,
-            HttpClientOptions clientOptions,
             ConfigStore configStore,
-            UpstreamRouteProvider upstreamRouteProvider,
             ApiKeyStore apiKeyStore,
             RateLimiter rateLimiter,
             TokenStatsTracker tokenStatsTracker,
-            ResponseMappingService responseMappingService) {
+            ResponseMappingService responseMappingService,
+            BackgroundJobPoller poller,
+            long pollIntervalMs) {
+        this.pollIntervalMs = pollIntervalMs;
         this.vertx = vertx;
         this.redis = redis;
         this.prefix = prefix;
         this.generator = generator;
         this.jobIndexKey = "background_job_index:" + BlobStorageUtil.toStoragePath(prefix, ResponseIdUtil.BACKGROUND_JOB_BUCKET_LOCATION);
         this.lockService = lockService;
-        this.httpClient = httpClient;
-        this.clientOptions = clientOptions;
         this.configStore = configStore;
-        this.upstreamRouteProvider = upstreamRouteProvider;
         this.apiKeyStore = apiKeyStore;
         this.rateLimiter = rateLimiter;
         this.tokenStatsTracker = tokenStatsTracker;
         this.responseMappingService = responseMappingService;
+        this.poller = poller;
     }
 
     public void init() {
@@ -178,7 +166,8 @@ public class BackgroundJobService {
                                             }
 
                                             Promise<TokenUsage> done = Promise.promise();
-                                            scheduleNextPoll(id, mapping, new AtomicInteger(), done);
+                                            AtomicInteger failureCount = new AtomicInteger();
+                                            scheduleNextPoll(id, mapping, failureCount, done);
                                             return done.future()
                                                     .compose(usage ->
                                                             processResult(new PollingResult(id, record, mapping, usage)));
@@ -205,7 +194,7 @@ public class BackgroundJobService {
 
     private void scheduleNextPoll(
             String id, ResponseMapping mapping, AtomicInteger failureCount, Promise<TokenUsage> done) {
-        vertx.setTimer(POLL_INTERVAL_MS, ignored -> poll(mapping)
+        vertx.setTimer(pollIntervalMs, ignored -> poller.poll(mapping)
                 .onSuccess(usage -> {
                     if (usage == null) {
                         failureCount.set(0);
@@ -222,55 +211,6 @@ public class BackgroundJobService {
                     } else {
                         log.error("Background job {} exceeded max poll failures, giving up", id, error);
                         done.tryComplete(null);
-                    }
-                }));
-    }
-
-    private Future<TokenUsage> poll(ResponseMapping mapping) {
-        Config config = configStore.get();
-        Deployment deployment = config.selectDeployment(mapping.getDeploymentName());
-        if (deployment == null) {
-            return Future.failedFuture("Deployment {} not found");
-        }
-
-        if (deployment.getResponsesEndpoint() == null) {
-            return Future.failedFuture("Deployment " + deployment.getName() + " does not have a responses endpoint");
-        }
-
-        Upstream upstream;
-        try {
-            upstream = upstreamRouteProvider.get(deployment, null, mapping.getUpstreamKey())
-                    .next();
-        } catch (Exception e) {
-            return Future.failedFuture("Failed to get upstream for deployment " + deployment.getName() + " and upstream key " + mapping.getUpstreamKey() + ": " + e.getMessage());
-        }
-
-        String targetUrl = deployment.getResponsesEndpoint() + "/" + mapping.getUpstreamResponseId();
-        RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(targetUrl)
-                .setMethod(HttpMethod.GET)
-                .setConnectTimeout(clientOptions.getConnectTimeout())
-                .setIdleTimeout(clientOptions.getIdleTimeout());
-
-        return httpClient.request(options)
-                .compose(request -> request.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey())
-                        .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getResponsesEndpoint())
-                        .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, upstream.getExtraData())
-                        .send())
-                .compose(response -> response.body().map(body -> {
-                    try {
-                        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(body.getBytes());
-                        if (isTerminal(tree.path("status").asText())) {
-                            JsonNode usageNode = tree.path("usage");
-                            if (usageNode.isNull()) {
-                                throw new IllegalArgumentException("Missing usage field in response body");
-                            }
-                            return ProxyUtil.MAPPER.treeToValue(usageNode, TokenUsage.class);
-                        } else {
-                            return null;
-                        }
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
                     }
                 }));
     }
@@ -395,10 +335,6 @@ public class BackgroundJobService {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey(key);
         return apiKeyStore.invalidatePerRequestApiKey(apiKeyData);
-    }
-
-    private static boolean isTerminal(String status) {
-        return !("queued".equals(status) || "in_progress".equals(status));
     }
 
     private record PollingResult(

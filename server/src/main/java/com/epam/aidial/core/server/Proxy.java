@@ -33,6 +33,7 @@ import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.ResponseMappingService;
+import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.SecuredResourceService;
 import com.epam.aidial.core.server.service.ShareService;
@@ -176,6 +177,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ResponseMappingService responseMappingService;
     private final ComplexResourceService complexResourceService;
     private final BackgroundJobService backgroundJobService;
+    private final ResponsesApiClient responsesApiClient;
     // Generates the unique portion of a DIAL response ID
     private final Supplier<String> generator;
 

@@ -19,7 +19,6 @@ import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -31,7 +30,6 @@ import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerResponse;
-import io.vertx.core.http.RequestOptions;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
@@ -172,17 +170,8 @@ public class ResponseItemController implements Controller {
         String query = context.getRequest().query();
         String targetUrl = responsesBase(deployment) + "/" + mapping.getUpstreamResponseId() + operation.suffix
                 + (query != null ? "?" + query : "");
-        RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(targetUrl)
-                .setMethod(operation.method)
-                .setConnectTimeout(proxy.getClientOptions().getConnectTimeout())
-                .setIdleTimeout(proxy.getClientOptions().getIdleTimeout());
 
-        return proxy.getClient().request(options)
-                .compose(request -> request.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey())
-                        .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getResponsesEndpoint())
-                        .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, UpstreamExtraDataMerger.merge(upstream))
-                        .send())
+        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream)
                 .compose(response -> {
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
                     if (operation == Operation.GET

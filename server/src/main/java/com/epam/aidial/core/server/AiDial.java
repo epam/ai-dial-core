@@ -48,6 +48,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.BackgroundJobPoller;
 import com.epam.aidial.core.server.service.BackgroundJobService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -60,6 +61,7 @@ import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.PublicationUtil;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.ResponseMappingService;
+import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.SecuredResourceService;
 import com.epam.aidial.core.server.service.ShareService;
@@ -316,9 +318,12 @@ public class AiDial {
             complexResourceSweepService = new ComplexResourceSweepService(timerService, storage, redis, lockService,
                     complexResourceService, encryptionService, complexResourceSweepSettings);
 
+            ResponsesApiClient responsesApiClient = new ResponsesApiClient(client, clientOptions);
+            BackgroundJobPoller backgroundJobPoller = new BackgroundJobPoller(configStore, upstreamRouteProvider, responsesApiClient);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
-                    vertx, redis, storage.getPrefix(), generator, lockService, client, clientOptions,
-                    configStore, upstreamRouteProvider, apiKeyStore, rateLimiter, tokenStatsTracker, responseMappingService);
+                    vertx, redis, storage.getPrefix(), generator, lockService,
+                    configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
+                    responseMappingService, backgroundJobPoller, BackgroundJobService.POLL_INTERVAL_MS);
             backgroundJobService.init();
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
@@ -330,7 +335,7 @@ public class AiDial {
                     toolSetService, securedResourceService, toolSetRepairService, applicationSchemaService, authorizationHeaderProvider,
                     resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
-                    responseMappingService, complexResourceService, backgroundJobService, generator);
+                    responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
