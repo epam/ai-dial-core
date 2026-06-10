@@ -1,0 +1,13 @@
+package com.epam.aidial.cli.data;
+
+import com.fasterxml.jackson.annotation.JsonValue;
+
+public enum OutputFormat {
+    JSON, YAML, TABLE;
+
+    @JsonValue
+    @Override
+    public String toString() {
+        return name().toLowerCase();
+    }
+}

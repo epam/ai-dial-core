@@ -1,5 +1,20 @@
 package com.epam.aidial.cli;
 
+import com.epam.aidial.cli.command.ApplicationCommand;
+import com.epam.aidial.cli.command.ApplyCommand;
+import com.epam.aidial.cli.command.CompletionCommand;
+import com.epam.aidial.cli.command.EnvCommand;
+import com.epam.aidial.cli.command.GetCommand;
+import com.epam.aidial.cli.command.InterceptorCommand;
+import com.epam.aidial.cli.command.KeyCommand;
+import com.epam.aidial.cli.command.ModelCommand;
+import com.epam.aidial.cli.command.RoleCommand;
+import com.epam.aidial.cli.command.RouteCommand;
+import com.epam.aidial.cli.command.SchemaCommand;
+import com.epam.aidial.cli.command.SettingsCommand;
+import com.epam.aidial.cli.command.ToolsetCommand;
+import com.epam.aidial.cli.service.CliOptionsDto;
+import com.epam.aidial.cli.service.OutputFormatDto;
 import io.quarkus.picocli.runtime.annotations.TopCommand;
 import io.quarkus.runtime.Quarkus;
 import picocli.CommandLine.Command;
@@ -36,26 +51,30 @@ public class DialCli {
     // parses the option when it appears before the subcommand chain.
     @Option(names = {"-e", "--env"}, scope = ScopeType.INHERIT,
             description = "Target environment (overrides defaults.env in profile).")
-    String env;
+    public String env;
 
     @Option(names = "--config", scope = ScopeType.INHERIT,
             description = "CLI config file (default: ~/.dial-cli/config.yaml).")
-    Path configPath;
+    public Path configPath;
 
     @Option(names = "--api-url", scope = ScopeType.INHERIT, description = "Override API URL.")
-    String apiUrl;
+    public String apiUrl;
 
     @Option(names = "--api-key-file", scope = ScopeType.INHERIT,
             description = "Read API key from file (CI secret mounts, SOPS-decrypted files).")
-    Path apiKeyFile;
+    public Path apiKeyFile;
 
     @Option(names = {"-o", "--output"}, scope = ScopeType.INHERIT,
             description = "Output format: ${COMPLETION-CANDIDATES} (default: table).")
-    OutputFormat output;
+    public OutputFormatDto output;
 
     @Option(names = "--dry-run", scope = ScopeType.INHERIT,
             description = "Preview changes without applying.")
-    boolean dryRun;
+    public boolean dryRun;
+
+    public CliOptionsDto toCliOptionsDto() {
+        return new CliOptionsDto(env, configPath, apiUrl, apiKeyFile, output, dryRun);
+    }
 
     public static void main(String[] args) {
         Quarkus.run(args);
