@@ -123,12 +123,24 @@ public class ResponseItemController implements Controller {
     })
     public Future<?> handle() {
         return proxy.getTaskExecutor().submit(this::loadMapping)
+                .compose(this::checkNotActive)
                 .compose(this::forwardToUpstream)
                 .onFailure(error -> {
                     if (!context.getResponse().ended()) {
                         context.respond(error, "Failed to process response operation");
                     }
                 });
+    }
+
+    private Future<ResponseMapping> checkNotActive(ResponseMapping mapping) {
+        if (operation != Operation.DELETE) {
+            return Future.succeededFuture(mapping);
+        }
+        return proxy.getBackgroundJobService().isJobActive(dialResponseId)
+                .compose(active -> active
+                        ? Future.failedFuture(new HttpException(HttpStatus.CONFLICT,
+                                "Cannot delete response while background job is in progress"))
+                        : Future.succeededFuture(mapping));
     }
 
     private ResponseMapping loadMapping() {

@@ -101,7 +101,7 @@ public class BackgroundJobService {
     }
 
     public Future<String> saveJob(ProxyContext context) {
-        String jobId = context.getProxy().getGenerator().get();
+        String jobId = context.getResponseId();
         BackgroundJobRecord record = BackgroundJobRecord.builder()
                 .dialResponseId(context.getResponseId())
                 .perRequestKey(context.getProxyApiKeyData().getPerRequestKey())
@@ -112,6 +112,11 @@ public class BackgroundJobService {
                 .build();
         return persistRecordAsync(jobId, record)
                 .map(jobId);
+    }
+
+    public Future<Boolean> isJobActive(String dialResponseId) {
+        return toFuture(redis.<String>getBucket(toRedisKey(dialResponseId), StringCodec.INSTANCE)
+                .isExistsAsync());
     }
 
     public void submit(String id) {
@@ -166,7 +171,7 @@ public class BackgroundJobService {
                                 if (record == null) {
                                     return removeFromQueue(id).mapEmpty();
                                 }
-                                return vertx.executeBlocking(() -> responseMappingService.getMapping(record.getDialResponseId()))
+                                return vertx.executeBlocking(() -> responseMappingService.getMapping(id))
                                         .compose(mapping -> {
                                             if (mapping == null) {
                                                 return Future.failedFuture("Response mapping not found for DIAL response ID " + record.getDialResponseId());
@@ -288,7 +293,7 @@ public class BackgroundJobService {
             String bucketLocation = responseMapping.getInitiatorBucket();
             rateLimitFuture = rateLimiter.increase(deployment, bucketLocation, usage, null, null)
                     .recover(error -> {
-                        log.warn("Failed to update rate limit for background job {} (response_id: {})", result.jobId(), jobRecord.getDialResponseId(), error);
+                        log.warn("Failed to update rate limit for background job {}", result.jobId(), error);
                         return Future.succeededFuture();
                     });
         }
@@ -296,7 +301,7 @@ public class BackgroundJobService {
         Future.all(tokenFuture, rateLimitFuture)
                 .eventually(() -> invalidatePerRequestKey(jobRecord))
                 .onFailure(error ->
-                        log.error("Failed to finalize background job {} (response_id: {})", result.jobId(), jobRecord.getDialResponseId(), error));
+                        log.error("Failed to finalize background job {}", result.jobId(), error));
     }
 
     private void resumeActiveJobs() {
