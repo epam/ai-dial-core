@@ -355,7 +355,27 @@ public class ResponsesController extends BaseDeploymentPostController {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
-        collectTokenUsage(responseBody).onComplete(result -> {
+
+        String jobId = context.getBackgroundJobId();
+
+        Future<Void> completionFuture;
+        if (jobId == null) {
+            completionFuture = collectTokenUsage(responseBody).mapEmpty();
+        } else {
+            completionFuture = proxy.getBackgroundJobService().cancelStreamingJob(jobId)
+                    .compose(deleted -> {
+                        if (!deleted) {
+                            return Future.<Void>succeededFuture();
+                        }
+                        Future<Void> usageFuture = collectTokenUsage(responseBody).mapEmpty();
+                        return usageFuture.recover(e -> {
+                            log.warn("Failed to collect token usage for streaming job {}", jobId, e);
+                            return Future.succeededFuture();
+                        });
+                    });
+        }
+
+        completionFuture.onComplete(result -> {
             if (result.failed()) {
                 log.warn("Failed to collect token usage", result.cause());
             }

@@ -37,64 +37,66 @@ import org.redisson.api.RFuture;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
-import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 @Slf4j
 public class BackgroundJobService {
     private static final long POLL_INTERVAL_MS = TimeUnit.SECONDS.toMillis(10);
-    static final long LEASE_TTL_MS = TimeUnit.SECONDS.toMillis(60);
+    private static final long LEASE_TTL_MS = TimeUnit.SECONDS.toMillis(60);
     private static final int MAX_SEQUENTIAL_POLL_FAILURES = 10;
     private static final long DEFAULT_JOB_TTL_MS = TimeUnit.DAYS.toMillis(1);
 
-    private static final String TERMINAL_COMPLETED = "completed";
-    private static final String TERMINAL_FAILED = "failed";
-    private static final String TERMINAL_CANCELLED = "cancelled";
-    private static final String TERMINAL_INCOMPLETE = "incomplete";
+    private final ConcurrentHashMap<String, Lease> streamingLeases = new ConcurrentHashMap<>();
 
-    private Vertx vertx;
+    private final Vertx vertx;
     private final RedissonClient redis;
     private final String prefix;
+    private final Supplier<String> generator;
     private final String jobIndexKey;
-    private final ApiKeyStore apiKeyStore;
-    private final TokenStatsTracker tokenStatsTracker;
-    private final RateLimiter rateLimiter;
-    private final ConfigStore configStore;
-    private final UpstreamRouteProvider upstreamRouteProvider;
+    private final LockService lockService;
     private final HttpClient httpClient;
     private final HttpClientOptions clientOptions;
-    private final LockService lockService;
+    private final ConfigStore configStore;
+    private final UpstreamRouteProvider upstreamRouteProvider;
+    private final ApiKeyStore apiKeyStore;
+    private final RateLimiter rateLimiter;
+    private final TokenStatsTracker tokenStatsTracker;
     private final ResponseMappingService responseMappingService;
 
     public BackgroundJobService(
+            Vertx vertx,
             RedissonClient redis,
             String prefix,
-            ApiKeyStore apiKeyStore,
-            TokenStatsTracker tokenStatsTracker,
-            RateLimiter rateLimiter,
-            ConfigStore configStore,
-            UpstreamRouteProvider upstreamRouteProvider,
+            Supplier<String> generator,
+            LockService lockService,
             HttpClient httpClient,
             HttpClientOptions clientOptions,
-            LockService lockService,
+            ConfigStore configStore,
+            UpstreamRouteProvider upstreamRouteProvider,
+            ApiKeyStore apiKeyStore,
+            RateLimiter rateLimiter,
+            TokenStatsTracker tokenStatsTracker,
             ResponseMappingService responseMappingService) {
+        this.vertx = vertx;
         this.redis = redis;
         this.prefix = prefix;
+        this.generator = generator;
         this.jobIndexKey = "background_job_index:" + BlobStorageUtil.toStoragePath(prefix, ResponseIdUtil.BACKGROUND_JOB_BUCKET_LOCATION);
-        this.apiKeyStore = apiKeyStore;
-        this.tokenStatsTracker = tokenStatsTracker;
-        this.rateLimiter = rateLimiter;
-        this.configStore = configStore;
-        this.upstreamRouteProvider = upstreamRouteProvider;
+        this.lockService = lockService;
         this.httpClient = httpClient;
         this.clientOptions = clientOptions;
-        this.lockService = lockService;
+        this.configStore = configStore;
+        this.upstreamRouteProvider = upstreamRouteProvider;
+        this.apiKeyStore = apiKeyStore;
+        this.rateLimiter = rateLimiter;
+        this.tokenStatsTracker = tokenStatsTracker;
         this.responseMappingService = responseMappingService;
     }
 
-    public void init(Vertx vertx) {
-        this.vertx = vertx;
+    public void init() {
         resumeActiveJobs();
     }
 
@@ -116,6 +118,40 @@ public class BackgroundJobService {
         addToQueue(id)
                 .onSuccess(ignored -> startPolling(id))
                 .onFailure(error -> log.warn("Failed to add background job {} to queue", id, error));
+    }
+
+    public Future<Void> startStreamingJob(String jobId) {
+        return addToQueue(jobId)
+                .compose(ignored -> tryAcquireLeaseAsync(jobId))
+                .map(lease -> {
+                    if (lease != null) {
+                        Lease oldLease = streamingLeases.put(jobId, lease);
+                        if (oldLease != null) {
+                            log.warn("Background job {} already has an active lease, releasing the old lease", jobId);
+                            oldLease.release()
+                                    .onFailure(e -> log.warn("Failed to release old lease for background job {}", jobId, e));
+                        }
+                    }
+                    return null;
+                });
+    }
+
+    public Future<Boolean> cancelStreamingJob(String jobId) {
+        Lease lease = streamingLeases.remove(jobId);
+        return deleteRecordAsync(jobId)
+                .compose(deleted -> {
+                    if (!deleted) {
+                        log.info("Streaming job {} record already deleted, skipping completion processing", jobId);
+                        return Future.succeededFuture(false);
+                    }
+                    return removeFromQueue(jobId)
+                            .recover(e -> {
+                                log.warn("Failed to remove streaming job {} from queue", jobId, e);
+                                return Future.succeededFuture();
+                            })
+                            .map(true);
+                })
+                .eventually(() -> lease != null ? lease.release() : Future.succeededFuture());
     }
 
     private void startPolling(String id) {
@@ -316,7 +352,7 @@ public class BackgroundJobService {
 
     private Future<Lease> tryAcquireLeaseAsync(String jobId) {
         String key = "background_job_poll:" + jobId;
-        String lockId = UUID.randomUUID().toString();
+        String lockId = generator.get();
         return toFuture(lockService.tryCreateClaimAsync(key, lockId, LEASE_TTL_MS))
                 .map(remaining -> {
                     if (remaining != 0L) {
@@ -357,10 +393,7 @@ public class BackgroundJobService {
     }
 
     private static boolean isTerminal(String status) {
-        return TERMINAL_COMPLETED.equals(status)
-                || TERMINAL_FAILED.equals(status)
-                || TERMINAL_CANCELLED.equals(status)
-                || TERMINAL_INCOMPLETE.equals(status);
+        return !("queued".equals(status) || "in_progress".equals(status));
     }
 
     private record PollingResult(

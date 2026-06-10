@@ -53,7 +53,7 @@ public class ResponseMappingServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ResponseMappingService(generator, resourceService);
+        service = new ResponseMappingService(vertx, generator, resourceService);
     }
 
     private void triggerCleanup() {
@@ -64,7 +64,7 @@ public class ResponseMappingServiceTest {
         });
 
         ArgumentCaptor<Handler<Long>> handlerCaptor = ArgumentCaptor.captor();
-        service.init(vertx, taskExecutor);
+        service.init(taskExecutor);
         verify(vertx).setPeriodic(anyLong(), anyLong(), handlerCaptor.capture());
         handlerCaptor.getValue().handle(0L);
     }

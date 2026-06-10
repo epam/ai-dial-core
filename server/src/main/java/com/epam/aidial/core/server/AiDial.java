@@ -306,8 +306,8 @@ public class AiDial {
             Duration clientChannelTtl = Duration.ofMillis(resourceServiceSettings.getResourceTypesExpiration().get(ResourceTypes.CLIENT_CHANNEL.name()));
             ClientChannelService clientChannelService = new ClientChannelService(lockService, redis, taskExecutor, clock, storage.getPrefix(), clientChannelTtl);
 
-            ResponseMappingService responseMappingService = new ResponseMappingService(generator, resourceService);
-            responseMappingService.init(vertx, taskExecutor);
+            ResponseMappingService responseMappingService = new ResponseMappingService(vertx, generator, resourceService);
+            responseMappingService.init(taskExecutor);
 
             ComplexResourceService complexResourceService = new ComplexResourceService(
                     resourceService, lockService, shareService, invitationService, storage);
@@ -317,9 +317,9 @@ public class AiDial {
                     complexResourceService, encryptionService, complexResourceSweepSettings);
 
             BackgroundJobService backgroundJobService = new BackgroundJobService(
-                    redis, storage.getPrefix(), apiKeyStore, tokenStatsTracker, rateLimiter, configStore,
-                    upstreamRouteProvider, client, clientOptions, lockService, responseMappingService);
-            backgroundJobService.init(vertx);
+                    vertx, redis, storage.getPrefix(), generator, lockService, client, clientOptions,
+                    configStore, upstreamRouteProvider, apiKeyStore, rateLimiter, tokenStatsTracker, responseMappingService);
+            backgroundJobService.init();
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,

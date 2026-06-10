@@ -70,11 +70,13 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
                     if (!context.isBackgroundJob()) {
                         return Future.succeededFuture(generatedDialId);
                     }
+                    context.setResponseId(generatedDialId);
                     return proxy.getBackgroundJobService().saveJob(context)
-                            .map(jobId -> {
+                            .compose(jobId -> {
                                 context.setBackgroundJobId(jobId);
-                                return generatedDialId;
-                            });
+                                return proxy.getBackgroundJobService().startStreamingJob(jobId);
+                            })
+                            .map(ignored -> generatedDialId);
                 })
                 .map(generatedDialId -> {
                     dialId = generatedDialId;

@@ -15,7 +15,6 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Vertx;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -24,17 +23,23 @@ import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
 @Slf4j
-@AllArgsConstructor
 public class ResponseMappingService {
     private static final int PAGE_SIZE = 1000;
     private static final long DEFAULT_CHECK_PERIOD = 24 * 60 * 60 * 1000;
     private static final long DEFAULT_TTL = 30L * 24 * 60 * 60 * 1000;
     private static final long MAX_START_OFFSET = 4 * 60 * 60 * 1000;
 
+    private final Vertx vertx;
     private final Supplier<String> generator;
     private final ResourceService resourceService;
 
-    public void init(Vertx vertx, AsyncTaskExecutor taskExecutor) {
+    public ResponseMappingService(Vertx vertx, Supplier<String> generator, ResourceService resourceService) {
+        this.vertx = vertx;
+        this.generator = generator;
+        this.resourceService = resourceService;
+    }
+
+    public void init(AsyncTaskExecutor taskExecutor) {
         long offset = ThreadLocalRandom.current().nextLong(MAX_START_OFFSET + 1);
         vertx.setPeriodic(offset, DEFAULT_CHECK_PERIOD, ignored -> taskExecutor.submit(this::cleanExpiredMappings));
     }
