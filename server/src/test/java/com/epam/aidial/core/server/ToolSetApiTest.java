@@ -156,7 +156,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
-                           "reasoning_efforts_supported": false
+                           "reasoning_efforts": []
                       },
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
@@ -200,7 +200,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
-                           "reasoning_efforts_supported": false
+                           "reasoning_efforts": []
                         },
                         "description_keywords" : [ ],
                         "max_retry_attempts" : 1,
@@ -245,7 +245,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
-                           "reasoning_efforts_supported": false
+                           "reasoning_efforts": []
                         },
                         "description_keywords" : [ ],
                         "max_retry_attempts" : 1,
@@ -299,7 +299,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
-                           "reasoning_efforts_supported": false
+                           "reasoning_efforts": []
                       },
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
@@ -437,7 +437,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
-                           "reasoning_efforts_supported": false
+                           "reasoning_efforts": []
                   },
                   "description_keywords": [],
                   "max_retry_attempts": 1,
@@ -490,7 +490,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
-                           "reasoning_efforts_supported": false
+                           "reasoning_efforts": []
                           },
                       "description_keywords" : [ ],
                       "max_retry_attempts" : 1,
@@ -536,7 +536,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
-                           "reasoning_efforts_supported": false
+                           "reasoning_efforts": []
                           },
                         "description_keywords" : [ ],
                         "max_retry_attempts" : 1,

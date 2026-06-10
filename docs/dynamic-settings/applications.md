@@ -156,7 +156,7 @@ The following features are supported:
 * `contentPartsSupported`: A boolean parameter that indicates whether the deployment supports requests with content parts or not.Default is `false`.
 * `consentRequired`: A boolean parameter that indicates whether the application requires user consent before use.
 * `supportCommentInRateResponse`: A boolean parameters that indicates whether the application supports the field `comment` in rate response payload.
-* `reasoningEffortsSupported`: A boolean parameter that indicates whether the deployment supports the `effort` parameter in chat completions requests. When enabled, clients can specify the reasoning effort level (e.g., `low`, `medium`, `high`) for reasoning models. Default is `false`.
+* `reasoningEfforts`: A list of supported `effort` values for chat completions requests (e.g., `low`, `medium`, `high`). An empty list means the deployment does not support the `effort` parameter. Default is `[]`.
 
 **Example**:
 
