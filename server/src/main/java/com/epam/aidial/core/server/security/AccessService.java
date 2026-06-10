@@ -46,7 +46,9 @@ public class AccessService {
     private final ShareService shareService;
     private final RuleService ruleService;
     private final List<Rule> adminRules;
+    private final List<Rule> globalReaderRules;
     private final boolean adminRulesConfigured;
+    private final boolean globalReaderRulesConfigured;
 
     private final List<String> createCodeAppRoles;
 
@@ -55,6 +57,7 @@ public class AccessService {
     private final List<PermissionRule> permissionRules = List.of(
             AccessService::getOwnResourcesAccess,
             this::getAdminAccess,
+            this::getGlobalReaderAccess,
             AccessService::getAutoSharedAccess,
             AccessService::getPerRequestPermissions,
             AccessService::getAppResourceAccess,
@@ -74,7 +77,9 @@ public class AccessService {
         this.ruleService = ruleService;
         this.applicationSchemaService = applicationSchemaService;
         this.adminRules = adminRules(settings);
+        this.globalReaderRules = globalReaderRules(settings);
         this.adminRulesConfigured = !this.adminRules.isEmpty();
+        this.globalReaderRulesConfigured = !this.globalReaderRules.isEmpty();
         this.createCodeAppRoles = getCreateCodeAppRoles(settings);
     }
 
@@ -183,6 +188,17 @@ public class AccessService {
                             || PublicationService.isReviewBucket(resource)
                             || ApplicationService.isPublicApplicationSourceDirectory(resource))
                     .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.ALL));
+        }
+
+        return Map.of();
+    }
+
+    @VisibleForTesting
+    Map<ResourceDescriptor, Set<ResourceAccessType>> getGlobalReaderAccess(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
+        if (hasGlobalReaderAccess(context)) {
+            return resources.stream()
+                    .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.READ_ONLY));
         }
 
         return Map.of();
@@ -381,6 +397,12 @@ public class AccessService {
                 && RuleMatcher.match(context, adminRules);
     }
 
+    public boolean hasGlobalReaderAccess(ProxyContext context) {
+        return globalReaderRulesConfigured
+                && context.getApiKeyData().getPerRequestKey() == null // not application
+                && RuleMatcher.match(context, globalReaderRules);
+    }
+
     /**
      * Fail-closed admin check for the Configuration/Admin API surface. Unlike {@link #hasAdminAccess}
      * — whose empty rule set is treated by {@link RuleMatcher} as allow-all — this returns
@@ -405,7 +427,8 @@ public class AccessService {
     }
 
     public void filterForbidden(ProxyContext context, ResourceDescriptor descriptor, MetadataBase metadata) {
-        if (descriptor.isPublic() && descriptor.isFolder() && !hasAdminAccess(context)) {
+        if (descriptor.isPublic() && descriptor.isFolder()
+                && !hasAdminAccess(context) && !hasGlobalReaderAccess(context)) {
             ResourceFolderMetadata folder = (ResourceFolderMetadata) metadata;
             ruleService.filterForbidden(context, descriptor, folder);
         }
@@ -441,6 +464,19 @@ public class AccessService {
             return List.of();
         }
         JsonArray rules = admin.getJsonArray("rules");
+        if (rules == null) {
+            return List.of();
+        }
+        List<Rule> list = ProxyUtil.convertToObject(rules.toString(), Rule.LIST_TYPE);
+        return (list == null) ? List.of() : list;
+    }
+
+    private static List<Rule> globalReaderRules(JsonObject settings) {
+        JsonObject globalReader = settings.getJsonObject("globalReader");
+        if (globalReader == null) {
+            return List.of();
+        }
+        JsonArray rules = globalReader.getJsonArray("rules");
         if (rules == null) {
             return List.of();
         }
