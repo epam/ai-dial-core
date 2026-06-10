@@ -72,6 +72,7 @@ public class Features {
     @JsonAlias({"customTemperatureSupported", "custom_temperature_supported"})
     private Boolean customTemperatureSupported;
 
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
     @JsonAlias({"reasoningEfforts", "reasoning_efforts"})
-    private List<String> reasoningEfforts = List.of();
+    private List<String> reasoningEfforts;
 }

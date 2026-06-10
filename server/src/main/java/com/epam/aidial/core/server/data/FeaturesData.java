@@ -114,7 +114,7 @@ public class FeaturesData {
             data.setCustomTemperatureSupported(features.getCustomTemperatureSupported());
         }
 
-        if (features.getReasoningEfforts() != null) {
+        if (features.getReasoningEfforts() != null && !features.getReasoningEfforts().isEmpty()) {
             data.setReasoningEfforts(List.copyOf(features.getReasoningEfforts()));
         }
 
