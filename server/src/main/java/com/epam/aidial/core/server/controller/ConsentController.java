@@ -9,6 +9,7 @@ import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.consent.AcceptConsentRequest;
+import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -34,7 +35,7 @@ public class ConsentController {
                             description = OpenApiDescriptions.DEPLOYMENT_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
+                    @ApiResponse(code = 200, description = "Success", body = ReviewConsentResponse.class)
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )

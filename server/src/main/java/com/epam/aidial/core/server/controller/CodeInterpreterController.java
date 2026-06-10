@@ -7,6 +7,7 @@ import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.openapi.schema.OpenApiBinary;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteRequest;
+import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteResponse;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFile;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterFiles;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterInputFile;
@@ -20,6 +21,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.server.vertx.stream.InputStreamAdapter;
 import com.epam.aidial.core.server.vertx.stream.InputStreamReader;
+import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -132,7 +134,7 @@ public class CodeInterpreterController {
             requestBody = CodeInterpreterExecuteRequest.class,
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
+                    @ApiResponse(code = 200, description = "Success", body = CodeInterpreterExecuteResponse.class)
             },
             responseProfile = ResponseProfile.CODE_INTERPRETER
     )
@@ -286,7 +288,7 @@ public class CodeInterpreterController {
             requestBody = CodeInterpreterOutputFile.class,
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
+                    @ApiResponse(code = 200, description = "Success", body = FileMetadata.class)
             },
             responseProfile = ResponseProfile.CODE_INTERPRETER
     )

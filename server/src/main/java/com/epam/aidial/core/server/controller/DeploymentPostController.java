@@ -117,6 +117,9 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                             description = OpenApiDescriptions.DEPLOYMENT_NAME),
                     @ApiParameter(name = "api-version", in = ParameterIn.QUERY, required = true,
                             description = OpenApiDescriptions.API_VERSION, example = "2023-12-01-preview")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", schemaRef = "EmbeddingResponse")
             })
     public Future<?> handle(String deploymentId) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);

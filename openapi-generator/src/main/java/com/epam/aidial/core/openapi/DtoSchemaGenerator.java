@@ -94,6 +94,21 @@ public class DtoSchemaGenerator {
                     processType(subtype.type());
                 }
             }
+            // Check for single implementation interfaces and create an alias
+            if (clazz.isInterface()) {
+                Class<?> singleImpl = findSingleImplementation(clazz);
+                if (singleImpl != null) {
+                    // Process the implementation type to ensure it's in schemas
+                    processType(singleImpl);
+                    // Create an alias schema that references the implementation
+                    String interfaceName = resolveTypeName(type);
+                    String implName = buildSchemaName(singleImpl);
+                    ObjectNode aliasSchema = generator.getConfig().createObjectNode();
+                    aliasSchema.put("$ref", COMPONENTS_PREFIX + implName);
+                    schemas.putIfAbsent(interfaceName, aliasSchema);
+                    return; // Don't generate the interface schema
+                }
+            }
         }
         JsonNode schema = generator.generateSchema(type);
         if (!(schema instanceof ObjectNode rootNode)) {
@@ -146,7 +161,19 @@ public class DtoSchemaGenerator {
     }
 
     private CustomDefinition createPolymorphicDefinition(ResolvedType javaType, SchemaGenerationContext context) {
-        ApiSubTypes subTypes = javaType.getErasedType().getAnnotation(ApiSubTypes.class);
+        Class<?> clazz = javaType.getErasedType();
+
+        // Check for single implementation interfaces
+        if (clazz.isInterface()) {
+            Class<?> singleImpl = findSingleImplementation(clazz);
+            if (singleImpl != null) {
+                // Generate schema based on the single implementation
+                ResolvedType implType = context.getTypeContext().resolve(singleImpl);
+                return new CustomDefinition(context.createDefinition(implType));
+            }
+        }
+
+        ApiSubTypes subTypes = clazz.getAnnotation(ApiSubTypes.class);
         if (subTypes == null) {
             return null;
         }
@@ -155,6 +182,46 @@ public class DtoSchemaGenerator {
         schema.set("required", createRequired(subTypes, context));
         schema.set("discriminator", createDiscriminator(subTypes, context));
         return new CustomDefinition(schema);
+    }
+
+    private Class<?> findSingleImplementation(Class<?> interfaceClass) {
+        if (!interfaceClass.isInterface()) {
+            return null;
+        }
+
+        // Search for implementations in the same package and subpackages
+        Package pkg = interfaceClass.getPackage();
+        if (pkg == null) {
+            return null;
+        }
+
+        String packageName = pkg.getName();
+        String interfaceName = interfaceClass.getSimpleName();
+
+        // Common naming patterns for single implementations
+        String[] possibleNames = {
+            packageName + "." + interfaceName + "s",     // e.g., ResourceType -> ResourceTypes
+            packageName + "." + interfaceName + "Impl",  // e.g., ResourceType -> ResourceTypeImpl
+            packageName + "." + "Default" + interfaceName
+        };
+
+        Class<?> foundImpl = null;
+        for (String className : possibleNames) {
+            try {
+                Class<?> candidate = Class.forName(className);
+                if (interfaceClass.isAssignableFrom(candidate) && candidate != interfaceClass) {
+                    if (foundImpl != null) {
+                        // Multiple implementations found, not a single implementation case
+                        return null;
+                    }
+                    foundImpl = candidate;
+                }
+            } catch (ClassNotFoundException ignored) {
+                // Expected for non-existent classes
+            }
+        }
+
+        return foundImpl;
     }
 
     private ArrayNode createOneOf(ApiSubTypes subTypes, SchemaGenerationContext context) {
