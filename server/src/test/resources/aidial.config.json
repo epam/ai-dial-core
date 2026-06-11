@@ -156,6 +156,7 @@
     "embedding-ada": {
       "type": "embedding",
       "endpoint" : "http://localhost:7001/openai/deployments/ada/embeddings",
+      "embeddingDimensions": 1536,
       "upstreams": [
         {"endpoint": "http://localhost:7001", "key": "modelKey4"}
       ]
