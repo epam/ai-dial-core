@@ -46,6 +46,11 @@ public class ListingTest extends ResourceBaseTest {
     }
 
     @Test
+    void testEmbeddingDimensions(Vertx vertx, VertxTestContext context) {
+        checkListing(vertx, context, "/openai/models", "embedding-ada", "embedding_dimensions", 1536);
+    }
+
+    @Test
     void testFeaturesEmbedding(Vertx vertx, VertxTestContext context) {
         checkListing(vertx, context, "/openai/models", "embedding-ada", "features", new JsonObject("""
                     { "rate": false, "tokenize": false, "truncate_prompt": false

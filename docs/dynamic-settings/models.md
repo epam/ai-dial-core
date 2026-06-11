@@ -29,6 +29,7 @@ An object containing parameters for each [model](#models).
 * `displayName`: A string with the models's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs so operators can quickly identify the model.
 * `displayVersion`: A string with the model's version. Use it to distinguish between "latest," "beta," or date-stamped builds.
 * `endpoint`: Model API for chat completions or embeddings.
+* `embeddingDimensions`: The size of the embedding vector returned by an embedding model (e.g. `1536` for `text-embedding-ada-002`). Omit for chat/completion models.
 * `tokenizerModel`: Identifies the specific model whose tokenization algorithm exactly matches that of the referenced model. This is typically the name of the earliest-released model in a series of models sharing an identical tokenization algorithm (e.g. gpt-3.5-turbo-0301, gpt-4-0314, or gpt-4-1106-vision-preview). This parameter is essential for DIAL clients that reimplement tokenization algorithms on their side, instead of utilizing the tokenizeEndpoint provided by the model.
 * `userRoles`: A specific claim value provided by a specific IDP in JWT or an API key role. If not defined, the language model is available to all users. Refer to [IDP Configuration](https://docs.dialx.ai/tutorials/devops/auth-and-access-control/configure-idps/overview) to view examples.
 * `descriptionKeywords`: A list of keywords describes the model, e.g. code-gen, text2image.
@@ -122,6 +123,7 @@ An object containing parameters for each [model](#models).
         "embedding-ada": {
             "type": "embedding",
             "endpoint": "http://localhost:7001/openai/deployments/ada/embeddings",
+            "embeddingDimensions": 1536,
             "upstreams": [
                 {
                     "endpoint": "http://localhost:7001",

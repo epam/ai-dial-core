@@ -20,6 +20,8 @@ public class Model extends Deployment {
     private String overrideName;
     @JsonAlias({"fieldsHashingOrder", "fields_hashing_order"})
     private List<String> fieldsHashingOrder = List.of("prefix.body.tools", "prefix.body.messages");
+    @JsonAlias({"embeddingDimensions", "embedding_dimensions"})
+    private Integer embeddingDimensions;
 
     public Model() {
         setMaxRetryAttempts(5);
