@@ -184,8 +184,7 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         context.setStreamingRequest(request.isStreaming());
         context.setStoreResponse(request.isStore());
-        // background=true only makes sense when store=true (we need a mapping for job tracking)
-        context.setBackgroundJob(request.isBackground() && request.isStore());
+        context.setBackgroundJob(request.isBackground());
         ProxyUtil.processChain(request, enhancementFunctions);
         // Enhancement functions update the api key, and it should be saved after that
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
@@ -268,7 +267,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                                 ProxyUtil.copyResponse(response, proxyResponse);
                                 response.setChunked(false);
                                 response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
-                                response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+                                response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(upstreamRoute.getAttemptCount()));
                                 return response;
                             }))
                     .onSuccess(this::finishNonStreamingResponse)
@@ -296,9 +295,9 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     private Future<Void> finishNonStreamingResponse(HttpServerResponse response) {
         Buffer responseBody = context.getResponseBody();
-        if (context.isBackgroundJob()) {
+        if (context.isBackgroundJob() && context.getResponseId() != null) {
             proxy.getBackgroundJobService().saveJob(context)
-                    .onSuccess(jobId -> proxy.getBackgroundJobService().submit(jobId));
+                    .onSuccess(ignored -> proxy.getBackgroundJobService().submit(context.getResponseId()));
             response.end(responseBody);
         } else {
             collectTokenUsage(responseBody)
@@ -356,20 +355,18 @@ public class ResponsesController extends BaseDeploymentPostController {
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
 
-        String jobId = context.getBackgroundJobId();
-
         Future<Void> completionFuture;
-        if (jobId == null) {
+        if (context.getResponseId() == null) {
             completionFuture = collectTokenUsage(responseBody).mapEmpty();
         } else {
-            completionFuture = proxy.getBackgroundJobService().cancelStreamingJob(jobId)
+            completionFuture = proxy.getBackgroundJobService().cancelStreamingJob(context.getResponseId())
                     .compose(deleted -> {
                         if (!deleted) {
-                            return Future.<Void>succeededFuture();
+                            return Future.succeededFuture();
                         }
                         Future<Void> usageFuture = collectTokenUsage(responseBody).mapEmpty();
                         return usageFuture.recover(e -> {
-                            log.warn("Failed to collect token usage for streaming job {}", jobId, e);
+                            log.warn("Failed to collect token usage for streaming job {}", context.getResponseId(), e);
                             return Future.succeededFuture();
                         });
                     });

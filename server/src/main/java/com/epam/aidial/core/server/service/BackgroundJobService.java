@@ -101,18 +101,16 @@ public class BackgroundJobService {
         resumeActiveJobs();
     }
 
-    public Future<String> saveJob(ProxyContext context) {
+    public Future<Void> saveJob(ProxyContext context) {
         String jobId = context.getResponseId();
         BackgroundJobRecord record = BackgroundJobRecord.builder()
-                .dialResponseId(context.getResponseId())
                 .perRequestKey(context.getProxyApiKeyData().getPerRequestKey())
                 .traceId(context.getTraceId())
                 .spanId(context.getSpanId())
                 .createdAt(System.currentTimeMillis())
                 .streaming(context.isStreamingRequest())
                 .build();
-        return persistRecordAsync(jobId, record)
-                .map(jobId);
+        return persistRecordAsync(jobId, record);
     }
 
     public Future<Boolean> isJobActive(String dialResponseId) {
@@ -175,7 +173,7 @@ public class BackgroundJobService {
                                 return vertx.executeBlocking(() -> responseMappingService.getMapping(id))
                                         .compose(mapping -> {
                                             if (mapping == null) {
-                                                return Future.failedFuture("Response mapping not found for DIAL response ID " + record.getDialResponseId());
+                                                return Future.failedFuture("Response mapping not found for background job " + id);
                                             }
 
                                             Promise<TokenUsage> done = Promise.promise();

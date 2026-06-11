@@ -99,7 +99,6 @@ public class ProxyContext {
     private boolean storeResponse;
     private String responseId;
     private boolean backgroundJob;
-    private String backgroundJobId;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {

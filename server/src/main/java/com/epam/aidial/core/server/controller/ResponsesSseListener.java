@@ -6,8 +6,6 @@ import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.List;
-import java.util.function.Consumer;
-import javax.annotation.Nullable;
 
 class ResponsesSseListener extends BufferingReadStream.BaseEventListener {
 

@@ -302,6 +302,7 @@ public class ResponsesControllerTest {
         when(context.getConfig()).thenReturn(new Config());
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         when(context.copyWith(any())).thenReturn(context);
+        when(context.getUserId()).thenReturn("test-user");
         when(proxyRequest.headers()).thenReturn(new HeadersMultiMap());
         when(proxyRequest.send(requestBody)).thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);

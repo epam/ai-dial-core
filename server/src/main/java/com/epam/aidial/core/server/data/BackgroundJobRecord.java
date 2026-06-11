@@ -10,8 +10,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class BackgroundJobRecord {
-    /** DIAL encrypted response ID — used for logging and response lookup. */
-    String dialResponseId;
     /** Per-request API key — invalidated by the background job on completion or expiry. */
     String perRequestKey;
     /** OpenTelemetry trace ID — used to attribute token usage on completion. */

@@ -120,8 +120,9 @@ class BackgroundJobServiceTest {
     @Test
     void saveJobPersistsRecord(Vertx vertx, VertxTestContext ctx) throws Throwable {
         service.saveJob(proxyContext)
-                .onSuccess(jobId -> ctx.verify(() -> {
-                    assertTrue(JOB_ID.equals(jobId));
+                .compose(ignored -> service.isJobActive(JOB_ID))
+                .onSuccess(active -> ctx.verify(() -> {
+                    assertTrue(active);
                     ctx.completeNow();
                 }))
                 .onFailure(ctx::failNow);
@@ -154,7 +155,7 @@ class BackgroundJobServiceTest {
     @Test
     void cancelStreamingJobDeletesRecord(Vertx vertx, VertxTestContext ctx) throws Throwable {
         service.saveJob(proxyContext)
-                .compose(jobId -> service.startStreamingJob(jobId))
+                .compose(ignored -> service.startStreamingJob(JOB_ID))
                 .compose(ignored -> service.cancelStreamingJob(JOB_ID))
                 .compose(deleted -> service.isJobActive(JOB_ID)
                         .onSuccess(active -> ctx.verify(() -> {
@@ -192,7 +193,7 @@ class BackgroundJobServiceTest {
                 });
 
         service.saveJob(proxyContext)
-                .onSuccess(jobId -> service.submit(jobId))
+                .onSuccess(ignored -> service.submit(JOB_ID))
                 .onFailure(ctx::failNow);
 
         await(ctx);
