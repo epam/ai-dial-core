@@ -33,7 +33,8 @@ public final class OpenApiResponseBuilder {
                 r.setDescription(annotation.description());
                 return r;
             });
-            Content content = ResponseContentFactory.build(annotation.contentTypes(), annotation.schemaRef(), resolveResponseType(annotation), schemaGenerator);
+            Content content = ResponseContentFactory.build(annotation.contentTypes(), annotation.schemaRef(),
+                    resolveResponseType(annotation), annotation.responseOneOf(), schemaGenerator);
             if (content == null) {
                 continue;
             }
@@ -48,6 +49,9 @@ public final class OpenApiResponseBuilder {
     }
 
     private static Type resolveResponseType(ApiResponse response) {
+        if (response.responseOneOf() != null && response.responseOneOf().length > 0) {
+            return null;
+        }
         if (response.body() == Void.class) {
             return null;
         }
@@ -65,7 +69,13 @@ public final class OpenApiResponseBuilder {
             if (!response.schemaRef().isBlank()) {
                 schemaGenerator.registerExternalSchema(response.schemaRef());
             }
-            ResponseSchemaFactory.registerResponseBody(resolveResponseType(response), schemaGenerator);
+            if (response.responseOneOf() != null && response.responseOneOf().length > 0) {
+                for (Class<?> type : response.responseOneOf()) {
+                    ResponseSchemaFactory.registerResponseBody(type, schemaGenerator);
+                }
+            } else {
+                ResponseSchemaFactory.registerResponseBody(resolveResponseType(response), schemaGenerator);
+            }
         }
     }
 

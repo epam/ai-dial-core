@@ -70,6 +70,17 @@ final class ResponseSchemaFactory {
         return schema;
     }
 
+    public static Schema<?> oneOfForContentType(String contentType, Class<?>[] types, DtoSchemaGenerator schemaGenerator) {
+        if (TEXT_EVENT_STREAM.equals(contentType)) {
+            ComposedSchema schema = new ComposedSchema();
+            for (Class<?> type : types) {
+                schema.addOneOfItem(streamArray(null, type, schemaGenerator));
+            }
+            return schema;
+        }
+        return oneOf(types, schemaGenerator);
+    }
+
     public static Schema<?> streamArray(String schemaRef, Type body, DtoSchemaGenerator schemaGenerator) {
         if (StringUtils.isNotBlank(schemaRef)) {
             Schema<Object> arraySchema = new Schema<>();

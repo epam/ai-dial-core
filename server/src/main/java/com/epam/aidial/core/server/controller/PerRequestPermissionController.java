@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.permission.ListPermissionRequest;
 import com.epam.aidial.core.server.data.permission.PerRequestReceiver;
+import com.epam.aidial.core.server.data.permission.PerRequestReceiverList;
 import com.epam.aidial.core.server.data.permission.ResourcePermission;
 import com.epam.aidial.core.server.data.permission.ResourcePermissionList;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -69,7 +70,7 @@ public class PerRequestPermissionController {
             requestBody = ListPermissionRequest.class,
             tags = {"Sharing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ResourcePermissionList.class)
+                    @ApiResponse(code = 200, description = "Success", responseOneOf = {ResourcePermissionList.class, PerRequestReceiverList.class})
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )

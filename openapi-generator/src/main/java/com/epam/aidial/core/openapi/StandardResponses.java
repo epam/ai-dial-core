@@ -61,6 +61,7 @@ public final class StandardResponses {
                 new String[]{"application/json"},
                 null,
                 ErrorData.class,
+                new Class<?>[0],
                 schemaGenerator
         ));
         return response;

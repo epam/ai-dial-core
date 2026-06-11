@@ -11,10 +11,15 @@ final class ResponseContentFactory {
     private ResponseContentFactory() {
     }
 
-    static Content build(String[] contentTypes, String schemaRef, Type body, DtoSchemaGenerator schemaGenerator) {
+    static Content build(String[] contentTypes, String schemaRef, Type body, Class<?>[] responseOneOf, DtoSchemaGenerator schemaGenerator) {
         Content content = new Content();
         for (String contentType : contentTypes) {
-            Schema<?> schema = ResponseSchemaFactory.forContentType(contentType, schemaRef, body, schemaGenerator);
+            Schema<?> schema;
+            if (responseOneOf != null && responseOneOf.length > 0) {
+                schema = ResponseSchemaFactory.oneOfForContentType(contentType, responseOneOf, schemaGenerator);
+            } else {
+                schema = ResponseSchemaFactory.forContentType(contentType, schemaRef, body, schemaGenerator);
+            }
             if (schema == null) {
                 continue;
             }

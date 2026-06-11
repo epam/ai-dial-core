@@ -126,6 +126,67 @@ class OpenApiResponseBuilderTest {
     }
 
     @Test
+    void responseWithOneOfCreatesComposedSchema() throws Exception {
+        ApiResponse[] responses = responsesFromMethod("oneOfResponse");
+        EndpointMetadata.Endpoint endpoint = endpointWithResponses(responses);
+        DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
+        OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
+
+        ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, schemaGenerator);
+
+        var success = apiResponses.get("200");
+        assertEquals("Multiple response types", success.getDescription());
+        var jsonSchema = success.getContent().get("application/json").getSchema();
+
+        assertNotNull(jsonSchema.getOneOf(), "Schema should have oneOf");
+        assertEquals(2, jsonSchema.getOneOf().size(), "Should have two oneOf items");
+
+        assertEquals("#/components/schemas/ErrorData",
+                ((Schema<?>) jsonSchema.getOneOf().get(0)).get$ref());
+        assertEquals("#/components/schemas/ResourceLink",
+                ((Schema<?>) jsonSchema.getOneOf().get(1)).get$ref());
+
+        assertTrue(schemaGenerator.getSchemas().containsKey("ErrorData"));
+        assertTrue(schemaGenerator.getSchemas().containsKey("ResourceLink"));
+    }
+
+    @Test
+    void responseWithOneOfForEventStreamCreatesArrayComposedSchema() throws Exception {
+        ApiResponse[] responses = responsesFromMethod("oneOfStreamResponse");
+        EndpointMetadata.Endpoint endpoint = endpointWithResponses(responses);
+        DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
+        OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
+
+        ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, schemaGenerator);
+
+        var success = apiResponses.get("200");
+        var streamSchema = success.getContent().get("text/event-stream").getSchema();
+
+        assertNotNull(streamSchema.getOneOf(), "Stream schema should have oneOf");
+        assertEquals(2, streamSchema.getOneOf().size());
+
+        Schema<?> firstItem = (Schema<?>) streamSchema.getOneOf().get(0);
+        assertEquals("array", firstItem.getType());
+        assertNotNull(firstItem.getItems());
+
+        Schema<?> secondItem = (Schema<?>) streamSchema.getOneOf().get(1);
+        assertEquals("array", secondItem.getType());
+        assertNotNull(secondItem.getItems());
+    }
+
+    @Test
+    void responseOneOfAndBodyAreMutuallyExclusive() throws Exception {
+        ApiResponse[] responses = responsesFromMethod("invalidBothBodyAndOneOf");
+        EndpointMetadata.Endpoint endpoint = endpointWithResponses(responses);
+        DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
+
+        ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, schemaGenerator);
+        var success = apiResponses.get("200");
+        assertNotNull(success.getContent().get("application/json").getSchema().getOneOf(),
+                "When both body and responseOneOf are specified, responseOneOf should take precedence");
+    }
+
+    @Test
     void explicitResponsesAddedToResponseProfile() throws Exception {
         ApiResponse[] responses = responsesFromMethod("annotatedResponses");
         EndpointMetadata.Endpoint endpoint = new EndpointMetadata.Endpoint(
@@ -408,6 +469,32 @@ class OpenApiResponseBuilderTest {
 
         @ApiResponse(code = 200, description = "", body = Boolean.class)
         void primitiveBooleanResponses() {
+        }
+
+        @ApiResponse(
+                code = 200,
+                description = "Multiple response types",
+                responseOneOf = {ErrorData.class, ResourceLink.class}
+        )
+        void oneOfResponse() {
+        }
+
+        @ApiResponse(
+                code = 200,
+                description = "Stream with multiple types",
+                responseOneOf = {ErrorData.class, ResourceLink.class},
+                contentTypes = {"text/event-stream"}
+        )
+        void oneOfStreamResponse() {
+        }
+
+        @ApiResponse(
+                code = 200,
+                description = "Invalid: both body and responseOneOf",
+                body = ErrorData.class,
+                responseOneOf = {ErrorData.class, ResourceLink.class}
+        )
+        void invalidBothBodyAndOneOf() {
         }
     }
 }

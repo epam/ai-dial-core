@@ -17,6 +17,8 @@ public @interface ApiResponse {
 
     Class<?> body() default Void.class;
 
+    Class<?>[] responseOneOf() default {};
+
     Class<?> wrapper() default Void.class;
 
     String schemaRef() default "";
