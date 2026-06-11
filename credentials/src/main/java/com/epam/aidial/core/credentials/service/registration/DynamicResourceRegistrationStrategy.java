@@ -85,11 +85,13 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
                 ClientRegistrationResponse.class);
 
         // Reject methods DIAL can't honor (e.g. private_key_jwt) at registration time so the
-        // operator gets a clear error before any end-user sign-in attempt. Null falls back to
-        // client_secret_basic per RFC 6749 §2.3.1; the persisted value always reflects what
-        // DIAL will use.
-        String tokenEndpointAuthMethod = TokenEndpointAuthMethod.resolveOrDefault(
-                clientRegistrationResponse.getTokenEndpointAuthMethod()).value();
+        // operator gets a clear error before any end-user sign-in attempt. Honor the method the AS
+        // advertises; when it omits it, infer from the issued client type — a client registered
+        // without a secret is public (none), otherwise client_secret_basic (RFC 7591 §2). The
+        // persisted value always reflects what DIAL will use.
+        String tokenEndpointAuthMethod = TokenEndpointAuthMethod.resolve(
+                clientRegistrationResponse.getTokenEndpointAuthMethod(),
+                clientRegistrationResponse.getClientSecret()).value();
 
         ClientRegistration clientRegistration = ClientRegistration.builder()
                 .resourceId(clientRegistrationResponse.getClientName())
