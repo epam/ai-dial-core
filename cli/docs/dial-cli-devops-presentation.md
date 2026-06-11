@@ -916,7 +916,9 @@ dial-cli model get models/public/example-chat-model --env local -o yaml | grep -
 **Expected result:**
 ```yaml
   pricing:
-    prompt: 0.003
+    unit: token
+    prompt: "0.0000025"
+    completion: "0.0000150"
 ```
 The `pricing` block came from the `ModelOverlay` — it is absent in the `review` copy.
 

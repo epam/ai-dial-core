@@ -10,5 +10,5 @@ params:
 patch:
   pricing:
     unit: token
-    prompt: 0.0000025
-    completion: 0.0000150
+    prompt: "0.0000025"
+    completion: "0.0000150"

@@ -38,7 +38,7 @@ class OverlayResolverTest {
                 patch:
                   endpoint: http://patched
                   pricing:
-                    prompt: 0.25
+                    prompt: "0.25"
                 """);
 
         List<Manifest> out = OverlayResolver.apply(loadBase(baseRoot), baseRoot, overlayRoot);
@@ -48,7 +48,7 @@ class OverlayResolverTest {
         assertEquals("m1", m.name());
         assertEquals("http://patched", m.spec().path("endpoint").asText());
         assertEquals("chat", m.spec().path("type").asText(), "untouched base field preserved");
-        assertEquals(0.25, m.spec().path("pricing").path("prompt").asDouble(), 0.0001);
+        assertEquals("0.25", m.spec().path("pricing").path("prompt").asText());
     }
 
     @Test
