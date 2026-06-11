@@ -1,9 +1,5 @@
 package com.epam.aidial.core.credentials.keymanagement;
 
-import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
-import com.amazonaws.services.kms.AWSKMS;
-import com.amazonaws.services.kms.AWSKMSClientBuilder;
 import com.azure.identity.DefaultAzureCredentialBuilder;
 import com.azure.security.keyvault.keys.cryptography.CryptographyClient;
 import com.azure.security.keyvault.keys.cryptography.CryptographyClientBuilder;
@@ -12,6 +8,9 @@ import com.epam.aidial.core.credentials.data.configuration.KmsSettings;
 import com.google.cloud.kms.v1.KeyManagementServiceClient;
 import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.kms.KmsClient;
 
 import java.util.Objects;
 
@@ -40,10 +39,9 @@ public class KeyManagementServiceFactory {
         String region = Objects.requireNonNull(kmsSettings.getRegion(), "region cannot be null.");
         String encryptionAlgorithm = kmsSettings.getEncryptionAlgorithm();
 
-        AWSCredentialsProvider awsCredentialsProvider = new DefaultAWSCredentialsProviderChain();
-        AWSKMS kms = AWSKMSClientBuilder.standard()
-                .withCredentials(awsCredentialsProvider)
-                .withRegion(region)
+        KmsClient kms = KmsClient.builder()
+                .credentialsProvider(DefaultCredentialsProvider.create())
+                .region(Region.of(region))
                 .build();
         return new AwsKeyManagementService(kms, keyId, encryptionAlgorithm);
     }

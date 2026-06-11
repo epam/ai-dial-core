@@ -1,14 +1,5 @@
 package com.epam.aidial.core.credentials.keymanagement;
 
-import com.amazonaws.services.kms.AWSKMS;
-import com.amazonaws.services.kms.model.DecryptRequest;
-import com.amazonaws.services.kms.model.DecryptResult;
-import com.amazonaws.services.kms.model.EncryptRequest;
-import com.amazonaws.services.kms.model.EncryptResult;
-import com.amazonaws.services.kms.model.IncorrectKeyException;
-import com.amazonaws.services.kms.model.InvalidCiphertextException;
-import com.amazonaws.services.kms.model.InvalidKeyUsageException;
-import com.amazonaws.services.kms.model.KMSInvalidStateException;
 import com.epam.aidial.core.credentials.exception.EncryptionException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,8 +7,16 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.nio.ByteBuffer;
+import software.amazon.awssdk.core.SdkBytes;
+import software.amazon.awssdk.services.kms.KmsClient;
+import software.amazon.awssdk.services.kms.model.DecryptRequest;
+import software.amazon.awssdk.services.kms.model.DecryptResponse;
+import software.amazon.awssdk.services.kms.model.EncryptRequest;
+import software.amazon.awssdk.services.kms.model.EncryptResponse;
+import software.amazon.awssdk.services.kms.model.IncorrectKeyException;
+import software.amazon.awssdk.services.kms.model.InvalidCiphertextException;
+import software.amazon.awssdk.services.kms.model.InvalidKeyUsageException;
+import software.amazon.awssdk.services.kms.model.KmsInvalidStateException;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,7 +35,7 @@ class AwsKeyManagementServiceTest {
     private static final byte[] ENCRYPTED_BLOB = "encrypted-blob".getBytes();
 
     @Mock
-    private AWSKMS mockKms;
+    private KmsClient mockKms;
 
     private AwsKeyManagementService awsKeyManagementService;
 
@@ -48,7 +47,9 @@ class AwsKeyManagementServiceTest {
     @Test
     void testEncrypt_success() {
         // Given
-        EncryptResult encryptResult = new EncryptResult().withCiphertextBlob(ByteBuffer.wrap(ENCRYPTED_BLOB));
+        EncryptResponse encryptResult = EncryptResponse.builder()
+                .ciphertextBlob(SdkBytes.fromByteArray(ENCRYPTED_BLOB))
+                .build();
         when(mockKms.encrypt(any(EncryptRequest.class))).thenReturn(encryptResult);
 
         // When
@@ -62,9 +63,9 @@ class AwsKeyManagementServiceTest {
         verify(mockKms).encrypt(requestCaptor.capture());
 
         EncryptRequest capturedRequest = requestCaptor.getValue();
-        assertEquals(KEY_ID, capturedRequest.getKeyId());
-        assertEquals(ENCRYPTION_ALGORITHM, capturedRequest.getEncryptionAlgorithm());
-        assertArrayEquals(PLAINTEXT, capturedRequest.getPlaintext().array());
+        assertEquals(KEY_ID, capturedRequest.keyId());
+        assertEquals(ENCRYPTION_ALGORITHM, capturedRequest.encryptionAlgorithmAsString());
+        assertArrayEquals(PLAINTEXT, capturedRequest.plaintext().asByteArray());
     }
 
     @Test
@@ -91,7 +92,9 @@ class AwsKeyManagementServiceTest {
     @Test
     void testDecrypt_success() {
         // Given
-        DecryptResult decryptResult = new DecryptResult().withPlaintext(ByteBuffer.wrap(PLAINTEXT));
+        DecryptResponse decryptResult = DecryptResponse.builder()
+                .plaintext(SdkBytes.fromByteArray(PLAINTEXT))
+                .build();
         when(mockKms.decrypt(any(DecryptRequest.class))).thenReturn(decryptResult);
 
         // When
@@ -105,9 +108,9 @@ class AwsKeyManagementServiceTest {
         verify(mockKms).decrypt(requestCaptor.capture());
 
         DecryptRequest capturedRequest = requestCaptor.getValue();
-        assertEquals(KEY_ID, capturedRequest.getKeyId());
-        assertEquals(ENCRYPTION_ALGORITHM, capturedRequest.getEncryptionAlgorithm());
-        assertArrayEquals(ENCRYPTED_BLOB, capturedRequest.getCiphertextBlob().array());
+        assertEquals(KEY_ID, capturedRequest.keyId());
+        assertEquals(ENCRYPTION_ALGORITHM, capturedRequest.encryptionAlgorithmAsString());
+        assertArrayEquals(ENCRYPTED_BLOB, capturedRequest.ciphertextBlob().asByteArray());
     }
 
     @Test
@@ -137,42 +140,42 @@ class AwsKeyManagementServiceTest {
     @Test
     void testEncrypt_kmsThrowsInvalidKeyUsageException() {
         when(mockKms.encrypt(any(EncryptRequest.class)))
-                .thenThrow(new InvalidKeyUsageException("Invalid key usage"));
+                .thenThrow(InvalidKeyUsageException.builder().message("Invalid key usage").build());
         assertThrows(EncryptionException.class, () -> awsKeyManagementService.encrypt(PLAINTEXT));
     }
 
     @Test
     void testEncrypt_kmsThrowsKmsInvalidStateException() {
         when(mockKms.encrypt(any(EncryptRequest.class)))
-                .thenThrow(new KMSInvalidStateException("KMS is in an invalid state"));
+                .thenThrow(KmsInvalidStateException.builder().message("KMS is in an invalid state").build());
         assertThrows(EncryptionException.class, () -> awsKeyManagementService.encrypt(PLAINTEXT));
     }
 
     @Test
     void testDecrypt_kmsThrowsInvalidCiphertextException() {
         when(mockKms.decrypt(any(DecryptRequest.class)))
-                .thenThrow(new InvalidCiphertextException("Invalid ciphertext provided"));
+                .thenThrow(InvalidCiphertextException.builder().message("Invalid ciphertext provided").build());
         assertThrows(EncryptionException.class, () -> awsKeyManagementService.decrypt(ENCRYPTED_BLOB));
     }
 
     @Test
     void testDecrypt_kmsThrowsInvalidKeyUsageException() {
         when(mockKms.decrypt(any(DecryptRequest.class)))
-                .thenThrow(new InvalidKeyUsageException("Invalid key usage"));
+                .thenThrow(InvalidKeyUsageException.builder().message("Invalid key usage").build());
         assertThrows(EncryptionException.class, () -> awsKeyManagementService.decrypt(ENCRYPTED_BLOB));
     }
 
     @Test
     void testDecrypt_kmsThrowsIncorrectKeyException() {
         when(mockKms.decrypt(any(DecryptRequest.class)))
-                .thenThrow(new IncorrectKeyException("Incorrect key was used"));
+                .thenThrow(IncorrectKeyException.builder().message("Incorrect key was used").build());
         assertThrows(EncryptionException.class, () -> awsKeyManagementService.decrypt(ENCRYPTED_BLOB));
     }
 
     @Test
     void testDecrypt_kmsThrowsKmsInvalidStateException() {
         when(mockKms.decrypt(any(DecryptRequest.class)))
-                .thenThrow(new KMSInvalidStateException("KMS is in an invalid state"));
+                .thenThrow(KmsInvalidStateException.builder().message("KMS is in an invalid state").build());
         assertThrows(EncryptionException.class, () -> awsKeyManagementService.decrypt(ENCRYPTED_BLOB));
     }
 }
