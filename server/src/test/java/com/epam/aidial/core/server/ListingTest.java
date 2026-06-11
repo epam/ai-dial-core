@@ -46,6 +46,11 @@ public class ListingTest extends ResourceBaseTest {
     }
 
     @Test
+    void testEmbeddingDimensions(Vertx vertx, VertxTestContext context) {
+        checkListing(vertx, context, "/openai/models", "embedding-ada", "embedding_dimensions", 1536);
+    }
+
+    @Test
     void testFeaturesEmbedding(Vertx vertx, VertxTestContext context) {
         checkListing(vertx, context, "/openai/models", "embedding-ada", "features", new JsonObject("""
                     { "rate": false, "tokenize": false, "truncate_prompt": false
@@ -56,7 +61,7 @@ public class ListingTest extends ResourceBaseTest {
                     "auto_caching" : false, "parallel_tool_calls": true,
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts_supported": false
+                    "custom_temperature_supported": true, "reasoning_efforts": []
                     }
                 """));
     }
@@ -72,7 +77,7 @@ public class ListingTest extends ResourceBaseTest {
                     "auto_caching" : false, "parallel_tool_calls": true,
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts_supported": false
+                    "custom_temperature_supported": true, "reasoning_efforts": []
                     }
                 """));
     }
@@ -88,7 +93,7 @@ public class ListingTest extends ResourceBaseTest {
                     "auto_caching" : false, "parallel_tool_calls": true,
                     "assistant_attachments_in_request": false, "mcp" : false,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
-                    "custom_temperature_supported": true, "reasoning_efforts_supported": false
+                    "custom_temperature_supported": true, "reasoning_efforts": []
                     }
                 """));
     }

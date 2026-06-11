@@ -114,6 +114,7 @@ public class ModelController {
         }
 
         data.setTokenizerModel(model.getTokenizerModel());
+        data.setEmbeddingDimensions(model.getEmbeddingDimensions());
         data.setLimits(createLimits(model.getLimits()));
         data.setPricing(createPricing(model.getPricing()));
         data.setDefaults(model.getDefaults());

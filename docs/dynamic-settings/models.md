@@ -29,6 +29,7 @@ An object containing parameters for each [model](#models).
 * `displayName`: A string with the models's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs so operators can quickly identify the model.
 * `displayVersion`: A string with the model's version. Use it to distinguish between "latest," "beta," or date-stamped builds.
 * `endpoint`: Model API for chat completions or embeddings.
+* `embeddingDimensions`: The size of the embedding vector returned by an embedding model (e.g. `1536` for `text-embedding-ada-002`). Omit for chat/completion models.
 * `tokenizerModel`: Identifies the specific model whose tokenization algorithm exactly matches that of the referenced model. This is typically the name of the earliest-released model in a series of models sharing an identical tokenization algorithm (e.g. gpt-3.5-turbo-0301, gpt-4-0314, or gpt-4-1106-vision-preview). This parameter is essential for DIAL clients that reimplement tokenization algorithms on their side, instead of utilizing the tokenizeEndpoint provided by the model.
 * `userRoles`: A specific claim value provided by a specific IDP in JWT or an API key role. If not defined, the language model is available to all users. Refer to [IDP Configuration](https://docs.dialx.ai/tutorials/devops/auth-and-access-control/configure-idps/overview) to view examples.
 * `descriptionKeywords`: A list of keywords describes the model, e.g. code-gen, text2image.
@@ -122,6 +123,7 @@ An object containing parameters for each [model](#models).
         "embedding-ada": {
             "type": "embedding",
             "endpoint": "http://localhost:7001/openai/deployments/ada/embeddings",
+            "embeddingDimensions": 1536,
             "upstreams": [
                 {
                     "endpoint": "http://localhost:7001",
@@ -205,7 +207,7 @@ Some models adapters expose specialized HTTP endpoints for tokenization, rate es
 * `parallelToolCallsSupported`: A boolean parameter that indicates whether the deployment supports `parallel_tool_calls` parameter in a chat completion request. Default is `true`.
 * `assistantAttachmentsInRequestSupported`: A boolean parameter that indicates whether the deployment supports DIAL attachments in the assistant messages. Default is `false`. When set to `true`, DIAL Chat must preserve attachments in the assistant messages, instead of removing them. The feature is especially useful for models that can generate attachments as well as take attachments in its input. A typical example of such a model is an image-editing model.
 * `supportCommentInRateResponse`: A boolean parameters that indicates whether the application supports the field `comment` in rate response payload.
-* `reasoningEffortsSupported`: A boolean parameter that indicates whether the deployment supports the `effort` parameter in chat completions requests. When enabled, clients can specify the reasoning effort level (e.g., `low`, `medium`, `high`) for reasoning models. Default is `false`.
+* `reasoningEfforts`: A list of supported `effort` values for chat completions requests (e.g., `low`, `medium`, `high`). An empty list means the deployment does not support the `effort` parameter. Default is `[]`.
 
 **Example**
 
@@ -228,7 +230,7 @@ Some models adapters expose specialized HTTP endpoints for tokenization, rate es
                 "accessibleByPerRequestKey": true,
                 "contentPartsSupported": false,
                 "assistantAttachmentsInRequestSupported": false,
-                "reasoningEffortsSupported": false
+                "reasoningEfforts": []
             },
         }
 }
