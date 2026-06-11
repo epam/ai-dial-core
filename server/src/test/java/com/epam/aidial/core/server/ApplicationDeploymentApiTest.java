@@ -950,7 +950,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "max_tokens_supported": true,
                       "max_completion_tokens_supported": false,
                       "custom_temperature_supported": true,
-                      "reasoning_efforts_supported": false
+                      "reasoning_efforts": []
                     },
                     "defaults" : { },
                     "responses_defaults" : { },
@@ -1014,7 +1014,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "max_tokens_supported": true,
                       "max_completion_tokens_supported": false,
                       "custom_temperature_supported": true,
-                      "reasoning_efforts_supported": false
+                      "reasoning_efforts": []
                     },
                     "defaults" : { },
                     "responses_defaults" : { },
@@ -1058,7 +1058,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "max_tokens_supported": true,
                       "max_completion_tokens_supported": false,
                       "custom_temperature_supported": true,
-                      "reasoning_efforts_supported": false
+                      "reasoning_efforts": []
                       },
                       "defaults" : { },
                       "responses_defaults" : { },
@@ -1111,7 +1111,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                       "max_tokens_supported": true,
                       "max_completion_tokens_supported": false,
                       "custom_temperature_supported": true,
-                      "reasoning_efforts_supported": false
+                      "reasoning_efforts": []
                     },
                     "defaults" : { },
                     "responses_defaults" : { },
