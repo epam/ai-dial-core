@@ -52,13 +52,21 @@ tags:
 - name: Deployment listing
 - name: Deployments
 - name: Files
+- name: Global Settings
+- name: Interceptors
+- name: Keys
 - name: LLM
 - name: Limits
 - name: MCP
+- name: Models
 - name: Notifications
 - name: Prompts
 - name: Publications
+- name: Roles
+- name: Routes
+- name: Schemas
 - name: Sharing
+- name: ToolSets
 - name: Toolsets
 - name: User Consent
 paths:
@@ -1794,6 +1802,7 @@ paths:
       tags:
       - User Consent
       summary: "/v1/consent/{deployment_id}"
+      description: "Call this endpoint to get a user's consent for the deployment id. Refer to [DIAL documentation](https://docs.dialx.ai/tutorials/developers/apps-development/auth-matrix#dial-api) to learn more about consent forms and Auth Matrix.      \n"
       operationId: requestUserConsent
       parameters:
       - name: deployment_id
@@ -1804,7 +1813,17 @@ paths:
           type: string
       responses:
         "200":
-          description: Successful response
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewConsentResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
@@ -1823,16 +1842,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
-        "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorData"
+      x-codeSamples:
+      - lang: cURL
+        label: CURL
+        source: "curl -X GET https://chat.<company>.com/v1/consent/{deployment_id} \\\n  -H \"Api-Key: DIAL_API_KEY\"          \n"
     post:
       tags:
       - User Consent
       summary: "/v1/consent/{deployment_id}"
+      description: "Call this endpoint to accept user's consent for the deployment id.      \n"
       operationId: acceptUserConsent
       parameters:
       - name: deployment_id
@@ -1874,6 +1892,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-codeSamples:
+      - lang: cURL
+        label: CURL
+        source: "curl -X POST https://chat.<company>.com/v1/consent/{deployment_id} \\\n  -H \"Api-Key: DIAL_API_KEY\"            \n"
   /v1/conversations/{bucket}/{conversation_path}:
     get:
       tags:
@@ -2045,7 +2067,7 @@ paths:
               examples:
                 DeploymentsSample:
                   value:
-                    deployments:
+                    deployments:               
                     - id: text-embedding-ada-002
                       model: text-embedding-ada-002
                       interfaces:
@@ -2127,6 +2149,7 @@ paths:
   /v1/deployments/{deployment_name}/configuration:
     get:
       summary: "/v1/deployments/{deployment_name}/configuration"
+      description: "The endpoint provides JSON schema of the configuration supported by the chat completion deployment.\n\nIf the deployment supports configuration, it's expected to be passed via `custom_fields.configuration` field in the chat completion request.\n<br><br>\nA deployment supports configuration if its listing, retrieved by `GET /openai/deployments/{deployment_name}`, has a field `features.configuration` set to `true`.      \n"
       operationId: configurationDeployment
       parameters:
       - name: deployment_name
@@ -2150,6 +2173,8 @@ paths:
       - Limits
       summary: "/v1/deployments/{deployment_name}/limits"
       operationId: getDeploymentLimits
+      description: |
+        Call this endpoint to get information about spent limits for a given deployment.
       parameters:
       - name: deployment_name
         in: path
@@ -2164,6 +2189,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LimitStats"
+              examples:
+                Example:
+                  value:
+                    hourRequestStats:
+                      total: 10
+                      used: 5
+                    dayRequestStats:
+                      total: 100
+                      used: 10
+                    minuteTokenStats:
+                      total: 1000
+                      used: 100
+                    dayTokenStats:
+                      total: 10000
+                      used: 4000
+                    weekTokenStats:
+                      total: 50000
+                      used: 20000
+                    monthTokenStats:
+                      total: 200000
+                      used: 80000
+                    minuteCostStats:
+                      total: 0.069
+                      used: 0.001
+                    dayCostStats:
+                      total: 100.0
+                      used: 10.0
+                    weekCostStats:
+                      total: 500.0
+                      used: 100.0
+                    monthCostStats:
+                      total: 20000.0
+                      used: 1000.0
         "401":
           description: Invalid Authentication
           content:
@@ -2440,6 +2498,7 @@ paths:
       tags:
       - Sharing
       summary: /v1/invitations
+      description: "Call this endpoint to get the list of your active invitations.      \n"
       operationId: getInvitations
       responses:
         "200":
@@ -2448,17 +2507,52 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/InvitationCollection"
+              examples:
+                Example:
+                  value:
+                    invitations:
+                    - id: 2818T2YRgFaMt8YW176ix7f3adFjxBx5TMQbzmnxgRGNPbDtctJ1wwGkigG78YU6juKnUKRWPNAt1f8Cna5Do7X48FnXwHs5MutEpefm6jTuMQ
+                      resources:
+                      - url: prompts/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/prompt_name
+                        author: user_1
+                        permissions:
+                        - READ
+                        shareCredentials: false
+                      - url: files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/image.png
+                        author: user_1
+                        permissions:
+                        - READ
+                        - WRITE
+                        shareCredentials: false
+                      - url: toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/my-toolset
+                        author: user_1
+                        permissions:
+                        - READ
+                        shareCredentials: true
+                      - url: credentials/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/my-toolset
+                        author: user_1
+                        permissions:
+                        - READ
+                        shareCredentials: false
+                      createdAt: 1707874031765
+                      expireAt: 1708133231765
+                      author: the name of the author of the invitation request
         "401":
           description: Invalid Authentication
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+    x-codeSamples:
+    - lang: cURL
+      label: CURL
+      source: "curl -X GET https://chat.<company>.com/v1/invitations \\\n  -H \"Api-Key: DIAL_API_KEY\"            \n"
   /v1/invitations/{invitation_id}:
     get:
       tags:
       - Sharing
       summary: "/v1/invitations/{invitation_id}"
+      description: "Call this endpoint to get the invitation details or accept the invitation.      \n"
       operationId: getInvitation
       parameters:
       - name: accept
@@ -2479,16 +2573,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Invitation"
+              examples:
+                Example:
+                  value:
+                    id: 2818T2YRgFaMt8YW176ix7f3adFjxBx5TMQbzmnxgRGNPbDtctJ1wwGkigG78YU6juKnUKRWPNAt1f8Cna5Do7X48FnXwHs5MutEpefm6jTuMQ
+                    resources:
+                    - url: prompts/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/prompt_name
+                      permissions:
+                      - READ
+                      shareCredentials: false
+                    - url: files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/image.png
+                      permissions:
+                      - READ
+                      shareCredentials: false
+                    - url: toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/my-toolset
+                      permissions:
+                      - READ
+                      shareCredentials: true
+                    - url: credentials/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/my-toolset
+                      permissions:
+                      - READ
+                      shareCredentials: false
+                    createdAt: 1707874031765
+                    expireAt: 1708133231765
+                    author: the name of the author of the invitation request
         "401":
           description: Invalid Authentication
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-codeSamples:
+      - lang: cURL
+        label: CURL
+        source: |
+          curl -X GET https://chat.<company>.com/v1/invitations/2818T2Y...pefm6jTuMQ \
+            -H "Api-Key: DIAL_API_KEY"
+      - lang: cURL
+        label: CURL (Accept)
+        source: "curl -X GET https://chat.<company>.com/v1/invitations/2818T2Y...pefm6jTuMQ?accept=true \\\n  -H \"Api-Key: DIAL_API_KEY\"          \n"
     delete:
       tags:
       - Sharing
       summary: "/v1/invitations/{invitation_id}"
+      description: "Call this endpoint to revoke the invitation.      \n"
       operationId: deleteInvitation
       parameters:
       - name: invitation_id
@@ -2505,6 +2633,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-codeSamples:
+      - lang: cURL
+        label: CURL
+        source: "curl -X DELETE https://chat.<company>.com/v1/invitations/2818T2Y...pefm6jTuMQ \\\n  -H \"Api-Key: DIAL_API_KEY\"                \n"
   /v1/metadata/applications/{bucket}/{path}:
     get:
       tags:
@@ -3351,16 +3483,33 @@ paths:
       tags:
       - Code interpreter
       summary: /v1/ops/code_interpreter/execute_code
+      description: Call this endpoint to execute code by code interpreter application
       operationId: executeCode
       requestBody:
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/CodeInterpreterExecuteRequest"
+            examples:
+              ExecuteCode:
+                value:
+                  sessionId: 3CcedGxCx23EwiVbV
+                  code: 'some Python code could be inserted here      '
         required: true
       responses:
         "200":
           description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodeInterpreterExecuteResponse"
+              examples:
+                CodeExecuteResponse:
+                  value:
+                    status: completed
+                    stdout: Application is completed
+                    result:
+                      success: true
         "400":
           description: Bad request
           content:
@@ -3617,6 +3766,7 @@ paths:
       tags:
       - Code interpreter
       summary: /v1/ops/code_interpreter/transfer_output_file
+      description: Call this endpoint to transfer file from code interpreter container to Core storage
       operationId: transferOutputFile
       requestBody:
         content:
@@ -3627,6 +3777,27 @@ paths:
       responses:
         "200":
           description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileMetadata"
+              examples:
+                File:
+                  value:
+                    name: file.png
+                    parentPath: folder1/folder2
+                    bucket: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST
+                    url: files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/file.png
+                    nodeType: ITEM
+                    resourceType: FILE
+                    etag: 7dfb93c3c62b88e9a75ff36a6af6c7eb
+                    updatedAt: 1707876435000
+                    createdAt: 1707876435000
+                    contentLength: 128630
+                    contentType: image/png
+                    permissions:
+                    - READ
+                    - WRITE
         "400":
           description: Bad request
           content:
@@ -3718,6 +3889,10 @@ paths:
       tags:
       - Config
       summary: /v1/ops/config/reload
+      description: |
+        Call this endpoint to reload [DIAL Core configuration](https://github.com/epam/ai-dial-core).
+
+        <b>Allowed for admin users only</b>!
       operationId: reloadConfig
       responses:
         "200":
@@ -3726,6 +3901,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Config"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
@@ -3744,12 +3925,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
-        "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorData"
+      x-codeSamples:
+      - lang: cURL
+        label: CURL
+        source: "curl -X POST https://chat.<company>.com/v1/ops/config/reload \\\n  -H \"Api-Key: DIAL_API_KEY\"            \n"
   /v1/ops/notification/delete:
     post:
       tags:
@@ -4578,7 +4757,24 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ResourcePermissionList"
+                oneOf:
+                - $ref: "#/components/schemas/ResourcePermissionList"
+                - $ref: "#/components/schemas/PerRequestReceiverList"
+              examples:
+                me:
+                  value:
+                    resources:
+                    - url: prompts/3CcedGxCx23EwiVbVmyf46KypuBQ65miviST/folder1/folder2/prompt_name
+                      permissions:
+                      - READ
+                others:
+                  value:
+                    receivers:
+                    - receiver: 112345678A
+                      resourcePermissions:
+                      - url: prompts/3CcedGxCx23EwiVbVmyf46KypuBQ65miviST/folder1/folder2/prompt_name
+                        permissions:
+                        - READ
         "400":
           description: Bad request
           content:
@@ -4919,12 +5115,20 @@ paths:
       tags:
       - Notifications
       summary: /v1/ops/resource/subscribe
+      description: "Use this endpoint to subscribe to resource updates. Refer to [Documentation](https://docs.dialx.ai/tutorials/developers/work-with-resources/notifications#subscribe-api) for more details on how to work with subscriptions.     \n"
       operationId: subscribeToResources
       requestBody:
         content:
           text/event-stream:
             schema:
               $ref: "#/components/schemas/SubscribeResourcesRequest"
+            examples:
+              Example:
+                value:
+                  resources:
+                  - url: prompts/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/prompt_name
+                  - url: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation
+                  - url: files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/image.png
         required: true
       responses:
         "200":
@@ -4935,12 +5139,28 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ResourceEvent"
+              examples:
+                Event Streaming:
+                  value:
+                  - url: prompts/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/prompt_name
+                    action: CREATE
+                    timestamp: 1722463025552
+                  - url: conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation
+                    action: UPDATE
+                    timestamp: 1722463025552
+                  - url: files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/image.png
+                    action: DELETE
+                    timestamp: 1722463025552
         "400":
           description: Bad request
         "401":
           description: Unauthorized
         "500":
           description: The server had an error while processing your request.
+      x-codeSamples:
+      - lang: cURL
+        label: CURL
+        source: "curl -X POST https://chat.<company>.com/v1/ops/resource/subscribe \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Api-Key: DIAL_API_KEY\" \\\n  -d '{\n    \"resources\": [\n      {\n        \"url\": \"conversations/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder/conversation\"\n      }\n    ]\n  }'          \n"
   /v1/ops/toolset/signin:
     post:
       tags:
@@ -5643,6 +5863,7 @@ paths:
   /v1/{deployment_name}/rate:
     post:
       summary: "/v1/{deployment_name}/rate"
+      description: "Call this endpoint to rate the response received from the chat completions endpoint.      \n"
       operationId: rateDeployment
       parameters:
       - name: deployment_name
@@ -5656,6 +5877,482 @@ paths:
           description: Success
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/interceptors/{bucket}/{path}:
+    get:
+      tags:
+      - Interceptors
+      summary: "/v1/metadata/interceptors/{bucket}/{path}"
+      operationId: getInterceptorMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/keys/{bucket}/{path}:
+    get:
+      tags:
+      - Keys
+      summary: "/v1/metadata/keys/{bucket}/{path}"
+      operationId: getKeyMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/models/{bucket}/{path}:
+    get:
+      tags:
+      - Models
+      summary: "/v1/metadata/models/{bucket}/{path}"
+      operationId: getModelMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/roles/{bucket}/{path}:
+    get:
+      tags:
+      - Roles
+      summary: "/v1/metadata/roles/{bucket}/{path}"
+      operationId: getRoleMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/routes/{bucket}/{path}:
+    get:
+      tags:
+      - Routes
+      summary: "/v1/metadata/routes/{bucket}/{path}"
+      operationId: getRouteMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/schemas/{bucket}/{path}:
+    get:
+      tags:
+      - Schemas
+      summary: "/v1/metadata/schemas/{bucket}/{path}"
+      operationId: getSchemaMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/settings/{bucket}/{path}:
+    get:
+      tags:
+      - Global Settings
+      summary: "/v1/metadata/settings/{bucket}/{path}"
+      operationId: getGlobalSettingsMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -5770,13 +6467,21 @@ components:
           type: boolean
         content_parts:
           type: boolean
+        custom_temperature_supported:
+          type: boolean
         folder_attachments:
+          type: boolean
+        max_completion_tokens_supported:
+          type: boolean
+        max_tokens_supported:
           type: boolean
         mcp:
           type: boolean
         parallel_tool_calls:
           type: boolean
         rate:
+          type: boolean
+        reasoning_efforts_supported:
           type: boolean
         seed:
           type: boolean
@@ -5897,11 +6602,16 @@ components:
           type: string
         extraData:
           type: string
+        id:
+          type: string
         key:
           type: string
           writeOnly: true
         responsesEndpoint:
           type: string
+        secretExtraData:
+          type: string
+          writeOnly: true
         tier:
           type: integer
         weight:
@@ -5975,19 +6685,18 @@ components:
       properties:
         data:
           type: array
-          description: An array of models.
           items:
             $ref: "#/components/schemas/DeploymentData"
         object:
           type: string
     CreateChatCompletionResponse:
-      type: object
       required:
       - choices
       - created
       - id
       - model
       - object
+      type: object
       properties:
         id:
           type: string
@@ -6006,14 +6715,54 @@ components:
             $ref: "#/components/schemas/ChatCompletionChoice"
         usage:
           $ref: "#/components/schemas/CompletionUsage"
-    CreateChatCompletionStreamResponse:
+    ChatCompletionChoice:
+      required:
+      - index
+      - message
       type: object
+      properties:
+        index:
+          type: integer
+        message:
+          $ref: "#/components/schemas/ChatCompletionMessage"
+        finish_reason:
+          type: string
+          nullable: true
+    ChatCompletionMessage:
+      required:
+      - role
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+          - system
+          - user
+          - assistant
+          - tool
+        content:
+          type: string
+          nullable: true
+        refusal:
+          type: string
+          nullable: true
+    CompletionUsage:
+      type: object
+      properties:
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+    CreateChatCompletionStreamResponse:
       required:
       - choices
       - created
       - id
       - model
       - object
+      type: object
       properties:
         id:
           type: string
@@ -6032,6 +6781,29 @@ components:
             $ref: "#/components/schemas/ChatCompletionChunkChoice"
         usage:
           $ref: "#/components/schemas/CompletionUsage"
+    ChatCompletionChunkChoice:
+      required:
+      - index
+      type: object
+      properties:
+        index:
+          type: integer
+        delta:
+          $ref: "#/components/schemas/ChatCompletionDelta"
+        finish_reason:
+          type: string
+          nullable: true
+    ChatCompletionDelta:
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+          - assistant
+          - tool
+        content:
+          type: string
+          nullable: true
     ErrorDetailsData:
       type: object
       properties:
@@ -6051,7 +6823,56 @@ components:
         error:
           $ref: "#/components/schemas/ErrorDetailsData"
     EmbeddingResponse:
+      required:
+      - data
+      - model
+      - object
+      - usage
       type: object
+      properties:
+        object:
+          type: string
+          description: Object type. Always is `list`.
+        model:
+          type: string
+          description: The name of the model that generated the response.
+        data:
+          type: array
+          description: A list of generated vectors.
+          items:
+            required:
+            - embedding
+            - index
+            - object
+            type: object
+            properties:
+              index:
+                type: integer
+                description: The index of the embedding from `0` to `number of regular and custom inputs in the request - 1`.
+              object:
+                type: string
+                description: Object type. Always is `embedding`.
+              embedding:
+                description: Embedding output corresponding to the `index`-th embedding input. It's either an array of floats or base64-encoded vector depending on the value of `encoding_format` request parameter.
+                oneOf:
+                - type: array
+                  items:
+                    type: number
+                - type: string
+            description: The representation of an embedding vector corresponding to `index`-th input.
+        usage:
+          required:
+          - prompt_tokens
+          - total_tokens
+          type: object
+          properties:
+            prompt_tokens:
+              type: integer
+              description: The number of tokens in the request to the model.
+            total_tokens:
+              type: integer
+              description: The number of tokens in the request to the model.
+          description: This field contains information about the tokens from the model that were used to generate the response.
     CapabilitiesData:
       type: object
       properties:
@@ -6313,12 +7134,20 @@ components:
           type: boolean
         content_parts_supported:
           type: boolean
+        custom_temperature_supported:
+          type: boolean
         folder_attachments_supported:
+          type: boolean
+        max_completion_tokens_supported:
+          type: boolean
+        max_tokens_supported:
           type: boolean
         parallel_tool_calls_supported:
           type: boolean
         rate_endpoint:
           type: string
+        reasoning_efforts_supported:
+          type: boolean
         seed_supported:
           type: boolean
         support_comment_in_rate_response:
@@ -6425,7 +7254,35 @@ components:
       - ITEM
       - FOLDER
     ResourceType:
-      type: object
+      type: string
+      enum:
+      - FILE
+      - CONVERSATION
+      - PROMPT
+      - LIMIT
+      - SHARED_WITH_ME
+      - SHARED_BY_ME
+      - INVITATION
+      - PUBLICATION
+      - RULES
+      - API_KEY_DATA
+      - NOTIFICATION
+      - APPLICATION
+      - DEPLOYMENT_COST_STATS
+      - CODE_INTERPRETER_SESSION
+      - USER_CONSENT
+      - TOOL_SET
+      - CREDENTIALS
+      - ENCRYPTION_KEYS
+      - CLIENT_CHANNEL
+      - MODEL
+      - APP_TYPE_SCHEMA
+      - INTERCEPTOR
+      - ROLE
+      - PROJECT_KEY
+      - ROUTE
+      - GLOBAL_SETTINGS
+      - RESPONSE_MAPPING
     ShareMetadata:
       type: object
       properties:
@@ -6493,6 +7350,13 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/ConsentDeployment"
+    ReviewConsentResponse:
+      type: object
+      properties:
+        accepted:
+          type: boolean
+        consent:
+          $ref: "#/components/schemas/Consent"
     AcceptConsentRequest:
       type: object
       properties:
@@ -6665,9 +7529,33 @@ components:
     InvitationCollection:
       type: object
       properties:
+        invitations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Invitation"
+    MetadataBase:
+      required:
+      - nodeType
+      discriminator:
+        propertyName: nodeType
+        mapping:
+          FOLDER: "#/components/schemas/ResourceFolderMetadata"
+          ITEM: "#/components/schemas/ResourceItemMetadata"
+      oneOf:
+      - $ref: "#/components/schemas/ResourceFolderMetadata"
+      - $ref: "#/components/schemas/ResourceItemMetadata"
+    ResourceFolderMetadata:
+      type: object
+      properties:
         bucket:
           type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MetadataBase"
         name:
+          type: string
+        nextToken:
           type: string
         nodeType:
           $ref: "#/components/schemas/NodeType"
@@ -6689,20 +7577,6 @@ components:
             $ref: "#/components/schemas/ShareMetadata"
         url:
           type: string
-        invitations:
-          type: array
-          items:
-            $ref: "#/components/schemas/Invitation"
-      required:
-      - nodeType
-      discriminator:
-        propertyName: nodeType
-        mapping:
-          FOLDER: "#/components/schemas/ResourceFolderMetadata"
-          ITEM: "#/components/schemas/ResourceItemMetadata"
-      oneOf:
-      - $ref: "#/components/schemas/ResourceFolderMetadata"
-      - $ref: "#/components/schemas/ResourceItemMetadata"
     ResourceLink:
       type: object
       properties:
@@ -6821,6 +7695,24 @@ components:
             $ref: "#/components/schemas/CodeInterpreterOutputFile"
         sessionId:
           type: string
+    CodeInterpreterExecuteResponse:
+      type: object
+      properties:
+        display: {}
+        result: {}
+        status:
+          type: string
+        stderr:
+          type: string
+        stdout:
+          type: string
+    CodeInterpreterFiles:
+      type: object
+      properties:
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodeInterpreterFile"
     CostLimit:
       type: object
       properties:
@@ -6914,6 +7806,7 @@ components:
           $ref: "#/components/schemas/IpAddressRanges"
         key:
           type: string
+          writeOnly: true
         project:
           type: string
         role:
@@ -7092,6 +7985,8 @@ components:
             type: string
         token_endpoint:
           type: string
+        token_endpoint_auth_method:
+          type: string
         user_level_auth_status:
           $ref: "#/components/schemas/ResourceAuthStatus"
     Role:
@@ -7220,7 +8115,6 @@ components:
       properties:
         ids:
           type: array
-          description: Notification identifiers.
           items:
             type: string
     Notification:
@@ -7294,6 +8188,14 @@ components:
       - CREDENTIALS
       - ENCRYPTION_KEYS
       - CLIENT_CHANNEL
+      - MODEL
+      - APP_TYPE_SCHEMA
+      - INTERCEPTOR
+      - ROLE
+      - PROJECT_KEY
+      - ROUTE
+      - GLOBAL_SETTINGS
+      - RESPONSE_MAPPING
     Rule:
       type: object
       properties:
@@ -7423,6 +8325,20 @@ components:
       properties:
         with:
           $ref: "#/components/schemas/ListPermissionRequestShareWith"
+    ResourcePermissionList:
+      type: object
+      properties:
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourcePermission"
+    PerRequestReceiverList:
+      type: object
+      properties:
+        receivers:
+          type: array
+          items:
+            $ref: "#/components/schemas/PerRequestReceiver"
     CopySharedAccessRequest:
       type: object
       properties:
@@ -7446,6 +8362,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SharedResource"
+    InvitationLink:
+      type: object
+      properties:
+        invitationLink:
+          type: string
     ResourceLinkCollection:
       type: object
       properties:
@@ -7466,6 +8387,13 @@ components:
             $ref: "#/components/schemas/ResourceTypes"
         with:
           type: string
+    SharedResourcesResponse:
+      type: object
+      properties:
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/MetadataBase"
     RevokeResourcesRequest:
       type: object
       properties:
@@ -7492,6 +8420,8 @@ components:
         action:
           $ref: "#/components/schemas/ResourceEventAction"
         etag:
+          type: string
+        senderPodId:
           type: string
         timestamp:
           type: integer
@@ -7538,139 +8468,6 @@ components:
           type: string
         name:
           type: string
-    ChatCompletionChoice:
-      required:
-      - index
-      - message
-      type: object
-      properties:
-        index:
-          type: integer
-        message:
-          $ref: "#/components/schemas/ChatCompletionMessage"
-        finish_reason:
-          type: string
-          nullable: true
-    ChatCompletionMessage:
-      required:
-      - role
-      type: object
-      properties:
-        role:
-          type: string
-          enum:
-          - system
-          - user
-          - assistant
-          - tool
-        content:
-          type: string
-          nullable: true
-        refusal:
-          type: string
-          nullable: true
-    CompletionUsage:
-      type: object
-      properties:
-        prompt_tokens:
-          type: integer
-        completion_tokens:
-          type: integer
-        total_tokens:
-          type: integer
-    ChatCompletionChunkChoice:
-      required:
-      - index
-      type: object
-      properties:
-        index:
-          type: integer
-        delta:
-          $ref: "#/components/schemas/ChatCompletionDelta"
-        finish_reason:
-          type: string
-          nullable: true
-    ChatCompletionDelta:
-      type: object
-      properties:
-        role:
-          type: string
-          enum:
-          - assistant
-          - tool
-        content:
-          type: string
-          nullable: true
-    ResourcePermissionList:
-      type: object
-      properties:
-        resources:
-          type: array
-          items:
-            $ref: "#/components/schemas/ResourcePermission"
-    InvitationLink:
-      type: object
-      properties:
-        invitationLink:
-          type: string
-    SharedResourcesResponse:
-      type: object
-      properties:
-        resources:
-          type: array
-          items:
-            $ref: "#/components/schemas/MetadataBase"
-    ResourceFolderMetadata:
-      type: object
-      properties:
-        bucket:
-          type: string
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/MetadataBase"
-        name:
-          type: string
-        nextToken:
-          type: string
-        nodeType:
-          $ref: "#/components/schemas/NodeType"
-        parentPath:
-          type: string
-        permissions:
-          type: array
-          items:
-            $ref: "#/components/schemas/ResourceAccessType"
-        resourceType:
-          $ref: "#/components/schemas/ResourceType"
-        sharedBy:
-          type: array
-          items:
-            $ref: "#/components/schemas/ShareMetadata"
-        sharedWith:
-          type: array
-          items:
-            $ref: "#/components/schemas/ShareMetadata"
-        url:
-          type: string
-    MetadataBase:
-      required:
-      - nodeType
-      discriminator:
-        propertyName: nodeType
-        mapping:
-          FOLDER: "#/components/schemas/ResourceFolderMetadata"
-          ITEM: "#/components/schemas/ResourceItemMetadata"
-      oneOf:
-      - $ref: "#/components/schemas/ResourceFolderMetadata"
-      - $ref: "#/components/schemas/ResourceItemMetadata"
-    CodeInterpreterFiles:
-      type: object
-      properties:
-        files:
-          type: array
-          items:
-            $ref: "#/components/schemas/CodeInterpreterFile"
   securitySchemes:
     ApiKeyAuth:
       type: apiKey

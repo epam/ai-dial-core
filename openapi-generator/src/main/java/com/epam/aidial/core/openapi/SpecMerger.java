@@ -30,7 +30,7 @@ public final class SpecMerger {
     private static final Set<String> SKELETON_PREFERRED_FIELDS = Set.of(
             "type", "properties", "required",
             "schema", "items", "allOf", "oneOf", "anyOf",
-            "operationId"
+            "operationId", "tags"
     );
 
     private final ObjectMapper yamlMapper;

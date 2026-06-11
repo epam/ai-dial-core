@@ -95,6 +95,38 @@ tasks.register('lintMergedOpenApi', Exec) {
     }
 }
 
+tasks.register('checkOpenApiDiff') {
+    dependsOn lintMergedOpenApi
+
+    doLast {
+        def currentSpec = file(targetSpec)
+        def generatedSpec = file(mergedFile)
+
+        if (!currentSpec.exists()) {
+            logger.lifecycle("Current OpenAPI spec not found: ${targetSpec}")
+            return
+        }
+
+        if (!java.util.Arrays.equals(currentSpec.bytes, generatedSpec.bytes)) {
+            logger.lifecycle("""
+============================================================
+OpenAPI specification differs from committed version.
+
+Current:
+${targetSpec}
+
+Generated:
+${mergedFile}
+
+Review changes and update universal_chat_api.yaml if needed.
+============================================================
+""")
+        } else {
+            logger.lifecycle("OpenAPI specification is up to date.")
+        }
+    }
+}
+
 tasks.register('publishOpenApiSpec') {
-    dependsOn backupAndReplaceSpec
+    dependsOn checkOpenApiDiff
 }
