@@ -178,7 +178,7 @@ public class ResourceServiceTest {
     @Test
     public void testCleanupTempFolder() {
         byte[] body = "1234567890".getBytes();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         LocalDateTime now = LocalDateTime.now();
 
         String expiredFolder = now.minusHours(3).format(formatter);

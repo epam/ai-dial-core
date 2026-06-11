@@ -97,12 +97,10 @@ public class ResourceService implements AutoCloseable {
      */
     public static final String TEMP_FOLDER = ".dial-tmp";
     /**
-     * Files uploaded to the {@link #TEMP_FOLDER} are grouped into sub-folders named after the hour they were uploaded
-     * in, e.g. {@code .dial-tmp/2024-01-31 13/<uuid>}.
+     * Files uploaded to the {@link #TEMP_FOLDER} are grouped into sub-folders, e.g. {@code .dial-tmp/2024-01-31 13:34:10/<uuid>}.
      */
     private static final DateTimeFormatter TEMP_FOLDER_FORMATTER = new DateTimeFormatterBuilder()
-            .appendPattern("yyyy-MM-dd HH")
-            .parseDefaulting(ChronoField.MINUTE_OF_HOUR, 0)
+            .appendPattern("yyyy-MM-dd HH:mm:ss")
             .toFormatter();
     /**
      * How frequently the scheduled job scans the {@link #TEMP_FOLDER} for expired files.
@@ -710,7 +708,7 @@ public class ResourceService implements AutoCloseable {
         try {
             LocalDateTime now = LocalDateTime.now();
             String token = null;
-            do {
+            exit: do {
                 PageSet<? extends StorageMetadata> set = blobStore.list(TEMP_FOLDER, token, PAGE_SIZE, true);
                 for (StorageMetadata meta : set) {
                     if (meta.getType() != StorageType.BLOB) {
@@ -723,7 +721,10 @@ public class ResourceService implements AutoCloseable {
                         } catch (Throwable e) {
                             log.warn("Failed to delete expired temp file: {}", path, e);
                         }
+                    } else {
+                        break exit;
                     }
+
                 }
                 token = set.getNextMarker();
             } while (token != null);
@@ -737,27 +738,29 @@ public class ResourceService implements AutoCloseable {
     private static boolean isExpiredTempFile(String path, LocalDateTime now) {
         String prefix = TEMP_FOLDER + ResourceDescriptor.PATH_SEPARATOR;
         if (!path.startsWith(prefix)) {
-            return false;
+            throw invalidTempPathException(path);
         }
 
         int folderStart = prefix.length();
         int folderEnd = path.indexOf(ResourceDescriptor.PATH_SEPARATOR, folderStart);
         if (folderEnd < 0) {
-            return false;
+            throw invalidTempPathException(path);
         }
 
         String folder = path.substring(folderStart, folderEnd);
-        LocalDateTime uploadHour;
+        LocalDateTime uploadTs;
         try {
-            uploadHour = LocalDateTime.parse(folder, TEMP_FOLDER_FORMATTER);
+            uploadTs = LocalDateTime.parse(folder, TEMP_FOLDER_FORMATTER);
         } catch (DateTimeParseException e) {
             log.warn("Unexpected folder name in temp folder: {}", folder);
-            return false;
+            throw invalidTempPathException(path);
         }
 
-        // the folder covers a whole hour, so a file is guaranteed to be older than the TTL only once the next hour
-        // plus the TTL has passed
-        return uploadHour.plusHours(1).plus(TEMP_FILE_TTL).isBefore(now);
+        return uploadTs.plus(TEMP_FILE_TTL).isBefore(now);
+    }
+
+    private static IllegalArgumentException invalidTempPathException(String path) {
+        return new IllegalArgumentException("Invalid path to temp file: " + path);
     }
 
     public FileMetadata finishFileUpload(ResourceDescriptor descriptor, ResourceUpload resourceUpload, EtagHeader etagHeader) {
