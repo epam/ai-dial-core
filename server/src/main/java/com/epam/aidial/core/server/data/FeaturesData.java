@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -33,7 +35,7 @@ public class FeaturesData {
     private boolean maxTokensSupported = true;
     private boolean maxCompletionTokensSupported = false;
     private boolean customTemperatureSupported = true;
-    private boolean reasoningEffortsSupported = false;
+    private List<String> reasoningEfforts = List.of();
 
     @JsonIgnore
     public static FeaturesData createFeatures(Features features) {
@@ -112,8 +114,8 @@ public class FeaturesData {
             data.setCustomTemperatureSupported(features.getCustomTemperatureSupported());
         }
 
-        if (features.getReasoningEffortsSupported() != null) {
-            data.setReasoningEffortsSupported(features.getReasoningEffortsSupported());
+        if (features.getReasoningEfforts() != null && !features.getReasoningEfforts().isEmpty()) {
+            data.setReasoningEfforts(List.copyOf(features.getReasoningEfforts()));
         }
 
         return data;
