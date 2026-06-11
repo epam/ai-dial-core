@@ -861,7 +861,7 @@ Overlays split shared base manifests from per-environment deltas. Applied with
 `--overlay <dir>`, the CLI merges overlay manifests on top of the base set before
 sending — without modifying the base files.
 
-`manifests/overlays/local/` ships three mechanisms:
+`manifests/overlays/staging/` ships three mechanisms:
 
 | File | Kind | Effect |
 |------|------|--------|
@@ -873,7 +873,7 @@ sending — without modifying the base files.
 
 **Input:**
 ```shell
-dial-cli apply -f manifests/base/ --overlay manifests/overlays/local/ \
+dial-cli apply -f manifests/base/ --overlay manifests/overlays/staging/ \
   --env local --dry-run
 ```
 
@@ -884,7 +884,7 @@ dial-cli apply -f manifests/base/ --overlay manifests/overlays/local/ \
 8 instead of 9 manifests — `04-key.disable` removes the CI key from the set before the
 envelope is built. Inspect with `jq`:
 ```shell
-dial-cli apply -f manifests/base/ --overlay manifests/overlays/local/ --env local --dry-run \
+dial-cli apply -f manifests/base/ --overlay manifests/overlays/staging/ --env local --dry-run \
   | jq '[.manifests[] | {kind, name}]'
 ```
 
@@ -897,7 +897,7 @@ dial-cli apply -f manifests/base/ --overlay manifests/overlays/local/ --env loca
 
 **Input:**
 ```shell
-dial-cli apply -f manifests/base/ --overlay manifests/overlays/local/ \
+dial-cli apply -f manifests/base/ --overlay manifests/overlays/staging/ \
   --env local
 ```
 
@@ -978,7 +978,7 @@ dial-cli apply -f manifests/base/ --dry-run  # preview only
 
 # Apply with overlay (env-specific patches)
 dial-cli apply -f manifests/base/ \
-  --overlay manifests/overlays/local/ \
+  --overlay manifests/overlays/staging/ \
   --env local
 
 # Update in-place  (single-quoted strings pass values verbatim; \, escapes commas in arrays)
