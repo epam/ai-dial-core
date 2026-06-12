@@ -15,6 +15,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
+import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.JsonUtil;
@@ -184,20 +185,21 @@ public class ResponseItemController implements Controller {
 
     private Future<Void> collectAndForward(HttpClientResponse proxyResponse, ResponseMapping mapping) {
         return proxyResponse.body()
-                .compose(body -> rewriteId(body, mapping.getUpstreamResponseId()))
-                .compose(rewritten -> {
-                    if (operation == Operation.GET && proxyResponse.statusCode() == 200) {
+                .compose(body -> proxy.getTaskExecutor()
+                        .submit(() -> parseBody(body, mapping.getUpstreamResponseId())))
+                .compose(parsed -> {
+                    if (operation.method == HttpMethod.GET && proxyResponse.statusCode() == 200) {
                         proxy.getBackgroundJobService()
-                                .tryCompleteOnGet(dialResponseId, mapping, rewritten)
+                                .tryCompleteOnGet(dialResponseId, mapping, parsed.terminalResult())
                                 .onFailure(e -> log.warn("Failed to complete background job on GET {}", dialResponseId, e));
                     }
-                    if (operation.shouldDeleteMapping(proxyResponse.statusCode())) {
+                    if (operation.method == HttpMethod.DELETE && proxyResponse.statusCode() == 200) {
                         return proxy.getTaskExecutor().submit(() -> {
                             proxy.getResponseMappingService().deleteMapping(dialResponseId);
-                            return rewritten;
+                            return parsed.buffer();
                         });
                     }
-                    return Future.succeededFuture(rewritten);
+                    return Future.succeededFuture(parsed.buffer());
                 })
                 .compose(rewritten -> {
                     context.getResponse().setStatusCode(proxyResponse.statusCode());
@@ -211,22 +213,25 @@ public class ResponseItemController implements Controller {
                 .mapEmpty();
     }
 
-    private Future<Buffer> rewriteId(Buffer body, String upstreamResponseId) {
+    private ParsedBody parseBody(Buffer body, String upstreamResponseId) {
         if (body.length() == 0) {
-            return Future.succeededFuture(body);
+            return new ParsedBody(body, null);
         }
-        return proxy.getTaskExecutor().submit(() -> {
-            JsonNode tree = JsonUtil.tryParse(body.getBytes());
-            if (tree.isObject() && tree instanceof ObjectNode object) {
-                JsonNode idNode = object.path("id");
-                if (!idNode.isNull() && upstreamResponseId.equals(idNode.asText())) {
-                    object.put("id", dialResponseId);
-                }
-                return Buffer.buffer(JsonUtil.serialize(object));
-            }
-
-            return body;
-        });
+        JsonNode tree = JsonUtil.tryParse(body.getBytes());
+        if (!(tree instanceof ObjectNode object)) {
+            return new ParsedBody(body, null);
+        }
+        JsonNode idNode = object.path("id");
+        if (!idNode.isNull() && upstreamResponseId.equals(idNode.asText())) {
+            object.put("id", dialResponseId);
+        }
+        ResponsesApiClient.TerminalResult terminalResult = null;
+        try {
+            terminalResult = ResponsesApiClient.parseTerminalBody(object);
+        } catch (Exception e) {
+            log.warn("Failed to extract terminal result for background job {} on GET", dialResponseId, e);
+        }
+        return new ParsedBody(Buffer.buffer(JsonUtil.serialize(object)), terminalResult);
     }
 
     private Future<Void> collectAndForwardStreaming(HttpClientResponse proxyResponse, String upstreamResponseId) {
@@ -260,22 +265,18 @@ public class ResponseItemController implements Controller {
     }
 
     public enum Operation {
-        GET(HttpMethod.GET, "", false),
-        CANCEL(HttpMethod.POST, "/cancel", false),
-        DELETE(HttpMethod.DELETE, "", true);
+        GET(HttpMethod.GET, ""),
+        CANCEL(HttpMethod.POST, "/cancel"),
+        DELETE(HttpMethod.DELETE, "");
 
         private final HttpMethod method;
-        private final String suffix;
-        private final boolean deleteMappingOnSuccess;
 
-        Operation(HttpMethod method, String suffix, boolean deleteMappingOnSuccess) {
+        private final String suffix;
+        Operation(HttpMethod method, String suffix) {
             this.method = method;
             this.suffix = suffix;
-            this.deleteMappingOnSuccess = deleteMappingOnSuccess;
-        }
-
-        private boolean shouldDeleteMapping(int status) {
-            return deleteMappingOnSuccess && status == 200;
         }
     }
+
+    private record ParsedBody(Buffer buffer, ResponsesApiClient.TerminalResult terminalResult) {}
 }

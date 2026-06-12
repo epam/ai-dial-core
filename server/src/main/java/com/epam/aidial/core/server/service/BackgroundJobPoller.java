@@ -6,6 +6,9 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpMethod;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +40,23 @@ public class BackgroundJobPoller {
 
         String targetUrl = deployment.getResponsesEndpoint() + "/" + mapping.getUpstreamResponseId();
         return client.send(targetUrl, HttpMethod.GET, upstream)
-                .compose(response -> response.body().map(ResponsesApiClient::parseTerminalBody));
+                .compose(response -> {
+                    int statusCode = response.statusCode();
+                    if (statusCode != 200) {
+                        return Future.failedFuture("Unexpected status " + statusCode + " from upstream for background job " + mapping.getUpstreamResponseId());
+                    }
+                    return response.body();
+                })
+                .compose(body -> {
+                    try {
+                        JsonNode node = ProxyUtil.MAPPER.readTree(body.getBytes());
+                        if (!(node instanceof ObjectNode tree)) {
+                            return Future.failedFuture("Response body is not a JSON object for background job " + mapping.getUpstreamResponseId());
+                        }
+                        return Future.succeededFuture(ResponsesApiClient.parseTerminalBody(tree));
+                    } catch (Exception e) {
+                        return Future.failedFuture(e);
+                    }
+                });
     }
 }

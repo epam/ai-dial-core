@@ -24,7 +24,6 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
-import io.vertx.core.buffer.Buffer;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RFuture;
@@ -159,14 +158,7 @@ public class BackgroundJobService {
                 .eventually(() -> lease != null ? lease.release() : Future.succeededFuture());
     }
 
-    public Future<Void> tryCompleteOnGet(String dialResponseId, ResponseMapping mapping, Buffer body) {
-        ResponsesApiClient.TerminalResult result;
-        try {
-            result = ResponsesApiClient.parseTerminalBody(body);
-        } catch (Exception e) {
-            log.warn("Failed to parse response body for background job {} on GET", dialResponseId, e);
-            return Future.succeededFuture();
-        }
+    public Future<Void> tryCompleteOnGet(String dialResponseId, ResponseMapping mapping, ResponsesApiClient.TerminalResult result) {
         if (result == null) {
             return Future.succeededFuture();
         }

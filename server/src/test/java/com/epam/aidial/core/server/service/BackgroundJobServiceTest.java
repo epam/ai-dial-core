@@ -182,7 +182,7 @@ class BackgroundJobServiceTest {
     void submitStartsPollingAndCompletesJob(Vertx vertx, VertxTestContext ctx) throws Throwable {
         ResponseMapping mapping = buildMapping();
         when(responseMappingService.getMapping(anyString())).thenReturn(mapping);
-        when(poller.poll(any())).thenReturn(Future.succeededFuture(new TokenUsage()));
+        when(poller.poll(any())).thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(new TokenUsage())));
         Config config = mock(Config.class);
         when(configStore.get()).thenReturn(config);
 

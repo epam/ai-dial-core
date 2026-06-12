@@ -8,7 +8,6 @@ import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
-import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientResponse;
@@ -39,9 +38,8 @@ public class ResponsesApiClient {
         return !("queued".equals(status) || "in_progress".equals(status));
     }
 
-    public static TerminalResult parseTerminalBody(Buffer body) {
+    public static TerminalResult parseTerminalBody(ObjectNode tree) {
         try {
-            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(body.getBytes());
             JsonNode statusNode = tree.path("status");
             if (!statusNode.isTextual() || !isTerminal(statusNode.asText())) {
                 return null;
