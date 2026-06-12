@@ -390,14 +390,14 @@ public class ResourceService implements AutoCloseable {
                 result.add(pair);
             }
         }
-        log.debug("Number of missed resources in Redis cache: {}", missed.size());
+        log.debug("Number of missing resources in Redis cache: {}", missed.size());
         List<Future<Pair<ResourceItemMetadata, String>>> futures = new ArrayList<>();
         for (ResourceItemMetadata metadata : missed) {
             Future<Pair<ResourceItemMetadata, String>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
                     .submit(() -> getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, false));
             futures.add(future);
         }
-        log.debug("Start loading missed resources from blob storage: {}", missed.size());
+        log.debug("Start loading missing resources from blob storage: {}", missed.size());
         for (Future<Pair<ResourceItemMetadata, String>> future : futures) {
             Pair<ResourceItemMetadata, String> res = future.get();
             if (res != null) {
