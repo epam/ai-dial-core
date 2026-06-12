@@ -72,7 +72,6 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
                     }
                     context.setResponseId(generatedDialId);
                     return proxy.getBackgroundJobService().saveJob(context)
-                            .compose(ignored -> proxy.getBackgroundJobService().startStreamingJob(generatedDialId))
                             .map(ignored -> generatedDialId);
                 })
                 .map(generatedDialId -> {

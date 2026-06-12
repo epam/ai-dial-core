@@ -27,7 +27,6 @@ import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -108,10 +107,9 @@ class BackgroundJobServiceTest {
         BackgroundJobService.Settings testSettings = new BackgroundJobService.Settings();
         testSettings.setPollIntervalMs(TEST_POLL_INTERVAL_MS);
         service = new BackgroundJobService(
-                vertx, redissonClient, PREFIX, () -> UUID.randomUUID().toString(),
-                lockService, configStore, apiKeyStore,
-                rateLimiter, tokenStatsTracker, responseMappingService,
-                poller, testSettings);
+                vertx, redissonClient, PREFIX, lockService,
+                configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
+                responseMappingService, poller, testSettings);
 
         lenient().when(proxyContext.getResponseId()).thenReturn(JOB_ID);
         lenient().when(proxyContext.getProxyApiKeyData().getPerRequestKey()).thenReturn("test-per-request-key");
@@ -155,7 +153,6 @@ class BackgroundJobServiceTest {
     @Test
     void cancelStreamingJobDeletesRecord(Vertx vertx, VertxTestContext ctx) throws Throwable {
         service.saveJob(proxyContext)
-                .compose(ignored -> service.startStreamingJob(JOB_ID))
                 .compose(ignored -> service.cancelStreamingJob(JOB_ID))
                 .compose(deleted -> service.isJobActive(JOB_ID)
                         .onSuccess(active -> ctx.verify(() -> {

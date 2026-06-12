@@ -323,7 +323,7 @@ public class AiDial {
             BackgroundJobService.Settings backgroundJobSettings =
                     Json.decodeValue(settings("backgroundJob").toBuffer(), BackgroundJobService.Settings.class);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
-                    vertx, redis, storage.getPrefix(), generator, lockService,
+                    vertx, redis, storage.getPrefix(), lockService,
                     configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                     responseMappingService, backgroundJobPoller, backgroundJobSettings);
             backgroundJobService.init();

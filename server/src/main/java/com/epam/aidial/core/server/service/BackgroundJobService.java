@@ -30,10 +30,8 @@ import org.redisson.api.RFuture;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
 
 @Slf4j
 public class BackgroundJobService {
@@ -42,21 +40,16 @@ public class BackgroundJobService {
     @Data
     public static class Settings {
         private long pollIntervalMs = TimeUnit.SECONDS.toMillis(10);
-        private long leaseTtlMs = TimeUnit.SECONDS.toMillis(60);
         private int maxSequentialPollFailures = 10;
         private long defaultJobTtlMs = TimeUnit.DAYS.toMillis(1);
     }
 
-    private final ConcurrentHashMap<String, Lease> streamingLeases = new ConcurrentHashMap<>();
-
     private final long pollIntervalMs;
-    private final long leaseTtlMs;
     private final int maxSequentialPollFailures;
     private final long defaultJobTtlMs;
     private final Vertx vertx;
     private final RedissonClient redis;
     private final String prefix;
-    private final Supplier<String> generator;
     private final String jobIndexKey;
     private final LockService lockService;
     private final ConfigStore configStore;
@@ -70,7 +63,6 @@ public class BackgroundJobService {
             Vertx vertx,
             RedissonClient redis,
             String prefix,
-            Supplier<String> generator,
             LockService lockService,
             ConfigStore configStore,
             ApiKeyStore apiKeyStore,
@@ -80,13 +72,11 @@ public class BackgroundJobService {
             BackgroundJobPoller poller,
             Settings settings) {
         this.pollIntervalMs = settings.getPollIntervalMs();
-        this.leaseTtlMs = settings.getLeaseTtlMs();
         this.maxSequentialPollFailures = settings.getMaxSequentialPollFailures();
         this.defaultJobTtlMs = settings.getDefaultJobTtlMs();
         this.vertx = vertx;
         this.redis = redis;
         this.prefix = prefix;
-        this.generator = generator;
         this.jobIndexKey = "background_job_index:" + BlobStorageUtil.toStoragePath(prefix, ResponseIdUtil.BACKGROUND_JOB_BUCKET_LOCATION);
         this.lockService = lockService;
         this.configStore = configStore;
@@ -110,7 +100,8 @@ public class BackgroundJobService {
                 .createdAt(System.currentTimeMillis())
                 .streaming(context.isStreamingRequest())
                 .build();
-        return persistRecordAsync(jobId, record);
+        return persistRecordAsync(jobId, record)
+                .compose(ignored -> addToQueue(jobId).mapEmpty());
     }
 
     public Future<Boolean> isJobActive(String dialResponseId) {
@@ -119,29 +110,10 @@ public class BackgroundJobService {
     }
 
     public void submit(String id) {
-        addToQueue(id)
-                .onSuccess(ignored -> startPolling(id))
-                .onFailure(error -> log.warn("Failed to add background job {} to queue", id, error));
-    }
-
-    public Future<Void> startStreamingJob(String jobId) {
-        return addToQueue(jobId)
-                .compose(ignored -> tryAcquireLeaseAsync(jobId))
-                .map(lease -> {
-                    if (lease != null) {
-                        Lease oldLease = streamingLeases.put(jobId, lease);
-                        if (oldLease != null) {
-                            log.warn("Background job {} already has an active lease, releasing the old lease", jobId);
-                            oldLease.release()
-                                    .onFailure(e -> log.warn("Failed to release old lease for background job {}", jobId, e));
-                        }
-                    }
-                    return null;
-                });
+        startPolling(id);
     }
 
     public Future<Boolean> cancelStreamingJob(String jobId) {
-        Lease lease = streamingLeases.remove(jobId);
         return deleteRecordAsync(jobId)
                 .compose(deleted -> {
                     if (!deleted) {
@@ -154,8 +126,7 @@ public class BackgroundJobService {
                                 return Future.succeededFuture();
                             })
                             .map(true);
-                })
-                .eventually(() -> lease != null ? lease.release() : Future.succeededFuture());
+                });
     }
 
     public Future<Void> tryCompleteOnGet(String dialResponseId, ResponseMapping mapping, ResponsesApiClient.TerminalResult result) {
@@ -174,35 +145,25 @@ public class BackgroundJobService {
     }
 
     private void startPolling(String id) {
-        tryAcquireLeaseAsync(id)
-                .onSuccess(lease -> {
-                    if (lease == null) {
-                        log.info("Background job {} lease held by another instance, skipping polling", id);
-                        return;
+        loadRecordAsync(id)
+                .compose(record -> {
+                    if (record == null) {
+                        return removeFromQueue(id).mapEmpty();
                     }
-                    loadRecordAsync(id)
-                            .compose(record -> {
-                                if (record == null) {
-                                    return removeFromQueue(id).mapEmpty();
+                    return vertx.executeBlocking(() -> responseMappingService.getMapping(id))
+                            .compose(mapping -> {
+                                if (mapping == null) {
+                                    return Future.failedFuture("Response mapping not found for background job " + id);
                                 }
-                                return vertx.executeBlocking(() -> responseMappingService.getMapping(id))
-                                        .compose(mapping -> {
-                                            if (mapping == null) {
-                                                return Future.failedFuture("Response mapping not found for background job " + id);
-                                            }
 
-                                            Promise<TokenUsage> done = Promise.promise();
-                                            AtomicInteger failureCount = new AtomicInteger();
-                                            scheduleNextPoll(id, mapping, failureCount, done);
-                                            return done.future()
-                                                    .compose(usage ->
-                                                            processResult(id, record, mapping, usage));
-                                        });
-                            })
-                            .eventually(lease::release)
-                            .onFailure(error -> log.warn("Failed to do polling for background job {}", id, error));
+                                Promise<TokenUsage> done = Promise.promise();
+                                AtomicInteger failureCount = new AtomicInteger();
+                                scheduleNextPoll(id, mapping, failureCount, done);
+                                return done.future()
+                                        .compose(usage -> processResult(id, record, mapping, usage));
+                            });
                 })
-                .onFailure(error -> log.warn("Failed to acquire lease for background job {}", id, error));
+                .onFailure(error -> log.warn("Failed to do polling for background job {}", id, error));
     }
 
     private Future<Boolean> processResult(String jobId, BackgroundJobRecord jobRecord, ResponseMapping responseMapping, TokenUsage usage) {
@@ -220,25 +181,34 @@ public class BackgroundJobService {
 
     private void scheduleNextPoll(
             String id, ResponseMapping mapping, AtomicInteger failureCount, Promise<TokenUsage> done) {
-        vertx.setTimer(pollIntervalMs, ignored -> poller.poll(mapping)
-                .onSuccess(result -> {
-                    if (result == null) {
-                        failureCount.set(0);
-                        scheduleNextPoll(id, mapping, failureCount, done);
-                    } else {
-                        done.tryComplete(result.usage());
-                    }
-                })
-                .onFailure(error -> {
-                    int n = failureCount.incrementAndGet();
-                    if (n < maxSequentialPollFailures) {
-                        log.warn("Poll failed for background job {} ({}/{})", id, n, maxSequentialPollFailures, error);
-                        scheduleNextPoll(id, mapping, failureCount, done);
-                    } else {
-                        log.error("Background job {} exceeded max poll failures, giving up", id, error);
-                        done.tryComplete(null);
-                    }
-                }));
+        vertx.setTimer(pollIntervalMs, ignored -> {
+            LockService.Lock lock = lockService.tryLock("background_job_poll:" + id);
+            if (lock == null) {
+                scheduleNextPoll(id, mapping, failureCount, done);
+                return;
+            }
+            poller.poll(mapping)
+                    .onSuccess(result -> {
+                        lock.close();
+                        if (result == null) {
+                            failureCount.set(0);
+                            scheduleNextPoll(id, mapping, failureCount, done);
+                        } else {
+                            done.tryComplete(result.usage());
+                        }
+                    })
+                    .onFailure(error -> {
+                        lock.close();
+                        int n = failureCount.incrementAndGet();
+                        if (n < maxSequentialPollFailures) {
+                            log.warn("Poll failed for background job {} ({}/{})", id, n, maxSequentialPollFailures, error);
+                            scheduleNextPoll(id, mapping, failureCount, done);
+                        } else {
+                            log.error("Background job {} exceeded max poll failures, giving up", id, error);
+                            done.tryComplete(null);
+                        }
+                    });
+        });
     }
 
     private void onJobCompleted(String jobId, BackgroundJobRecord jobRecord, ResponseMapping responseMapping, TokenUsage usage) {
@@ -318,34 +288,6 @@ public class BackgroundJobService {
         return RedisUtil.redisKey(resource, prefix);
     }
 
-    private Future<Lease> tryAcquireLeaseAsync(String jobId) {
-        String key = "background_job_poll:" + jobId;
-        String lockId = generator.get();
-        return toFuture(lockService.tryCreateClaimAsync(key, lockId, leaseTtlMs))
-                .map(remaining -> {
-                    if (remaining != 0L) {
-                        return null;
-                    }
-                    long timerId = vertx.setPeriodic(leaseTtlMs / 2, id -> {
-                        toFuture(lockService.tryUpdateClaimAsync(key, lockId, leaseTtlMs))
-                                .onSuccess(renewed -> {
-                                    if (!renewed) {
-                                        log.warn("Lease lost for background job {}", jobId);
-                                        vertx.cancelTimer(id);
-                                    }
-                                })
-                                .onFailure(e -> {
-                                    log.warn("Lease renewal failed for background job {}", jobId, e);
-                                    vertx.cancelTimer(id);
-                                });
-                    });
-                    return () -> {
-                        vertx.cancelTimer(timerId);
-                        return toFuture(lockService.releaseClaimAsync(key, lockId));
-                    };
-                });
-    }
-
     private <T> Future<T> toFuture(RFuture<T> rf) {
         return Future.fromCompletionStage(rf.toCompletableFuture(), vertx.getOrCreateContext());
     }
@@ -365,8 +307,4 @@ public class BackgroundJobService {
         return apiKeyStore.invalidatePerRequestApiKey(apiKeyData);
     }
 
-    @FunctionalInterface
-    private interface Lease {
-        Future<Boolean> release();
-    }
 }

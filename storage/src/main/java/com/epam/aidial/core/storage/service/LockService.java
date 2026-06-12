@@ -3,7 +3,6 @@ package com.epam.aidial.core.storage.service;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.api.RFuture;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
@@ -192,40 +191,6 @@ public class LockService {
             log.error("Lock service failed to unlock: {}", id, e);
             return false;
         }
-    }
-
-    public RFuture<Long> tryCreateClaimAsync(String key, String lockId, long ttlMs) {
-        return script.evalAsync(RScript.Mode.READ_WRITE,
-                """
-                        local ttl = redis.call('pttl', KEYS[1])
-                        if ttl >= 0 then
-                            return ttl > 0 and ttl or 1
-                        end
-                        redis.call('set', KEYS[1], ARGV[1], 'px', ARGV[2])
-                        return 0
-                        """, RScript.ReturnType.INTEGER, List.of(id(key)), lockId, String.valueOf(ttlMs));
-    }
-
-    public RFuture<Boolean> tryUpdateClaimAsync(String key, String lockId, long ttlMs) {
-        return script.evalAsync(RScript.Mode.READ_WRITE,
-                """
-                        if redis.call('get', KEYS[1]) == ARGV[1] then
-                            redis.call('pexpire', KEYS[1], ARGV[2])
-                            return true
-                        end
-                        return false
-                        """, RScript.ReturnType.BOOLEAN, List.of(id(key)), lockId, String.valueOf(ttlMs));
-    }
-
-    public RFuture<Boolean> releaseClaimAsync(String key, String lockId) {
-        return script.evalAsync(RScript.Mode.READ_WRITE,
-                """
-                        if redis.call('get', KEYS[1]) == ARGV[1] then
-                            redis.call('del', KEYS[1])
-                            return true
-                        end
-                        return false
-                        """, RScript.ReturnType.BOOLEAN, List.of(id(key)), lockId);
     }
 
     private static String id(String key) {
