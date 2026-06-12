@@ -156,7 +156,7 @@ public class ConfigResourceController implements Controller {
         return respondMethodNotAllowed();
     }
 
-    private Future<?> handleGet() throws JsonProcessingException {
+    private Future<?> handleGet() {
         Config config = context.getConfig();
         boolean admin = authorizationService.isAdmin(context);
         // Per-entity GET is blob-only (slice U.1): only canonical-ID lookups resolve here.
@@ -208,15 +208,11 @@ public class ConfigResourceController implements Controller {
             final T matchedItem = item;
             final String matched = canonicalId();
             return evaluateConditionalGet()
-                    .onSuccess(result -> {
-                        if (result.respondNotModified()) {
-                            context.respond(result.notModified());
-                        } else {
-                            if (result.etag() != null) {
-                                context.putHeader(HttpHeaders.ETAG, result.etag()).exposeHeaders();
-                            }
-                            context.respond(HttpStatus.OK, projector.apply(matched, matchedItem));
+                    .onSuccess(etag -> {
+                        if (etag != null) {
+                            context.putHeader(HttpHeaders.ETAG, etag).exposeHeaders();
                         }
+                        context.respond(HttpStatus.OK, projector.apply(matched, matchedItem));
                     })
                     .onFailure(this::handleWriteError);
         }
@@ -230,32 +226,25 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Fetches blob metadata and evaluates RFC 7232 conditional headers, returning a
-     * {@link GetResult} that carries the outcome: a 304 exception (when {@code If-None-Match}
-     * matches) or the blob-backed ETag for the caller to include on a 200 response.
+     * Fetches blob metadata and evaluates RFC 7232 conditional headers, returning the blob-backed
+     * ETag (or {@code null} when no blob exists) for the caller to include on a 200 response.
+     * Throws {@link HttpException} (304 or 412) when a conditional header fires — the caller's
+     * {@code .onFailure} handler dispatches it via {@link #handleWriteError}.
      * The metadata fetch runs on the blocking executor; response dispatch stays on the event loop.
      */
-    private Future<GetResult> evaluateConditionalGet() {
+    private Future<String> evaluateConditionalGet() {
         ResourceDescriptor descriptor = singleEntityDescriptor();
         if (descriptor == null) {
-            return Future.succeededFuture(GetResult.withoutEtag());
+            return Future.succeededFuture(null);
         }
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
         return taskExecutor.submit(() -> {
             ResourceItemMetadata meta = resourceService.getResourceMetadata(descriptor);
             if (meta == null || meta.getEtag() == null) {
-                return GetResult.withoutEtag();
+                return null;
             }
-            try {
-                etag.validate(meta.getEtag());
-            } catch (HttpException e) {
-                if (e.getStatus() == HttpStatus.NOT_MODIFIED) {
-                    return GetResult.withNotModified(e);
-                }
-                // Other status codes (e.g. If-Match failure) are not surfaced here — GET ignores
-                // If-Match per RFC 7232; only If-None-Match drives 304/200 on GET.
-            }
-            return GetResult.withEtag(meta.getEtag());
+            etag.validate(meta.getEtag());
+            return meta.getEtag();
         });
     }
 
@@ -313,18 +302,14 @@ public class ConfigResourceController implements Controller {
             final String matched = canonicalId();
             final String json = schemaJson;
             return evaluateConditionalGet()
-                    .onSuccess(result -> {
-                        if (result.respondNotModified()) {
-                            context.respond(result.notModified());
-                        } else {
-                            if (result.etag() != null) {
-                                context.putHeader(HttpHeaders.ETAG, result.etag()).exposeHeaders();
-                            }
-                            try {
-                                context.respond(HttpStatus.OK, projectSchemaItem(matched, json));
-                            } catch (JsonProcessingException e) {
-                                context.respond(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
-                            }
+                    .onSuccess(etag -> {
+                        if (etag != null) {
+                            context.putHeader(HttpHeaders.ETAG, etag).exposeHeaders();
+                        }
+                        try {
+                            context.respond(HttpStatus.OK, projectSchemaItem(matched, json));
+                        } catch (JsonProcessingException e) {
+                            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
                         }
                     })
                     .onFailure(this::handleWriteError);
@@ -838,26 +823,5 @@ public class ConfigResourceController implements Controller {
             boolean hasEncryptedFields,
             boolean isKey
     ) {}
-
-    private record GetResult(HttpException notModified, String etag) {
-        static GetResult withNotModified(HttpException e) {
-            if (e.getStatus() != HttpStatus.NOT_MODIFIED) {
-                throw new IllegalArgumentException("Expected 304 NOT_MODIFIED, got: " + e.getStatus());
-            }
-            return new GetResult(e, null);
-        }
-
-        static GetResult withEtag(String etag) {
-            return new GetResult(null, etag);
-        }
-
-        static GetResult withoutEtag() {
-            return new GetResult(null, null);
-        }
-
-        boolean respondNotModified() {
-            return notModified != null;
-        }
-    }
 
 }

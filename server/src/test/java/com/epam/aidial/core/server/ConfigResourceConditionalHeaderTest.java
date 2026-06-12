@@ -70,6 +70,30 @@ public class ConfigResourceConditionalHeaderTest extends ResourceBaseTest {
     }
 
     @Test
+    void testGet200OnMatchingIfMatch() {
+        Response put = send(HttpMethod.PUT, "/v1/models/public/cond-get-ifmatch-ok", null, MODEL_BODY,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 200);
+        String etag = put.headers().get("etag");
+        assertNotNull(etag, () -> "PUT must emit an ETag header: " + put.headers());
+
+        Response get = send(HttpMethod.GET, "/v1/models/public/cond-get-ifmatch-ok", null, "",
+                "authorization", "admin", "If-Match", etag);
+        verify(get, 200);
+        assertNotNull(get.headers().get("etag"), "GET 200 must include ETag header");
+    }
+
+    @Test
+    void testGet412OnStaleIfMatch() {
+        verify(send(HttpMethod.PUT, "/v1/models/public/cond-get-ifmatch-fail", null, MODEL_BODY,
+                "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response get = send(HttpMethod.GET, "/v1/models/public/cond-get-ifmatch-fail", null, "",
+                "authorization", "admin", "If-Match", "\"wrong-etag\"");
+        verify(get, 412);
+    }
+
+    @Test
     void testGet200IncludesEtagHeader() {
         verify(send(HttpMethod.PUT, "/v1/models/public/cond-etag-get", null, MODEL_BODY,
                 "authorization", "admin", "If-None-Match", "*"), 200);
