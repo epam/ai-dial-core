@@ -44,7 +44,7 @@ public class RateLimiter {
     public Future<Void> increase(
             Deployment deployment,
             String bucketLocation,
-            TokenUsage tokenUsage,
+            TokenUsage usage,
             Buffer requestBody,
             Buffer responseBody) {
         try {
@@ -53,12 +53,12 @@ public class RateLimiter {
                 return Future.succeededFuture();
             }
 
-            BigDecimal cost = ModelCostCalculator.calculate(deployment, tokenUsage, requestBody, responseBody);
+            BigDecimal cost = ModelCostCalculator.calculate(deployment, usage, requestBody, responseBody);
             Future<Void> costFuture;
             if (cost != null && cost.compareTo(BigDecimal.ZERO) > 0) {
-                if (tokenUsage != null) {
-                    tokenUsage.setCost(cost);
-                    tokenUsage.setAggCost(cost);
+                if (usage != null) {
+                    usage.setCost(cost);
+                    usage.setAggCost(cost);
                 }
 
                 String costsPath = getPathToCosts();
@@ -69,12 +69,12 @@ public class RateLimiter {
             }
 
             Future<Void> tokenFuture;
-            if (tokenUsage == null || tokenUsage.getTotalTokens() <= 0) {
+            if (usage == null || usage.getTotalTokens() <= 0) {
                 tokenFuture = Future.succeededFuture();
             } else {
                 String tokensPath = getPathToTokens(deployment.getName());
                 ResourceDescriptor tokenResourceDescription = getResourceDescription(bucketLocation, tokensPath);
-                tokenFuture = taskExecutor.submit(() -> updateTokenLimit(tokenResourceDescription, tokenUsage.getTotalTokens()));
+                tokenFuture = taskExecutor.submit(() -> updateTokenLimit(tokenResourceDescription, usage.getTotalTokens()));
             }
 
             // Wait for both updates to complete if both exist
@@ -217,15 +217,16 @@ public class RateLimiter {
         return limitStats;
     }
 
-    private ResourceDescriptor getResourceDescription(String bucketLocation, String path) {
+    private ResourceDescriptor getResourceDescription(ProxyContext context, String path) {
         // use bucket location of request's initiator,
         // e.g. user -> core -> application -> core -> model, limits must be applied to the user by JWT
         // e.g. service -> core -> application -> core -> model, limits must be applied to service by API key
-        return ResourceDescriptorFactory.fromEncoded(ResourceTypes.LIMIT, bucketLocation, bucketLocation, path);
+        String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
+        return getResourceDescription(bucketLocation, path);
     }
 
-    private ResourceDescriptor getResourceDescription(ProxyContext context, String path) {
-        return getResourceDescription(BucketBuilder.buildInitiatorBucket(context), path);
+    private ResourceDescriptor getResourceDescription(String bucketLocation, String path) {
+        return ResourceDescriptorFactory.fromEncoded(ResourceTypes.LIMIT, bucketLocation, bucketLocation, path);
     }
 
     private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity) {

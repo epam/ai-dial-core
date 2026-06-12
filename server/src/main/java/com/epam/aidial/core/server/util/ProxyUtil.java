@@ -287,5 +287,4 @@ public class ProxyUtil {
             return (ObjectNode) node;
         }
     }
-
 }

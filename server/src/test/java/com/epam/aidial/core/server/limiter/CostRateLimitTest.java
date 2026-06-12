@@ -54,6 +54,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -395,11 +396,11 @@ public class CostRateLimitTest {
         // Mock ModelCostCalculator to return costs
         try (MockedStatic<ModelCostCalculator> mockedCalculator = Mockito.mockStatic(ModelCostCalculator.class)) {
             // The first user gets $0.05 cost
-            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), eq(tokenUsage1), any(), any()))
+            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), same(tokenUsage1), any(), any()))
                     .thenReturn(new BigDecimal("0.05"));
 
             // The second user gets $0.08 cost
-            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), eq(tokenUsage2), any(), any()))
+            mockedCalculator.when(() -> ModelCostCalculator.calculate(any(), same(tokenUsage2), any(), any()))
                     .thenReturn(new BigDecimal("0.08"));
 
             // First user increases limit

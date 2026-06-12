@@ -178,7 +178,8 @@ public class BaseDeploymentPostController {
                 }
                 context.setTokenUsage(tokenUsage);
                 tokenUsageFuture = proxy.getRateLimiter().increase(
-                                context.getDeployment(), BucketBuilder.buildInitiatorBucket(context),
+                                context.getDeployment(),
+                                BucketBuilder.buildInitiatorBucket(context),
                                 context.getTokenUsage(),
                                 context.getRequestBody(),
                                 context.getResponseBody())
