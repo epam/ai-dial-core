@@ -178,14 +178,19 @@ public class ResponseItemController implements Controller {
                             && Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM)) {
                         return collectAndForwardStreaming(response, mapping.getUpstreamResponseId());
                     }
-                    return collectAndForward(response, mapping.getUpstreamResponseId());
+                    return collectAndForward(response, mapping);
                 });
     }
 
-    private Future<Void> collectAndForward(HttpClientResponse proxyResponse, String upstreamResponseId) {
+    private Future<Void> collectAndForward(HttpClientResponse proxyResponse, ResponseMapping mapping) {
         return proxyResponse.body()
-                .compose(body -> rewriteId(body, upstreamResponseId))
+                .compose(body -> rewriteId(body, mapping.getUpstreamResponseId()))
                 .compose(rewritten -> {
+                    if (operation == Operation.GET && proxyResponse.statusCode() == 200) {
+                        proxy.getBackgroundJobService()
+                                .tryCompleteOnGet(dialResponseId, mapping, rewritten)
+                                .onFailure(e -> log.warn("Failed to complete background job on GET {}", dialResponseId, e));
+                    }
                     if (operation.shouldDeleteMapping(proxyResponse.statusCode())) {
                         return proxy.getTaskExecutor().submit(() -> {
                             proxy.getResponseMappingService().deleteMapping(dialResponseId);

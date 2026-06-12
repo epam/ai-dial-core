@@ -24,6 +24,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RFuture;
@@ -158,6 +159,28 @@ public class BackgroundJobService {
                 .eventually(() -> lease != null ? lease.release() : Future.succeededFuture());
     }
 
+    public Future<Void> tryCompleteOnGet(String dialResponseId, ResponseMapping mapping, Buffer body) {
+        ResponsesApiClient.TerminalResult result;
+        try {
+            result = ResponsesApiClient.parseTerminalBody(body);
+        } catch (Exception e) {
+            log.warn("Failed to parse response body for background job {} on GET", dialResponseId, e);
+            return Future.succeededFuture();
+        }
+        if (result == null) {
+            return Future.succeededFuture();
+        }
+        TokenUsage usage = result.usage();
+        return loadAndDeleteRecordAsync(dialResponseId)
+                .compose(record -> {
+                    if (record == null) {
+                        return Future.succeededFuture();
+                    }
+                    onJobCompleted(dialResponseId, record, mapping, usage);
+                    return removeFromQueue(dialResponseId).mapEmpty();
+                });
+    }
+
     private void startPolling(String id) {
         tryAcquireLeaseAsync(id)
                 .onSuccess(lease -> {
@@ -181,7 +204,7 @@ public class BackgroundJobService {
                                             scheduleNextPoll(id, mapping, failureCount, done);
                                             return done.future()
                                                     .compose(usage ->
-                                                            processResult(new PollingResult(id, record, mapping, usage)));
+                                                            processResult(id, record, mapping, usage));
                                         });
                             })
                             .eventually(lease::release)
@@ -190,15 +213,15 @@ public class BackgroundJobService {
                 .onFailure(error -> log.warn("Failed to acquire lease for background job {}", id, error));
     }
 
-    private Future<Boolean> processResult(PollingResult result) {
-        return deleteRecordAsync(result.jobId())
+    private Future<Boolean> processResult(String jobId, BackgroundJobRecord jobRecord, ResponseMapping responseMapping, TokenUsage usage) {
+        return deleteRecordAsync(jobId)
                 .compose(deleted -> {
                     if (deleted) {
-                        onJobCompleted(result);
-                        return removeFromQueue(result.jobId());
+                        onJobCompleted(jobId, jobRecord, responseMapping, usage);
+                        return removeFromQueue(jobId);
                     }
 
-                    log.info("Background job {} record already deleted, skipping completion processing", result.jobId());
+                    log.info("Background job {} record already deleted, skipping completion processing", jobId);
                     return Future.succeededFuture();
                 });
     }
@@ -206,12 +229,12 @@ public class BackgroundJobService {
     private void scheduleNextPoll(
             String id, ResponseMapping mapping, AtomicInteger failureCount, Promise<TokenUsage> done) {
         vertx.setTimer(pollIntervalMs, ignored -> poller.poll(mapping)
-                .onSuccess(usage -> {
-                    if (usage == null) {
+                .onSuccess(result -> {
+                    if (result == null) {
                         failureCount.set(0);
                         scheduleNextPoll(id, mapping, failureCount, done);
                     } else {
-                        done.tryComplete(usage);
+                        done.tryComplete(result.usage());
                     }
                 })
                 .onFailure(error -> {
@@ -226,10 +249,7 @@ public class BackgroundJobService {
                 }));
     }
 
-    private void onJobCompleted(PollingResult result) {
-        BackgroundJobRecord jobRecord = result.jobRecord();
-        ResponseMapping responseMapping = result.responseMapping();
-        TokenUsage usage = result.usage();
+    private void onJobCompleted(String jobId, BackgroundJobRecord jobRecord, ResponseMapping responseMapping, TokenUsage usage) {
         Config config = configStore.get();
         Deployment deployment = config.selectDeployment(responseMapping.getDeploymentName());
 
@@ -244,7 +264,7 @@ public class BackgroundJobService {
             String bucketLocation = responseMapping.getInitiatorBucket();
             rateLimitFuture = rateLimiter.increase(deployment, bucketLocation, usage, null, null)
                     .recover(error -> {
-                        log.warn("Failed to update rate limit for background job {}", result.jobId(), error);
+                        log.warn("Failed to update rate limit for background job {}", jobId, error);
                         return Future.succeededFuture();
                     });
         }
@@ -252,7 +272,7 @@ public class BackgroundJobService {
         Future.all(tokenFuture, rateLimitFuture)
                 .eventually(() -> invalidatePerRequestKey(jobRecord))
                 .onFailure(error ->
-                        log.error("Failed to finalize background job {}", result.jobId(), error));
+                        log.error("Failed to finalize background job {}", jobId, error));
     }
 
     private void resumeActiveJobs() {
@@ -338,6 +358,11 @@ public class BackgroundJobService {
         return Future.fromCompletionStage(rf.toCompletableFuture(), vertx.getOrCreateContext());
     }
 
+    private Future<BackgroundJobRecord> loadAndDeleteRecordAsync(String jobId) {
+        return toFuture(redis.<String>getBucket(toRedisKey(jobId), StringCodec.INSTANCE).getAndDeleteAsync())
+                .map(json -> ProxyUtil.convertToObject(json, BackgroundJobRecord.class));
+    }
+
     private Future<Boolean> invalidatePerRequestKey(BackgroundJobRecord record) {
         String key = record.getPerRequestKey();
         if (key == null) {
@@ -346,13 +371,6 @@ public class BackgroundJobService {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey(key);
         return apiKeyStore.invalidatePerRequestApiKey(apiKeyData);
-    }
-
-    private record PollingResult(
-            String jobId,
-            BackgroundJobRecord jobRecord,
-            ResponseMapping responseMapping,
-            TokenUsage usage) {
     }
 
     @FunctionalInterface
