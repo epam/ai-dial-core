@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.InterfaceMigration;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.limiter.RateLimiter;
@@ -259,6 +260,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
+        when(request.uri()).thenReturn("/openai/deployments/name/chat/completions");
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
@@ -269,6 +271,7 @@ public class DeploymentPostControllerTest {
         Model model = new Model();
         model.setName("name");
         model.setEndpoint("http://host/model");
+        InterfaceMigration.migrateDeployment(model);
         model.setOverrideName("overrideName");
         when(context.getDeployment()).thenReturn(model);
         String body = """
@@ -301,6 +304,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
+        when(request.uri()).thenReturn("/openai/deployments/name/chat/completions");
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
@@ -311,6 +315,7 @@ public class DeploymentPostControllerTest {
         Model model = new Model();
         model.setName("name");
         model.setEndpoint("http://host/model");
+        InterfaceMigration.migrateDeployment(model);
         when(context.getDeployment()).thenReturn(model);
         String body = """
                 {
@@ -342,6 +347,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
+        when(request.uri()).thenReturn("/openai/deployments/name/chat/completions");
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
@@ -352,6 +358,7 @@ public class DeploymentPostControllerTest {
         Model model = new Model();
         model.setName("name");
         model.setEndpoint("http://host/model");
+        InterfaceMigration.migrateDeployment(model);
         when(context.getDeployment()).thenReturn(model);
         String body = """
                 {
@@ -461,6 +468,7 @@ public class DeploymentPostControllerTest {
         Application application = new Application();
         application.setName("applications/bucket/app1");
         application.setEndpoint("http://fake.com");
+        InterfaceMigration.migrateDeployment(application);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor);
         when(taskExecutor.submit(any(Callable.class))).thenReturn(Future.succeededFuture(application));
         MultiMap headers = mock(MultiMap.class);

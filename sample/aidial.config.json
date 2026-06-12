@@ -127,6 +127,14 @@
             "displayName": "GPT-3.5",
             "displayVersion": "Turbo",
             "endpoint": "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions",
+            "interfaces": {
+                "openaiChatCompletions": {
+                    "base_url": "http://localhost:7001"
+                },
+                "openaiResponses": {
+                    "base_url": "http://localhost:7001"
+                }
+            },
             "upstreams": [
                 {
                     "endpoint": "http://localhost:7001",

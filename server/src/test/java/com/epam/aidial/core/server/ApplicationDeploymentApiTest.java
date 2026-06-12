@@ -599,7 +599,12 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   }
                 }
                 """;
-        webServer.map(HttpMethod.POST, "/application", 200, answer);
+        webServer.map(
+                HttpMethod.POST,
+                "/openai/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/chat/completions",
+                200,
+                answer
+        );
 
         Response response = send(HttpMethod.POST, "/openai/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/chat/completions", null,
                 """

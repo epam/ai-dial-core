@@ -85,12 +85,29 @@ public final class ConfigPostProcessor {
         sortRoutes(config);
         processModels(config, deploymentIds, onSkip);
         processApplications(config, deploymentIds, onSkip);
+        migrateInterfaces(config);
         processRoles(config);
         processInterceptors(config, deploymentIds, onSkip);
         processToolSets(config, deploymentIds, onSkip);
 
         if (apiKeyStore != null) {
             apiKeyStore.addProjectKeys(fileKeysBySecret, apiKeysByCanonicalId);
+        }
+    }
+
+    /**
+     * Layer A interface migration (slice: typed interfaces). Migrates legacy
+     * {@code endpoint}/{@code responsesEndpoint} into the {@code interfaces} map for every model and
+     * application, in memory. Idempotent and native-interfaces-preserving. Runs from
+     * {@link #process(Config, ApiKeyStore)} (FileConfigStore startup + reload) and is reused by
+     * {@link MergedConfigStore} via {@link #processSemantic}, so it covers all config sources.
+     */
+    static void migrateInterfaces(Config config) {
+        for (Model model : config.getModels().values()) {
+            InterfaceMigration.migrateDeployment(model);
+        }
+        for (Application application : config.getApplications().values()) {
+            InterfaceMigration.migrateDeployment(application);
         }
     }
 

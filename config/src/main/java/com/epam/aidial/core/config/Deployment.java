@@ -1,6 +1,7 @@
 package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -12,6 +13,8 @@ import java.util.Map;
 public abstract class Deployment extends RoleBasedEntity {
     private String endpoint;
     private String responsesEndpoint;
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map<String, DeploymentInterface> interfaces = Map.of();
     @JsonAlias({"displayName", "display_name"})
     private String displayName;
     @JsonAlias({"displayVersion", "display_version"})
@@ -70,4 +73,23 @@ public abstract class Deployment extends RoleBasedEntity {
      * Dependent deployments
      */
     private List<String> dependencies = List.of();
+
+    /**
+     * Returns the {@code base_url} declared for the given interface type, or {@code null} when the
+     * deployment does not declare that interface.
+     */
+    public String getInterfaceBaseUrl(InterfaceType type) {
+        if (interfaces == null || type == null) {
+            return null;
+        }
+        DeploymentInterface deploymentInterface = interfaces.get(type.getValue());
+        return deploymentInterface == null ? null : deploymentInterface.getBaseUrl();
+    }
+
+    /**
+     * Returns {@code true} when the deployment declares the given interface type with a non-null base URL.
+     */
+    public boolean supportsInterface(InterfaceType type) {
+        return getInterfaceBaseUrl(type) != null;
+    }
 }

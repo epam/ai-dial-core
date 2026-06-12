@@ -306,6 +306,16 @@ DIAL Core stores user data in the following storages:
 | retriableErrorCodes    | List of Retriable Error Codes for handling outages at LLM Providers. This list extends the existing error codes (429, 502, 503, 504) but doesn't override them.                                                                                                                 |
 | applicationTypeSchemas | Map of application schemas where key - schema ID, value - schema itself in JSON format. All schemas must be conformed to the root schema `https://dial.epam.com/application_type_schemas/schema#`. See [link](config/src/main/resources/custom-application-schemas/schema.json) |
 
+#### Migrating `endpoint`/`responsesEndpoint` to `interfaces`
+
+The deployment-level `endpoint` and `responsesEndpoint` fields of [models](/docs/dynamic-settings/models.md) and [applications](/docs/dynamic-settings/applications.md) are **deprecated** in favor of the typed `interfaces` map, where each interface (`openaiChatCompletions`, `openaiResponses`) declares a `base_url`. DIAL Core always migrates the legacy fields **in memory** on every config load — the authority (`scheme://host[:port]`) of the old endpoint becomes the interface `base_url` — so routing keeps working with no config change required.
+
+To additionally rewrite the config **files on disk** to the `interfaces` shape, set the following environment variable:
+
+| Environment variable             | Default | Description                                                                                                                                                                                                                                                                                                                                                                                          |
+|----------------------------------|:-------:|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `ENDPOINT_MIGRATION_TO_INTERFACES` |  false  | When `true`, on every config load DIAL Core migrates each `models`/`applications` entry that still uses `endpoint`/`responsesEndpoint` and atomically writes the file back in the `interfaces` shape, preserving all other fields and key order. Read-only or non-regular config sources (e.g. a Kubernetes ConfigMap or a classpath resource) are skipped and migrated in memory only. When `false` (the default) files are left untouched and DIAL Core logs a warning for any entry still using the legacy fields. |
+
 ## Claude Code commands
 
 This repository ships custom [Claude Code](https://claude.com/claude-code) slash commands under [`.claude/commands/`](.claude/commands). Each command file documents its own usage and prerequisites.

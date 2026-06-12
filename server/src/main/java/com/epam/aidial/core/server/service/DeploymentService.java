@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.InterfaceMigration;
 import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.AccessService;
@@ -66,11 +67,15 @@ public class DeploymentService {
         }
         ResourceDescriptor deploymentDescriptor = toResourceDescriptor(context, id);
         ResourceType resourceType = deploymentDescriptor.getType();
-        return switch (resourceType) {
+        Deployment resourceDeployment = switch (resourceType) {
             case APPLICATION -> applicationService.getApplication(deploymentDescriptor).getValue();
             case TOOL_SET -> toolSetService.getToolSet(deploymentDescriptor).getValue();
             default -> throw new IllegalArgumentException("Unknown resource type: " + resourceType);
         };
+        // Config-sourced deployments are migrated to interfaces at config load; resource-stored ones
+        // (e.g. applications with a legacy endpoint) are migrated here, in-memory, for routing.
+        InterfaceMigration.migrateDeployment(resourceDeployment);
+        return resourceDeployment;
     }
 
     public  <T extends Deployment> List<T> listDeployments(ProxyContext context, ResourceTypes resourceType, DeploymentExtractor extractor) {

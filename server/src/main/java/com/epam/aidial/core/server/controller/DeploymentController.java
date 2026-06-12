@@ -3,6 +3,8 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.DeploymentInterface;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.ToolSet;
@@ -27,6 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Predicate;
 
@@ -143,7 +146,7 @@ public class DeploymentController {
                 case CHAT_IFACE: {
                     plan.useModels = true;
                     plan.useApplications = true;
-                    plan.appFilters.add(app -> app.getEndpoint() != null);
+                    plan.appFilters.add(app -> app.supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS));
                     plan.modelFilters.add(model -> model.getType() == ModelType.CHAT);
                     break;
                 }
@@ -172,7 +175,17 @@ public class DeploymentController {
                     return plan;
                 }
                 default: {
-                    throw new IllegalArgumentException("Unsupported deployment interface is provided: " + iface);
+                    // New fine-grained API-type tags (openaiChatCompletions/openaiResponses/...) derived
+                    // from the config `interfaces` keys. OR semantics across comma-separated values.
+                    InterfaceType type = InterfaceType.fromValue(iface);
+                    if (type == null) {
+                        throw new IllegalArgumentException("Unsupported deployment interface is provided: " + iface);
+                    }
+                    plan.useModels = true;
+                    plan.useApplications = true;
+                    plan.modelFilters.add(model -> model.supportsInterface(type));
+                    plan.appFilters.add(app -> app.supportsInterface(type));
+                    break;
                 }
             }
         }
@@ -248,6 +261,7 @@ public class DeploymentController {
                 } else {
                     interfaces.add(EMBEDDING_IFACE);
                 }
+                appendInterfaceTypeTags(interfaces, model);
                 deployment.setInterfaces(interfaces);
                 deployments.add(deployment);
             }
@@ -261,12 +275,13 @@ public class DeploymentController {
         if (app.getMcp() != null) {
             interfaces.add(MCP_IFACE);
         }
-        if (app.getEndpoint() != null) {
+        if (app.supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS)) {
             interfaces.add(CHAT_IFACE);
         }
         if (app.getViewerUrl() != null) {
             interfaces.add(CUSTOM_UI_IFACE);
         }
+        appendInterfaceTypeTags(interfaces, app);
         applicationData.setInterfaces(interfaces);
         return applicationData;
     }
@@ -277,6 +292,17 @@ public class DeploymentController {
         toolSetData.setAuthSettings(null);
         toolSetData.setInterfaces(List.of(MCP_IFACE));
         return toolSetData;
+    }
+
+    /**
+     * Appends the fine-grained API-type tags (the keys of the deployment's config {@code interfaces}
+     * map, e.g. {@code openaiChatCompletions}) to the coarse listing tags.
+     */
+    private static void appendInterfaceTypeTags(List<String> tags, Deployment deployment) {
+        Map<String, DeploymentInterface> interfaces = deployment.getInterfaces();
+        if (interfaces != null) {
+            tags.addAll(interfaces.keySet());
+        }
     }
 
     private static class ExecutionPlan {

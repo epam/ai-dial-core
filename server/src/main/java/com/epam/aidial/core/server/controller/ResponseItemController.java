@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -34,6 +35,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ResponseItemController implements Controller {
 
+    static final String OPENAI_RESPONSES_BASE_PATH = "/openai/v1/responses";
+
     private final Proxy proxy;
     private final ProxyContext context;
     private final String dialResponseId;
@@ -64,15 +67,25 @@ public class ResponseItemController implements Controller {
 
     private Future<Void> forwardToUpstream(ResponseMapping mapping) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName());
-        if (deployment.getResponsesEndpoint() == null) {
-            return context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API")
+        if (!deployment.supportsInterface(InterfaceType.OPENAI_RESPONSES)) {
+            return context.respond(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                            "Deployment for response_id does not support OpenAI Responses API"
+                    )
                     .mapEmpty();
         }
-        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, null, mapping.getUpstreamKey());
+        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
+                .get(
+                        deployment, null,
+                        dep -> dep.getInterfaceBaseUrl(InterfaceType.OPENAI_RESPONSES),
+                        mapping.getUpstreamKey()
+                );
         Upstream upstream = upstreamRoute.next();
 
         String query = context.getRequest().query();
-        String targetUrl = deployment.getResponsesEndpoint() + "/" + mapping.getUpstreamResponseId() + operation.suffix
+        String baseUrl = deployment.getInterfaceBaseUrl(InterfaceType.OPENAI_RESPONSES);
+        String targetUrl = BaseDeploymentPostController.joinBaseUrlAndPath(baseUrl, OPENAI_RESPONSES_BASE_PATH)
+                + "/" + mapping.getUpstreamResponseId() + operation.suffix
                 + (query != null ? "?" + query : "");
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(targetUrl)

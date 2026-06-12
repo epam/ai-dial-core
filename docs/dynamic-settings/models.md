@@ -28,7 +28,8 @@ An object containing parameters for each [model](#models).
 * `description`: A string with a brief model description.
 * `displayName`: A string with the models's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs so operators can quickly identify the model.
 * `displayVersion`: A string with the model's version. Use it to distinguish between "latest," "beta," or date-stamped builds.
-* `endpoint`: Model API for chat completions or embeddings.
+* `interfaces`: An object declaring the LLM API interfaces the model supports, keyed by interface type, each with a `base_url` pointing at the adapter root. At request time DIAL Core forwards to `{base_url}` + the exact ingress path it received (e.g. a request to `POST /openai/v1/responses` is proxied to `{base_url}/openai/v1/responses`). Supported interface types: `openaiChatCompletions` (the OpenAI deployments POST family — `chat/completions`, `completions`, `embeddings`) and `openaiResponses` (the OpenAI Responses API). This is the recommended replacement for the deprecated `endpoint`/`responsesEndpoint` fields — see the example below.
+* `endpoint`: **Deprecated** — use `interfaces.openaiChatCompletions.base_url` instead. Model API for chat completions or embeddings. Configs that still use `endpoint` are migrated automatically at config load — the authority (`scheme://host[:port]`) becomes the `base_url` — and, when config-file write-back is enabled (see the `ENDPOINT_MIGRATION_TO_INTERFACES` environment variable in the [README](../../README.md#dynamic-settings)), rewritten to the `interfaces` shape on disk.
 * `embeddingDimensions`: The size of the embedding vector returned by an embedding model (e.g. `1536` for `text-embedding-ada-002`). Omit for chat/completion models.
 * `tokenizerModel`: Identifies the specific model whose tokenization algorithm exactly matches that of the referenced model. This is typically the name of the earliest-released model in a series of models sharing an identical tokenization algorithm (e.g. gpt-3.5-turbo-0301, gpt-4-0314, or gpt-4-1106-vision-preview). This parameter is essential for DIAL clients that reimplement tokenization algorithms on their side, instead of utilizing the tokenizeEndpoint provided by the model.
 * `userRoles`: A specific claim value provided by a specific IDP in JWT or an API key role. If not defined, the language model is available to all users. Refer to [IDP Configuration](https://docs.dialx.ai/tutorials/devops/auth-and-access-control/configure-idps/overview) to view examples.
@@ -40,7 +41,7 @@ An object containing parameters for each [model](#models).
 * `createdAt`: The date of the model creation.
 * `updatedAt`: The date of the last model update.
 * `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.
-* `responsesEndpoint`: Endpoint of the model adapter that supports the OpenAI Responses API. Currently only OpenAI adapters support this. When set, DIAL Core proxies the following Responses API operations to this endpoint:
+* `responsesEndpoint`: **Deprecated** — use `interfaces.openaiResponses.base_url` instead (migrated automatically at config load, authority only). Endpoint of the model adapter that supports the OpenAI Responses API. Currently only OpenAI adapters support this. When the `openaiResponses` interface is configured, DIAL Core proxies the following Responses API operations to the adapter:
   * `POST /openai/v1/responses` — create a response (streaming and non-streaming, including background mode).
   * `GET /openai/v1/responses/{id}` — retrieve a response by its DIAL-assigned ID; supports streaming via SSE.
   * `DELETE /openai/v1/responses/{id}` — delete a response and remove its stored ID mapping.
@@ -77,6 +78,10 @@ An object containing parameters for each [model](#models).
             "displayName": "GPT-3.5",
             "displayVersion": "Turbo",
             "endpoint": "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions",
+            "interfaces": {
+                "openaiChatCompletions": { "base_url": "http://localhost:7001" },
+                "openaiResponses": { "base_url": "http://localhost:7001" }
+            },
             "upstreams": [
                 {
                     "endpoint": "http://localhost:7001",
@@ -114,7 +119,6 @@ An object containing parameters for each [model](#models).
                 "paramInt": 123,
                 "paramFloat": 0.25
             },
-            "responsesEndpoint": "http://localhost:7001/openai/v1/responses",
             "responsesDefaults": {
                 "store": false
             },
@@ -122,7 +126,9 @@ An object containing parameters for each [model](#models).
         },
         "embedding-ada": {
             "type": "embedding",
-            "endpoint": "http://localhost:7001/openai/deployments/ada/embeddings",
+            "interfaces": {
+                "openaiChatCompletions": { "base_url": "http://localhost:7001" }
+            },
             "embeddingDimensions": 1536,
             "upstreams": [
                 {
@@ -242,7 +248,7 @@ Upstreams configurations. Use to configure [load balancing](https://docs.dialx.a
 
 * `endpoint`: The upstream backend URL for the chat completions API. Passed to the model adapter in the `X-UPSTREAM-ENDPOINT` header.
 * `responsesEndpoint`: The upstream backend URL for the Responses API. Passed to the model adapter in the `X-UPSTREAM-ENDPOINT` header when routing Responses API requests.
-* `id`: A stable identifier for this upstream. Clients can set the `X-UPSTREAM-ID` request header to this value to pin a request to a specific upstream (supported in chat completions and Responses API). When the Responses API is enabled (via the model-level `responsesEndpoint`), `id` is required — it is used to route Responses API follow-up requests (retrieve, cancel, delete) back to the same upstream that handled the initial request.
+* `id`: A stable identifier for this upstream. Clients can set the `X-UPSTREAM-ID` request header to this value to pin a request to a specific upstream (supported in chat completions and Responses API). When the Responses API is enabled (via the model-level `openaiResponses` interface), `id` is required — it is used to route Responses API follow-up requests (retrieve, cancel, delete) back to the same upstream that handled the initial request.
 * `key`: API key, token, or credential passed to the upstream.
 * `weight`: Weight for upstream endpoint; positive number represents an endpoint capacity, zero or negative disables this endpoint from routing. Higher = more traffic share. Default value: 1.
 * `tier`: Specifies tier group for the endpoint. Only positive numbers allowed. All requests will be routed to the endpoints with the highest tier (the lowest tier value), other endpoints (with lower tier/higher tier value) may be used only if the highest tier endpoints are unavailable. Default value: 0 - highest tier. Refer to [load balancing](https://docs.dialx.ai/platform/core/load-balancer) to learn more.

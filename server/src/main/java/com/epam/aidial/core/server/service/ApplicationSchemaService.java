@@ -1,11 +1,14 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.config.InterfaceMigration;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -47,6 +50,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -331,6 +335,23 @@ public class ApplicationSchemaService {
             if (responsesEndpoint != null) {
                 copy.setResponsesEndpoint(responsesEndpoint);
             }
+
+            // Mirror the legacy->interfaces migration for dynamically-resolved schema endpoints so routing
+            // sees them (in-memory only; there is no file to rewrite). Same authority-only derivation.
+            Map<String, DeploymentInterface> interfaces = new LinkedHashMap<>();
+            if (completionEndpoint != null) {
+                interfaces.put(
+                        InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(),
+                        new DeploymentInterface(InterfaceMigration.authority(completionEndpoint))
+                );
+            }
+            if (responsesEndpoint != null) {
+                interfaces.put(
+                        InterfaceType.OPENAI_RESPONSES.getValue(),
+                        new DeploymentInterface(InterfaceMigration.authority(responsesEndpoint))
+                );
+            }
+            copy.setInterfaces(interfaces);
 
             Features features = copy.getFeatures();
             if (features == null) {

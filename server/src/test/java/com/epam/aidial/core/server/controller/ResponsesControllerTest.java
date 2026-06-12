@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.InterfaceMigration;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResponseMapping;
@@ -69,6 +70,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -192,6 +194,7 @@ public class ResponsesControllerTest {
         Deployment deployment = new Model();
         deployment.setName("test");
         deployment.setResponsesEndpoint("http://adapter/responses");
+        InterfaceMigration.migrateDeployment(deployment);
 
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"model\":\"test\"}")));
@@ -223,6 +226,7 @@ public class ResponsesControllerTest {
         Model deployment = new Model();
         deployment.setName("test");
         deployment.setResponsesEndpoint("http://adapter/responses");
+        InterfaceMigration.migrateDeployment(deployment);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
@@ -292,6 +296,7 @@ public class ResponsesControllerTest {
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         when(request.body()).thenReturn(Future.succeededFuture(requestBody));
         when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.uri()).thenReturn("/responses?arg=value");
         when(request.query()).thenReturn("arg=value");
         when(upstreamRoute.next()).thenReturn(upstream);
         when(upstreamRoute.get()).thenReturn(upstream);
@@ -375,6 +380,7 @@ public class ResponsesControllerTest {
         Application deployment = new Application();
         deployment.setName("test");
         deployment.setResponsesEndpoint("http://adapter/responses");
+        InterfaceMigration.migrateDeployment(deployment);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
@@ -384,6 +390,7 @@ public class ResponsesControllerTest {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\"}");
+        when(request.uri()).thenReturn("/openai/v1/responses");
         Buffer responseBody = Buffer.buffer(normalizeJson("""
                 {
                     "usage": {
@@ -432,7 +439,7 @@ public class ResponsesControllerTest {
         when(proxy.getTokenStatsTracker().updateModelStats(context))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getUpstreamRouteProvider().get(deployment, null, (String) null)).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
@@ -507,6 +514,7 @@ public class ResponsesControllerTest {
         Application deployment = new Application();
         deployment.setName("test");
         deployment.setResponsesEndpoint("http://adapter/responses");
+        InterfaceMigration.migrateDeployment(deployment);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
@@ -517,6 +525,7 @@ public class ResponsesControllerTest {
         proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
         Buffer requestBody = Buffer.buffer("{\"model\":\"test\",\"background\":true}");
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-resp-id\",\"status\":\"completed\"}");
+        when(request.uri()).thenReturn("/openai/v1/responses");
         String expectedDialId = "dial_test_fixed-uuid-1234";
         ResponseMapping expectedMapping = ResponseMapping.builder()
                 .upstreamResponseId("upstream-resp-id")
@@ -545,7 +554,7 @@ public class ResponsesControllerTest {
         when(proxy.getRateLimiter().limit(context, deployment))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getUpstreamRouteProvider().get(deployment, null, (String) null)).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
@@ -594,6 +603,7 @@ public class ResponsesControllerTest {
         Application deployment = new Application();
         deployment.setName("test");
         deployment.setResponsesEndpoint("http://adapter/responses");
+        InterfaceMigration.migrateDeployment(deployment);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
@@ -616,6 +626,7 @@ public class ResponsesControllerTest {
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"model\":\"test\",\"stream\":true}")));
         when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.uri()).thenReturn("/openai/v1/responses");
         when(upstreamRoute.next()).thenReturn(upstream);
         when(upstreamRoute.get()).thenReturn(upstream);
         when(context.getRequest()).thenReturn(request);
@@ -656,7 +667,7 @@ public class ResponsesControllerTest {
         when(proxy.getRateLimiter().limit(context, deployment))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getUpstreamRouteProvider().get(deployment, null, (String) null)).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
@@ -712,6 +723,7 @@ public class ResponsesControllerTest {
         Application deployment = new Application();
         deployment.setName("test");
         deployment.setResponsesEndpoint("http://adapter/responses");
+        InterfaceMigration.migrateDeployment(deployment);
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, null);
@@ -732,7 +744,7 @@ public class ResponsesControllerTest {
         when(proxy.getRateLimiter().limit(context, deployment))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getUpstreamRouteProvider().get(deployment, null, (String) null)).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
         when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);

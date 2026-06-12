@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.config.InterfaceMigration;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -159,6 +160,8 @@ public class ApplicationService {
         application.setAuthor(meta.getAuthor());
         application.setCreatedAt(meta.getCreatedAt());
         application.setUpdatedAt(meta.getUpdatedAt());
+        // Migrate a legacy endpoint into interfaces in-memory so listing tags/filters see it.
+        InterfaceMigration.migrateDeployment(application);
         return application;
     }
 

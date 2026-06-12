@@ -51,7 +51,7 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
                 }
                 return response;
             };
-            server.map(HttpMethod.POST, "/chat/completions", handler);
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-3-turbo/chat/completions", handler);
             HttpUriRequest httpUriRequest = createHttpUriRequest();
             try {
                 client.execute(httpUriRequest, response -> null);
@@ -84,7 +84,7 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
         try (CloseableHttpClient client = createHttpClient()) {
             HttpServer adapter = HttpServer.create(new InetSocketAddress(4848), 0);
             adapterRef.setValue(adapter);
-            adapter.createContext("/chat/completions", exchange -> {
+            adapter.createContext("/openai/deployments/gpt-3-turbo/chat/completions", exchange -> {
                 // chunked response
                 exchange.sendResponseHeaders(200, 0);
                 OutputStream os = exchange.getResponseBody();
@@ -142,7 +142,7 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
         try (TestWebServer server = new TestWebServer(4848)) {
             // Inner gpt-3-turbo handler: returns annotation whose citation points at the uploaded file.
             // By the time this handler runs, the outer handler has already set citedFileUrl.
-            server.map(HttpMethod.POST, "/chat/completions", request -> {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-3-turbo/chat/completions", request -> {
                 String body = """
                         {"id":"id1","object":"chat.completion","created":1,"model":"gpt-35-turbo",
                          "choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"summary",
@@ -157,7 +157,7 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
 
             // Outer application handler: uploads a file, calls gpt-3-turbo,
             // then verifies it can access the cited file via auto-sharing.
-            server.map(HttpMethod.POST, "/app", request -> {
+            server.map(HttpMethod.POST, "/openai/deployments/applications/public/annot-test-app/chat/completions", request -> {
                 try {
                     String apiKey = request.getHeader(Proxy.HEADER_API_KEY);
 

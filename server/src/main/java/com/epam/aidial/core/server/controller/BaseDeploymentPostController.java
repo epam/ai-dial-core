@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
@@ -164,9 +164,10 @@ public class BaseDeploymentPostController {
         return tokenUsageFuture;
     }
 
-    protected Future<HttpClientRequest> createProxyRequest(Function<Deployment, String> endpointSelector) {
+    protected Future<HttpClientRequest> createProxyRequest(InterfaceType type) {
         HttpServerRequest request = context.getRequest();
-        String uri = endpointSelector.apply(context.getDeployment())
+        String baseUrl = context.getDeployment().getInterfaceBaseUrl(type);
+        String uri = joinBaseUrlAndPath(baseUrl, rawPath(request))
                 + (request.query() == null ? "" : "?" + request.query());
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(uri)
@@ -176,6 +177,37 @@ public class BaseDeploymentPostController {
                 .setIdleTimeout(proxy.getClientOptions().getIdleTimeout());
 
         return proxy.getClient().request(options);
+    }
+
+    /**
+     * Returns the raw (percent-encoded) request path, without the query string, so percent-encoded
+     * deployment ids are forwarded verbatim.
+     */
+    private static String rawPath(HttpServerRequest request) {
+        String uri = request.uri();
+        int queryStart = uri.indexOf('?');
+        return queryStart >= 0 ? uri.substring(0, queryStart) : uri;
+    }
+
+    /**
+     * Joins an interface {@code base_url} with a request path: strips trailing slashes from the base,
+     * collapses leading slashes on the path to exactly one. e.g. {@code http://a:5000/} + {@code //x}
+     * → {@code http://a:5000/x}; {@code http://a:5000/to-responses} + {@code /openai/v1/responses}
+     * → {@code http://a:5000/to-responses/openai/v1/responses}.
+     */
+    static String joinBaseUrlAndPath(String baseUrl, String path) {
+        String base = baseUrl == null ? "" : baseUrl;
+        int end = base.length();
+        while (end > 0 && base.charAt(end - 1) == '/') {
+            end--;
+        }
+        base = base.substring(0, end);
+
+        String suffix = path == null ? "" : path.replaceFirst("^/+", "/");
+        if (!suffix.startsWith("/")) {
+            suffix = "/" + suffix;
+        }
+        return base + suffix;
     }
 
     protected Future<HttpClientResponse> sendProxyRequest(

@@ -1,0 +1,173 @@
+package com.epam.aidial.core.server.config;
+
+import com.epam.aidial.core.config.DeploymentInterface;
+import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.Model;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+public class InterfaceMigrationTest {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    @Test
+    public void testAuthority() {
+        assertEquals("http://adapter:5000",
+                InterfaceMigration.authority("http://adapter:5000/openai/deployments/10k/chat/completions")
+        );
+        assertEquals("http://localhost:4848",
+                InterfaceMigration.authority("http://localhost:4848/openai/v1/responses")
+        );
+        assertEquals("https://host", InterfaceMigration.authority("https://host"));
+        assertNull(InterfaceMigration.authority(null));
+        // malformed -> raw fallback, never throws
+        assertEquals("not a url", InterfaceMigration.authority("not a url"));
+    }
+
+    @Test
+    public void testMigrateDeploymentLegacy() {
+        Model model = new Model();
+        model.setEndpoint("http://adapter:5000/openai/deployments/10k/chat/completions");
+        model.setResponsesEndpoint("http://adapter:5000/openai/v1/responses");
+
+        assertTrue(InterfaceMigration.migrateDeployment(model));
+        assertEquals("http://adapter:5000", model.getInterfaceBaseUrl(InterfaceType.OPENAI_CHAT_COMPLETIONS));
+        assertEquals("http://adapter:5000", model.getInterfaceBaseUrl(InterfaceType.OPENAI_RESPONSES));
+        // idempotent
+        assertFalse(InterfaceMigration.migrateDeployment(model));
+    }
+
+    @Test
+    public void testMigrateEmbeddingIntoChatCompletions() {
+        Model model = new Model();
+        model.setEndpoint("http://adapter:5000/openai/deployments/ada/embeddings");
+        assertTrue(InterfaceMigration.migrateDeployment(model));
+        assertTrue(model.supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS));
+        assertFalse(model.supportsInterface(InterfaceType.OPENAI_RESPONSES));
+    }
+
+    @Test
+    public void testNativeInterfacesWin() {
+        Model model = new Model();
+        model.setEndpoint("http://legacy:1/x");
+        model.setInterfaces(
+                Map.of(
+                        InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(),
+                        new DeploymentInterface("http://native:9999")
+                )
+        );
+
+        assertFalse(InterfaceMigration.migrateDeployment(model));
+        assertEquals("http://native:9999", model.getInterfaceBaseUrl(InterfaceType.OPENAI_CHAT_COMPLETIONS));
+    }
+
+    @Test
+    public void testNoLegacyNoChange() {
+        Model model = new Model();
+        assertFalse(InterfaceMigration.migrateDeployment(model));
+        assertTrue(model.getInterfaces().isEmpty());
+    }
+
+    @Test
+    public void testMigrateRawTree() {
+        ObjectNode root = MAPPER.createObjectNode();
+        ObjectNode model = root.putObject("models").putObject("gpt-3-turbo");
+        model.put("type", "chat");
+        model.put("endpoint", "http://localhost:4848/chat/completions");
+        model.put("responsesEndpoint", "http://localhost:4848/openai/v1/responses");
+        ObjectNode app = root.putObject("applications").putObject("app");
+        app.put("endpoint", "http://localhost:7001/openai/deployments/10k/chat/completions");
+
+        assertTrue(InterfaceMigration.migrateRawTree(root));
+
+        JsonNode migratedModel = root.path("models").path("gpt-3-turbo");
+        assertFalse(migratedModel.has("endpoint"));
+        assertFalse(migratedModel.has("responsesEndpoint"));
+        assertEquals("http://localhost:4848",
+                migratedModel.path("interfaces").path("openaiChatCompletions").path("base_url").asText());
+        assertEquals("http://localhost:4848",
+                migratedModel.path("interfaces").path("openaiResponses").path("base_url").asText());
+        // other fields preserved
+        assertEquals("chat", migratedModel.path("type").asText());
+
+        assertEquals("http://localhost:7001",
+                root.path("applications").path("app").path("interfaces")
+                        .path("openaiChatCompletions").path("base_url").asText());
+
+        // idempotent
+        assertFalse(InterfaceMigration.migrateRawTree(root));
+    }
+
+    @Test
+    public void testHasLegacyEndpoints() {
+        ObjectNode root = MAPPER.createObjectNode();
+        ObjectNode model = root.putObject("models").putObject("gpt-3-turbo");
+        model.put("type", "chat");
+        model.put("endpoint", "http://localhost:4848/chat/completions");
+
+        assertTrue(InterfaceMigration.hasLegacyEndpoints(root));
+        // non-mutating: legacy fields are left in place for the in-memory (Layer A) path
+        assertTrue(root.path("models").path("gpt-3-turbo").has("endpoint"));
+        assertFalse(root.path("models").path("gpt-3-turbo").has("interfaces"));
+    }
+
+    @Test
+    public void testHasLegacyEndpointsInApplications() {
+        ObjectNode root = MAPPER.createObjectNode();
+        root.putObject("applications")
+                .putObject("app")
+                .put("responsesEndpoint", "http://localhost:7001/openai/v1/responses");
+
+        assertTrue(InterfaceMigration.hasLegacyEndpoints(root));
+    }
+
+    @Test
+    public void testHasLegacyEndpointsNativeInterfacesOnly() {
+        ObjectNode root = MAPPER.createObjectNode();
+        ObjectNode model = root.putObject("models").putObject("native");
+        model.put("endpoint", "http://legacy:1/x");
+        model.putObject("interfaces").putObject("openaiChatCompletions").put("base_url", "http://native:9999");
+
+        // native interfaces win -> nothing to migrate -> no warning
+        assertFalse(InterfaceMigration.hasLegacyEndpoints(root));
+    }
+
+    @Test
+    public void testHasLegacyEndpointsEmpty() {
+        ObjectNode root = MAPPER.createObjectNode();
+        root.putObject("models")
+                .putObject("native")
+                .putObject("interfaces")
+                .putObject("openaiResponses")
+                .put("base_url", "http://native:9999");
+
+        assertFalse(InterfaceMigration.hasLegacyEndpoints(root));
+        assertFalse(InterfaceMigration.hasLegacyEndpoints(MAPPER.createObjectNode()));
+        assertFalse(InterfaceMigration.hasLegacyEndpoints(null));
+    }
+
+    @Test
+    public void testMigrateRawTreeNativeInterfacesUntouched() {
+        ObjectNode root = MAPPER.createObjectNode();
+        ObjectNode model = root.putObject("models").putObject("native");
+        model.put("endpoint", "http://legacy:1/x");
+        model.putObject("interfaces")
+                .putObject("openaiChatCompletions")
+                .put("base_url", "http://native:9999");
+
+        assertFalse(InterfaceMigration.migrateRawTree(root));
+        assertEquals("http://legacy:1/x", model.path("endpoint").asText());
+        assertEquals("http://native:9999",
+                model.path("interfaces").path("openaiChatCompletions").path("base_url").asText()
+        );
+    }
+}

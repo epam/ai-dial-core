@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.InterfaceMigration;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -55,6 +56,8 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -139,6 +142,7 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
+        InterfaceMigration.migrateDeployment(deployment);
         Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
@@ -148,7 +152,7 @@ public class ResponseItemControllerTest {
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getUpstreamRouteProvider().get(deployment, null, "endpoint")).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
@@ -171,7 +175,7 @@ public class ResponseItemControllerTest {
 
         ArgumentCaptor<RequestOptions> optsCaptor = ArgumentCaptor.forClass(RequestOptions.class);
         verify(httpClient).request(optsCaptor.capture());
-        assertEquals("/responses/upstream-id-123", optsCaptor.getValue().getURI());
+        assertEquals("/openai/v1/responses/upstream-id-123", optsCaptor.getValue().getURI());
         assertEquals("adapter", optsCaptor.getValue().getHost());
         assertEquals(HttpMethod.GET, optsCaptor.getValue().getMethod());
 
@@ -194,6 +198,7 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
+        InterfaceMigration.migrateDeployment(deployment);
         Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
@@ -203,7 +208,7 @@ public class ResponseItemControllerTest {
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getUpstreamRouteProvider().get(deployment, null, "endpoint")).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
@@ -226,7 +231,7 @@ public class ResponseItemControllerTest {
 
         ArgumentCaptor<RequestOptions> optsCaptor = ArgumentCaptor.forClass(RequestOptions.class);
         verify(httpClient).request(optsCaptor.capture());
-        assertEquals("/responses/upstream-id-123/cancel", optsCaptor.getValue().getURI());
+        assertEquals("/openai/v1/responses/upstream-id-123/cancel", optsCaptor.getValue().getURI());
         assertEquals("adapter", optsCaptor.getValue().getHost());
         assertEquals(HttpMethod.POST, optsCaptor.getValue().getMethod());
     }
@@ -242,6 +247,7 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
+        InterfaceMigration.migrateDeployment(deployment);
         Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
@@ -250,7 +256,7 @@ public class ResponseItemControllerTest {
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getUpstreamRouteProvider().get(deployment, null, "endpoint")).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
@@ -285,6 +291,7 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
+        InterfaceMigration.migrateDeployment(deployment);
         Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
@@ -293,7 +300,7 @@ public class ResponseItemControllerTest {
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getUpstreamRouteProvider().get(deployment, null, "endpoint")).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
@@ -339,7 +346,7 @@ public class ResponseItemControllerTest {
         await(testContext);
 
         verify(context).respond(HttpStatus.SERVICE_UNAVAILABLE,
-                "Deployment for response_id does not support Responses API");
+                "Deployment for response_id does not support OpenAI Responses API");
     }
 
     @Test
@@ -353,10 +360,11 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
+        InterfaceMigration.migrateDeployment(deployment);
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getUpstreamRouteProvider().get(deployment, null, "missing-upstream-key"))
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("missing-upstream-key")))
                 .thenThrow(new HttpException(HttpStatus.BAD_REQUEST, "Unknown upstream id missing-upstream-key"));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getUserId()).thenReturn("test-user");
@@ -386,6 +394,7 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
+        InterfaceMigration.migrateDeployment(deployment);
         Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
@@ -394,7 +403,7 @@ public class ResponseItemControllerTest {
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getUpstreamRouteProvider().get(deployment, null, "endpoint")).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
@@ -432,6 +441,7 @@ public class ResponseItemControllerTest {
         Model deployment = new Model();
         deployment.setName("test-deployment");
         deployment.setResponsesEndpoint("http://adapter/responses");
+        InterfaceMigration.migrateDeployment(deployment);
         Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
@@ -451,7 +461,7 @@ public class ResponseItemControllerTest {
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
-        when(proxy.getUpstreamRouteProvider().get(deployment, null, "endpoint")).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
@@ -502,7 +512,7 @@ public class ResponseItemControllerTest {
 
         ArgumentCaptor<RequestOptions> optsCaptor = ArgumentCaptor.forClass(RequestOptions.class);
         verify(httpClient).request(optsCaptor.capture());
-        assertEquals("/responses/upstream-id-stream?stream=true", optsCaptor.getValue().getURI());
+        assertEquals("/openai/v1/responses/upstream-id-stream?stream=true", optsCaptor.getValue().getURI());
 
         // First event (response.created) forwarded as a regular chunk with rewritten id
         assertEquals(1, writtenChunks.size());

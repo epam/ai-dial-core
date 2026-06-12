@@ -161,7 +161,7 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
                     return (new MockResponse()).setResponseCode(500);
                 }
             };
-            server.map(HttpMethod.POST, "/app1", handler1);
+            server.map(HttpMethod.POST, "/openai/deployments/applications/public/app1/chat/completions", handler1);
 
             TestWebServer.Handler handler2 = request -> {
                 String apiKey = request.getHeader(Proxy.HEADER_API_KEY);
@@ -198,7 +198,7 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
                 }
             };
             // initiate chat completion request to app2
-            server.map(HttpMethod.POST, "/app2", handler2);
+            server.map(HttpMethod.POST, "/openai/deployments/applications/public/app2/chat/completions", handler2);
             var response = send(HttpMethod.POST, "/openai/deployments/applications/public/app1/chat/completions",
                     null, requestBody, "content-type", Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
             verify(response, 200);

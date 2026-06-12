@@ -319,7 +319,7 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
                 }
             };
             // app chat completion handler
-            server.map(HttpMethod.POST, "/v1/completions", request -> {
+            server.map(HttpMethod.POST, "/openai/deployments/applications/public/my%20custom%20application/chat/completions", request -> {
                 try {
                     String requestBody = """
                             {

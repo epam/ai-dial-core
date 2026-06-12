@@ -27,7 +27,8 @@ An object containing parameters for each [application](#applications).
 
 * `applications.<application_name>.applicationTypeSchemaId`: The identifier of a JSON schema that application is based upon. The shema ID must exist in the DIAL Core config property `applicationTypeSchemas`. Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/apps#application-types) to learn more about schema-rich apps.
 * `applications.<application_name>.applicationProperties`: Properties of a schema-rich application. Specified properties must conform to the JSON schema referenced by `applicationTypeSchemaId`. Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/apps#application-types) to learn more about schema-rich apps.
-* `endpoint`: The application's API endpoint for chat completion requests.
+* `interfaces`: An object declaring the LLM API interfaces the application supports, keyed by interface type, each with a `base_url` pointing at the adapter root. At request time DIAL Core forwards to `{base_url}` + the exact ingress path it received. Supported interface types: `openaiChatCompletions` (chat completions) and `openaiResponses` (the OpenAI Responses API). This is the recommended replacement for the deprecated `endpoint`/`responsesEndpoint` fields — see the example below.
+* `endpoint`: **Deprecated** — use `interfaces.openaiChatCompletions.base_url` instead. The application's API endpoint for chat completion requests; migrated automatically at config load (the authority `scheme://host[:port]` becomes the `base_url`). See the `ENDPOINT_MIGRATION_TO_INTERFACES` environment variable in the [README](../../README.md#dynamic-settings) for on-disk config write-back.
 * `iconUrl`: A string with URL of the icon to display for the app in the UI.
 * `description`: A string with a brief description of the application.
 * `displayName`: A string with the app's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs for identification purposes.
@@ -55,11 +56,14 @@ An object containing parameters for each [application](#applications).
 ```json
     "applications": {
         "app": {
-            "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
             "displayName": "Forecast",
             "iconUrl": "https://host/app.svg",
             "description": "Application that provides forecast",
             "descriptionKeywords": ["code-gen"],
+            "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+            "interfaces": {
+              "openaiChatCompletions": { "base_url": "http://localhost:7001" }
+            },
             "userRoles": [
                 "Forecast"
             ],

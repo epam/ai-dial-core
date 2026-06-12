@@ -1420,7 +1420,9 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     return mockResponse;
                 }
             };
-            server.map(HttpMethod.POST, "/chat/completions", chatCompletionHandler);
+            // After the global interceptor calls back as the `interceptor` deployment, Core forwards the
+            // exact ingress path (D1) to the application, so the adapter sees the interceptor route path.
+            server.map(HttpMethod.POST, "/openai/deployments/interceptor/chat/completions", chatCompletionHandler);
             server.map(HttpMethod.POST, "/interceptor/handle", interceptorHandler);
             var request = createHttpUriRequest(serverPort,
                     "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", "proxyKey1");
