@@ -75,9 +75,15 @@ public class DeploymentService {
 
     public  <T extends Deployment> List<T> listDeployments(ProxyContext context, ResourceTypes resourceType, DeploymentExtractor extractor) {
         List<T> deployments = new ArrayList<>();
+        log.debug("Start private applications listing");
         deployments.addAll(getPrivateDeployments(context, resourceType, extractor));
+        log.debug("Finish private applications listing");
+        log.debug("Start shared applications listing");
         deployments.addAll(getSharedDeployments(context, resourceType, extractor));
+        log.debug("Finish shared applications listing");
+        log.debug("Start public applications listing");
         deployments.addAll(getPublicDeployments(context, resourceType, extractor));
+        log.debug("Finish public applications listing");
         return deployments;
     }
 
