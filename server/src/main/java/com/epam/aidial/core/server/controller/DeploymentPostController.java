@@ -243,7 +243,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                     .get(
                             deployment,
                             context.getCacheBreakpointContext(),
-                    dep -> dep.getInterfaceBaseUrl(InterfaceType.OPENAI_CHAT_COMPLETIONS),
+                            dep -> dep.getInterfaceBaseUrl(InterfaceType.OPENAI_CHAT_COMPLETIONS),
                             upstreamId
                     );
         } catch (HttpException e) {

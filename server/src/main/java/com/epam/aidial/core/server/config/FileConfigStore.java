@@ -13,7 +13,6 @@ import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
-import javax.annotation.Nullable;
 import java.io.BufferedInputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -26,6 +25,8 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+
+import javax.annotation.Nullable;
 
 @Slf4j
 public final class FileConfigStore implements ConfigStore {
