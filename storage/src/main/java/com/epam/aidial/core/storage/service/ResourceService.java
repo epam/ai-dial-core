@@ -304,7 +304,9 @@ public class ResourceService implements AutoCloseable {
         String nextToken = null;
         List<Pair<ResourceItemMetadata, String>> result = new ArrayList<>();
         do {
+            log.debug("Start getting folder metadata: {}", resourceFolder.getAbsoluteFilePath());
             ResourceFolderMetadata folder = getFolderMetadata(resourceFolder, nextToken, PAGE_SIZE, true);
+            log.debug("Finish getting folder metadata: {}", resourceFolder.getAbsoluteFilePath());
             if (folder == null) {
                 break;
             }
@@ -370,7 +372,9 @@ public class ResourceService implements AutoCloseable {
             RMapAsync<String, byte[]> map = batch.getMap(redisKey, REDIS_MAP_CODEC);
             map.getAllAsync(REDIS_FIELDS);
         }
+        log.debug("Start executing Redis batch with start={}, end={}", start, end);
         BatchResult<?> batchResult = batch.execute();
+        log.debug("Finish executing Redis batch with start={}, end={}", start, end);
         List<ResourceItemMetadata> missed = new ArrayList<>();
         List<?> responses = batchResult.getResponses();
         for (int j = 0; j < responses.size(); j++) {
@@ -386,18 +390,21 @@ public class ResourceService implements AutoCloseable {
                 result.add(pair);
             }
         }
+        log.debug("Number of missing resources in Redis cache: {}", missed.size());
         List<Future<Pair<ResourceItemMetadata, String>>> futures = new ArrayList<>();
         for (ResourceItemMetadata metadata : missed) {
             Future<Pair<ResourceItemMetadata, String>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
                     .submit(() -> getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, false));
             futures.add(future);
         }
+        log.debug("Start loading missing resources from blob storage: {}", missed.size());
         for (Future<Pair<ResourceItemMetadata, String>> future : futures) {
             Pair<ResourceItemMetadata, String> res = future.get();
             if (res != null) {
                 result.add(res);
             }
         }
+        log.debug("Finish loading missed resources from blob storage: {}", missed.size());
         return result;
     }
 
