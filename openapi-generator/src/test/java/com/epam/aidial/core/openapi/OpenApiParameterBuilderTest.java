@@ -192,6 +192,7 @@ class OpenApiParameterBuilderTest {
                 "testOperation",
                 null,
                 null,
+                null,
                 new String[0],
                 "application/json",
                 parameters,

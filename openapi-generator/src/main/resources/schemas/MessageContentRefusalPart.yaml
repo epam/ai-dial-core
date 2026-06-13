@@ -1,0 +1,6 @@
+type: object
+additionalProperties: true
+required: [type, refusal]
+properties:
+  type: { type: string, enum: [refusal] }
+  refusal: { type: string }

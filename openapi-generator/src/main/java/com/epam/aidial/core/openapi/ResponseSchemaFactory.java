@@ -22,6 +22,22 @@ final class ResponseSchemaFactory {
     private ResponseSchemaFactory() {
     }
 
+    /**
+     * Check if schemaRef is a truly external file path (outside the project resources).
+     * Project-local schema files in resources should use schema names instead.
+     *
+     * @param schemaRef the schema reference string
+     * @return true if this is a truly external reference that should be preserved as-is
+     */
+    private static boolean isTrulyExternalRef(String schemaRef) {
+        // Paths starting with these patterns are truly external (outside project)
+        // Examples: "../external/Schema.yaml", "/absolute/path/Schema.yaml", "http://..."
+        return schemaRef.startsWith("../")
+            || schemaRef.startsWith("/")
+            || schemaRef.startsWith("http://")
+            || schemaRef.startsWith("https://");
+    }
+
     public static Schema<?> forContentType(String contentType, String schemaRef, Type body, DtoSchemaGenerator schemaGenerator) {
         if (TEXT_EVENT_STREAM.equals(contentType)) {
             return StringUtils.isBlank(schemaRef) && (body == null || body == Void.class || body == String.class)
@@ -38,7 +54,13 @@ final class ResponseSchemaFactory {
     public static Schema<?> forBody(String schemaRef, Type body, DtoSchemaGenerator schemaGenerator) {
         if (StringUtils.isNotBlank(schemaRef)) {
             Schema<Object> schema = new Schema<>();
-            schema.set$ref(COMPONENTS_SCHEMAS_PREFIX + schemaRef);
+            // Only preserve file path for truly external references
+            // Project schemas should use schema names that get loaded as components
+            if (isTrulyExternalRef(schemaRef)) {
+                schema.set$ref(schemaRef);
+            } else {
+                schema.set$ref(COMPONENTS_SCHEMAS_PREFIX + schemaRef);
+            }
             return schema;
         }
         if (!hasBodyType(body)) {
@@ -87,7 +109,12 @@ final class ResponseSchemaFactory {
             arraySchema.setType("array");
 
             Schema<Object> itemRef = new Schema<>();
-            itemRef.set$ref(COMPONENTS_SCHEMAS_PREFIX + schemaRef);
+            // Only preserve file path for truly external references
+            if (isTrulyExternalRef(schemaRef)) {
+                itemRef.set$ref(schemaRef);
+            } else {
+                itemRef.set$ref(COMPONENTS_SCHEMAS_PREFIX + schemaRef);
+            }
 
             arraySchema.setItems(itemRef);
 

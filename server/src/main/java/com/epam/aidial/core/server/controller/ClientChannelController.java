@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
@@ -71,7 +72,10 @@ public class ClientChannelController {
                             description = OpenApiDescriptions.CLIENT_CHANNEL_ID_RECONNECT)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = String.class, contentTypes = {"text/event-stream"})
+                    @ApiResponse(code = 200, description = "Success", body = String.class, contentTypes = {"text/event-stream"},
+                            headers = {
+                                    @ApiHeader(name = Proxy.HEADER_CLIENT_CHANNEL_ID, description = "Channel ID for reconnection", required = true)
+                            })
             },
             responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST
     )

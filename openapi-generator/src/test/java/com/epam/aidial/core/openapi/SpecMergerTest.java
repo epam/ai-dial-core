@@ -489,10 +489,10 @@ class SpecMergerTest {
         merger.merge(skeletonFile, manualFile, outputFile);
 
         String output = Files.readString(outputFile);
+        assertTrue(output.contains("ChatRequest"),
+                "Skeleton $ref requestBody should be preserved as source of truth");
         assertTrue(output.contains("Rich manually-crafted schema with examples"),
-                "Manual requestBody with rich schema should be preferred over skeleton $ref");
-        assertFalse(output.contains("ChatRequest"),
-                "Skeleton $ref requestBody should NOT override manual rich schema");
+                "Manual description should be overlaid on skeleton schema");
     }
 
     @Test
@@ -926,9 +926,11 @@ class SpecMergerTest {
         merger.merge(skeletonFile, manualFile, outputFile);
 
         String output = Files.readString(outputFile);
-        assertTrue(output.contains("type: array"));
-        assertTrue(output.contains("CreateChatCompletionStreamResponse"));
-        assertFalse(output.matches("(?s)text/event-stream:.*?schema:.*?\\$ref:.*CreateChatCompletionResponse"),
-                "text/event-stream schema must not combine CreateChatCompletionResponse $ref with array items");
+        assertTrue(output.contains("CreateChatCompletionResponse"),
+                "Skeleton $ref should be preserved for text/event-stream schema");
+        assertFalse(output.contains("CreateChatCompletionStreamResponse"),
+                "Manual structural schema should NOT override skeleton $ref");
+        assertFalse(output.contains("type: array"),
+                "Manual array structure should NOT override skeleton $ref");
     }
 }

@@ -152,6 +152,7 @@ public final class AnnotationEndpointCollector {
                 op.operationId(),
                 requestBody,
                 op.requestOneOf(),
+                op.requestBodySchemaRef(),
                 op.tags(),
                 op.contentType(),
                 parameters,

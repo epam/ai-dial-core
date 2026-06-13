@@ -25,6 +25,7 @@ public class RateResponseController extends DeploymentFeatureController {
             method = "POST",
             path = "/v1/{deployment_name}/rate",
             operationId = "rateDeployment",
+            requestBodySchemaRef = "RateRequest",
             parameters = {
                     @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
                             description = OpenApiDescriptions.DEPLOYMENT_NAME)

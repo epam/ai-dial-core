@@ -1,0 +1,7 @@
+type: object
+additionalProperties: true
+required: [type, json_schema]
+properties:
+  type: { type: string, enum: [json_schema] }
+  json_schema:
+    $ref: '#/components/schemas/ResponseFormatJsonSchemaObject'

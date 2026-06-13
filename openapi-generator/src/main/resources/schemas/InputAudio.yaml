@@ -1,0 +1,6 @@
+type: object
+additionalProperties: true
+required: [data, format]
+properties:
+  data: { type: string }
+  format: { type: string }

@@ -24,4 +24,6 @@ public @interface ApiResponse {
     String schemaRef() default "";
 
     String[] contentTypes() default {"application/json"};
+
+    ApiHeader[] headers() default {};
 }

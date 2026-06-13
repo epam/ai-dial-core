@@ -1,0 +1,12 @@
+type: object
+additionalProperties: true
+properties:
+  type: { type: string, default: text/markdown }
+  title: { type: string }
+  data: { type: string }
+  url: { type: string }
+  reference_type: { type: string }
+  reference_url: { type: string }
+oneOf:
+  - required: [data]
+  - required: [url]

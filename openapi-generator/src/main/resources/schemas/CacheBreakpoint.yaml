@@ -1,0 +1,5 @@
+type: object
+additionalProperties: true
+properties:
+  expire_at:
+    type: string

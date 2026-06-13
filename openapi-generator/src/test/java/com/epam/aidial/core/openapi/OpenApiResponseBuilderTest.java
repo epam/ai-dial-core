@@ -1,6 +1,7 @@
 package com.epam.aidial.core.openapi;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -9,6 +10,7 @@ import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.ResourceLink;
 import io.swagger.v3.core.util.Yaml;
 import io.swagger.v3.oas.models.Operation;
+import io.swagger.v3.oas.models.headers.Header;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 import org.junit.jupiter.api.Test;
@@ -64,6 +66,7 @@ class OpenApiResponseBuilderTest {
                 "POST",
                 "/openai/deployments/{deployment_name}/chat/completions",
                 "createChatCompletion",
+                null,
                 null,
                 null,
                 new String[]{"LLM"},
@@ -195,6 +198,7 @@ class OpenApiResponseBuilderTest {
                 "createChatCompletion",
                 null,
                 null,
+                null,
                 new String[]{"LLM"},
                 "application/json",
                 new ApiParameter[0],
@@ -238,6 +242,7 @@ class OpenApiResponseBuilderTest {
                 "createCompletion",
                 null,
                 null,
+                null,
                 new String[]{"LLM"},
                 "application/json",
                 new ApiParameter[0],
@@ -265,6 +270,7 @@ class OpenApiResponseBuilderTest {
                 "getCustomApplicationSchema",
                 null,
                 null,
+                null,
                 new String[]{"Applications"},
                 "application/json",
                 new ApiParameter[0],
@@ -287,6 +293,7 @@ class OpenApiResponseBuilderTest {
                 "/v1/ops/application/deploy",
                 "deployApplication",
                 ResourceLink.class,
+                null,
                 null,
                 new String[]{"Applications"},
                 "application/json",
@@ -313,6 +320,7 @@ class OpenApiResponseBuilderTest {
                 "getApplicationLogs",
                 ResourceLink.class,
                 null,
+                null,
                 new String[]{"Applications"},
                 "application/json",
                 new ApiParameter[0],
@@ -335,6 +343,7 @@ class OpenApiResponseBuilderTest {
                 "POST",
                 "/v1/ops/toolset/signin",
                 "toolsetSignin",
+                null,
                 null,
                 null,
                 new String[]{"Toolsets"},
@@ -360,6 +369,7 @@ class OpenApiResponseBuilderTest {
                 "PUT",
                 "/v1/files/{bucket}/{file_path}",
                 "uploadFile",
+                null,
                 null,
                 null,
                 new String[]{"Files"},
@@ -391,6 +401,100 @@ class OpenApiResponseBuilderTest {
         assertTrue(yaml.contains("CreateChatCompletionResponse"));
     }
 
+    @Test
+    void responseWithSingleHeader() throws Exception {
+        ApiResponse[] responses = responsesFromMethod("responseWithSingleHeader");
+        EndpointMetadata.Endpoint endpoint = endpointWithResponses(responses);
+        DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
+
+        ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, schemaGenerator);
+
+        io.swagger.v3.oas.models.responses.ApiResponse response = apiResponses.get("200");
+        assertNotNull(response.getHeaders());
+        assertEquals(1, response.getHeaders().size());
+
+        Header header = response.getHeaders().get("ETag");
+        assertNotNull(header);
+        assertEquals("Entity tag", header.getDescription());
+        assertTrue(header.getRequired());
+        assertEquals("string", header.getSchema().getType());
+    }
+
+    @Test
+    void responseWithMultipleHeaders() throws Exception {
+        ApiResponse[] responses = responsesFromMethod("responseWithMultipleHeaders");
+        EndpointMetadata.Endpoint endpoint = endpointWithResponses(responses);
+        DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
+
+        ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, schemaGenerator);
+
+        io.swagger.v3.oas.models.responses.ApiResponse response = apiResponses.get("200");
+        assertEquals(3, response.getHeaders().size());
+
+        assertEquals("string", response.getHeaders().get("ETag").getSchema().getType());
+        assertEquals("integer", response.getHeaders().get("X-Rate-Limit-Remaining").getSchema().getType());
+        assertEquals("boolean", response.getHeaders().get("X-Has-More").getSchema().getType());
+    }
+
+    @Test
+    void responseWithoutHeadersHasNullHeaders() throws Exception {
+        ApiResponse[] responses = responsesFromMethod("simpleResponse");
+        EndpointMetadata.Endpoint endpoint = endpointWithResponses(responses);
+        DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
+
+        ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, schemaGenerator);
+
+        // Backward compatibility: responses without headers have null headers
+        io.swagger.v3.oas.models.responses.ApiResponse response = apiResponses.get("200");
+        assertNull(response.getHeaders());
+    }
+
+    @Test
+    void headersSerializeToYaml() throws Exception {
+        ApiResponse[] responses = responsesFromMethod("responseWithSingleHeader");
+        EndpointMetadata.Endpoint endpoint = endpointWithResponses(responses);
+        DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
+
+        Operation operation = new Operation();
+        operation.setResponses(OpenApiResponseBuilder.buildResponses(endpoint, schemaGenerator));
+        String yaml = Yaml.pretty(operation);
+
+        assertTrue(yaml.contains("ETag:"));
+        assertTrue(yaml.contains("description: Entity tag"));
+        assertTrue(yaml.contains("required: true"));
+        assertTrue(yaml.contains("type: string"));
+    }
+
+    @Test
+    void trulyExternalSchemaRefInResponseIsPreservedAsIs() throws Exception {
+        ApiResponse[] responses = responsesFromMethod("trulyExternalSchemaResponse");
+        EndpointMetadata.Endpoint endpoint = endpointWithResponses(responses);
+        DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
+        OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
+
+        ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, schemaGenerator);
+
+        var success = apiResponses.get("200");
+        var schema = success.getContent().get("application/json").getSchema();
+        assertEquals("../external/ExternalResponse.yaml", schema.get$ref());
+        assertFalse(schemaGenerator.getSchemas().containsKey("../external/ExternalResponse.yaml"),
+                "Truly external schema ref should not be registered in components");
+    }
+
+    @Test
+    void schemaNameInResponseIsConvertedToComponentRef() throws Exception {
+        ApiResponse[] responses = responsesFromMethod("schemaNameResponse");
+        EndpointMetadata.Endpoint endpoint = endpointWithResponses(responses);
+        DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
+        OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
+
+        ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, schemaGenerator);
+
+        var success = apiResponses.get("200");
+        var schema = success.getContent().get("application/json").getSchema();
+        assertEquals("#/components/schemas/MyResponseSchema", schema.get$ref());
+    }
+
     private static ApiResponse[] responsesFromMethod(String methodName) throws Exception {
         Method method = AnnotatedMethods.class.getDeclaredMethod(methodName);
         return method.getAnnotationsByType(ApiResponse.class);
@@ -401,6 +505,7 @@ class OpenApiResponseBuilderTest {
                 "POST",
                 "/openai/deployments/{deployment_name}/chat/completions",
                 "createChatCompletion",
+                null,
                 null,
                 null,
                 new String[]{"LLM"},
@@ -495,6 +600,40 @@ class OpenApiResponseBuilderTest {
                 responseOneOf = {ErrorData.class, ResourceLink.class}
         )
         void invalidBothBodyAndOneOf() {
+        }
+
+        @ApiResponse(
+                code = 200,
+                description = "Success",
+                headers = {
+                        @ApiHeader(name = "ETag", description = "Entity tag", required = true)
+                }
+        )
+        void responseWithSingleHeader() {
+        }
+
+        @ApiResponse(
+                code = 200,
+                description = "Success",
+                headers = {
+                        @ApiHeader(name = "ETag", description = "Entity tag", required = true, schema = String.class),
+                        @ApiHeader(name = "X-Rate-Limit-Remaining", description = "Requests remaining", schema = Integer.class),
+                        @ApiHeader(name = "X-Has-More", description = "More data available", schema = Boolean.class)
+                }
+        )
+        void responseWithMultipleHeaders() {
+        }
+
+        @ApiResponse(code = 200, description = "Success")
+        void simpleResponse() {
+        }
+
+        @ApiResponse(code = 200, description = "Truly external schema", schemaRef = "../external/ExternalResponse.yaml")
+        void trulyExternalSchemaResponse() {
+        }
+
+        @ApiResponse(code = 200, description = "Schema by name", schemaRef = "MyResponseSchema")
+        void schemaNameResponse() {
         }
     }
 }

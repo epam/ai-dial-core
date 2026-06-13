@@ -64,7 +64,7 @@ public class DeploymentFeatureController {
                             description = OpenApiDescriptions.DEPLOYMENT_NAME)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
+                    @ApiResponse(code = 200, description = "Success", schemaRef = "ConfigurationResponse")
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ
     )
@@ -72,8 +72,9 @@ public class DeploymentFeatureController {
             method = "POST",
             path = "/v1/deployments/{deployment_name}/tokenize",
             operationId = "tokenize",
+            requestBodySchemaRef = "TokenizeRequest",
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
+                    @ApiResponse(code = 200, description = "Success", schemaRef = "TokenizeResponse")
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ
     )
@@ -81,8 +82,9 @@ public class DeploymentFeatureController {
             method = "POST",
             path = "/v1/deployments/{deployment_name}/truncate_prompt",
             operationId = "truncatePrompt",
+            requestBodySchemaRef = "TruncatePromptRequest",
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
+                    @ApiResponse(code = 200, description = "Success", schemaRef = "TruncatePromptResponse")
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ
     )

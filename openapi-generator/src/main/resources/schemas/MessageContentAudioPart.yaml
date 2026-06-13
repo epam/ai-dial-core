@@ -1,0 +1,7 @@
+type: object
+additionalProperties: true
+required: [type, input_audio]
+properties:
+  type: { type: string, enum: [input_audio] }
+  input_audio:
+    $ref: '#/components/schemas/InputAudio'

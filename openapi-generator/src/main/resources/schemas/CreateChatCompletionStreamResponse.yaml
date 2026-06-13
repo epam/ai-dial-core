@@ -1,25 +1,23 @@
 type: object
-required:
-  - id
-  - object
-  - created
-  - model
-  - choices
 properties:
   id:
     type: string
+  model:
+    type: string
+  created:
+    type: integer
+    format: int64
   object:
     type: string
     enum:
       - chat.completion.chunk
-  created:
-    type: integer
-    format: int64
-  model:
-    type: string
   choices:
     type: array
     items:
-      $ref: "#/components/schemas/ChatCompletionChunkChoice"
+      $ref: '#/components/schemas/CreateChatCompletionStreamChoice'
   usage:
-    $ref: "#/components/schemas/CompletionUsage"
+    $ref: '#/components/schemas/Usage'
+    nullable: true
+  statistics:
+    $ref: '#/components/schemas/Statistics'
+    nullable: true

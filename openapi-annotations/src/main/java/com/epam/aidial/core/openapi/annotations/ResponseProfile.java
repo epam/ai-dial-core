@@ -32,5 +32,6 @@ public enum ResponseProfile {
 
     CODE_INTERPRETER,
 
-    LIMIT_WITH_NOT_FOUND
+    LIMIT_WITH_NOT_FOUND,
+    TOOLSET_TOOLS
 }

@@ -82,6 +82,24 @@ final class ResponseProfileBuilder {
                 responses.addApiResponse("404", StandardResponses.notFound(
                         OpenApiDescriptions.RESPONSE_LIMIT_NOT_FOUND, schemaGenerator));
             }
+            case TOOLSET_TOOLS -> {
+                responses.addApiResponse("401",
+                        StandardResponses.unauthorized(schemaGenerator));
+
+                responses.addApiResponse("403",
+                        StandardResponses.forbidden(schemaGenerator));
+
+                responses.addApiResponse("404",
+                        StandardResponses.notFound(
+                        OpenApiDescriptions.RESPONSE_NOT_FOUND,
+                        schemaGenerator));
+
+                responses.addApiResponse("500",
+                        StandardResponses.internalServerError(schemaGenerator));
+
+                responses.addApiResponse("502",
+                        StandardResponses.upstreamError(schemaGenerator));
+            }
             case NONE -> {
                 // no-op
             }

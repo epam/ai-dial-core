@@ -1,0 +1,26 @@
+type: object
+additionalProperties: true
+required: [role]
+properties:
+  role:
+    type: string
+    enum: [system, developer, user, assistant, function, tool]
+  content:
+    oneOf:
+      - type: string
+      - type: array
+        items:
+          $ref: '#/components/schemas/MessageContentPart'
+  custom_content:
+    $ref: '#/components/schemas/CustomContent'
+  custom_fields:
+    $ref: '#/components/schemas/MessageCustomFields'
+  name: { type: string }
+  tool_calls:
+    type: array
+    items:
+      $ref: '#/components/schemas/ToolCall'
+  tool_call_id: { type: string }
+  function_call:
+    $ref: '#/components/schemas/FunctionCall'
+  refusal: { type: string }

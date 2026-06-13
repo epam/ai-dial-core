@@ -52,6 +52,9 @@ import org.apache.commons.lang3.Strings;
 import java.util.List;
 import java.util.function.Supplier;
 
+import static com.epam.aidial.core.server.Proxy.HEADER_CACHE_POLICY;
+import static com.epam.aidial.core.server.Proxy.HEADER_UPSTREAM_ID;
+
 @Slf4j
 public class DeploymentPostController extends BaseDeploymentPostController {
     private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
@@ -71,6 +74,17 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             path = "/openai/deployments/{deployment_name}/completions",
             operationId = "createCompletion",
             tags = {"LLM"},
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME),
+                    @ApiParameter(name = "api-version", in = ParameterIn.QUERY, required = true,
+                            description = OpenApiDescriptions.API_VERSION, example = "2024-10-21"),
+                    @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
+                            description = OpenApiDescriptions.CACHE_POLICY,
+                            allowableValues = {"availability-priority", "cache-priority"}),
+                    @ApiParameter(name = HEADER_UPSTREAM_ID, in = ParameterIn.HEADER,
+                            description = OpenApiDescriptions.UPSTREAM_ID)
+            },
             responses = {
                     @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionResponse", contentTypes = {"application/json"}),
                     @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionStreamResponse", contentTypes = {"text/event-stream"})
@@ -80,14 +94,17 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             path = "/openai/deployments/{deployment_name}/chat/completions",
             operationId = "sendChatCompletionRequest",
             tags = {"LLM"},
+            requestBodySchemaRef = "ChatCompletionRequest",
             parameters = {
                     @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
                             description = OpenApiDescriptions.DEPLOYMENT_NAME),
                     @ApiParameter(name = "api-version", in = ParameterIn.QUERY, required = true,
                             description = OpenApiDescriptions.API_VERSION, example = "2024-10-21"),
-                    @ApiParameter(name = "X-DIAL-CACHE-POLICY", in = ParameterIn.HEADER,
+                    @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
                             description = OpenApiDescriptions.CACHE_POLICY,
-                            allowableValues = {"availability-priority", "cache-priority"})
+                            allowableValues = {"availability-priority", "cache-priority"}),
+                    @ApiParameter(name = HEADER_UPSTREAM_ID, in = ParameterIn.HEADER,
+                            description = OpenApiDescriptions.UPSTREAM_ID)
             },
             responses = {
 
@@ -111,6 +128,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             path = "/openai/deployments/{deployment_name}/embeddings",
             operationId = "createEmbedding",
             tags = {"LLM"},
+            requestBodySchemaRef = "EmbeddingsRequest",
             responseProfile = ResponseProfile.LLM_EMBEDDING,
             parameters = {
                     @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
@@ -297,7 +315,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             return;
         }
 
-        String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
+        String upstreamId = context.getRequest().headers().get(HEADER_UPSTREAM_ID);
         UpstreamRoute upstreamRoute;
         try {
             upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext(), upstreamId);

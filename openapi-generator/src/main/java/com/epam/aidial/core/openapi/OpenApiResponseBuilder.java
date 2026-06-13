@@ -2,10 +2,12 @@ package com.epam.aidial.core.openapi;
 
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
+import io.swagger.v3.oas.models.headers.Header;
 import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 
 import java.lang.reflect.Type;
+import java.util.Map;
 import java.util.TreeMap;
 
 public final class OpenApiResponseBuilder {
@@ -31,6 +33,13 @@ public final class OpenApiResponseBuilder {
             io.swagger.v3.oas.models.responses.ApiResponse response = sorted.computeIfAbsent(annotation.code(), code -> {
                 io.swagger.v3.oas.models.responses.ApiResponse r = new io.swagger.v3.oas.models.responses.ApiResponse();
                 r.setDescription(annotation.description());
+
+                // Process headers
+                Map<String, Header> headers = OpenApiHeaderBuilder.buildHeaders(annotation.headers());
+                if (!headers.isEmpty()) {
+                    headers.forEach(r::addHeaderObject);
+                }
+
                 return r;
             });
             Content content = ResponseContentFactory.build(annotation.contentTypes(), annotation.schemaRef(),

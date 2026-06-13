@@ -49,19 +49,6 @@ public class ToolSetMcpProxyController extends McpProxyController {
     @Override
     @ApiOperations({
             @ApiOperation(
-                    method = "GET",
-                    path = "/v1/toolset/{toolset_name}/mcp",
-                    operationId = "getToolSetMcp",
-                    tags = {"Toolsets", "MCP"},
-                    parameters = {
-                            @ApiParameter(name = "toolset_name", in = ParameterIn.PATH, required = true,
-                                    description = OpenApiDescriptions.TOOLSET_NAME)
-                    },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success")
-                },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ),
-            @ApiOperation(
                     method = "POST",
                     path = "/v1/toolset/{toolset_name}/mcp",
                     operationId = "postToolSetMcp",
@@ -71,22 +58,9 @@ public class ToolSetMcpProxyController extends McpProxyController {
                                     description = OpenApiDescriptions.TOOLSET_NAME)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success")
+                    @ApiResponse(code = 200, description = "Success")//, schemaRef = "https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http")
                 },
                 responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST),
-            @ApiOperation(
-                    method = "DELETE",
-                    path = "/v1/toolset/{toolset_name}/mcp",
-                    operationId = "deleteToolSetMcp",
-                    tags = {"Toolsets", "MCP"},
-                    parameters = {
-                            @ApiParameter(name = "toolset_name", in = ParameterIn.PATH, required = true,
-                                    description = OpenApiDescriptions.TOOLSET_NAME)
-                    },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success")
-                },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ),
     })
     public Future<?> handle() {
         return super.handle();

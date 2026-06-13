@@ -11,6 +11,7 @@ public final class OpenApiDescriptions {
     public static final String CACHE_POLICY =
             "Upstream selection policy for prompt-caching deployments (availability-priority or cache-priority).";
 
+    public static final String UPSTREAM_ID = "Pin the request to one configured upstream, matched by upstream id";
     public static final String DEPLOYMENT_NAME = "The name of the deployment.";
     public static final String DEPLOYMENT_ID = "The unique identifier of the deployment.";
     public static final String DEPLOYMENT_IDENTIFIER = "Deployment identifier.";

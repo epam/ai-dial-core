@@ -2066,8 +2066,7 @@ paths:
                 $ref: "#/components/schemas/ListDeploymentData"
               examples:
                 DeploymentsSample:
-                  value:
-                    deployments:               
+                  value:              
                     - id: text-embedding-ada-002
                       model: text-embedding-ada-002
                       interfaces:
@@ -2159,8 +2158,12 @@ paths:
         schema:
           type: string
       responses:
-        "200":
+        '200':
           description: Success
+          content:
+            application/json:
+              schema:
+                description: JSON schema of the configuration parameters the given deployment.
         "401":
           description: Invalid Authentication
           content:
@@ -2235,33 +2238,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
   /v1/deployments/{deployment_name}/mcp:
-    get:
-      tags:
-      - Deployments
-      - MCP
-      summary: "/v1/deployments/{deployment_name}/mcp"
-      operationId: getApplicationMcp
-      parameters:
-      - name: deployment_name
-        in: path
-        description: Deployment identifier.
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: Success
-        "401":
-          description: Invalid Authentication
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorData"
     post:
       tags:
       - Deployments
       - MCP
       summary: "/v1/deployments/{deployment_name}/mcp"
+      description: |
+        This endpoint implements MCP-based communication with application deployment using [HTTP transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http).      
       operationId: postApplicationMcp
       parameters:
       - name: deployment_name
@@ -2270,37 +2253,28 @@ paths:
         required: true
         schema:
           type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: string
+              description: |
+                A JSON object satisfying [mcp specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-06-18/schema.json).       
       responses:
         "200":
           description: Success
+          content:
+            application/json:
+              schema:
+                  type: object
+                  description: A JSON object satisfying [mcp specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-06-18/schema.json).          
         "400":
           description: Bad request
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
-        "401":
-          description: Invalid Authentication
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorData"
-    delete:
-      tags:
-      - Deployments
-      - MCP
-      summary: "/v1/deployments/{deployment_name}/mcp"
-      operationId: deleteApplicationMcp
-      parameters:
-      - name: deployment_name
-        in: path
-        description: Deployment identifier.
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: Success
         "401":
           description: Invalid Authentication
           content:

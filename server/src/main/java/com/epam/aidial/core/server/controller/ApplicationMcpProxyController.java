@@ -42,39 +42,19 @@ public class ApplicationMcpProxyController extends McpProxyController {
     @Override
     @ApiOperations({
             @ApiOperation(
-                    method = "GET",
-                    path = "/v1/deployments/{deployment_name}/mcp",
-                    operationId = "getApplicationMcp",
-                    tags = {"Deployments", "MCP"},
-                    responseProfile = ResponseProfile.AUTHENTICATED_READ,
-                    responses = {
-                            @ApiResponse(code = 200, description = "Success")
-                    },
-                    parameters = {
-                            @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
-                                    description = OpenApiDescriptions.DEPLOYMENT_IDENTIFIER)
-                    }),
-
-            @ApiOperation(
                     method = "POST",
                     path = "/v1/deployments/{deployment_name}/mcp",
                     operationId = "postApplicationMcp",
                     tags = {"Deployments", "MCP"},
-                    responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST,
                     parameters = {
                             @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
                                     description = OpenApiDescriptions.DEPLOYMENT_IDENTIFIER)
-                    }),
-            @ApiOperation(
-                    method = "DELETE",
-                    path = "/v1/deployments/{deployment_name}/mcp",
-                    operationId = "deleteApplicationMcp",
-                    tags = {"Deployments", "MCP"},
-                    responseProfile = ResponseProfile.AUTHENTICATED_READ,
-                    parameters = {
-                            @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
-                                    description = OpenApiDescriptions.DEPLOYMENT_IDENTIFIER)
-                    })
+                    },
+                    responses = {
+                        @ApiResponse(code = 200, description = "Success")
+                        //, schemaRef = "https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http")
+                    },
+                    responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST)
     })
     public Future<?> handle() {
         return super.handle();

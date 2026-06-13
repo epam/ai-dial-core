@@ -1,0 +1,7 @@
+type: string
+enum:
+  - stop
+  - length
+  - function_call
+  - tool_calls
+  - content_filter

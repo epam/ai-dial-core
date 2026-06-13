@@ -1,0 +1,24 @@
+type: object
+properties:
+  title:
+    type: string
+
+  readOnlyHint:
+    type: boolean
+    description: Tool does not modify state.
+
+  destructiveHint:
+    type: boolean
+    description: Tool may modify or delete data.
+
+  idempotentHint:
+    type: boolean
+    description: Multiple executions produce the same effect.
+
+  openWorldHint:
+    type: boolean
+    description: Tool may access external systems or information.
+
+  returnDirect:
+    type: boolean
+    description: Result should be returned directly to the caller.

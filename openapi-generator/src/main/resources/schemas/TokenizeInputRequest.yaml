@@ -1,0 +1,11 @@
+type: object
+required:
+  - type
+  - value
+properties:
+  type:
+    type: string
+    enum:
+      - request
+  value:
+    $ref: '#/components/schemas/ChatCompletionRequest'

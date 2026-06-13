@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
@@ -99,7 +100,10 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_APPLICATION)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class)
+                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved application", required = true)
+                                    })
                     },
                     responseProfile = ResponseProfile.CONDITIONAL_WRITE
             ),
@@ -114,7 +118,10 @@ public class ResourceController extends AccessControlBaseController {
                                     description = OpenApiDescriptions.APPLICATION_PATH)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Application.class)
+                @ApiResponse(code = 200, description = "Success", body = Application.class,
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "Entity tag for the application", required = true)
+                            })
                 },
                 responseProfile = ResponseProfile.AUTHENTICATED_READ
             ),
@@ -167,7 +174,10 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_CONVERSATION)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class)
+                    @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "Entity tag for the saved conversation", required = true)
+                            })
                 },
                 responseProfile = ResponseProfile.CONDITIONAL_WRITE
             ),
@@ -182,7 +192,10 @@ public class ResourceController extends AccessControlBaseController {
                                     description = OpenApiDescriptions.CONVERSATION_PATH)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Conversation.class)
+                    @ApiResponse(code = 200, description = "Success", body = Conversation.class,
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "Entity tag for the conversation", required = true)
+                            })
                 },
                 responseProfile = ResponseProfile.AUTHENTICATED_READ
             ),
@@ -235,7 +248,10 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_PROMPT)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class)
+                    @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "Entity tag for the saved prompt", required = true)
+                            })
                 },
                 responseProfile = ResponseProfile.CONDITIONAL_WRITE
             ),
@@ -249,7 +265,10 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Prompt.class)
+                    @ApiResponse(code = 200, description = "Success", body = Prompt.class,
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "Entity tag for the prompt", required = true)
+                            })
                 },
                 responseProfile = ResponseProfile.AUTHENTICATED_READ
             ),
@@ -300,7 +319,10 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_TOOLSET)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class)
+                    @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "Entity tag for the saved toolset", required = true)
+                            })
                 },
                 responseProfile = ResponseProfile.CONDITIONAL_WRITE
             ),
@@ -314,7 +336,10 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ToolSet.class)
+                    @ApiResponse(code = 200, description = "Success", body = ToolSet.class,
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "Entity tag for the toolset", required = true)
+                            })
                 },
                 responseProfile = ResponseProfile.AUTHENTICATED_READ
             ),

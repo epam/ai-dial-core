@@ -27,6 +27,7 @@ class OpenApiRequestBodyBuilderTest {
                 "uploadFile",
                 OpenApiBinary.class,
                 null,
+                null,
                 new String[]{"Files"},
                 "multipart/form-data",
                 new ApiParameter[0],
@@ -63,6 +64,7 @@ class OpenApiRequestBodyBuilderTest {
                 "createChatCompletion",
                 ResourceLink.class,
                 null,
+                null,
                 new String[]{"Applications"},
                 "application/json",
                 new ApiParameter[0],
@@ -88,6 +90,7 @@ class OpenApiRequestBodyBuilderTest {
                 "getExample",
                 Void.class,
                 null,
+                null,
                 new String[]{"Examples"},
                 "application/json",
                 new ApiParameter[0],
@@ -105,6 +108,7 @@ class OpenApiRequestBodyBuilderTest {
                 "/v1/files/{bucket}/{file_path}",
                 "uploadFile",
                 OpenApiBinary.class,
+                null,
                 null,
                 new String[]{"Files"},
                 "multipart/form-data",
@@ -132,6 +136,7 @@ class OpenApiRequestBodyBuilderTest {
                 "postFlag",
                 Boolean.class,
                 null,
+                null,
                 new String[]{"Examples"},
                 "application/json",
                 new ApiParameter[0],
@@ -157,6 +162,7 @@ class OpenApiRequestBodyBuilderTest {
                 "postBinary",
                 OpenApiBinary.class,
                 null,
+                null,
                 new String[]{"Test"},
                 "application/json",
                 new ApiParameter[0],
@@ -170,5 +176,57 @@ class OpenApiRequestBodyBuilderTest {
         assertEquals("string", schema.getType());
         assertEquals("binary", schema.getFormat());
         assertNull(schema.get$ref());
+    }
+
+    @Test
+    void trulyExternalSchemaRefIsPreservedAsIs() {
+        EndpointMetadata.Endpoint endpoint = new EndpointMetadata.Endpoint(
+                "POST",
+                "/v1/example",
+                "postExample",
+                null,
+                null,
+                "../external/ExternalSchema.yaml",
+                new String[]{"Test"},
+                "application/json",
+                new ApiParameter[0],
+                new ApiResponse[0],
+                ResponseProfile.NONE
+        );
+        DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
+        OpenApiRequestBodyBuilder.registerRequestBodySchemas(endpoint, schemaGenerator);
+
+        RequestBody requestBody = OpenApiRequestBodyBuilder.build(endpoint, schemaGenerator);
+
+        assertNotNull(requestBody);
+        var schema = requestBody.getContent().get("application/json").getSchema();
+        assertEquals("../external/ExternalSchema.yaml", schema.get$ref());
+        assertFalse(schemaGenerator.getSchemas().containsKey("../external/ExternalSchema.yaml"),
+                "Truly external schema ref should not be registered in components");
+    }
+
+    @Test
+    void schemaNameIsConvertedToComponentRef() {
+        EndpointMetadata.Endpoint endpoint = new EndpointMetadata.Endpoint(
+                "POST",
+                "/v1/example",
+                "postExample",
+                null,
+                null,
+                "MySchema",
+                new String[]{"Test"},
+                "application/json",
+                new ApiParameter[0],
+                new ApiResponse[0],
+                ResponseProfile.NONE
+        );
+        DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
+        OpenApiRequestBodyBuilder.registerRequestBodySchemas(endpoint, schemaGenerator);
+
+        RequestBody requestBody = OpenApiRequestBodyBuilder.build(endpoint, schemaGenerator);
+
+        assertNotNull(requestBody);
+        var schema = requestBody.getContent().get("application/json").getSchema();
+        assertEquals("#/components/schemas/MySchema", schema.get$ref());
     }
 }

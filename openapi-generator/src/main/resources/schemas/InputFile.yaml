@@ -1,0 +1,6 @@
+type: object
+additionalProperties: true
+properties:
+  file_data: { type: string }
+  file_id: { type: string }
+  filename: { type: string }

@@ -13,7 +13,9 @@ public final class OpenApiRequestBodyBuilder {
     }
 
     public static RequestBody build(EndpointMetadata.Endpoint endpoint, DtoSchemaGenerator schemaGenerator) {
-        if (!ResponseSchemaFactory.hasBodyType(endpoint.requestBody()) && !ResponseSchemaFactory.hasRequestOneOf(endpoint)) {
+        if (!ResponseSchemaFactory.hasBodyType(endpoint.requestBody())
+                && !ResponseSchemaFactory.hasRequestOneOf(endpoint)
+                && (endpoint.requestBodySchemaRef() == null || endpoint.requestBodySchemaRef().isBlank())) {
             return null;
         }
 
@@ -27,10 +29,9 @@ public final class OpenApiRequestBodyBuilder {
             schema = ResponseSchemaFactory.multipartBinaryFileUploadSchema();
         } else {
             if (endpoint.requestOneOf() != null && endpoint.requestOneOf().length > 0) {
-
                 schema = ResponseSchemaFactory.oneOf(endpoint.requestOneOf(), schemaGenerator);
             } else {
-                schema = ResponseSchemaFactory.forBody(endpoint.requestBody(), schemaGenerator);
+                schema = ResponseSchemaFactory.forBody(endpoint.requestBodySchemaRef(), endpoint.requestBody(), schemaGenerator);
             }
         }
         mediaType.setSchema(schema);
@@ -40,6 +41,9 @@ public final class OpenApiRequestBodyBuilder {
     }
 
     public static void registerRequestBodySchemas(EndpointMetadata.Endpoint endpoint, DtoSchemaGenerator schemaGenerator) {
+        if (endpoint.requestBodySchemaRef() != null && !endpoint.requestBodySchemaRef().isBlank()) {
+            schemaGenerator.registerExternalSchema(endpoint.requestBodySchemaRef());
+        }
         if (endpoint.requestOneOf() != null && endpoint.requestOneOf().length > 0) {
             for (Class<?> type : endpoint.requestOneOf()) {
                 if (type.isArray()) {

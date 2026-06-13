@@ -24,9 +24,30 @@ public class ExternalSchemaRegistry {
         if (schemas.containsKey(schemaName)) {
             return;
         }
+        // Skip registration for truly external file paths - they'll be resolved by the OpenAPI spec consumer
+        // Project schemas should use schema names without path separators
+        if (isTrulyExternalRef(schemaName)) {
+            return;
+        }
         ObjectNode schema = loadSchema(schemaName);
         schemas.put(schemaName, schema);
         registerDependencies(schema);
+    }
+
+    /**
+     * Check if schemaRef is a truly external file path (outside the project resources).
+     * Project-local schema files in resources should use schema names instead.
+     *
+     * @param schemaRef the schema reference string
+     * @return true if this is a truly external reference that should be preserved as-is
+     */
+    private static boolean isTrulyExternalRef(String schemaRef) {
+        // Paths starting with these patterns are truly external (outside project)
+        // Examples: "../external/Schema.yaml", "/absolute/path/Schema.yaml", "http://..."
+        return schemaRef.startsWith("../")
+            || schemaRef.startsWith("/")
+            || schemaRef.startsWith("http://")
+            || schemaRef.startsWith("https://");
     }
 
     private ObjectNode loadSchema(String schemaName) {

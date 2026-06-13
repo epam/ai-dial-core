@@ -106,9 +106,9 @@ public class ToolSetToolsController implements Controller {
                             description = OpenApiDescriptions.TOOLSET_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
+                    @ApiResponse(code = 200, description = "Success", schemaRef = "ToolSetToolsResponse")
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ)
+            responseProfile = ResponseProfile.TOOLSET_TOOLS)
     @ApiOperation(
             method = "GET",
             path = "/v1/toolset/{toolset_name}/allowed-tools",
@@ -119,9 +119,9 @@ public class ToolSetToolsController implements Controller {
                             description = OpenApiDescriptions.TOOLSET_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
+                    @ApiResponse(code = 200, description = "Success", schemaRef = "AllowedToolsResponse")
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ)
+            responseProfile = ResponseProfile.TOOLSET_TOOLS)
     public Future<?> handle() {
         return taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);

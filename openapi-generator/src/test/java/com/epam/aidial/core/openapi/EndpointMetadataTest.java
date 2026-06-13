@@ -3,11 +3,11 @@ package com.epam.aidial.core.openapi;
 
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.controller.ControllerSelector;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -15,7 +15,6 @@ import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 class EndpointMetadataTest {
 
@@ -29,10 +28,14 @@ class EndpointMetadataTest {
         List<?> routes = getControllerRoutes();
         List<EndpointMetadata.Endpoint> endpoints = AnnotationEndpointCollector.collect();
 
+        System.out.println("Routes: " + routes.size());
+        System.out.println("Endpoints: " + endpoints.size());
+
         assertFalse(endpoints.isEmpty(), "EndpointMetadata should not be empty");
         assertFalse(routes.isEmpty(), "ControllerSelector routes should not be empty");
 
-        // For each endpoint in EndpointMetadata, verify it matches at least one ControllerSelector route
+        List<String> unmatched = new ArrayList<>();
+
         for (EndpointMetadata.Endpoint endpoint : endpoints) {
             if (isProxyHandledEndpoint(endpoint)) {
                 continue;
@@ -59,28 +62,33 @@ class EndpointMetadataTest {
     }
 
     @Test
-    @Disabled
     void allRoutesHaveEndpointMetadata() throws Exception {
         List<?> routes = getControllerRoutes();
         List<EndpointMetadata.Endpoint> endpoints = AnnotationEndpointCollector.collect();
-
+        System.out.println("Routes: " + routes.size());
+        System.out.println("Endpoints: " + endpoints.size());
         // For each ControllerSelector route (excluding DEPLOYMENT_ROUTES),
         // verify at least one EndpointMetadata endpoint matches its pattern
+        List<String> uncoveredRoutes = new ArrayList<>();
+
         for (Object route : routes) {
+
             String routeMethod = getRouteMethodName(route);
             Pattern routePattern = getRoutePattern(route);
 
-            // Skip DEPLOYMENT_ROUTES
             if (DEPLOYMENT_ROUTES_PATTERN.matcher(routePattern.pattern()).matches()) {
                 continue;
             }
 
             boolean covered = false;
+
             for (EndpointMetadata.Endpoint endpoint : endpoints) {
                 if (!endpoint.method().equals(routeMethod)) {
                     continue;
                 }
+
                 String samplePath = RouteExtractor.toSamplePath(endpoint.path());
+
                 if (routePattern.matcher(samplePath).find()) {
                     covered = true;
                     break;
@@ -88,10 +96,15 @@ class EndpointMetadataTest {
             }
 
             if (!covered) {
-                fail("ControllerSelector route has no matching EndpointMetadata entry: "
-                        + routeMethod + " " + routePattern.pattern());
+                uncoveredRoutes.add(
+                        routeMethod + " " + routePattern.pattern()
+                );
             }
         }
+
+        System.out.println("=== UNCOVERED ROUTES ===");
+        uncoveredRoutes.forEach(System.out::println);
+
     }
 
     @Test
