@@ -105,7 +105,7 @@ public class ResourceController extends AccessControlBaseController {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved application", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONDITIONAL_WRITE
+                    responseProfile = ResponseProfile.CONDITIONAL_WRITE_EXTENDED
             ),
             @ApiOperation(
                     method = "GET",
@@ -123,7 +123,7 @@ public class ResourceController extends AccessControlBaseController {
                                     @ApiHeader(name = "ETag", description = "Entity tag for the application", required = true)
                             })
                 },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ
+                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -139,7 +139,7 @@ public class ResourceController extends AccessControlBaseController {
                 responses = {
                     @ApiResponse(code = 200, description = "Success")
                 },
-                responseProfile = ResponseProfile.CONDITIONAL_DELETE
+                responseProfile = ResponseProfile.CONDITIONAL_WRITE
             ),
             @ApiOperation(
                     method = "GET",
@@ -157,7 +157,7 @@ public class ResourceController extends AccessControlBaseController {
                 responses = {
                     @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
                 },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ
+                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
             ),
             // Conversations
             @ApiOperation(
@@ -197,7 +197,7 @@ public class ResourceController extends AccessControlBaseController {
                                     @ApiHeader(name = "ETag", description = "Entity tag for the conversation", required = true)
                             })
                 },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ
+                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -213,7 +213,7 @@ public class ResourceController extends AccessControlBaseController {
                 responses = {
                     @ApiResponse(code = 200, description = "Success")
                 },
-                responseProfile = ResponseProfile.CONDITIONAL_DELETE
+                responseProfile = ResponseProfile.CONDITIONAL_WRITE
             ),
             @ApiOperation(
                     method = "GET",
@@ -232,7 +232,7 @@ public class ResourceController extends AccessControlBaseController {
                 responses = {
                     @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
                 },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ
+                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
             ),
             // Prompts
             @ApiOperation(
@@ -270,7 +270,7 @@ public class ResourceController extends AccessControlBaseController {
                                     @ApiHeader(name = "ETag", description = "Entity tag for the prompt", required = true)
                             })
                 },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ
+                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -285,7 +285,7 @@ public class ResourceController extends AccessControlBaseController {
                 responses = {
                     @ApiResponse(code = 200, description = "Success")
                 },
-                responseProfile = ResponseProfile.CONDITIONAL_DELETE
+                responseProfile = ResponseProfile.CONDITIONAL_WRITE
             ),
             @ApiOperation(
                     method = "GET",
@@ -303,7 +303,7 @@ public class ResourceController extends AccessControlBaseController {
                 responses = {
                     @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
                 },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ
+                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
             ),
             // Toolsets
             @ApiOperation(
@@ -341,7 +341,7 @@ public class ResourceController extends AccessControlBaseController {
                                     @ApiHeader(name = "ETag", description = "Entity tag for the toolset", required = true)
                             })
                 },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ
+                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -356,7 +356,7 @@ public class ResourceController extends AccessControlBaseController {
                 responses = {
                     @ApiResponse(code = 200, description = "Success")
                 },
-                responseProfile = ResponseProfile.CONDITIONAL_DELETE
+                responseProfile = ResponseProfile.CONDITIONAL_WRITE
             ),
             @ApiOperation(
                     method = "GET",
@@ -374,7 +374,7 @@ public class ResourceController extends AccessControlBaseController {
                 responses = {
                     @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
                 },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ
+                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
             ),
             // Files (delete only - upload/download handled by UploadFileController/DownloadFileController)
             @ApiOperation(
@@ -390,7 +390,7 @@ public class ResourceController extends AccessControlBaseController {
                 responses = {
                     @ApiResponse(code = 200, description = "Success")
                 },
-                responseProfile = ResponseProfile.CONDITIONAL_DELETE
+                responseProfile = ResponseProfile.CONDITIONAL_WRITE
             )
     })
     protected Future<?> handle(ResourceDescriptor descriptor, boolean hasWriteAccess) {

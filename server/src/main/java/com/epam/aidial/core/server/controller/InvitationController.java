@@ -46,7 +46,7 @@ public class InvitationController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = InvitationCollection.class)
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ)
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED)
     public Future<?> getInvitations() {
         proxy.getTaskExecutor()
                 .submit(() -> {
@@ -70,7 +70,7 @@ public class InvitationController {
             responses = {
                 @ApiResponse(code = 200, description = "Success", body = Invitation.class)
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
     public Future<?> getOrAcceptInvitation(String invitationId) {
         boolean accept = Boolean.parseBoolean(context.getRequest().getParam("accept"));
@@ -111,7 +111,7 @@ public class InvitationController {
             responses = {
                     @ApiResponse(code = 200, description = "Success")
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ)
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION)
     public Future<?> deleteInvitation(String invitationId) {
         proxy.getTaskExecutor()
                 .submit(() -> {

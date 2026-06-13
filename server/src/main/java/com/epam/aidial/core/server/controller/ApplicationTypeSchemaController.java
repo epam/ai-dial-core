@@ -50,7 +50,7 @@ public class ApplicationTypeSchemaController {
             responses = {
                     @ApiResponse(code = 200, description = "Success")
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_WITH_SERVER_ERROR
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     public Future<?> handleGetMetaSchema() {
         return taskExecutor.submit(MetaSchemaHolder::getCustomApplicationMetaSchema)
@@ -110,7 +110,7 @@ public class ApplicationTypeSchemaController {
             responses = {
                     @ApiResponse(code = 200, description = "Success")
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_OPERATION
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     public Future<?> handleGetSchema() {
         return taskExecutor.submit(this::getSchema)
@@ -171,7 +171,7 @@ public class ApplicationTypeSchemaController {
             responses = {
                     @ApiResponse(code = 200, description = "Success")
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_WITH_SERVER_ERROR
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     public Future<?> handleListSchemas() {
         return taskExecutor.submit(this::listSchemas)

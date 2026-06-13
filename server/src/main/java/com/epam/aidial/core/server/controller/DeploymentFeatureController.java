@@ -66,7 +66,7 @@ public class DeploymentFeatureController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", schemaRef = "ConfigurationResponse")
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     @ApiOperation(
             method = "POST",
@@ -76,7 +76,7 @@ public class DeploymentFeatureController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", schemaRef = "TokenizeResponse")
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     @ApiOperation(
             method = "POST",
@@ -86,7 +86,7 @@ public class DeploymentFeatureController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", schemaRef = "TruncatePromptResponse")
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     public Future<?> handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
         // make sure request.body() called before request.resume()

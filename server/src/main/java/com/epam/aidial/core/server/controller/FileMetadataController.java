@@ -54,7 +54,7 @@ public class FileMetadataController extends AccessControlBaseController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         boolean recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));

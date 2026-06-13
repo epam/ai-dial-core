@@ -54,6 +54,30 @@ public final class StandardResponses {
         return withErrorBody(OpenApiDescriptions.RESPONSE_OVERLOADED, schemaGenerator);
     }
 
+    public static ApiResponse notModified() {
+        ApiResponse response = new ApiResponse();
+        response.setDescription("Not Modified");
+        return response;
+    }
+
+    public static ApiResponse methodNotAllowed() {
+        ApiResponse response = new ApiResponse();
+        response.setDescription("Method Not Allowed");
+        return response;
+    }
+
+    public static ApiResponse unsupportedMediaType(DtoSchemaGenerator schemaGenerator) {
+        return withErrorBody("Unsupported Media Type", schemaGenerator);
+    }
+
+    public static ApiResponse unprocessableEntity(DtoSchemaGenerator schemaGenerator) {
+        return withErrorBody("Unprocessable Entity", schemaGenerator);
+    }
+
+    public static ApiResponse payloadTooLarge(DtoSchemaGenerator schemaGenerator) {
+        return withErrorBody("Payload Too Large", schemaGenerator);
+    }
+
     private static ApiResponse withErrorBody(String description, DtoSchemaGenerator schemaGenerator) {
         ApiResponse response = new ApiResponse();
         response.setDescription(description);

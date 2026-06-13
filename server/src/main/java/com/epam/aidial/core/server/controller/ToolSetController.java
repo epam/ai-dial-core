@@ -56,7 +56,7 @@ public class ToolSetController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = ToolSetData.class)
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     public Future<?> getToolSet(String toolSetId) {
         taskExecutor.submit(() -> {
@@ -81,7 +81,7 @@ public class ToolSetController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = ToolSetData.class, wrapper = ListData.class)
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     public Future<?> getToolSets() {
         Config config = context.getConfig();

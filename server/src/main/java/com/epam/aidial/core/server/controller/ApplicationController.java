@@ -78,7 +78,7 @@ public class ApplicationController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = ApplicationData.class)
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_WITH_NOT_FOUND
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     public Future<?> getApplication(String applicationId) {
         taskExecutor.submit(() -> deploymentService.findDeployment(context, applicationId))
@@ -108,7 +108,7 @@ public class ApplicationController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = ApplicationData.class, wrapper = ListData.class)
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_WITH_SERVER_ERROR
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     public Future<?> getApplications() {
         Config config = context.getConfig();

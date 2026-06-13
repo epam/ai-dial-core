@@ -29,7 +29,7 @@ public class BucketController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = Bucket.class)
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ)
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED)
     public Future<?> getBucket() {
         EncryptionService encryptionService = proxy.getEncryptionService();
         String bucketLocation = BucketBuilder.buildUserBucket(context);

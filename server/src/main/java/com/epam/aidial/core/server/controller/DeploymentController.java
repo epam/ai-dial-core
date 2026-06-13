@@ -78,7 +78,7 @@ public class DeploymentController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = DeploymentData.class)
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     public Future<?> getDeployment(String deploymentId) {
         Config config = context.getConfig();
@@ -105,7 +105,7 @@ public class DeploymentController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = DeploymentData.class, wrapper = ListData.class)
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     public Future<?> getDeployments() {
         getModels(List.of()).onSuccess(deployments -> {
@@ -133,7 +133,7 @@ public class DeploymentController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = DeploymentData.class, wrapper = List.class)
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     public Future<?> listDeployments() {
         String[] interfaces = getDeploymentInterfaces();

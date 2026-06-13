@@ -33,7 +33,7 @@ public class RateResponseController extends DeploymentFeatureController {
             responses = {
                     @ApiResponse(code = 200, description = "Success")
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     public Future<?> handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
         return super.handle(deploymentId, endpointGetter, requireEndpoint);

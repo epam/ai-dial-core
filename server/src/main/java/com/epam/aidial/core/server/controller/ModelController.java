@@ -41,7 +41,7 @@ public class ModelController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = ModelData.class)
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     public Future<?> getModel(String modelId) {
         Config config = context.getConfig();
@@ -67,7 +67,7 @@ public class ModelController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = ModelData.class, wrapper = ListData.class)
             },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ
+            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     public Future<?> getModels() {
         Config config = context.getConfig();
