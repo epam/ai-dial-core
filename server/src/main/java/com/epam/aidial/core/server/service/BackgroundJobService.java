@@ -201,46 +201,51 @@ public class BackgroundJobService {
     }
 
     private void scheduleNextPoll(String id, ResponseMapping mapping, AtomicInteger failureCount) {
-        vertx.setTimer(pollIntervalMs, ignored -> {
-            LockService.Lock lock = lockService.tryLock("background_job_poll:" + id);
-            if (lock == null) {
-                scheduleNextPoll(id, mapping, failureCount);
-                return;
-            }
-            loadRecordAsync(id)
-                    .compose(record -> {
-                        if (record == null) {
-                            log.info("Background job {} record not found, stopping polling", id);
-                            return Future.succeededFuture();
-                        }
-                        return poller.poll(mapping)
-                                .compose(
-                                        result -> {
-                                            if (result == null) {
-                                                failureCount.set(0);
-                                                scheduleNextPoll(id, mapping, failureCount);
-                                                return Future.succeededFuture();
-                                            }
-                                            return deleteAndProcess(id, record, mapping, result.usage());
-                                        },
-                                        error -> {
-                                            int n = failureCount.incrementAndGet();
-                                            if (n < maxSequentialPollFailures) {
-                                                log.warn("Poll failed for background job {} ({}/{})", id, n, maxSequentialPollFailures, error);
-                                                scheduleNextPoll(id, mapping, failureCount);
-                                                return Future.succeededFuture();
-                                            }
-                                            log.error("Background job {} exceeded max poll failures, giving up", id, error);
-                                            return deleteAndProcess(id, record, mapping, null);
+        vertx.setTimer(pollIntervalMs, ignored ->
+                vertx.executeBlocking(() -> lockService.tryLock("background_job_poll:" + id))
+                        .compose(lock -> {
+                            if (lock == null) {
+                                scheduleNextPoll(id, mapping, failureCount);
+                                return Future.succeededFuture();
+                            }
+                            return loadRecordAsync(id)
+                                    .compose(record -> {
+                                        if (record == null) {
+                                            log.info("Background job {} record not found, stopping polling", id);
+                                            return Future.succeededFuture();
                                         }
-                                );
-                    })
-                    .onComplete(ignore -> lock.close())
-                    .onFailure(error -> {
-                        log.warn("Failed to process background job {}", id, error);
-                        scheduleNextPoll(id, mapping, failureCount);
-                    });
-        });
+                                        return poller.poll(mapping)
+                                                .compose(
+                                                        result -> {
+                                                            if (result == null) {
+                                                                failureCount.set(0);
+                                                                scheduleNextPoll(id, mapping, failureCount);
+                                                                return Future.succeededFuture();
+                                                            }
+                                                            return deleteAndProcess(id, record, mapping, result.usage());
+                                                        },
+                                                        error -> {
+                                                            int n = failureCount.incrementAndGet();
+                                                            if (n < maxSequentialPollFailures) {
+                                                                log.warn("Poll failed for background job {} ({}/{})", id, n, maxSequentialPollFailures, error);
+                                                                scheduleNextPoll(id, mapping, failureCount);
+                                                                return Future.succeededFuture();
+                                                            }
+                                                            log.error("Background job {} exceeded max poll failures, giving up", id, error);
+                                                            return deleteAndProcess(id, record, mapping, null);
+                                                        }
+                                                );
+                                    })
+                                    .eventually(() -> vertx.executeBlocking(() -> {
+                                        lock.close();
+                                        return null;
+                                    }));
+                        })
+                        .onFailure(error -> {
+                            log.warn("Failed to process background job {}", id, error);
+                            scheduleNextPoll(id, mapping, failureCount);
+                        })
+        );
     }
 
     private void resumeActiveJobs() {
