@@ -107,6 +107,7 @@
   },
   "backgroundJob": {
     "pollIntervalMs": 10000,
+    "maxPollIntervalMs": 300000,
     "maxSequentialPollFailures": 10,
     "defaultJobTtlMs": 86400000
   }

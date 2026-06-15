@@ -39,11 +39,13 @@ public class BackgroundJobService {
     @Data
     public static class Settings {
         private long pollIntervalMs = TimeUnit.SECONDS.toMillis(10);
+        private long maxPollIntervalMs = TimeUnit.MINUTES.toMillis(5);
         private int maxSequentialPollFailures = 10;
         private long defaultJobTtlMs = TimeUnit.DAYS.toMillis(1);
     }
 
     private final long pollIntervalMs;
+    private final long maxPollIntervalMs;
     private final int maxSequentialPollFailures;
     private final long defaultJobTtlMs;
     private final Vertx vertx;
@@ -71,6 +73,7 @@ public class BackgroundJobService {
             BackgroundJobPoller poller,
             Settings settings) {
         this.pollIntervalMs = settings.getPollIntervalMs();
+        this.maxPollIntervalMs = settings.getMaxPollIntervalMs();
         this.maxSequentialPollFailures = settings.getMaxSequentialPollFailures();
         this.defaultJobTtlMs = settings.getDefaultJobTtlMs();
         this.vertx = vertx;
@@ -153,7 +156,7 @@ public class BackgroundJobService {
                                 if (mapping == null) {
                                     return Future.failedFuture("Response mapping not found for background job " + id);
                                 }
-                                scheduleNextPoll(id, mapping, new AtomicInteger());
+                                scheduleNextPoll(id, mapping, new AtomicInteger(), pollIntervalMs);
                                 return Future.succeededFuture();
                             });
                 })
@@ -200,52 +203,53 @@ public class BackgroundJobService {
                 });
     }
 
-    private void scheduleNextPoll(String id, ResponseMapping mapping, AtomicInteger failureCount) {
-        vertx.setTimer(pollIntervalMs, ignored ->
-                vertx.executeBlocking(() -> lockService.tryLock("background_job_poll:" + id))
-                        .compose(lock -> {
-                            if (lock == null) {
-                                scheduleNextPoll(id, mapping, failureCount);
-                                return Future.succeededFuture();
-                            }
-                            return loadRecordAsync(id)
-                                    .compose(record -> {
-                                        if (record == null) {
-                                            log.info("Background job {} record not found, stopping polling", id);
-                                            return Future.succeededFuture();
-                                        }
-                                        return poller.poll(mapping)
-                                                .compose(
-                                                        result -> {
-                                                            if (result == null) {
-                                                                failureCount.set(0);
-                                                                scheduleNextPoll(id, mapping, failureCount);
-                                                                return Future.succeededFuture();
-                                                            }
-                                                            return deleteAndProcess(id, record, mapping, result.usage());
-                                                        },
-                                                        error -> {
-                                                            int n = failureCount.incrementAndGet();
-                                                            if (n < maxSequentialPollFailures) {
-                                                                log.warn("Poll failed for background job {} ({}/{})", id, n, maxSequentialPollFailures, error);
-                                                                scheduleNextPoll(id, mapping, failureCount);
-                                                                return Future.succeededFuture();
-                                                            }
-                                                            log.error("Background job {} exceeded max poll failures, giving up", id, error);
-                                                            return deleteAndProcess(id, record, mapping, null);
+    private void scheduleNextPoll(String id, ResponseMapping mapping, AtomicInteger failureCount, long currentIntervalMs) {
+        vertx.setTimer(currentIntervalMs, ignored -> {
+            long nextIntervalMs = Math.min(currentIntervalMs * 2, maxPollIntervalMs);
+            vertx.executeBlocking(() -> lockService.tryLock("background_job_poll:" + id))
+                    .compose(lock -> {
+                        if (lock == null) {
+                            scheduleNextPoll(id, mapping, failureCount, currentIntervalMs);
+                            return Future.succeededFuture();
+                        }
+                        return loadRecordAsync(id)
+                                .compose(record -> {
+                                    if (record == null) {
+                                        log.info("Background job {} record not found, stopping polling", id);
+                                        return Future.succeededFuture();
+                                    }
+                                    return poller.poll(mapping)
+                                            .compose(
+                                                    result -> {
+                                                        if (result == null) {
+                                                            failureCount.set(0);
+                                                            scheduleNextPoll(id, mapping, failureCount, nextIntervalMs);
+                                                            return Future.succeededFuture();
                                                         }
-                                                );
-                                    })
-                                    .eventually(() -> vertx.executeBlocking(() -> {
-                                        lock.close();
-                                        return null;
-                                    }));
-                        })
-                        .onFailure(error -> {
-                            log.warn("Failed to process background job {}", id, error);
-                            scheduleNextPoll(id, mapping, failureCount);
-                        })
-        );
+                                                        return deleteAndProcess(id, record, mapping, result.usage());
+                                                    },
+                                                    error -> {
+                                                        int n = failureCount.incrementAndGet();
+                                                        if (n < maxSequentialPollFailures) {
+                                                            log.warn("Poll failed for background job {} ({}/{})", id, n, maxSequentialPollFailures, error);
+                                                            scheduleNextPoll(id, mapping, failureCount, nextIntervalMs);
+                                                            return Future.succeededFuture();
+                                                        }
+                                                        log.error("Background job {} exceeded max poll failures, giving up", id, error);
+                                                        return deleteAndProcess(id, record, mapping, null);
+                                                    }
+                                            );
+                                })
+                                .eventually(() -> vertx.executeBlocking(() -> {
+                                    lock.close();
+                                    return null;
+                                }));
+                    })
+                    .onFailure(error -> {
+                        log.warn("Failed to process background job {}", id, error);
+                        scheduleNextPoll(id, mapping, failureCount, currentIntervalMs);
+                    });
+        });
     }
 
     private void resumeActiveJobs() {
