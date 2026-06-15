@@ -659,6 +659,62 @@ public class FileApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testSmallThenBigFileUploadSameKey(Vertx vertx, VertxTestContext context) {
+        // Regression test for issue #1594/#1604: overwriting a small file with a large (multipart) file
+        // at the same key must return the large file, not the stale small one.
+        Checkpoint checkpoint = context.checkpoint(3);
+        WebClient client = WebClient.create(vertx);
+
+        byte[] smallContent = new byte[1024];
+        IntStream.range(0, smallContent.length).forEach(i -> smallContent[i] = (byte) i);
+        byte[] bigContent = new byte[(int) (BlobWriteStream.MIN_PART_SIZE_BYTES * 1.5)];
+        IntStream.range(0, bigContent.length).forEach(i -> bigContent[i] = (byte) (2 * i));
+
+        String path = "/v1/files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/overwrite.bin";
+
+        Future.succeededFuture().compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // upload small file (stored as a single blob, body cached in Redis)
+            client.put(serverPort, "localhost", path)
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .sendMultipartForm(generateMultipartForm("overwrite.bin", smallContent, "application/x-binary"),
+                            context.succeeding(response -> context.verify(() -> {
+                                assertEquals(200, response.statusCode());
+                                checkpoint.flag();
+                                promise.complete();
+                            })));
+
+            return promise.future();
+        }).compose((mapper) -> {
+            Promise<Void> promise = Promise.promise();
+            // overwrite with a large file (multipart upload)
+            client.put(serverPort, "localhost", path)
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.string())
+                    .sendMultipartForm(generateMultipartForm("overwrite.bin", bigContent, "application/x-binary"),
+                            context.succeeding(response -> context.verify(() -> {
+                                assertEquals(200, response.statusCode());
+                                Assertions.assertNotNull(response.getHeader(HttpHeaders.ETAG));
+                                checkpoint.flag();
+                                promise.complete();
+                            })));
+
+            return promise.future();
+        }).andThen((result) -> {
+            // read the file back - must be the large content, not the stale small one
+            client.get(serverPort, "localhost", path)
+                    .putHeader("Api-key", "proxyKey2")
+                    .as(BodyCodec.buffer())
+                    .send(context.succeeding(response -> context.verify(() -> {
+                        assertEquals(200, response.statusCode());
+                        assertArrayEquals(bigContent, response.body().getBytes());
+                        checkpoint.flag();
+                    })));
+        });
+    }
+
+    @Test
     public void testBigFileEvents(Vertx vertx, VertxTestContext context) {
         Checkpoint checkpoint = context.checkpoint(4);
         WebClient client = WebClient.create(vertx);

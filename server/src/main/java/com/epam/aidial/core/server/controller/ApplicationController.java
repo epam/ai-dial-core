@@ -111,6 +111,7 @@ public class ApplicationController {
             responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
     public Future<?> getApplications() {
+        log.debug("Start applications listing");
         Config config = context.getConfig();
         Proxy proxy = context.getProxy();
 
@@ -127,8 +128,10 @@ public class ApplicationController {
                 list.addAll(deploymentService.listDeployments(context, ResourceTypes.APPLICATION, deploymentExtractor));
             }
             return list.stream().map(this::mapApplication).toList();
-        }).onSuccess(apps -> context.respond(HttpStatus.OK, new ListData<>(apps)))
-                .onFailure(this::respondError);
+        }).onSuccess(apps -> {
+            log.debug("Finish applications listing");
+            context.respond(HttpStatus.OK, new ListData<>(apps));
+        }).onFailure(this::respondError);
     }
 
     @ApiOperation(
