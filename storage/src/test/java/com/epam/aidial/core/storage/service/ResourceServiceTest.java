@@ -19,13 +19,17 @@ import redis.embedded.RedisServer;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ResourceServiceTest {
 
@@ -169,5 +173,31 @@ public class ResourceServiceTest {
         assertEquals("", ResourceService.decode(""));
         assertEquals("{abc}", ResourceService.decode("{abc}"));
         assertEquals("{abñ}", ResourceService.decode("base58_24SWdWXor"));
+    }
+
+    @Test
+    public void testCleanupTempFolder() {
+        byte[] body = "1234567890".getBytes();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        LocalDateTime now = LocalDateTime.now();
+
+        String expiredFolder = now.minusHours(3).format(formatter);
+        String recentFolder = now.minusMinutes(30).format(formatter);
+        String currentFolder = now.format(formatter);
+
+        String expiredFile = ResourceService.TEMP_FOLDER + "/" + expiredFolder + "/expired";
+        String recentFile = ResourceService.TEMP_FOLDER + "/" + recentFolder + "/recent";
+        String currentFile = ResourceService.TEMP_FOLDER + "/" + currentFolder + "/current";
+
+        storage.store(expiredFile, "application/octet-stream", null, Map.of(), body);
+        storage.store(recentFile, "application/octet-stream", null, Map.of(), body);
+        storage.store(currentFile, "application/octet-stream", null, Map.of(), body);
+
+        service.cleanupTempFolder();
+
+        assertFalse(storage.exists(expiredFile));
+        // a file uploaded within the last hour is kept because its folder hour may still be in progress
+        assertTrue(storage.exists(recentFile));
+        assertTrue(storage.exists(currentFile));
     }
 }

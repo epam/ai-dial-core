@@ -53,6 +53,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -61,6 +66,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
@@ -86,6 +92,24 @@ public class ResourceService implements AutoCloseable {
     public static final String UPDATED_AT_ATTRIBUTE = "updated_at";
     public static final String CREATED_AT_ATTRIBUTE = "created_at";
     public static final String ETAG_ATTRIBUTE = "etag";
+    /**
+     * System folder large files are uploaded to before being moved to the target resource, see issue #1604.
+     */
+    public static final String TEMP_FOLDER = ".dial-tmp";
+    /**
+     * Files uploaded to the {@link #TEMP_FOLDER} are grouped into sub-folders, e.g. {@code .dial-tmp/2024-01-31 13:34:10/<uuid>}.
+     */
+    private static final DateTimeFormatter TEMP_FOLDER_FORMATTER = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd HH:mm:ss")
+            .toFormatter();
+    /**
+     * How frequently the scheduled job scans the {@link #TEMP_FOLDER} for expired files.
+     */
+    private static final long TEMP_CLEANUP_PERIOD = Duration.ofHours(24).toMillis();
+    /**
+     * A temp file is considered expired and removed once its upload hour ended more than this duration ago.
+     */
+    private static final Duration TEMP_FILE_TTL = Duration.ofHours(1);
     private static final String COMPRESS_ATTRIBUTE = "compress";
     private static final String AUTHOR_ATTRIBUTE = "author";
 
@@ -124,6 +148,7 @@ public class ResourceService implements AutoCloseable {
     private final int maxSize;
     private final int maxSizeToCache;
     private final TimerService.Timer syncTimer;
+    private final TimerService.Timer tempCleanupTimer;
     private final long syncDelay;
     private final int syncBatch;
     private final Duration cacheExpiration;
@@ -164,12 +189,14 @@ public class ResourceService implements AutoCloseable {
         this.resourceTypeExpiration = Objects.requireNonNullElseGet(settings.resourceTypesExpiration, Map::of);
         this.senderPodIdSupplier = senderPodIdSupplier;
         this.syncTimer = timerService.scheduleWithFixedDelay(settings.syncPeriod, settings.syncPeriod, this::sync);
+        this.tempCleanupTimer = timerService.scheduleWithFixedDelay(TEMP_CLEANUP_PERIOD, TEMP_CLEANUP_PERIOD, this::cleanupTempFolder);
     }
 
     @SneakyThrows
     @Override
     public void close() {
         syncTimer.close();
+        tempCleanupTimer.close();
     }
 
     public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescriptor> resources,
@@ -277,7 +304,9 @@ public class ResourceService implements AutoCloseable {
         String nextToken = null;
         List<Pair<ResourceItemMetadata, String>> result = new ArrayList<>();
         do {
+            log.debug("Start getting folder metadata: {}", resourceFolder.getAbsoluteFilePath());
             ResourceFolderMetadata folder = getFolderMetadata(resourceFolder, nextToken, PAGE_SIZE, true);
+            log.debug("Finish getting folder metadata: {}", resourceFolder.getAbsoluteFilePath());
             if (folder == null) {
                 break;
             }
@@ -343,7 +372,9 @@ public class ResourceService implements AutoCloseable {
             RMapAsync<String, byte[]> map = batch.getMap(redisKey, REDIS_MAP_CODEC);
             map.getAllAsync(REDIS_FIELDS);
         }
+        log.debug("Start executing Redis batch with start={}, end={}", start, end);
         BatchResult<?> batchResult = batch.execute();
+        log.debug("Finish executing Redis batch with start={}, end={}", start, end);
         List<ResourceItemMetadata> missed = new ArrayList<>();
         List<?> responses = batchResult.getResponses();
         for (int j = 0; j < responses.size(); j++) {
@@ -359,18 +390,21 @@ public class ResourceService implements AutoCloseable {
                 result.add(pair);
             }
         }
+        log.debug("Number of missing resources in Redis cache: {}", missed.size());
         List<Future<Pair<ResourceItemMetadata, String>>> futures = new ArrayList<>();
         for (ResourceItemMetadata metadata : missed) {
             Future<Pair<ResourceItemMetadata, String>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
                     .submit(() -> getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, false));
             futures.add(future);
         }
+        log.debug("Start loading missing resources from blob storage: {}", missed.size());
         for (Future<Pair<ResourceItemMetadata, String>> future : futures) {
             Pair<ResourceItemMetadata, String> res = future.get();
             if (res != null) {
                 result.add(res);
             }
         }
+        log.debug("Finish loading missed resources from blob storage: {}", missed.size());
         return result;
     }
 
@@ -656,9 +690,84 @@ public class ResourceService implements AutoCloseable {
             long updatedAt = time();
             long createdAt = metadata == null ? updatedAt : metadata.getCreatedAt();
             Map<String, String> userMetadata = toUserMetadata(null, createdAt, updatedAt, resource.getType().name(), author);
-            MultipartUpload mpu = blobStore.initMultipartUpload(resource.getAbsoluteFilePath(), contentType, userMetadata);
-            return new ResourceUpload(blobStore, mpu, contentType, createdAt, updatedAt);
+            // Assemble the upload in an isolated temporary location to avoid concurrent modifications of the
+            // target key while the multipart upload is in progress (see issue #1604).
+            String tempPath = tempBlobPath();
+            MultipartUpload mpu = blobStore.initMultipartUpload(tempPath, contentType, userMetadata);
+            return new ResourceUpload(blobStore, mpu, contentType, userMetadata, tempPath);
         }
+    }
+
+    private static String tempBlobPath() {
+        String separator = ResourceDescriptor.PATH_SEPARATOR;
+        String folder = LocalDateTime.now().format(TEMP_FOLDER_FORMATTER);
+        return TEMP_FOLDER + separator + folder + separator + UUID.randomUUID();
+    }
+
+    /**
+     * Scans the {@link #TEMP_FOLDER} and removes expired files. A file is expired when the hour denoted by its parent
+     * folder name (see {@link #TEMP_FOLDER_FORMATTER}) ended more than {@link #TEMP_FILE_TTL} ago. The job runs every
+     * {@link #TEMP_CLEANUP_PERIOD} to clean up leftovers from interrupted or abandoned uploads, see issue #1604.
+     */
+    @VisibleForTesting
+    Void cleanupTempFolder() {
+        log.debug("Cleaning up temp folder");
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            String token = null;
+            exit: do {
+                PageSet<? extends StorageMetadata> set = blobStore.list(TEMP_FOLDER, token, PAGE_SIZE, true);
+                for (StorageMetadata meta : set) {
+                    if (meta.getType() != StorageType.BLOB) {
+                        continue;
+                    }
+                    String path = meta.getName();
+                    if (isExpiredTempFile(path, now)) {
+                        try {
+                            blobStore.delete(path);
+                        } catch (Throwable e) {
+                            log.warn("Failed to delete expired temp file: {}", path, e);
+                        }
+                    } else {
+                        break exit;
+                    }
+
+                }
+                token = set.getNextMarker();
+            } while (token != null);
+        } catch (Throwable e) {
+            log.warn("Failed to clean up temp folder", e);
+        }
+
+        return null;
+    }
+
+    private static boolean isExpiredTempFile(String path, LocalDateTime now) {
+        String prefix = TEMP_FOLDER + ResourceDescriptor.PATH_SEPARATOR;
+        if (!path.startsWith(prefix)) {
+            throw invalidTempPathException(path);
+        }
+
+        int folderStart = prefix.length();
+        int folderEnd = path.indexOf(ResourceDescriptor.PATH_SEPARATOR, folderStart);
+        if (folderEnd < 0) {
+            throw invalidTempPathException(path);
+        }
+
+        String folder = path.substring(folderStart, folderEnd);
+        LocalDateTime uploadTs;
+        try {
+            uploadTs = LocalDateTime.parse(folder, TEMP_FOLDER_FORMATTER);
+        } catch (DateTimeParseException e) {
+            log.warn("Unexpected folder name in temp folder: {}", folder);
+            throw invalidTempPathException(path);
+        }
+
+        return uploadTs.plus(TEMP_FILE_TTL).isBefore(now);
+    }
+
+    private static IllegalArgumentException invalidTempPathException(String path) {
+        return new IllegalArgumentException("Invalid path to temp file: " + path);
     }
 
     public FileMetadata finishFileUpload(ResourceDescriptor descriptor, ResourceUpload resourceUpload, EtagHeader etagHeader) {
@@ -673,10 +782,21 @@ public class ResourceService implements AutoCloseable {
             MultipartUpload multipartUpload = resourceUpload.getMultipartUpload();
             List<MultipartPart> parts = resourceUpload.getParts();
 
-            long updatedAt = resourceUpload.getUpdatedAt();
-            Long createdAt = resourceUpload.getCreatedAt();
+            blobStore.completeMultipartUpload(multipartUpload, parts);
+            // Move the assembled blob from the temporary location to the target resource. Pass the user metadata
+            // explicitly so the author/timestamps survive the copy regardless of the blob storage provider.
+            String tempPath = resourceUpload.getTempPath();
+            String etag = resourceUpload.calculateEtag();
+            Map<String, String> userMetadata = resourceUpload.getUserMetadata();
+            userMetadata.put(ETAG_ATTRIBUTE, etag);
+            try {
+                blobStore.copy(tempPath, descriptor.getAbsoluteFilePath(), userMetadata);
+            } finally {
+                blobStore.delete(tempPath);
+            }
 
-            String etag = blobStore.completeMultipartUpload(multipartUpload, parts);
+            long updatedAt = Long.parseLong(userMetadata.get(UPDATED_AT_ATTRIBUTE));
+            long createdAt = Long.parseLong(userMetadata.get(CREATED_AT_ATTRIBUTE));
 
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
