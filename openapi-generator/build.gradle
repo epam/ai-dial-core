@@ -58,28 +58,13 @@ tasks.register('mergeOpenApiSpec', JavaExec) {
     ]
 }
 
-tasks.register('backupAndReplaceSpec') {
+tasks.register('replaceSpec') {
     dependsOn lintMergedOpenApi
 
     doLast {
-        def target = file(targetSpec)
-        def backupFolder = file(backupDir)
-
-        backupFolder.mkdirs()
-
-        if (target.exists()) {
-            copy {
-                from target
-                into backupFolder
-                rename {
-                    "open_api_core-${new Date().format('yyyyMMdd-HHmmss')}.yaml"
-                }
-            }
-        }
-
         copy {
             from file(mergedFile)
-            into target.parentFile
+            into file(targetSpec).parentFile
             rename { "open_api_core.yaml" }
         }
     }
