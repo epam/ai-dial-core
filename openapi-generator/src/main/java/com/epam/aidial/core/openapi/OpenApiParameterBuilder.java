@@ -85,7 +85,7 @@ public final class OpenApiParameterBuilder {
         if (allowableValues.length == 0) {
             return;
         }
-        schema.setEnum(Arrays.asList(allowableValues));
+        schema.setEnum(List.of(allowableValues));
     }
 
     static boolean isArraySchema(Class<?> schemaClass) {

@@ -9,7 +9,6 @@ import java.util.stream.Collectors;
 /**
  * Named response bundles for {@link ApiOperation#responseProfile()}.
  * Each profile declares its HTTP response codes inline for visibility and maintainability.
- * <p>
  * Profiles are self-describing: all response codes are visible in the enum definition,
  * eliminating the need for external switch statements and improving code locality.
  */
@@ -51,7 +50,8 @@ public enum ResponseProfile {
     CONDITIONAL_WRITE_EXTENDED("400", "401", "404", "412", "413", "500"),
 
     /**
-     * Operations with bad request profile: 400 Bad Request, 401 Unauthorized, 404 Not Found, 422 Unprocessable Entity, 429 Too Many Requests, 500 Internal Server Error, 502 Bad Gateway.
+     * Operations with bad request profile: 400 Bad Request, 401 Unauthorized, 404 Not Found, 422 Unprocessable Entity,
+     * 429 Too Many Requests, 500 Internal Server Error, 502 Bad Gateway.
      * Use for MCP proxy operations with validation, rate limiting, and upstream error handling.
      */
     OPS_WITH_BAD_REQUEST("400", "401", "404", "422", "429", "500", "502"),
@@ -81,7 +81,8 @@ public enum ResponseProfile {
     TOOLSET_TOOLS("401", "403", "404", "500", "502"),
 
     /**
-     * Config resource full profile: 304 Not Modified, 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 405 Method Not Allowed, 412 Precondition Failed, 422 Unprocessable Entity, 500 Internal Server Error.
+     * Config resource full profile: 304 Not Modified, 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 405 Method Not Allowed, 412 Precondition Failed,
+     * 422 Unprocessable Entity, 500 Internal Server Error.
      * Use for configuration resource CRUD operations with ETag support and validation.
      */
     CONFIG_RESOURCE_FULL("304", "400", "401", "403", "404", "405", "412", "422", "500"),
@@ -93,7 +94,8 @@ public enum ResponseProfile {
     ADMIN_BATCH("400", "401", "403", "422", "500"),
 
     /**
-     * Responses API profile: 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 415 Unsupported Media Type, 500 Internal Server Error, 502 Bad Gateway, 503 Service Unavailable.
+     * Responses API profile: 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found,
+     * 415 Unsupported Media Type, 500 Internal Server Error, 502 Bad Gateway, 503 Service Unavailable.
      * Use for Responses API endpoints with Content-Type validation.
      */
     RESPONSES_API("400", "401", "403", "404", "415", "500", "502", "503"),
@@ -120,7 +122,7 @@ public enum ResponseProfile {
 
     ResponseProfile(String... codes) {
         LinkedHashSet<String> set = Arrays.stream(codes)
-            .collect(Collectors.toCollection(LinkedHashSet::new));
+                .collect(Collectors.toCollection(LinkedHashSet::new));
         this.responseCodes = Collections.unmodifiableSet(set);
     }
 
