@@ -156,7 +156,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
-                           "reasoning_efforts_supported": false
+                           "reasoning_efforts": []
                       },
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
@@ -200,7 +200,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
-                           "reasoning_efforts_supported": false
+                           "reasoning_efforts": []
                         },
                         "description_keywords" : [ ],
                         "max_retry_attempts" : 1,
@@ -245,7 +245,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
-                           "reasoning_efforts_supported": false
+                           "reasoning_efforts": []
                         },
                         "description_keywords" : [ ],
                         "max_retry_attempts" : 1,
@@ -299,7 +299,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
-                           "reasoning_efforts_supported": false
+                           "reasoning_efforts": []
                       },
                      "description_keywords" : [ ],
                      "max_retry_attempts" : 1,
@@ -437,7 +437,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
-                           "reasoning_efforts_supported": false
+                           "reasoning_efforts": []
                   },
                   "description_keywords": [],
                   "max_retry_attempts": 1,
@@ -490,7 +490,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
-                           "reasoning_efforts_supported": false
+                           "reasoning_efforts": []
                           },
                       "description_keywords" : [ ],
                       "max_retry_attempts" : 1,
@@ -536,7 +536,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                            "max_tokens_supported": true,
                            "max_completion_tokens_supported": false,
                            "custom_temperature_supported": true,
-                           "reasoning_efforts_supported": false
+                           "reasoning_efforts": []
                           },
                         "description_keywords" : [ ],
                         "max_retry_attempts" : 1,
@@ -1869,10 +1869,10 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     "my-client-id:my-client-secret".getBytes(StandardCharsets.UTF_8));
             assertEquals(expectedHeader, authHeaderRef.get(),
                     "client_secret_basic must produce an Authorization: Basic header per RFC 6749 §2.3.1");
-            assertFalse(bodyRef.get().contains("client_id="),
-                    "client_id must not appear in body for client_secret_basic, got: " + bodyRef.get());
+            assertTrue(bodyRef.get().contains("client_id="),
+                    "client_id must appear in body for client_secret_basic (RFC 6749 §3.2.1), got: " + bodyRef.get());
             assertFalse(bodyRef.get().contains("client_secret="),
-                    "client_secret must not appear in body for client_secret_basic, got: " + bodyRef.get());
+                    "client_secret must NOT appear in body for client_secret_basic (secret stays in the header), got: " + bodyRef.get());
 
             // Persisted setting is readable via GET (round-trip)
             response = send(HttpMethod.GET, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-basic@",
@@ -1940,10 +1940,103 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     "my-client-id:my-client-secret".getBytes(StandardCharsets.UTF_8));
             assertEquals(expectedAuth, authHeaderRef.get(),
                     "null token_endpoint_auth_method must default to client_secret_basic");
-            assertFalse(bodyRef.get().contains("client_id="),
-                    "client_id must not be in body when defaulting to basic, got: " + bodyRef.get());
+            assertTrue(bodyRef.get().contains("client_id="),
+                    "client_id must be in body when defaulting to basic (RFC 6749 §3.2.1), got: " + bodyRef.get());
             assertFalse(bodyRef.get().contains("client_secret="),
-                    "client_secret must not be in body when defaulting to basic, got: " + bodyRef.get());
+                    "client_secret must NOT be in body when defaulting to basic, got: " + bodyRef.get());
+        }
+    }
+
+    @Test
+    void testOauthDcrPublicClient_sendsClientIdInBodyNotBasicHeader() {
+        // Reproduces the FastMCP "OAuth Proxy" regression. A dynamically-registered PUBLIC client
+        // (DCR response carries NO client_secret) must authenticate at the token endpoint with
+        // token_endpoint_auth_method=none — i.e. client_id in the BODY, no Authorization header.
+        // DIAL defaulted a secretless client to client_secret_basic, which moves client_id into a
+        // Basic header and drops it from the body; FastMCP then rejects the token exchange with
+        // invalid_grant "Client ID does not match the one used in the initial request."
+        // EXPECTED (post-fix): a secretless DCR client uses 'none' -> client_id in body, no header.
+        String protectedResourceMetadata = """
+                {
+                    "resource": "http://localhost:9876/mcp",
+                    "authorization_servers": ["http://localhost:9876"],
+                    "scopes_supported": ["read"]
+                }
+                """;
+        String authServerMetadata = """
+                {
+                    "issuer": "http://localhost:9876",
+                    "authorization_endpoint": "http://localhost:9876/authorize",
+                    "token_endpoint": "http://localhost:9876/token",
+                    "registration_endpoint": "http://localhost:9876/register",
+                    "code_challenge_methods_supported": ["S256"]
+                }
+                """;
+        // FastMCP-style DCR response: a client_id, NO client_secret, and (like FastMCP) no explicit
+        // token_endpoint_auth_method — the registered client is public.
+        String registrationResponse = """
+                {
+                    "client_id": "dcr-public-client",
+                    "client_name": "toolset-dcr-public",
+                    "redirect_uris": ["http://admin/callback"]
+                }
+                """;
+        String tokenResponse = """
+                {
+                    "access_token": "test-access-token",
+                    "refresh_token": "test-refresh-token",
+                    "expires_in": 3600
+                }
+                """;
+        java.util.concurrent.atomic.AtomicReference<String> authHeaderRef = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<String> bodyRef = new java.util.concurrent.atomic.AtomicReference<>();
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+            server.map(HttpMethod.GET, "/.well-known/oauth-protected-resource/mcp",
+                    200, protectedResourceMetadata, "Content-Type", "application/json");
+            server.map(HttpMethod.GET, "/.well-known/oauth-authorization-server",
+                    200, authServerMetadata, "Content-Type", "application/json");
+            server.map(HttpMethod.POST, "/register",
+                    200, registrationResponse, "Content-Type", "application/json");
+            server.map(HttpMethod.POST, "/token", request -> {
+                authHeaderRef.set(request.getHeader("Authorization"));
+                bodyRef.set(request.getBody().readUtf8());
+                return new MockResponse().setBody(tokenResponse).setHeader("Content-Type", "application/json");
+            });
+
+            // Dynamic client registration: no client_id/client_secret supplied.
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-dcr-public@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "redirect_uri": "http://admin/callback"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset-dcr-public@",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+
+            // Public client (no secret) => token_endpoint_auth_method=none: client_id in the BODY,
+            // no Authorization header. Pre-fix DIAL sent a Basic header and omitted body client_id.
+            assertNull(authHeaderRef.get(),
+                    "public DCR client (no secret) must NOT send an Authorization header, got: " + authHeaderRef.get());
+            assertTrue(bodyRef.get().contains("client_id=dcr-public-client"),
+                    "public client must send client_id in the body, got: " + bodyRef.get());
+            assertFalse(bodyRef.get().contains("client_secret="),
+                    "no client_secret should be sent for a public client, got: " + bodyRef.get());
         }
     }
 

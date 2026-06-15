@@ -77,6 +77,15 @@
           "targets": ["admin"]
         }
       ]
+    },
+    "globalReader": {
+      "rules": [
+        {
+          "function": "CONTAIN",
+          "source": "roles",
+          "targets": ["global-reader"]
+        }
+      ]
     }
   },
   "perRequestApiKey": {

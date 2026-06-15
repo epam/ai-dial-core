@@ -212,12 +212,12 @@ class TokenServiceTest {
         assertEquals(expected, headersCaptor.getValue().get("Authorization"));
 
         String formData = formDataCaptor.getValue();
-        assertFalse(formData.contains("client_id="), "client_id must not be in body: " + formData);
+        assertTrue(formData.contains("client_id="), "client_id must be in body: " + formData);
         assertFalse(formData.contains("client_secret="), "client_secret must not be in body: " + formData);
     }
 
     @Test
-    void testGetToken_clientSecretBasic_sendsAuthorizationHeaderAndOmitsBodyCreds() {
+    void testGetToken_clientSecretBasic_sendsBasicHeaderWithClientIdInBody() {
         TokenService tokenService = new TokenService(resourceAuthorizationClient, List.of());
 
         ResourceAuthSettings authSettings = ResourceAuthSettings.builder()
@@ -244,8 +244,11 @@ class TokenServiceTest {
                 eq("application/x-www-form-urlencoded"), headersCaptor.capture(), eq(TokenResponse.class));
 
         String formData = formDataCaptor.getValue();
-        assertFalse(formData.contains("client_id="), "client_id must not be in body: " + formData);
-        assertFalse(formData.contains("client_secret="), "client_secret must not be in body: " + formData);
+        // client_id is sent in the body even under Basic (RFC 6749 §3.2.1 MAY) so servers that look up
+        // the client by the body client_id (e.g. FastMCP's OAuth Proxy) work; the SECRET stays only in
+        // the Basic header — no second authentication method per RFC 6749 §2.3.1.
+        assertTrue(formData.contains("client_id="), "client_id must be in body: " + formData);
+        assertFalse(formData.contains("client_secret="), "client_secret must NOT be in body for basic: " + formData);
 
         // Plain RFC 7617 Basic: client_id and client_secret are concatenated as-is and base64'd
         // without URL-encoding. This is what Snowflake and most real-world authorization servers
@@ -332,8 +335,8 @@ class TokenServiceTest {
         String formData = formDataCaptor.getValue();
         assertTrue(formData.contains("grant_type=refresh_token"));
         assertTrue(formData.contains("refresh_token=old-refresh-token"));
-        assertFalse(formData.contains("client_id="), "client_id must not be in body for basic: " + formData);
-        assertFalse(formData.contains("client_secret="), "client_secret must not be in body for basic: " + formData);
+        assertTrue(formData.contains("client_id="), "client_id must be in body for basic: " + formData);
+        assertFalse(formData.contains("client_secret="), "client_secret must NOT be in body for basic: " + formData);
 
         String expected = "Basic " + Base64.getEncoder().encodeToString("client-id:client-secret".getBytes(StandardCharsets.UTF_8));
         assertEquals(expected, headersCaptor.getValue().get("Authorization"));
@@ -365,7 +368,7 @@ class TokenServiceTest {
         assertEquals(expected, headersCaptor.getValue().get("Authorization"));
 
         String formData = formDataCaptor.getValue();
-        assertFalse(formData.contains("client_id="), "client_id must not be in body: " + formData);
+        assertTrue(formData.contains("client_id="), "client_id must be in body: " + formData);
         assertFalse(formData.contains("client_secret="), "client_secret must not be in body: " + formData);
     }
 }

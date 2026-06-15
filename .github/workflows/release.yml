@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   release:
-    uses: epam/ai-dial-ci/.github/workflows/java_release.yml@4.4.0
+    uses: epam/ai-dial-ci/.github/workflows/java_release.yml@4.4.1
     with:
       promote: ${{ github.event_name == 'workflow_dispatch' && inputs.promote }}
       platforms: "linux/amd64,linux/arm64"
