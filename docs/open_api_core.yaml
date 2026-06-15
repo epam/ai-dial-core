@@ -2541,7 +2541,6 @@ paths:
                       client_id: my-client-id
                       redirect_uri: https://myapp.com/toolset/sign-in
                       authorization_endpoint: https://authserver.com/authorize
-                      token_endpoint: https://authserver.com/token
                       code_challenge_method: S256
                       scopes_supported:
                       - scope1
@@ -6662,7 +6661,6 @@ paths:
                       client_id: my-client-id
                       redirect_uri: https://myapp.com/toolset/sign-in
                       authorization_endpoint: https://authserver.com/authorize
-                      token_endpoint: https://authserver.com/token
                       code_challenge_method: S256
                       scopes_supported:
                       - scope1
@@ -6817,7 +6815,6 @@ paths:
                     client_secret: my-client-secret
                     redirect_uri: https://myapp.com/toolset/sign-in
                     authorization_endpoint: https://authserver.com/authorize
-                    token_endpoint: https://authserver.com/token
                     code_challenge_method: S256
                     scopes_supported:
                     - scope1
@@ -7659,8 +7656,10 @@ components:
           type: boolean
         rate:
           type: boolean
-        reasoning_efforts_supported:
-          type: boolean
+        reasoning_efforts:
+          type: array
+          items:
+            type: string
         seed:
           type: boolean
         system_prompt:
@@ -7993,6 +7992,8 @@ components:
           type: string
         display_version:
           type: string
+        embedding_dimensions:
+          type: integer
         features:
           $ref: "#/components/schemas/FeaturesData"
         icon_url:
@@ -8228,8 +8229,10 @@ components:
           type: boolean
         rate_endpoint:
           type: string
-        reasoning_efforts_supported:
-          type: boolean
+        reasoning_efforts:
+          type: array
+          items:
+            type: string
         seed_supported:
           type: boolean
         support_comment_in_rate_response:
@@ -8969,6 +8972,8 @@ components:
           type: string
         displayVersion:
           type: string
+        embeddingDimensions:
+          type: integer
         endpoint:
           type: string
         features:

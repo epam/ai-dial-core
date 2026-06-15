@@ -27,8 +27,8 @@ def generatedDir = "${layout.buildDirectory.get()}/generated"
 
 def skeletonFile = "${generatedDir}/openapi-skeleton.yaml"
 def mergedFile = "${generatedDir}/openapi-merged.yaml"
-def targetSpec = "${rootDir}/raillanding/public/universal_chat_api.yaml"
-def backupDir = "${rootDir}/raillanding/public/bak"
+def targetSpec = "${rootDir}/docs/open_api_core.yaml"
+def backupDir = "${rootDir}/openapi-generator/resources/bak"
 
 tasks.register('generateOpenApiSkeleton', JavaExec) {
     dependsOn classes
@@ -72,7 +72,7 @@ tasks.register('backupAndReplaceSpec') {
                 from target
                 into backupFolder
                 rename {
-                    "universal_chat_api-${new Date().format('yyyyMMdd-HHmmss')}.yaml"
+                    "open_api_core-${new Date().format('yyyyMMdd-HHmmss')}.yaml"
                 }
             }
         }
@@ -80,7 +80,7 @@ tasks.register('backupAndReplaceSpec') {
         copy {
             from file(mergedFile)
             into target.parentFile
-            rename { "universal_chat_api.yaml" }
+            rename { "open_api_core.yaml" }
         }
     }
 }
@@ -103,12 +103,11 @@ tasks.register('checkOpenApiDiff') {
         def generatedSpec = file(mergedFile)
 
         if (!currentSpec.exists()) {
-            logger.lifecycle("Current OpenAPI spec not found: ${targetSpec}")
-            return
+            throw new GradleException("Current OpenAPI spec not found: ${targetSpec}")
         }
 
         if (!java.util.Arrays.equals(currentSpec.bytes, generatedSpec.bytes)) {
-            logger.lifecycle("""
+            throw new GradleException("""
 ============================================================
 OpenAPI specification differs from committed version.
 
@@ -118,12 +117,12 @@ ${targetSpec}
 Generated:
 ${mergedFile}
 
-Review changes and update universal_chat_api.yaml if needed.
+Run publishOpenApiSpec or review changes manually.
 ============================================================
 """)
-        } else {
-            logger.lifecycle("OpenAPI specification is up to date.")
         }
+
+        logger.lifecycle("OpenAPI specification is up to date.")
     }
 }
 
