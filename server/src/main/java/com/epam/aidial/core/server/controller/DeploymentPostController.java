@@ -79,6 +79,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                             description = OpenApiDescriptions.DEPLOYMENT_NAME),
                     @ApiParameter(name = "api-version", in = ParameterIn.QUERY, required = true,
                             description = OpenApiDescriptions.API_VERSION, example = "2024-10-21"),
+                    @ApiParameter(name = "Content-Type", in = ParameterIn.HEADER, required = true,
+                            description = "Must be application/json", schema = String.class),
                     @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
                             description = OpenApiDescriptions.CACHE_POLICY,
                             allowableValues = {"availability-priority", "cache-priority"}),
@@ -88,7 +90,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionResponse", contentTypes = {"application/json"}),
                     @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionStreamResponse", contentTypes = {"text/event-stream"})
-            })
+            },
+            responseProfile = ResponseProfile.RESPONSES_API)
     @ApiOperation(
             method = "POST",
             path = "/openai/deployments/{deployment_name}/chat/completions",
@@ -100,6 +103,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                             description = OpenApiDescriptions.DEPLOYMENT_NAME),
                     @ApiParameter(name = "api-version", in = ParameterIn.QUERY, required = true,
                             description = OpenApiDescriptions.API_VERSION, example = "2024-10-21"),
+                    @ApiParameter(name = "Content-Type", in = ParameterIn.HEADER, required = true,
+                            description = "Must be application/json"),
                     @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
                             description = OpenApiDescriptions.CACHE_POLICY,
                             allowableValues = {"availability-priority", "cache-priority"}),
@@ -109,36 +114,27 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             responses = {
 
                     @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionResponse"),
-                    @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionStreamResponse", contentTypes = {"text/event-stream"}),
-                    @ApiResponse(code = 401, description = OpenApiDescriptions.RESPONSE_INVALID_AUTHENTICATION,
-                            body = ErrorData.class),
-                    @ApiResponse(code = 404, description = OpenApiDescriptions.RESPONSE_DEPLOYMENT_NOT_FOUND,
-                            body = ErrorData.class),
-                    @ApiResponse(code = 429, description = OpenApiDescriptions.RESPONSE_RATE_LIMIT,
-                            body = ErrorData.class),
-                    @ApiResponse(code = 500, description = OpenApiDescriptions.RESPONSE_SERVER_ERROR,
-                            body = ErrorData.class),
-                    @ApiResponse(code = 502, description = OpenApiDescriptions.RESPONSE_UPSTREAM_ERROR,
-                            body = ErrorData.class),
-                    @ApiResponse(code = 503, description = OpenApiDescriptions.RESPONSE_OVERLOADED,
-                            body = ErrorData.class)
-            })
+                    @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionStreamResponse", contentTypes = {"text/event-stream"})
+            },
+            responseProfile = ResponseProfile.RESPONSES_API)
     @ApiOperation(
             method = "POST",
             path = "/openai/deployments/{deployment_name}/embeddings",
             operationId = "createEmbedding",
             tags = {"LLM"},
             requestBodySchemaRef = "EmbeddingsRequest",
-            responseProfile = ResponseProfile.LLM_EMBEDDING,
             parameters = {
                     @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
                             description = OpenApiDescriptions.DEPLOYMENT_NAME),
                     @ApiParameter(name = "api-version", in = ParameterIn.QUERY, required = true,
-                            description = OpenApiDescriptions.API_VERSION, example = "2023-12-01-preview")
+                            description = OpenApiDescriptions.API_VERSION, example = "2023-12-01-preview"),
+                    @ApiParameter(name = "Content-Type", in = ParameterIn.HEADER, required = true,
+                            description = "Must be application/json")
             },
             responses = {
                     @ApiResponse(code = 200, description = "Success", schemaRef = "EmbeddingResponse")
-            })
+            },
+            responseProfile = ResponseProfile.RESPONSES_API)
     public Future<?> handle(String deploymentId) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
         if (!Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {

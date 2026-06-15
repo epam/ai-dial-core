@@ -6,7 +6,9 @@ import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -69,10 +71,14 @@ public class ResponsesController extends BaseDeploymentPostController {
             operationId = "createResponse",
             requestBody = ResponsesApiRequest.class,
             tags = {"LLM"},
+            parameters = {
+                    @ApiParameter(name = "Content-Type", in = ParameterIn.HEADER, required = true,
+                            description = "Must be application/json")
+            },
             responses = {
                     @ApiResponse(code = 200, description = "Success")
             },
-            responseProfile = ResponseProfile.LLM_PROXY
+            responseProfile = ResponseProfile.RESPONSES_API
     )
     public Future<?> handle() {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);

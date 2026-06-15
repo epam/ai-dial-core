@@ -71,20 +71,24 @@ public final class OpenApiResponseBuilder {
     }
 
     public static void registerResponseSchemas(EndpointMetadata.Endpoint endpoint, DtoSchemaGenerator schemaGenerator) {
-        if (endpoint.responses() == null) {
-            return;
-        }
-        for (ApiResponse response : endpoint.responses()) {
-            if (!response.schemaRef().isBlank()) {
-                schemaGenerator.registerExternalSchema(response.schemaRef());
-            }
-            if (response.responseOneOf() != null && response.responseOneOf().length > 0) {
-                for (Class<?> type : response.responseOneOf()) {
-                    ResponseSchemaFactory.registerResponseBody(type, schemaGenerator);
+        // Register schemas from explicit @ApiResponse annotations
+        if (endpoint.responses() != null) {
+            for (ApiResponse response : endpoint.responses()) {
+                if (!response.schemaRef().isBlank()) {
+                    schemaGenerator.registerExternalSchema(response.schemaRef());
                 }
-            } else {
-                ResponseSchemaFactory.registerResponseBody(resolveResponseType(response), schemaGenerator);
+                if (response.responseOneOf() != null && response.responseOneOf().length > 0) {
+                    for (Class<?> type : response.responseOneOf()) {
+                        ResponseSchemaFactory.registerResponseBody(type, schemaGenerator);
+                    }
+                } else {
+                    ResponseSchemaFactory.registerResponseBody(resolveResponseType(response), schemaGenerator);
+                }
             }
+        }
+        // Register schemas from ResponseProfile (e.g., ErrorData for error responses)
+        if (endpoint.responseProfile() != ResponseProfile.NONE) {
+            ResponseProfileBuilder.registerProfileSchemas(endpoint.responseProfile(), schemaGenerator);
         }
     }
 

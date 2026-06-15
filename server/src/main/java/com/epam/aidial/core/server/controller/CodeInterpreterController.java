@@ -1,8 +1,10 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.openapi.schema.OpenApiBinary;
 import com.epam.aidial.core.server.ProxyContext;
@@ -159,6 +161,14 @@ public class CodeInterpreterController {
             tags = {"Code interpreter"},
             contentType = "multipart/form-data",
             requestBody = OpenApiBinary.class,
+            parameters = {
+                    @ApiParameter(
+                            name = "session_id",
+                            in = ParameterIn.QUERY,
+                            required = true,
+                            description = "Code interpreter session identifier"
+                    )
+            },
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = CodeInterpreterFile.class)
             },

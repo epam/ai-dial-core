@@ -7,8 +7,8 @@ import io.swagger.v3.oas.models.responses.ApiResponses;
 
 /**
  * Builds standard error responses for OpenAPI operations based on ResponseProfile.
- * <p>
- * Profiles are now self-describing (declare their response codes inline), so this builder
+ *
+ * <p>Profiles are now self-describing (declare their response codes inline), so this builder
  * simply iterates over the profile's codes and creates the appropriate responses.
  */
 final class ResponseProfileBuilder {
@@ -27,6 +27,28 @@ final class ResponseProfileBuilder {
         for (String code : profile.getResponseCodes()) {
             ApiResponse response = createStandardResponse(code, schemaGenerator);
             responses.addApiResponse(code, response);
+        }
+    }
+
+    /**
+     * Registers ErrorData schema if the profile includes any error responses that use it.
+     *
+     * @param profile the ResponseProfile to check
+     * @param schemaGenerator the schema generator to register ErrorData with
+     */
+    static void registerProfileSchemas(ResponseProfile profile, DtoSchemaGenerator schemaGenerator) {
+        if (profile == ResponseProfile.NONE || profile.getResponseCodes().isEmpty()) {
+            return;
+        }
+        // ErrorData is used by all error responses except 304, 405, and 412
+        for (String code : profile.getResponseCodes()) {
+            if (!"304".equals(code) && !"405".equals(code) && !"412".equals(code)) {
+                ResponseSchemaFactory.registerResponseBody(
+                        com.epam.aidial.core.server.data.ErrorData.class,
+                        schemaGenerator
+                );
+                return; // Only need to register once
+            }
         }
     }
 

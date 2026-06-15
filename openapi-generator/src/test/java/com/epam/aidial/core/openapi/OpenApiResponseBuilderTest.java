@@ -60,8 +60,8 @@ class OpenApiResponseBuilderTest {
     }
 
     @Test
-    void llmProxyPresetUsesStreamArraySchemaForEventStream() throws Exception {
-        ApiResponse[] responses = responsesFromMethod("llmProxyResponses");
+    void responsesApiPresetUsesStreamArraySchemaForEventStream() throws Exception {
+        ApiResponse[] responses = responsesFromMethod("responsesApiResponses");
         EndpointMetadata.Endpoint endpoint = new EndpointMetadata.Endpoint(
                 "POST",
                 "/openai/deployments/{deployment_name}/chat/completions",
@@ -73,7 +73,7 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 responses,
-                ResponseProfile.LLM_PROXY
+                ResponseProfile.RESPONSES_API
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
@@ -203,11 +203,11 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 responses,
-                ResponseProfile.LLM_PROXY
+                ResponseProfile.RESPONSES_API
         );
 
         ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, new DtoSchemaGenerator());
-        assertEquals(7, apiResponses.size());
+        assertEquals(9, apiResponses.size());
     }
 
     @Test
@@ -247,7 +247,7 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.LLM_PROXY
+                ResponseProfile.RESPONSES_API
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
@@ -256,10 +256,10 @@ class OpenApiResponseBuilderTest {
 
         assertTrue(apiResponses.containsKey("404"));
         assertFalse(apiResponses.containsKey("412"));
-        assertTrue(apiResponses.containsKey("429"));
+        assertTrue(apiResponses.containsKey("403"));
+        assertTrue(apiResponses.containsKey("415"));
         assertTrue(apiResponses.containsKey("502"));
         assertTrue(apiResponses.containsKey("503"));
-        assertFalse(apiResponses.containsKey("403"));
     }
 
     @Test
@@ -565,7 +565,7 @@ class OpenApiResponseBuilderTest {
                 contentTypes = {"application/json"})
         @ApiResponse(code = 200, description = "Streaming response", schemaRef = "CreateChatCompletionStreamResponse",
                 contentTypes = {"text/event-stream"})
-        void llmProxyResponses() {
+        void responsesApiResponses() {
         }
 
         @ApiResponse(code = 200, description = "", body = Application.Logs.class)

@@ -63,18 +63,6 @@ public enum ResponseProfile {
     APPLICATION_OPS("400", "401", "403", "404", "409", "500"),
 
     /**
-     * LLM proxy profile: 401 Unauthorized, 404 Not Found, 429 Too Many Requests, 500 Internal Server Error, 502 Bad Gateway, 503 Service Unavailable.
-     * Use for LLM deployment proxy endpoints.
-     */
-    LLM_PROXY("401", "404", "429", "500", "502", "503"),
-
-    /**
-     * LLM embedding profile: 401 Unauthorized, 404 Not Found, 429 Too Many Requests, 500 Internal Server Error, 503 Service Unavailable.
-     * Use for LLM embedding endpoints (no 502 Bad Gateway).
-     */
-    LLM_EMBEDDING("401", "404", "429", "500", "503"),
-
-    /**
      * Code interpreter profile: 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 500 Internal Server Error.
      * Use for code interpreter session operations.
      */

@@ -110,6 +110,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
       x-codeSamples:
       - lang: cURL
         label: CURL
@@ -163,6 +175,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
           content:
             application/json:
               schema:
@@ -241,6 +259,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
       x-codeSamples:
       - lang: cURL
         label: CURL
@@ -299,6 +335,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
       x-codeSamples:
       - lang: cURL
         label: CURL
@@ -323,6 +377,12 @@ paths:
         schema:
           type: string
         example: 2024-10-21
+      - name: Content-Type
+        in: header
+        description: Must be application/json
+        required: true
+        schema:
+          type: string
       - name: X-DIAL-CACHE-POLICY
         in: header
         description: Upstream selection policy for prompt-caching deployments (availability-priority or cache-priority).
@@ -332,13 +392,18 @@ paths:
           enum:
           - availability-priority
           - cache-priority
-          default: availability-priority
           description: |
             The header configures the policy of upstream selection for this particular chat completions request. This policy makes sense only for deployments supporting [prompt caching](https://docs.dialx.ai/tutorials/developers/prompt-caching), that is those with `features.cachedSupported` or `features.autoCachingSupported` features enabled in the [DIAL Core config](https://github.com/epam/ai-dial-core?tab=readme-ov-file#dynamic-settings).
 
             `availability-priority`: Policy prioritizes upstream availability over a potential cache hit. That is, if an upstream with a cache doesn't respond, then an alternative upstream will be tried.
 
             `cache-priority`: Policy prioritizes cache hits over availability. That is, if an upstream with a cache doesn't respond, then DIAL Core will persist with requests to this same upstream.
+      - name: X-UPSTREAM-ID
+        in: header
+        description: "Pin the request to one configured upstream, matched by upstream id"
+        required: false
+        schema:
+          type: string
       responses:
         "200":
           description: Success
@@ -392,6 +457,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "415":
+          description: Unsupported Media Type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+        required: true
   /openai/deployments/{deployment_name}/completions:
     post:
       tags:
@@ -404,6 +493,35 @@ paths:
         required: true
         schema:
           type: string
+        description: The name of the deployment.
+      - name: api-version
+        in: query
+        description: "The API version to use for this request. Follows the `YYYY-MM-DD[-preview]` format."
+        required: true
+        schema:
+          type: string
+        example: 2024-10-21
+      - name: Content-Type
+        in: header
+        description: Must be application/json
+        required: true
+        schema:
+          type: string
+      - name: X-DIAL-CACHE-POLICY
+        in: header
+        description: Upstream selection policy for prompt-caching deployments (availability-priority or cache-priority).
+        required: false
+        schema:
+          type: string
+          enum:
+          - availability-priority
+          - cache-priority
+      - name: X-UPSTREAM-ID
+        in: header
+        description: "Pin the request to one configured upstream, matched by upstream id"
+        required: false
+        schema:
+          type: string
       responses:
         "200":
           description: Success
@@ -453,6 +571,24 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "503":
           description: "The engine is currently overloaded, please try again later."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "415":
+          description: Unsupported Media Type
           content:
             application/json:
               schema:
@@ -477,6 +613,12 @@ paths:
         schema:
           type: string
         example: 2023-12-01-preview
+      - name: Content-Type
+        in: header
+        description: Must be application/json
+        required: true
+        schema:
+          type: string
       responses:
         "200":
           description: Success
@@ -519,6 +661,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "415":
+          description: Unsupported Media Type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbeddingsRequest"
+        required: true
   /openai/models:
     get:
       tags:
@@ -582,6 +754,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
       x-codeSamples:
       - lang: cURL
         label: CURL
@@ -632,6 +822,24 @@ paths:
                       inference: false
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -691,6 +899,24 @@ paths:
                         user_level_auth_status: SIGNED_OUT
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -756,6 +982,24 @@ paths:
                       user_level_auth_status: SIGNED_OUT
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -829,6 +1073,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "415":
+          description: Unsupported Media Type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      parameters:
+      - name: Content-Type
+        in: header
+        description: Must be application/json
+        required: true
+        schema:
+          type: string
   /v1/application_type_schemas/meta_schema:
     get:
       tags:
@@ -1257,6 +1526,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/application_type_schemas/schema:
     get:
       tags:
@@ -1514,6 +1795,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
     x-codeSamples:
     - lang: cURL
       label: CURL
@@ -1581,6 +1868,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/applications/{bucket}/{application_path}:
     get:
       tags:
@@ -1608,8 +1907,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Application"
+          headers:
+            ETag:
+              description: Entity tag for the application
+              required: true
+              schema:
+                type: string
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -1658,6 +1981,7 @@ paths:
         content:
           application/json:
             schema:
+              $ref: "#/components/schemas/Application"
               description: |
                 An arbitrary string in JSON format representing the structure of the application.
 
@@ -1666,7 +1990,6 @@ paths:
                 If you do not provide `application_type_schema_id`, refer to [DIAL Core](https://github.com/epam/ai-dial-core/blob/development/docs/dynamic-settings/applications.md) documentation to learn about available properties of applications you can pass in the JSON object describing the structure of the application.
 
                 **Note**: When `applicationTypeSchemaId` and `applicationProperties` are specified, parameters defined in the corresponding JSON schema will take precedence and will override the corresponding parameters specified in the `application` object.
-              $ref: "#/components/schemas/Application"
         required: true
       responses:
         "200":
@@ -1674,7 +1997,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Application"
+                $ref: "#/components/schemas/ResourceItemMetadata"
+          headers:
+            ETag:
+              description: Entity tag for the saved application
+              required: true
+              schema:
+                type: string
         "401":
           description: Invalid Authentication
           content:
@@ -1683,6 +2012,30 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "412":
           description: Precondition Failed - ETag mismatch
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "413":
+          description: Payload Too Large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
       x-codeSamples:
       - lang: cURL
         label: Without schema
@@ -1793,6 +2146,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
       x-codeSamples:
       - lang: cURL
         label: CURL
@@ -1838,6 +2209,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -1892,6 +2269,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
       x-codeSamples:
       - lang: cURL
         label: CURL
@@ -1925,8 +2308,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Conversation"
+          headers:
+            ETag:
+              description: Entity tag for the conversation
+              required: true
+              schema:
+                type: string
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -1985,6 +2392,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ResourceItemMetadata"
+          headers:
+            ETag:
+              description: Entity tag for the saved conversation
+              required: true
+              schema:
+                type: string
         "401":
           description: Invalid Authentication
           content:
@@ -2066,77 +2479,95 @@ paths:
                 $ref: "#/components/schemas/ListDeploymentData"
               examples:
                 DeploymentsSample:
-                  value:              
-                    - id: text-embedding-ada-002
-                      model: text-embedding-ada-002
-                      interfaces:
-                      - embedding
-                      display_name: Embedding Ada
-                      icon_url: https://chat.<company>.com/ada.svg
-                      description: Symmetrical embedding model.
-                      owner: organization-owner
-                      object: model
-                      status: succeeded
-                      created_at: 1672534800
-                      updated_at: 1672534800
-                      lifecycle_status: generally-available
-                      capabilities:
-                        scale_types:
-                        - standard
-                        completion: false
-                        chat_completion: false
-                        embeddings: true
-                        fine_tune: false
-                        inference: false
-                    - id: gpt-world
-                      application: gpt-world
-                      interfaces:
-                      - chat
-                      - custom_ui
-                      display_name: GPT World
-                      icon_url: https://chat.<company>.com/gpt_world.svg
-                      description: "This application producing answer based on the curated set of LLM related publications.\\n\\nThe source of publications is [arxiv.org](https://arxiv.org/). GPT World is classic example of conversational semantic search application.\\nOn every new user question, it performs summarization using GPT-4, calculates embedding using text-embedding-ada-002 model and then it uses chunks of text from curated set.\\n\\nThis is DIAL version of the [original demo](https://deltix.io/interactive-gpt-world-map.html) with [TSNE map](https://en.wikipedia.org/wiki/T-distributed_stochastic_neighbor_embedding)."
-                      owner: organization-owner
-                      object: application
-                      status: succeeded
-                      created_at: 1672534800
-                      updated_at: 1672534800
-                    - id: toolsets/encrypted-bucket/folder/toolset-name
-                      toolset: toolsets/encrypted-bucket/folder/toolset-name
-                      interfaces:
-                      - mcp
-                      display_name: Toolset display name
-                      display_version: 0.0.1
-                      description: My toolset description
-                      icon_url: http://toolset/icon.svg
-                      owner: Owner's name
-                      object: toolset
-                      status: succeeded
-                      description_keywords:
-                      - keyword1
-                      - keyword2
-                      reference: ff5584b7-a82b-4f4f-bf42-5bf74a3893d6
-                      max_retry_attempts: 2
-                      created_at: 1672534800
-                      updated_at: 1672534900
-                      transport: HTTP
-                      allowed_tools:
-                      - tool1
-                      - tool2
-                      auth_settings:
-                        authentication_type: OAUTH
-                        client_id: my-client-id
-                        redirect_uri: https://myapp.com/toolset/sign-in
-                        authorization_endpoint: https://authserver.com/authorize
-                        token_endpoint: https://authserver.com/token
-                        code_challenge_method: S256
-                        scopes_supported:
-                        - scope1
-                        - scope2
-                        global_auth_status: SIGNED_OUT
-                        user_level_auth_status: SIGNED_OUT
+                  value:
+                  - id: text-embedding-ada-002
+                    model: text-embedding-ada-002
+                    interfaces:
+                    - embedding
+                    display_name: Embedding Ada
+                    icon_url: https://chat.<company>.com/ada.svg
+                    description: Symmetrical embedding model.
+                    owner: organization-owner
+                    object: model
+                    status: succeeded
+                    created_at: 1672534800
+                    updated_at: 1672534800
+                    lifecycle_status: generally-available
+                    capabilities:
+                      scale_types:
+                      - standard
+                      completion: false
+                      chat_completion: false
+                      embeddings: true
+                      fine_tune: false
+                      inference: false
+                  - id: gpt-world
+                    application: gpt-world
+                    interfaces:
+                    - chat
+                    - custom_ui
+                    display_name: GPT World
+                    icon_url: https://chat.<company>.com/gpt_world.svg
+                    description: "This application producing answer based on the curated set of LLM related publications.\\n\\nThe source of publications is [arxiv.org](https://arxiv.org/). GPT World is classic example of conversational semantic search application.\\nOn every new user question, it performs summarization using GPT-4, calculates embedding using text-embedding-ada-002 model and then it uses chunks of text from curated set.\\n\\nThis is DIAL version of the [original demo](https://deltix.io/interactive-gpt-world-map.html) with [TSNE map](https://en.wikipedia.org/wiki/T-distributed_stochastic_neighbor_embedding)."
+                    owner: organization-owner
+                    object: application
+                    status: succeeded
+                    created_at: 1672534800
+                    updated_at: 1672534800
+                  - id: toolsets/encrypted-bucket/folder/toolset-name
+                    toolset: toolsets/encrypted-bucket/folder/toolset-name
+                    interfaces:
+                    - mcp
+                    display_name: Toolset display name
+                    display_version: 0.0.1
+                    description: My toolset description
+                    icon_url: http://toolset/icon.svg
+                    owner: Owner's name
+                    object: toolset
+                    status: succeeded
+                    description_keywords:
+                    - keyword1
+                    - keyword2
+                    reference: ff5584b7-a82b-4f4f-bf42-5bf74a3893d6
+                    max_retry_attempts: 2
+                    created_at: 1672534800
+                    updated_at: 1672534900
+                    transport: HTTP
+                    allowed_tools:
+                    - tool1
+                    - tool2
+                    auth_settings:
+                      authentication_type: OAUTH
+                      client_id: my-client-id
+                      redirect_uri: https://myapp.com/toolset/sign-in
+                      authorization_endpoint: https://authserver.com/authorize
+                      token_endpoint: https://authserver.com/token
+                      code_challenge_method: S256
+                      scopes_supported:
+                      - scope1
+                      - scope2
+                      global_auth_status: SIGNED_OUT
+                      user_level_auth_status: SIGNED_OUT
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -2158,14 +2589,33 @@ paths:
         schema:
           type: string
       responses:
-        '200':
+        "200":
           description: Success
           content:
             application/json:
               schema:
+                $ref: "#/components/schemas/ConfigurationResponse"
                 description: JSON schema of the configuration parameters the given deployment.
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -2243,8 +2693,7 @@ paths:
       - Deployments
       - MCP
       summary: "/v1/deployments/{deployment_name}/mcp"
-      description: |
-        This endpoint implements MCP-based communication with application deployment using [HTTP transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http).      
+      description: "This endpoint implements MCP-based communication with application deployment using [HTTP transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http).      \n"
       operationId: postApplicationMcp
       parameters:
       - name: deployment_name
@@ -2259,16 +2708,15 @@ paths:
           application/json:
             schema:
               type: string
-              description: |
-                A JSON object satisfying [mcp specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-06-18/schema.json).       
+              description: "A JSON object satisfying [mcp specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-06-18/schema.json).       \n"
       responses:
         "200":
           description: Success
           content:
             application/json:
               schema:
-                  type: object
-                  description: A JSON object satisfying [mcp specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-06-18/schema.json).          
+                type: object
+                description: "A JSON object satisfying [mcp specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-06-18/schema.json)."
         "400":
           description: Bad request
           content:
@@ -2277,6 +2725,36 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "429":
+          description: Rate limit reached.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
           content:
             application/json:
               schema:
@@ -2294,12 +2772,40 @@ paths:
       responses:
         "200":
           description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenizeResponse"
         "401":
           description: Invalid Authentication
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenizeRequest"
+        required: true
   /v1/deployments/{deployment_name}/truncate_prompt:
     post:
       summary: "/v1/deployments/{deployment_name}/truncate_prompt"
@@ -2313,12 +2819,40 @@ paths:
       responses:
         "200":
           description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TruncatePromptResponse"
         "401":
           description: Invalid Authentication
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TruncatePromptRequest"
+        required: true
   /v1/files/{bucket}/{file_path}:
     get:
       tags:
@@ -2517,6 +3051,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
     x-codeSamples:
     - lang: cURL
       label: CURL
@@ -2577,6 +3129,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
       x-codeSamples:
       - lang: cURL
         label: CURL
@@ -2603,6 +3179,30 @@ paths:
           description: Success
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -2713,6 +3313,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
       x-codeSamples:
       - lang: cURL
         label: CURL
@@ -2755,9 +3373,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 1
-          maximum: 1000
-          default: 100
       - name: recursive
         in: query
         description: "If true, returns items recursively without nested folder metadata."
@@ -2803,6 +3418,24 @@ paths:
                     - WRITE
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -2868,6 +3501,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/metadata/prompts/{bucket}/{path}:
     get:
       tags:
@@ -2924,6 +3575,24 @@ paths:
                 $ref: "#/components/schemas/MetadataBase"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -2985,6 +3654,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/ops/application/deploy:
     post:
       tags:
@@ -3029,6 +3716,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/ops/application/logs:
     post:
       tags:
@@ -3068,6 +3761,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -3119,6 +3818,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/ops/application/undeploy:
     post:
       tags:
@@ -3159,6 +3864,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -3217,6 +3928,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "429":
+          description: Rate limit reached.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
     x-codeSamples:
     - lang: cURL
       label: CURL
@@ -3252,6 +3993,36 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "429":
+          description: Rate limit reached.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
           content:
             application/json:
               schema:
@@ -3294,6 +4065,12 @@ paths:
                     : heartbeat
                     : heartbeat
                     data: {"jsonrpc": "2.0", "method": "toolset/signin", "params": {"toolsetId": "toolsets/public/my-toolset"}, "id": "2"}
+          headers:
+            X-DIAL-CLIENT-CHANNEL-ID:
+              description: Channel ID for reconnection
+              required: true
+              schema:
+                type: string
         "400":
           description: Bad request
           content:
@@ -3302,6 +4079,36 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "429":
+          description: Rate limit reached.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
           content:
             application/json:
               schema:
@@ -3858,6 +4665,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      parameters:
+      - name: session_id
+        in: query
+        description: Code interpreter session identifier
+        required: true
+        schema:
+          type: string
   /v1/ops/config/reload:
     post:
       tags:
@@ -3895,6 +4709,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -3949,6 +4769,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/ops/notification/list:
     post:
       tags:
@@ -3992,6 +4818,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -4060,6 +4892,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -4146,6 +4984,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/ops/publication/delete:
     post:
       tags:
@@ -4181,6 +5025,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -4254,6 +5104,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/ops/publication/list:
     post:
       tags:
@@ -4293,6 +5149,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -4366,6 +5228,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/ops/publication/resource/list:
     post:
       tags:
@@ -4405,6 +5273,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -4462,6 +5336,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -4549,6 +5429,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/ops/resource/copy:
     post:
       tags:
@@ -4596,6 +5482,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -4653,6 +5545,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
     x-codeSamples:
     - lang: cURL
       label: CURL
@@ -4704,6 +5602,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -4773,6 +5677,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/ops/resource/per-request-permissions/revoke:
     post:
       tags:
@@ -4820,6 +5730,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -4874,6 +5790,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/ops/resource/share/create:
     post:
       tags:
@@ -4913,6 +5835,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -4959,6 +5887,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -5022,6 +5956,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/ops/resource/share/revoke:
     post:
       tags:
@@ -5064,6 +6004,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -5191,6 +6137,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/ops/toolset/signout:
     post:
       tags:
@@ -5245,6 +6197,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/prompts/{bucket}/{prompt_path}:
     get:
       tags:
@@ -5279,8 +6237,32 @@ paths:
                     folderId: public/folder/
                     name: My prompt
                     content: The content of the prompt
+          headers:
+            ETag:
+              description: Entity tag for the prompt
+              required: true
+              schema:
+                type: string
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -5354,6 +6336,12 @@ paths:
                     permissions:
                     - READ
                     - WRITE
+          headers:
+            ETag:
+              description: Entity tag for the saved prompt
+              required: true
+              schema:
+                type: string
         "401":
           description: Invalid Authentication
           content:
@@ -5424,8 +6412,36 @@ paths:
       responses:
         "200":
           description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AllowedToolsResponse"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
           content:
             application/json:
               schema:
@@ -5447,6 +6463,11 @@ paths:
       responses:
         "200":
           description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                description: "A JSON object satisfying [mcp specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-06-18/schema.json)."
         "401":
           description: Invalid Authentication
           content:
@@ -5477,6 +6498,36 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "429":
+          description: Rate limit reached.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
           content:
             application/json:
               schema:
@@ -5519,8 +6570,36 @@ paths:
       responses:
         "200":
           description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolSetToolsResponse"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
           content:
             application/json:
               schema:
@@ -5649,8 +6728,32 @@ paths:
                       authentication_type: NONE
                       global_auth_status: SIGNED_OUT
                       user_level_auth_status: SIGNED_OUT
+          headers:
+            ETag:
+              description: Entity tag for the toolset
+              required: true
+              schema:
+                type: string
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -5770,7 +6873,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ToolSet"
+                $ref: "#/components/schemas/ResourceItemMetadata"
+          headers:
+            ETag:
+              description: Entity tag for the saved toolset
+              required: true
+              schema:
+                type: string
         "401":
           description: Invalid Authentication
           content:
@@ -5826,14 +6935,43 @@ paths:
   /v1/user/info:
     get:
       summary: /v1/user/info
+      description: "Call this endpoint to retrieve information about a user. To access the endpoint, a user must be authenticated with API key or access token.     \n"
       operationId: getUserInfo
       responses:
         "200":
           description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/userinfo"
+              examples:
+                API Key:
+                  value:
+                    project: PROJECT-NAME
+                    roles:
+                    - default
+                Access Token:
+                  value:
+                    roles:
+                    - BA
+                    userClaims:
+                      email:
+                      - user_email
+                      sub:
+                      - user_sub
         "400":
           description: Invalid Authentication
         "401":
           description: Unauthorized
+      x-codeSamples:
+      - lang: cURL
+        label: API Key
+        source: |
+          curl -X GET https://chat.<company>.com/v1/user/info \
+            -H "Api-Key: DIAL_API_KEY"
+      - lang: cURL
+        label: Access Token
+        source: "curl -X GET https://chat.<company>.com/v1/user/info \\\n  -H \"Authorization: Bearer YOUR_ACCESS_TOKEN\"          \n"
   /v1/{deployment_name}/rate:
     post:
       summary: "/v1/{deployment_name}/rate"
@@ -5855,6 +6993,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RateRequest"
+        required: true
   /v1/metadata/interceptors/{bucket}/{path}:
     get:
       tags:
@@ -5919,6 +7081,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -5991,6 +7159,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/metadata/models/{bucket}/{path}:
     get:
       tags:
@@ -6055,6 +7229,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -6127,6 +7307,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/metadata/routes/{bucket}/{path}:
     get:
       tags:
@@ -6191,6 +7377,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -6263,6 +7455,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/metadata/settings/{bucket}/{path}:
     get:
       tags:
@@ -6327,6 +7525,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
@@ -6600,60 +7804,18 @@ components:
         object:
           type: string
     DeploymentData:
-      type: object
-      properties:
-        application:
-          type: string
-        created_at:
-          type: integer
-        defaults:
-          $ref: "#/components/schemas/MapStringObject"
-        description:
-          type: string
-        description_keywords:
-          type: array
-          items:
-            type: string
-        display_name:
-          type: string
-        display_version:
-          type: string
-        features:
-          $ref: "#/components/schemas/FeaturesData"
-        icon_url:
-          type: string
-        id:
-          type: string
-        input_attachment_types:
-          type: array
-          items:
-            type: string
-        interfaces:
-          type: array
-          items:
-            type: string
-        max_input_attachments:
-          type: integer
-        max_retry_attempts:
-          type: integer
-        model:
-          type: string
-        object:
-          type: string
-        owner:
-          type: string
-        reference:
-          type: string
-        responses_defaults:
-          $ref: "#/components/schemas/MapStringObject"
-        scale_settings:
-          $ref: "#/components/schemas/ScaleSettingsData"
-        status:
-          type: string
-        toolset:
-          type: string
-        updated_at:
-          type: integer
+      required:
+      - object
+      discriminator:
+        propertyName: object
+        mapping:
+          model: "#/components/schemas/ModelData"
+          application: "#/components/schemas/ApplicationData"
+          toolset: "#/components/schemas/ToolSetData"
+      oneOf:
+      - $ref: "#/components/schemas/ModelData"
+      - $ref: "#/components/schemas/ApplicationData"
+      - $ref: "#/components/schemas/ToolSetData"
     ListDataDeploymentData:
       type: object
       properties:
@@ -6730,54 +7892,27 @@ components:
         total_tokens:
           type: integer
     CreateChatCompletionStreamResponse:
-      required:
-      - choices
-      - created
-      - id
-      - model
-      - object
       type: object
       properties:
         id:
           type: string
+        model:
+          type: string
+        created:
+          type: integer
+          format: int64
         object:
           type: string
           enum:
           - chat.completion.chunk
-        created:
-          type: integer
-          format: int64
-        model:
-          type: string
         choices:
           type: array
           items:
-            $ref: "#/components/schemas/ChatCompletionChunkChoice"
+            $ref: "#/components/schemas/CreateChatCompletionStreamChoice"
         usage:
-          $ref: "#/components/schemas/CompletionUsage"
-    ChatCompletionChunkChoice:
-      required:
-      - index
-      type: object
-      properties:
-        index:
-          type: integer
-        delta:
-          $ref: "#/components/schemas/ChatCompletionDelta"
-        finish_reason:
-          type: string
-          nullable: true
-    ChatCompletionDelta:
-      type: object
-      properties:
-        role:
-          type: string
-          enum:
-          - assistant
-          - tool
-        content:
-          type: string
-          nullable: true
+          $ref: "#/components/schemas/Usage"
+        statistics:
+          $ref: "#/components/schemas/Statistics"
     ErrorDetailsData:
       type: object
       properties:
@@ -6800,52 +7935,25 @@ components:
       required:
       - data
       - model
-      - object
       - usage
       type: object
       properties:
-        object:
-          type: string
-          description: Object type. Always is `list`.
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Embedding"
+            description: The representation of an embedding vector corresponding to `index`-th input.
+          description: A list of generated vectors.
         model:
           type: string
           description: The name of the model that generated the response.
-        data:
-          type: array
-          description: A list of generated vectors.
-          items:
-            required:
-            - embedding
-            - index
-            - object
-            type: object
-            properties:
-              index:
-                type: integer
-                description: The index of the embedding from `0` to `number of regular and custom inputs in the request - 1`.
-              object:
-                type: string
-                description: Object type. Always is `embedding`.
-              embedding:
-                description: Embedding output corresponding to the `index`-th embedding input. It's either an array of floats or base64-encoded vector depending on the value of `encoding_format` request parameter.
-                oneOf:
-                - type: array
-                  items:
-                    type: number
-                - type: string
-            description: The representation of an embedding vector corresponding to `index`-th input.
+        object:
+          type: string
+          enum:
+          - list
+          description: Object type. Always is `list`.
         usage:
-          required:
-          - prompt_tokens
-          - total_tokens
-          type: object
-          properties:
-            prompt_tokens:
-              type: integer
-              description: The number of tokens in the request to the model.
-            total_tokens:
-              type: integer
-              description: The number of tokens in the request to the model.
+          $ref: "#/components/schemas/Usage"
           description: This field contains information about the tokens from the model that were used to generate the response.
     CapabilitiesData:
       type: object
@@ -8442,6 +9550,876 @@ components:
           type: string
         name:
           type: string
+    userinfo:
+      type: object
+      description: User info
+      properties:
+        project:
+          type: string
+          description: The project name.
+        roles:
+          type: array
+          description: List of user or API key roles.
+          items:
+            type: string
+        userClaims:
+          type: object
+          description: Claims extracted from the access token.
+          properties:
+            email:
+              type: array
+              description: The email of the user.
+              items:
+                type: string
+            sub:
+              type: array
+              description: Identifies the principal or subject of the token.
+              items:
+                type: string
+    ChatCompletionRequest:
+      required:
+      - messages
+      type: object
+      properties:
+        model:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+        functions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Function"
+        function_call:
+          oneOf:
+          - type: string
+            enum:
+            - auto
+            - none
+          - $ref: "#/components/schemas/FunctionChoice"
+        tools:
+          type: array
+          items:
+            oneOf:
+            - $ref: "#/components/schemas/Tool"
+            - $ref: "#/components/schemas/StaticTool"
+        tool_choice:
+          oneOf:
+          - type: string
+            enum:
+            - auto
+            - none
+            - required
+          - $ref: "#/components/schemas/ToolChoice"
+        stream:
+          type: boolean
+          default: false
+        stream_options:
+          $ref: "#/components/schemas/StreamOptions"
+        temperature:
+          maximum: 2
+          minimum: 0
+          type: number
+        top_p:
+          maximum: 1
+          minimum: 0
+          type: number
+        "n":
+          maximum: 128
+          minimum: 1
+          type: integer
+        stop:
+          oneOf:
+          - type: string
+          - maxItems: 4
+            type: array
+            items:
+              type: string
+        max_tokens:
+          minimum: 1
+          type: integer
+        max_completion_tokens:
+          minimum: 1
+          type: integer
+        presence_penalty:
+          maximum: 2
+          minimum: -2
+          type: number
+        frequency_penalty:
+          maximum: 2
+          minimum: -2
+          type: number
+        logit_bias:
+          type: object
+          additionalProperties:
+            type: number
+        user:
+          type: string
+        seed:
+          type: integer
+        logprobs:
+          type: boolean
+        top_logprobs:
+          type: integer
+        reasoning_effort:
+          type: string
+          enum:
+          - none
+          - minimal
+          - low
+          - medium
+          - high
+        response_format:
+          oneOf:
+          - $ref: "#/components/schemas/ResponseFormatText"
+          - $ref: "#/components/schemas/ResponseFormatJsonObject"
+          - $ref: "#/components/schemas/ResponseFormatJsonSchema"
+        parallel_tool_calls:
+          type: boolean
+        max_prompt_tokens:
+          minimum: 1
+          type: integer
+        custom_fields:
+          $ref: "#/components/schemas/ChatCompletionRequestCustomFields"
+      additionalProperties: true
+    Message:
+      required:
+      - role
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+          - system
+          - developer
+          - user
+          - assistant
+          - function
+          - tool
+        content:
+          oneOf:
+          - type: string
+          - type: array
+            items:
+              $ref: "#/components/schemas/MessageContentPart"
+        custom_content:
+          $ref: "#/components/schemas/CustomContent"
+        custom_fields:
+          $ref: "#/components/schemas/MessageCustomFields"
+        name:
+          type: string
+        tool_calls:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolCall"
+        tool_call_id:
+          type: string
+        function_call:
+          $ref: "#/components/schemas/FunctionCall"
+        refusal:
+          type: string
+      additionalProperties: true
+    MessageContentPart:
+      discriminator:
+        propertyName: type
+      oneOf:
+      - $ref: "#/components/schemas/MessageContentTextPart"
+      - $ref: "#/components/schemas/MessageContentImagePart"
+      - $ref: "#/components/schemas/MessageContentFilePart"
+      - $ref: "#/components/schemas/MessageContentAudioPart"
+      - $ref: "#/components/schemas/MessageContentRefusalPart"
+    MessageContentTextPart:
+      required:
+      - text
+      - type
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - text
+        text:
+          type: string
+      additionalProperties: true
+    MessageContentImagePart:
+      required:
+      - image_url
+      - type
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - image_url
+        image_url:
+          $ref: "#/components/schemas/ImageURL"
+      additionalProperties: true
+    ImageURL:
+      required:
+      - url
+      type: object
+      properties:
+        url:
+          type: string
+        detail:
+          type: string
+          enum:
+          - auto
+          - low
+          - high
+      additionalProperties: true
+    MessageContentFilePart:
+      required:
+      - file
+      - type
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - file
+        file:
+          $ref: "#/components/schemas/InputFile"
+      additionalProperties: true
+    InputFile:
+      type: object
+      properties:
+        file_data:
+          type: string
+        file_id:
+          type: string
+        filename:
+          type: string
+      additionalProperties: true
+    MessageContentAudioPart:
+      required:
+      - input_audio
+      - type
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - input_audio
+        input_audio:
+          $ref: "#/components/schemas/InputAudio"
+      additionalProperties: true
+    InputAudio:
+      required:
+      - data
+      - format
+      type: object
+      properties:
+        data:
+          type: string
+        format:
+          type: string
+      additionalProperties: true
+    MessageContentRefusalPart:
+      required:
+      - refusal
+      - type
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - refusal
+        refusal:
+          type: string
+      additionalProperties: true
+    CustomContent:
+      type: object
+      properties:
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Stage"
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Attachment"
+        state:
+          type: object
+          additionalProperties: true
+        form_value: {}
+        form_schema: {}
+      additionalProperties: true
+    Stage:
+      required:
+      - name
+      - status
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/Status"
+        content:
+          type: string
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Attachment"
+      additionalProperties: true
+    Status:
+      type: string
+      enum:
+      - completed
+      - failed
+    Attachment:
+      type: object
+      properties:
+        type:
+          type: string
+          default: text/markdown
+        title:
+          type: string
+        data:
+          type: string
+        url:
+          type: string
+        reference_type:
+          type: string
+        reference_url:
+          type: string
+      additionalProperties: true
+      oneOf:
+      - required:
+        - data
+      - required:
+        - url
+    MessageCustomFields:
+      type: object
+      properties:
+        cache_breakpoint:
+          $ref: "#/components/schemas/CacheBreakpoint"
+      additionalProperties: true
+    CacheBreakpoint:
+      type: object
+      properties:
+        expire_at:
+          type: string
+      additionalProperties: true
+    ToolCall:
+      type: object
+      properties:
+        index:
+          type: integer
+        id:
+          type: string
+        type:
+          type: string
+          enum:
+          - function
+        function:
+          $ref: "#/components/schemas/ToolCallFunction"
+    ToolCallFunction:
+      type: object
+      properties:
+        name:
+          type: string
+        arguments:
+          type: string
+    FunctionCall:
+      type: object
+      properties:
+        name:
+          type: string
+        arguments:
+          type: string
+    Function:
+      required:
+      - name
+      type: object
+      properties:
+        name:
+          type: string
+        strict:
+          type: boolean
+          default: false
+        description:
+          type: string
+        parameters:
+          type: object
+          additionalProperties: true
+      additionalProperties: true
+    FunctionChoice:
+      required:
+      - name
+      type: object
+      properties:
+        name:
+          type: string
+      additionalProperties: true
+    Tool:
+      required:
+      - function
+      - type
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - function
+        function:
+          $ref: "#/components/schemas/Function"
+        custom_fields:
+          $ref: "#/components/schemas/ToolCustomFields"
+      additionalProperties: true
+    ToolCustomFields:
+      type: object
+      properties:
+        cache_breakpoint:
+          $ref: "#/components/schemas/CacheBreakpoint"
+      additionalProperties: true
+    StaticTool:
+      required:
+      - static_function
+      - type
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - static_function
+        static_function:
+          $ref: "#/components/schemas/StaticFunction"
+      additionalProperties: true
+    StaticFunction:
+      required:
+      - name
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        configuration:
+          type: object
+          additionalProperties: true
+      additionalProperties: true
+    ToolChoice:
+      required:
+      - function
+      - type
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - function
+        function:
+          $ref: "#/components/schemas/FunctionChoice"
+      additionalProperties: true
+    StreamOptions:
+      type: object
+      properties:
+        include_usage:
+          type: boolean
+      additionalProperties: true
+    ResponseFormatText:
+      required:
+      - type
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - text
+      additionalProperties: true
+    ResponseFormatJsonObject:
+      required:
+      - type
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - json_object
+      additionalProperties: true
+    ResponseFormatJsonSchema:
+      required:
+      - json_schema
+      - type
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - json_schema
+        json_schema:
+          $ref: "#/components/schemas/ResponseFormatJsonSchemaObject"
+      additionalProperties: true
+    ResponseFormatJsonSchemaObject:
+      required:
+      - name
+      - schema
+      type: object
+      properties:
+        description:
+          type: string
+        name:
+          type: string
+        schema:
+          type: object
+          additionalProperties: true
+        strict:
+          type: boolean
+          default: false
+      additionalProperties: true
+    ChatCompletionRequestCustomFields:
+      type: object
+      properties:
+        configuration:
+          type: object
+          additionalProperties: true
+        cache_breakpoint:
+          $ref: "#/components/schemas/CacheBreakpoint"
+      additionalProperties: true
+    CreateChatCompletionStreamChoice:
+      required:
+      - delta
+      - index
+      type: object
+      properties:
+        index:
+          type: integer
+        finish_reason:
+          $ref: "#/components/schemas/FinishReason"
+        delta:
+          $ref: "#/components/schemas/CreateChatCompletionStreamDelta"
+    FinishReason:
+      type: string
+      enum:
+      - stop
+      - length
+      - function_call
+      - tool_calls
+      - content_filter
+    CreateChatCompletionStreamDelta:
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+          - assistant
+        content:
+          type: string
+        function_call:
+          $ref: "#/components/schemas/FunctionCall"
+        tool_calls:
+          type: array
+          items:
+            $ref: "#/components/schemas/StreamToolCall"
+        custom_content:
+          $ref: "#/components/schemas/CustomContent"
+    StreamToolCall:
+      type: object
+      properties:
+        index:
+          type: integer
+        id:
+          type: string
+        type:
+          type: string
+          enum:
+          - function
+        function:
+          $ref: "#/components/schemas/FunctionCall"
+    Usage:
+      type: object
+      properties:
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        prompt_tokens_details:
+          $ref: "#/components/schemas/PromptTokensDetails"
+    PromptTokensDetails:
+      type: object
+      properties:
+        cached_tokens:
+          type: integer
+    Statistics:
+      type: object
+      properties:
+        usage_per_model:
+          type: array
+          items:
+            $ref: "#/components/schemas/UsagePerModel"
+        discarded_messages:
+          type: array
+          items:
+            type: integer
+    UsagePerModel:
+      type: object
+      properties:
+        index:
+          type: integer
+        model:
+          type: string
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+    EmbeddingsRequest:
+      type: object
+      properties:
+        custom_fields:
+          $ref: "#/components/schemas/EmbeddingsRequestCustomFields"
+      allOf:
+      - $ref: "#/components/schemas/AzureEmbeddingsRequest"
+    AzureEmbeddingsRequest:
+      required:
+      - input
+      type: object
+      properties:
+        model:
+          type: string
+        input:
+          oneOf:
+          - type: string
+          - type: array
+        encoding_format:
+          type: string
+          enum:
+          - float
+          - base64
+        dimensions:
+          type: integer
+        user:
+          type: string
+    EmbeddingsRequestCustomFields:
+      type: object
+      properties:
+        type:
+          type: string
+        instruction:
+          type: string
+    Embedding:
+      required:
+      - embedding
+      - index
+      type: object
+      properties:
+        embedding:
+          oneOf:
+          - type: string
+          - type: array
+            items:
+              type: number
+        index:
+          type: integer
+        object:
+          type: string
+          enum:
+          - embedding
+    ConfigurationResponse:
+      type: object
+      additionalProperties: true
+      description: Dynamic configuration response
+    TokenizeRequest:
+      required:
+      - inputs
+      type: object
+      properties:
+        inputs:
+          type: array
+          items:
+            discriminator:
+              propertyName: type
+            oneOf:
+            - $ref: "#/components/schemas/TokenizeInputRequest"
+            - $ref: "#/components/schemas/TokenizeInputString"
+    TokenizeInputRequest:
+      required:
+      - type
+      - value
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - request
+        value:
+          $ref: "#/components/schemas/ChatCompletionRequest"
+    TokenizeInputString:
+      required:
+      - type
+      - value
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+          - string
+        value:
+          type: string
+    TokenizeResponse:
+      required:
+      - outputs
+      type: object
+      properties:
+        outputs:
+          type: array
+          items:
+            discriminator:
+              propertyName: status
+            oneOf:
+            - $ref: "#/components/schemas/TokenizeSuccess"
+            - $ref: "#/components/schemas/TokenizeError"
+    TokenizeSuccess:
+      required:
+      - status
+      - token_count
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - success
+        token_count:
+          type: integer
+    TokenizeError:
+      required:
+      - error
+      - status
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - error
+        error:
+          type: string
+    TruncatePromptRequest:
+      required:
+      - inputs
+      type: object
+      properties:
+        inputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatCompletionRequest"
+    TruncatePromptResponse:
+      required:
+      - outputs
+      type: object
+      properties:
+        outputs:
+          type: array
+          items:
+            discriminator:
+              propertyName: status
+            oneOf:
+            - $ref: "#/components/schemas/TruncatePromptSuccess"
+            - $ref: "#/components/schemas/TruncatePromptError"
+    TruncatePromptSuccess:
+      required:
+      - discarded_messages
+      - status
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - success
+        discarded_messages:
+          type: array
+          items:
+            type: integer
+    TruncatePromptError:
+      required:
+      - error
+      - status
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - error
+        error:
+          type: string
+    AllowedToolsResponse:
+      required:
+      - tools
+      type: object
+      properties:
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/McpTool"
+    McpTool:
+      required:
+      - name
+      type: object
+      properties:
+        name:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        inputSchema:
+          type: object
+          additionalProperties: true
+          description: JSON Schema describing tool input parameters.
+        outputSchema:
+          type: object
+          additionalProperties: true
+          description: JSON Schema describing tool output.
+        annotations:
+          $ref: "#/components/schemas/ToolAnnotations"
+        _meta:
+          type: object
+          additionalProperties: true
+    ToolAnnotations:
+      type: object
+      properties:
+        title:
+          type: string
+        readOnlyHint:
+          type: boolean
+          description: Tool does not modify state.
+        destructiveHint:
+          type: boolean
+          description: Tool may modify or delete data.
+        idempotentHint:
+          type: boolean
+          description: Multiple executions produce the same effect.
+        openWorldHint:
+          type: boolean
+          description: Tool may access external systems or information.
+        returnDirect:
+          type: boolean
+          description: Result should be returned directly to the caller.
+    ToolSetToolsResponse:
+      type: object
+      properties:
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/McpTool"
+        nextCursor:
+          type: string
+          description: Cursor for retrieving the next page of tools.
+    RateRequest:
+      required:
+      - rate
+      type: object
+      properties:
+        responseId:
+          type: string
+          nullable: true
+        rate:
+          type: boolean
+          default: false
   securitySchemes:
     ApiKeyAuth:
       type: apiKey
