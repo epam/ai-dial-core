@@ -13,6 +13,7 @@ dependencies {
     implementation("org.apache.commons:commons-lang3:${apache_commons_version}")
     implementation("org.apache.jclouds.api:filesystem:${apache_jclouds_version}")
     implementation("org.apache.jclouds:jclouds-allblobstore:${apache_jclouds_version}")
+    implementation("org.apache.jclouds.driver:jclouds-slf4j:2.7.0")
     implementation("org.redisson:redisson:${redisson_version}")
     implementation("org.slf4j:slf4j-api:${slf4j_version}")
 
