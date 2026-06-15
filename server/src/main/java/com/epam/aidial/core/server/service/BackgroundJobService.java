@@ -22,7 +22,6 @@ import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.util.RedisUtil;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.Future;
-import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -139,8 +138,7 @@ public class BackgroundJobService {
                     if (record == null) {
                         return Future.succeededFuture();
                     }
-                    onJobCompleted(dialResponseId, record, mapping, usage);
-                    return removeFromQueue(dialResponseId).mapEmpty();
+                    return processResult(dialResponseId, record, mapping, usage);
                 });
     }
 
@@ -155,63 +153,14 @@ public class BackgroundJobService {
                                 if (mapping == null) {
                                     return Future.failedFuture("Response mapping not found for background job " + id);
                                 }
-
-                                Promise<TokenUsage> done = Promise.promise();
-                                AtomicInteger failureCount = new AtomicInteger();
-                                scheduleNextPoll(id, mapping, failureCount, done);
-                                return done.future()
-                                        .compose(usage -> processResult(id, record, mapping, usage));
+                                scheduleNextPoll(id, mapping, new AtomicInteger());
+                                return Future.succeededFuture();
                             });
                 })
                 .onFailure(error -> log.warn("Failed to do polling for background job {}", id, error));
     }
 
-    private Future<Boolean> processResult(String jobId, BackgroundJobRecord jobRecord, ResponseMapping responseMapping, TokenUsage usage) {
-        return deleteRecordAsync(jobId)
-                .compose(deleted -> {
-                    if (deleted) {
-                        onJobCompleted(jobId, jobRecord, responseMapping, usage);
-                        return removeFromQueue(jobId);
-                    }
-
-                    log.info("Background job {} record already deleted, skipping completion processing", jobId);
-                    return Future.succeededFuture();
-                });
-    }
-
-    private void scheduleNextPoll(
-            String id, ResponseMapping mapping, AtomicInteger failureCount, Promise<TokenUsage> done) {
-        vertx.setTimer(pollIntervalMs, ignored -> {
-            LockService.Lock lock = lockService.tryLock("background_job_poll:" + id);
-            if (lock == null) {
-                scheduleNextPoll(id, mapping, failureCount, done);
-                return;
-            }
-            poller.poll(mapping)
-                    .onSuccess(result -> {
-                        lock.close();
-                        if (result == null) {
-                            failureCount.set(0);
-                            scheduleNextPoll(id, mapping, failureCount, done);
-                        } else {
-                            done.tryComplete(result.usage());
-                        }
-                    })
-                    .onFailure(error -> {
-                        lock.close();
-                        int n = failureCount.incrementAndGet();
-                        if (n < maxSequentialPollFailures) {
-                            log.warn("Poll failed for background job {} ({}/{})", id, n, maxSequentialPollFailures, error);
-                            scheduleNextPoll(id, mapping, failureCount, done);
-                        } else {
-                            log.error("Background job {} exceeded max poll failures, giving up", id, error);
-                            done.tryComplete(null);
-                        }
-                    });
-        });
-    }
-
-    private void onJobCompleted(String jobId, BackgroundJobRecord jobRecord, ResponseMapping responseMapping, TokenUsage usage) {
+    private Future<Void> processResult(String jobId, BackgroundJobRecord jobRecord, ResponseMapping responseMapping, TokenUsage usage) {
         Config config = configStore.get();
         Deployment deployment = config.selectDeployment(responseMapping.getDeploymentName());
 
@@ -235,6 +184,63 @@ public class BackgroundJobService {
                 .eventually(() -> invalidatePerRequestKey(jobRecord))
                 .onFailure(error ->
                         log.error("Failed to finalize background job {}", jobId, error));
+        return removeFromQueue(jobId).mapEmpty();
+    }
+
+    private Future<Void> deleteAndProcess(String jobId, BackgroundJobRecord record, ResponseMapping mapping, TokenUsage usage) {
+        return deleteRecordAsync(jobId)
+                .compose(deleted -> {
+                    if (deleted) {
+                        processResult(jobId, record, mapping, usage)
+                                .onFailure(e -> log.error("Failed to finalize background job {}", jobId, e));
+                    } else {
+                        log.info("Background job {} record already deleted, skipping completion processing", jobId);
+                    }
+                    return Future.succeededFuture();
+                });
+    }
+
+    private void scheduleNextPoll(String id, ResponseMapping mapping, AtomicInteger failureCount) {
+        vertx.setTimer(pollIntervalMs, ignored -> {
+            LockService.Lock lock = lockService.tryLock("background_job_poll:" + id);
+            if (lock == null) {
+                scheduleNextPoll(id, mapping, failureCount);
+                return;
+            }
+            loadRecordAsync(id)
+                    .compose(record -> {
+                        if (record == null) {
+                            log.info("Background job {} record not found, stopping polling", id);
+                            return Future.succeededFuture();
+                        }
+                        return poller.poll(mapping)
+                                .compose(
+                                        result -> {
+                                            if (result == null) {
+                                                failureCount.set(0);
+                                                scheduleNextPoll(id, mapping, failureCount);
+                                                return Future.succeededFuture();
+                                            }
+                                            return deleteAndProcess(id, record, mapping, result.usage());
+                                        },
+                                        error -> {
+                                            int n = failureCount.incrementAndGet();
+                                            if (n < maxSequentialPollFailures) {
+                                                log.warn("Poll failed for background job {} ({}/{})", id, n, maxSequentialPollFailures, error);
+                                                scheduleNextPoll(id, mapping, failureCount);
+                                                return Future.succeededFuture();
+                                            }
+                                            log.error("Background job {} exceeded max poll failures, giving up", id, error);
+                                            return deleteAndProcess(id, record, mapping, null);
+                                        }
+                                );
+                    })
+                    .onComplete(ignore -> lock.close())
+                    .onFailure(error -> {
+                        log.warn("Failed to process background job {}", id, error);
+                        scheduleNextPoll(id, mapping, failureCount);
+                    });
+        });
     }
 
     private void resumeActiveJobs() {
