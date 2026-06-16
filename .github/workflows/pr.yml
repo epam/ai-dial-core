@@ -33,4 +33,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
         run: |
-          ./gradlew publishOpenApiSpec
+          ./gradlew publishOpenApiSpec \
+            -Pgpr.user=$GITHUB_ACTOR \
+            -Pgpr.key=$GITHUB_TOKEN
