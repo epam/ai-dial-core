@@ -33,16 +33,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 public class BackgroundJobService {
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    @Data
-    public static class Settings {
-        private long pollIntervalMs = TimeUnit.SECONDS.toMillis(10);
-        private long maxPollIntervalMs = TimeUnit.MINUTES.toMillis(5);
-        private int maxSequentialPollFailures = 10;
-        private long defaultJobTtlMs = TimeUnit.DAYS.toMillis(1);
-    }
-
     private final long pollIntervalMs;
     private final long maxPollIntervalMs;
     private final int maxSequentialPollFailures;
@@ -300,5 +290,14 @@ public class BackgroundJobService {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey(key);
         return apiKeyStore.invalidatePerRequestApiKey(apiKeyData);
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @Data
+    public static class Settings {
+        long pollIntervalMs = TimeUnit.SECONDS.toMillis(10);
+        long maxPollIntervalMs = TimeUnit.MINUTES.toMillis(5);
+        int maxSequentialPollFailures = 10;
+        long defaultJobTtlMs = TimeUnit.DAYS.toMillis(1);
     }
 }
