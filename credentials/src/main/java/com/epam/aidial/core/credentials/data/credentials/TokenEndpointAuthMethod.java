@@ -4,16 +4,9 @@ package com.epam.aidial.core.credentials.data.credentials;
  * Client authentication methods at the OAuth 2.0 token endpoint
  * (RFC 6749 §2.3 and RFC 8414 §2 — {@code token_endpoint_auth_methods_supported}).
  *
- * <p>A null/blank value resolves to {@link #CLIENT_SECRET_BASIC} per RFC 6749 §2.3.1
- * (BASIC is {@code MUST} for compliant authorization servers; POST is {@code MAY} and
- * {@code NOT RECOMMENDED}). OAuth 2.1, which MCP references, deprecates POST entirely.
- *
- * <p>DIAL historically sent {@code client_secret_post} unconditionally. Operators whose AS
- * only accepts POST must set this field explicitly — those servers are non-compliant with
- * RFC 6749 §2.3.1 and would be unable to interop with most OAuth 2.1 clients anyway.
- *
- * <p>TODO: require the field at creation time so the default applies only to pre-PR
- * persisted data and can eventually be removed.
+ * <p>When the method is unspecified it is inferred from the client type (see
+ * {@link #resolve(String, String)}): a client with no secret is public and uses {@link #NONE};
+ * a client with a secret falls back to {@link #CLIENT_SECRET_BASIC} (RFC 7591 §2 default).
  */
 public enum TokenEndpointAuthMethod {
 
@@ -25,11 +18,23 @@ public enum TokenEndpointAuthMethod {
         return name().toLowerCase();
     }
 
-    public static TokenEndpointAuthMethod resolveOrDefault(String value) {
-        if (value == null || value.isBlank()) {
-            return CLIENT_SECRET_BASIC;
+    /**
+     * Resolves the token-endpoint auth method for a client. An explicit {@code value} always wins.
+     * When it is null/blank the method is inferred from the client type: a client with <b>no</b>
+     * secret is public and uses {@link #NONE} (it cannot perform a {@code client_secret_*} method);
+     * a client <b>with</b> a secret falls back to {@link #CLIENT_SECRET_BASIC} (RFC 7591 §2 default).
+     *
+     * <p>Defaulting a secretless client to {@code client_secret_basic} would put {@code client_id}
+     * in the Authorization header instead of the request body, which public/PKCE DCR servers
+     * (e.g. FastMCP's OAuth Proxy) reject — they read {@code client_id} from the body. For a
+     * secretless client {@code none} and {@code client_secret_post} are wire-identical, so
+     * {@code none} (the RFC-correct public-client value) is used.
+     */
+    public static TokenEndpointAuthMethod resolve(String value, String clientSecret) {
+        if (value != null && !value.isBlank()) {
+            return parse(value);
         }
-        return parse(value);
+        return (clientSecret == null || clientSecret.isBlank()) ? NONE : CLIENT_SECRET_BASIC;
     }
 
     /**

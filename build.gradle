@@ -7,7 +7,7 @@ plugins {
 
 allprojects {
     group = 'com.epam.aidial'
-    version = "0.44.2-authdump"
+    version = "0.44.4-authdump"
 
     apply plugin: 'java'
     apply plugin: 'checkstyle'
@@ -48,6 +48,7 @@ allprojects {
             force 'io.grpc:grpc-netty-shaded:1.75.0'
             force "io.netty:netty-codec-http2:${netty_version}"
             force "io.netty:netty-codec-dns:${netty_version}"
+            force "io.netty:netty-resolver-dns:${netty_version}"
             force "com.google.guava:guava:${guava_version}"
             dependencySubstitution {
                 substitute module('com.google.guava:guava:31.0.1-jre') using module("com.google.guava:guava:${guava_version}") because "CVE in 31.0.1-jre pulled transitively via com.google.inject:guice:7.0.0"
