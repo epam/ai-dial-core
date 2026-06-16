@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.token;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
@@ -46,6 +47,9 @@ public class TokenStatsTrackerTest {
 
     @Mock
     private AsyncTaskExecutor taskExecutor;
+
+    @Mock
+    private RateLimiter rateLimiter;
 
     @Mock
     private EncryptionService encryptionService;
@@ -97,7 +101,7 @@ public class TokenStatsTrackerTest {
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
         ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
-        tracker = new TokenStatsTracker(taskExecutor, resourceService);
+        tracker = new TokenStatsTracker(taskExecutor, resourceService, rateLimiter);
     }
 
     /**
@@ -140,8 +144,9 @@ public class TokenStatsTrackerTest {
 
         // core receives response from model
         when(app.getTokenUsage()).thenReturn(modelTokenUsage);
+        when(rateLimiter.increase(any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
 
-        tracker.updateModelStats(app.getTraceId(), app.getSpanId(), app.getTokenUsage());
+        tracker.collectUsage(null, null, app.getTokenUsage(), null, null, app.getTraceId(), app.getSpanId());
 
         // core ends span for request to model
         tracker.endSpan(app);

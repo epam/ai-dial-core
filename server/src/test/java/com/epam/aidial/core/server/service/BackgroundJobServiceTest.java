@@ -4,7 +4,6 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ResponseMapping;
-import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -58,9 +57,6 @@ class BackgroundJobServiceTest {
     private ConfigStore configStore;
 
     @Mock
-    private RateLimiter rateLimiter;
-
-    @Mock
     private TokenStatsTracker tokenStatsTracker;
 
     @Mock
@@ -108,7 +104,7 @@ class BackgroundJobServiceTest {
         testSettings.setPollIntervalMs(TEST_POLL_INTERVAL_MS);
         service = new BackgroundJobService(
                 vertx, redissonClient, PREFIX, lockService,
-                configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
+                configStore, apiKeyStore, tokenStatsTracker,
                 responseMappingService, poller, testSettings);
 
         lenient().when(proxyContext.getResponseId()).thenReturn(JOB_ID);

@@ -12,7 +12,6 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
-import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -87,9 +86,6 @@ public class DeploymentPostControllerTest {
 
     @Mock
     private HttpServerRequest request;
-
-    @Mock
-    private RateLimiter rateLimiter;
 
     @Mock
     private LogStore logStore;
@@ -453,19 +449,17 @@ public class DeploymentPostControllerTest {
         HttpServerResponse response = mock(HttpServerResponse.class);
         when(context.getResponse()).thenReturn(response);
         when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
-        when(proxy.getRateLimiter()).thenReturn(rateLimiter);
         when(proxy.getLogStore()).thenReturn(logStore);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(eq(model), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
-        when(tokenStatsTracker.updateModelStats(any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(tokenStatsTracker.collectUsage(eq(model), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter).increase(eq(model), any(), any(), any(), any());
+        verify(tokenStatsTracker).collectUsage(eq(model), any(), any(), any(), any(), any(), any());
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(eq(context));
         verify(tokenStatsTracker).endSpan(eq(context));
@@ -489,7 +483,7 @@ public class DeploymentPostControllerTest {
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter, never()).increase(eq(app), any(), any(), any(), any());
+        verify(tokenStatsTracker, never()).collectUsage(eq(app), any(), any(), any(), any(), any(), any());
         verify(tokenStatsTracker).getTokenStats(eq(context));
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(eq(context));

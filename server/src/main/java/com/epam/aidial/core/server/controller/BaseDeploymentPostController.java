@@ -177,18 +177,15 @@ public class BaseDeploymentPostController {
                     tokenUsage = new TokenUsage();
                 }
                 context.setTokenUsage(tokenUsage);
-                tokenUsageFuture = proxy.getRateLimiter().increase(
+                tokenUsageFuture = proxy.getTokenStatsTracker()
+                        .collectUsage(
                                 context.getDeployment(),
                                 BucketBuilder.buildInitiatorBucket(context),
                                 context.getTokenUsage(),
                                 context.getRequestBody(),
-                                context.getResponseBody())
-                        .transform(result -> {
-                            if (result.failed()) {
-                                log.warn("Failed to increase limit", result.cause());
-                            }
-                            return proxy.getTokenStatsTracker().updateModelStats(context.getTraceId(), context.getSpanId(), context.getTokenUsage());
-                        });
+                                context.getResponseBody(),
+                                context.getTraceId(),
+                                context.getSpanId());
             }
         } else {
             tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context)

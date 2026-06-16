@@ -8,7 +8,6 @@ import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.ResponseMapping;
-import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -55,7 +54,6 @@ public class BackgroundJobService {
     private final LockService lockService;
     private final ConfigStore configStore;
     private final ApiKeyStore apiKeyStore;
-    private final RateLimiter rateLimiter;
     private final TokenStatsTracker tokenStatsTracker;
     private final ResponseMappingService responseMappingService;
     private final BackgroundJobPoller poller;
@@ -67,7 +65,6 @@ public class BackgroundJobService {
             LockService lockService,
             ConfigStore configStore,
             ApiKeyStore apiKeyStore,
-            RateLimiter rateLimiter,
             TokenStatsTracker tokenStatsTracker,
             ResponseMappingService responseMappingService,
             BackgroundJobPoller poller,
@@ -83,7 +80,6 @@ public class BackgroundJobService {
         this.lockService = lockService;
         this.configStore = configStore;
         this.apiKeyStore = apiKeyStore;
-        this.rateLimiter = rateLimiter;
         this.tokenStatsTracker = tokenStatsTracker;
         this.responseMappingService = responseMappingService;
         this.poller = poller;
@@ -163,24 +159,15 @@ public class BackgroundJobService {
                     String traceId = apiKeyData != null ? apiKeyData.getTraceId() : null;
                     String spanId = apiKeyData != null ? apiKeyData.getSpanId() : null;
 
-                    Future<Void> tokenFuture = Future.succeededFuture();
-                    if (usage != null && traceId != null && spanId != null) {
-                        tokenFuture = tokenStatsTracker.updateModelStats(traceId, spanId, usage)
-                                .compose(ignored -> tokenStatsTracker.endRootSpan(traceId));
-                    }
-
-                    Future<Void> rateLimitFuture = Future.succeededFuture();
+                    Future<Void> future = Future.succeededFuture();
                     if (deployment instanceof Model && usage != null) {
-                        String bucketLocation = responseMapping.getInitiatorBucket();
-                        rateLimitFuture = rateLimiter.increase(deployment, bucketLocation, usage, null, null)
-                                .recover(error -> {
-                                    log.warn("Failed to update rate limit for background job {}", jobId, error);
-                                    return Future.succeededFuture();
-                                });
+                        future = tokenStatsTracker.collectUsage(
+                                deployment, responseMapping.getInitiatorBucket(), usage, null, null, traceId, spanId);
                     }
-
-                    Future.all(tokenFuture, rateLimitFuture)
-                            .eventually(() -> invalidatePerRequestKey(jobRecord))
+                    if (traceId != null) {
+                        future = future.compose(ignored -> tokenStatsTracker.endSpan(traceId));
+                    }
+                    future.eventually(() -> invalidatePerRequestKey(jobRecord))
                             .onFailure(error -> log.error("Failed to finalize background job {}", jobId, error));
                 });
         return removeFromQueue(jobId).mapEmpty();
