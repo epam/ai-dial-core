@@ -297,7 +297,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         Buffer responseBody = context.getResponseBody();
         if (context.isBackgroundJob() && context.getResponseId() != null) {
             proxy.getBackgroundJobService().saveJob(context)
-                    .onSuccess(ignored -> proxy.getBackgroundJobService().submit(context.getResponseId()));
+                    .onSuccess(ignored -> proxy.getBackgroundJobService().startPolling(context.getResponseId()));
             response.end(responseBody);
         } else {
             collectTokenUsage(responseBody)

@@ -95,13 +95,7 @@ public class BackgroundJobService {
 
     public Future<Void> saveJob(ProxyContext context) {
         String jobId = context.getResponseId();
-        BackgroundJobRecord record = BackgroundJobRecord.builder()
-                .perRequestKey(context.getProxyApiKeyData().getPerRequestKey())
-                .traceId(context.getTraceId())
-                .spanId(context.getSpanId())
-                .createdAt(System.currentTimeMillis())
-                .streaming(context.isStreamingRequest())
-                .build();
+        BackgroundJobRecord record = new BackgroundJobRecord(context.getProxyApiKeyData().getPerRequestKey());
         return persistRecordAsync(jobId, record)
                 .compose(ignored -> addToQueue(jobId).mapEmpty());
     }
@@ -109,10 +103,6 @@ public class BackgroundJobService {
     public Future<Boolean> isJobActive(String dialResponseId) {
         return toFuture(redis.<String>getBucket(toRedisKey(dialResponseId), StringCodec.INSTANCE)
                 .isExistsAsync());
-    }
-
-    public void submit(String id) {
-        startPolling(id);
     }
 
     public Future<Boolean> cancelStreamingJob(String jobId) {
@@ -145,7 +135,7 @@ public class BackgroundJobService {
                 });
     }
 
-    private void startPolling(String id) {
+    public void startPolling(String id) {
         loadRecordAsync(id)
                 .compose(record -> {
                     if (record == null) {
@@ -167,26 +157,32 @@ public class BackgroundJobService {
         Config config = configStore.get();
         Deployment deployment = config.selectDeployment(responseMapping.getDeploymentName());
 
-        Future<Void> tokenFuture = Future.succeededFuture();
-        if (usage != null && jobRecord.getTraceId() != null && jobRecord.getSpanId() != null) {
-            tokenFuture = tokenStatsTracker.updateStats(jobRecord.getTraceId(), jobRecord.getSpanId(), usage)
-                    .compose(ignored -> tokenStatsTracker.endRootSpan(jobRecord.getTraceId()));
-        }
+        apiKeyStore.getApiKeyData(jobRecord.perRequestKey(), null)
+                .recover(e -> Future.succeededFuture(null))
+                .onSuccess(apiKeyData -> {
+                    String traceId = apiKeyData != null ? apiKeyData.getTraceId() : null;
+                    String spanId = apiKeyData != null ? apiKeyData.getSpanId() : null;
 
-        Future<Void> rateLimitFuture = Future.succeededFuture();
-        if (deployment instanceof Model && usage != null) {
-            String bucketLocation = responseMapping.getInitiatorBucket();
-            rateLimitFuture = rateLimiter.increase(deployment, bucketLocation, usage, null, null)
-                    .recover(error -> {
-                        log.warn("Failed to update rate limit for background job {}", jobId, error);
-                        return Future.succeededFuture();
-                    });
-        }
+                    Future<Void> tokenFuture = Future.succeededFuture();
+                    if (usage != null && traceId != null && spanId != null) {
+                        tokenFuture = tokenStatsTracker.updateStats(traceId, spanId, usage)
+                                .compose(ignored -> tokenStatsTracker.endRootSpan(traceId));
+                    }
 
-        Future.all(tokenFuture, rateLimitFuture)
-                .eventually(() -> invalidatePerRequestKey(jobRecord))
-                .onFailure(error ->
-                        log.error("Failed to finalize background job {}", jobId, error));
+                    Future<Void> rateLimitFuture = Future.succeededFuture();
+                    if (deployment instanceof Model && usage != null) {
+                        String bucketLocation = responseMapping.getInitiatorBucket();
+                        rateLimitFuture = rateLimiter.increase(deployment, bucketLocation, usage, null, null)
+                                .recover(error -> {
+                                    log.warn("Failed to update rate limit for background job {}", jobId, error);
+                                    return Future.succeededFuture();
+                                });
+                    }
+
+                    Future.all(tokenFuture, rateLimitFuture)
+                            .eventually(() -> invalidatePerRequestKey(jobRecord))
+                            .onFailure(error -> log.error("Failed to finalize background job {}", jobId, error));
+                });
         return removeFromQueue(jobId).mapEmpty();
     }
 
@@ -313,7 +309,7 @@ public class BackgroundJobService {
     }
 
     private Future<Boolean> invalidatePerRequestKey(BackgroundJobRecord record) {
-        String key = record.getPerRequestKey();
+        String key = record.perRequestKey();
         if (key == null) {
             return Future.succeededFuture(true);
         }

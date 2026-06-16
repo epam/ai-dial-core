@@ -183,6 +183,7 @@ class BackgroundJobServiceTest {
         Config config = mock(Config.class);
         when(configStore.get()).thenReturn(config);
 
+        when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
         when(apiKeyStore.invalidatePerRequestApiKey(any()))
                 .thenAnswer(inv -> {
                     ctx.completeNow();
@@ -190,7 +191,7 @@ class BackgroundJobServiceTest {
                 });
 
         service.saveJob(proxyContext)
-                .onSuccess(ignored -> service.submit(JOB_ID))
+                .onSuccess(ignored -> service.startPolling(JOB_ID))
                 .onFailure(ctx::failNow);
 
         await(ctx);
