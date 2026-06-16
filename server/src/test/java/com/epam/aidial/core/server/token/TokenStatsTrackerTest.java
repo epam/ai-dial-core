@@ -141,7 +141,7 @@ public class TokenStatsTrackerTest {
         // core receives response from model
         when(app.getTokenUsage()).thenReturn(modelTokenUsage);
 
-        tracker.updateModelStats(app);
+        tracker.updateModelStats(app.getTraceId(), app.getSpanId(), app.getTokenUsage());
 
         // core ends span for request to model
         tracker.endSpan(app);

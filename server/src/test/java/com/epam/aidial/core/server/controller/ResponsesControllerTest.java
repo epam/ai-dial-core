@@ -315,7 +315,7 @@ public class ResponsesControllerTest {
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getRateLimiter().increase(eq(deployment), any(), any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
-        when(proxy.getTokenStatsTracker().updateModelStats(context))
+        when(proxy.getTokenStatsTracker().updateModelStats(any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getClient()).thenReturn(httpClient);
@@ -431,7 +431,7 @@ public class ResponsesControllerTest {
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getRateLimiter().increase(eq(deployment), any(), any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
-        when(proxy.getTokenStatsTracker().updateModelStats(context))
+        when(proxy.getTokenStatsTracker().updateModelStats(any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);

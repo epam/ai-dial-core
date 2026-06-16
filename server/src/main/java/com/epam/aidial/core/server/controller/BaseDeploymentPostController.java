@@ -158,8 +158,8 @@ public class BaseDeploymentPostController {
         }
     }
 
-    protected Future<TokenUsage> collectTokenUsage(Buffer responseBody) {
-        Future<TokenUsage> tokenUsageFuture = Future.succeededFuture();
+    protected Future<Void> collectTokenUsage(Buffer responseBody) {
+        Future<Void> tokenUsageFuture = Future.succeededFuture();
         if (context.getDeployment() instanceof Model model) {
             if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
                 TokenUsage tokenUsage = parseTokenUsage(responseBody);
@@ -187,12 +187,13 @@ public class BaseDeploymentPostController {
                             if (result.failed()) {
                                 log.warn("Failed to increase limit", result.cause());
                             }
-                            return proxy.getTokenStatsTracker().updateModelStats(context);
+                            return proxy.getTokenStatsTracker().updateModelStats(context.getTraceId(), context.getSpanId(), context.getTokenUsage());
                         });
             }
         } else {
             tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context)
-                    .andThen(result -> context.setTokenUsage(result.result()));
+                    .andThen(result -> context.setTokenUsage(result.result()))
+                    .mapEmpty();
         }
         return tokenUsageFuture;
     }

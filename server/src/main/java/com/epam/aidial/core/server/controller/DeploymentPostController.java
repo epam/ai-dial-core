@@ -412,7 +412,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
-        Future<TokenUsage> tokenUsageFuture = collectTokenUsage(responseBody);
+        Future<Void> tokenUsageFuture = collectTokenUsage(responseBody);
 
         Future<Void> handleResponseFuture = tokenUsageFuture.transform(result -> {
             if (result.failed()) {

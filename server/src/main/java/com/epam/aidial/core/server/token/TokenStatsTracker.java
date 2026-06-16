@@ -79,23 +79,7 @@ public class TokenStatsTracker {
         }
     }
 
-    public Future<TokenUsage> updateModelStats(ProxyContext context) {
-        ResourceDescriptor resource = toResource(context.getTraceId());
-        return taskExecutor.submit(() -> {
-            resourceService.computeResource(resource, json -> {
-                TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
-                if (traceContext == null) {
-                    return null;
-                }
-                traceContext.updateStats(context.getSpanId(), context.getTokenUsage());
-                return ProxyUtil.convertToString(traceContext);
-            });
-            return context.getTokenUsage();
-        });
-    }
-
-    /** Updates the token stats for a span identified by traceId/spanId — used when completing background jobs. */
-    public Future<Void> updateStats(String traceId, String spanId, TokenUsage tokenUsage) {
+    public Future<Void> updateModelStats(String traceId, String spanId, TokenUsage tokenUsage) {
         ResourceDescriptor resource = toResource(traceId);
         return taskExecutor.submit(() -> {
             resourceService.computeResource(resource, json -> {

@@ -460,7 +460,7 @@ public class DeploymentPostControllerTest {
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(rateLimiter.increase(eq(model), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
-        when(tokenStatsTracker.updateModelStats(context)).thenReturn(Future.succeededFuture());
+        when(tokenStatsTracker.updateModelStats(any(), any(), any())).thenReturn(Future.succeededFuture());
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);

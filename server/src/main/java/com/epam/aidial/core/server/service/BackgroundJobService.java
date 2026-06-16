@@ -165,7 +165,7 @@ public class BackgroundJobService {
 
                     Future<Void> tokenFuture = Future.succeededFuture();
                     if (usage != null && traceId != null && spanId != null) {
-                        tokenFuture = tokenStatsTracker.updateStats(traceId, spanId, usage)
+                        tokenFuture = tokenStatsTracker.updateModelStats(traceId, spanId, usage)
                                 .compose(ignored -> tokenStatsTracker.endRootSpan(traceId));
                     }
 
