@@ -91,7 +91,8 @@ public class BackgroundJobService {
 
     public Future<Void> saveJob(ProxyContext context) {
         String jobId = context.getResponseId();
-        BackgroundJobRecord record = new BackgroundJobRecord(context.getProxyApiKeyData().getPerRequestKey());
+        boolean isRootSpan = context.getApiKeyData().getPerRequestKey() == null;
+        BackgroundJobRecord record = new BackgroundJobRecord(context.getProxyApiKeyData().getPerRequestKey(), isRootSpan);
         return persistRecordAsync(jobId, record)
                 .compose(ignored -> addToQueue(jobId).mapEmpty());
     }
@@ -164,10 +165,10 @@ public class BackgroundJobService {
                         future = tokenStatsTracker.collectUsage(
                                 deployment, responseMapping.getInitiatorBucket(), usage, null, null, traceId, spanId);
                     }
-                    if (traceId != null) {
+                    if (traceId != null && Boolean.TRUE.equals(jobRecord.isRootSpan())) {
                         future = future.compose(ignored -> tokenStatsTracker.endSpan(traceId));
                     }
-                    future.eventually(() -> invalidatePerRequestKey(jobRecord))
+                    future.eventually(() -> invalidatePerRequestKey(jobRecord.perRequestKey()))
                             .onFailure(error -> log.error("Failed to finalize background job {}", jobId, error));
                 });
         return removeFromQueue(jobId).mapEmpty();
@@ -295,14 +296,9 @@ public class BackgroundJobService {
                 .map(json -> ProxyUtil.convertToObject(json, BackgroundJobRecord.class));
     }
 
-    private Future<Boolean> invalidatePerRequestKey(BackgroundJobRecord record) {
-        String key = record.perRequestKey();
-        if (key == null) {
-            return Future.succeededFuture(true);
-        }
+    private Future<Boolean> invalidatePerRequestKey(String key) {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey(key);
         return apiKeyStore.invalidatePerRequestApiKey(apiKeyData);
     }
-
 }

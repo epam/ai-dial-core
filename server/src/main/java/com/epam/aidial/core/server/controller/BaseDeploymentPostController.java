@@ -177,15 +177,14 @@ public class BaseDeploymentPostController {
                     tokenUsage = new TokenUsage();
                 }
                 context.setTokenUsage(tokenUsage);
-                tokenUsageFuture = proxy.getTokenStatsTracker()
-                        .collectUsage(
-                                context.getDeployment(),
-                                BucketBuilder.buildInitiatorBucket(context),
-                                context.getTokenUsage(),
-                                context.getRequestBody(),
-                                context.getResponseBody(),
-                                context.getTraceId(),
-                                context.getSpanId());
+                tokenUsageFuture = proxy.getTokenStatsTracker().collectUsage(
+                        context.getDeployment(),
+                        BucketBuilder.buildInitiatorBucket(context),
+                        context.getTokenUsage(),
+                        context.getRequestBody(),
+                        context.getResponseBody(),
+                        context.getTraceId(),
+                        context.getSpanId());
             }
         } else {
             tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context)

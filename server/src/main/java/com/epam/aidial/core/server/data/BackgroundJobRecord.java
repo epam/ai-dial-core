@@ -1,3 +1,3 @@
 package com.epam.aidial.core.server.data;
 
-public record BackgroundJobRecord(String perRequestKey) {}
+public record BackgroundJobRecord(String perRequestKey, Boolean isRootSpan) {}

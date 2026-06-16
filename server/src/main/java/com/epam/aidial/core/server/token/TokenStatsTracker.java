@@ -65,6 +65,14 @@ public class TokenStatsTracker {
         });
     }
 
+    public Future<Void> endSpan(String traceId) {
+        ResourceDescriptor resource = toResource(traceId);
+        return taskExecutor.submit(() -> {
+            resourceService.deleteResource(resource, EtagHeader.ANY);
+            return null;
+        });
+    }
+
     /**
      * Ends current span.
      */
@@ -77,14 +85,6 @@ public class TokenStatsTracker {
             // we can do it later when the initial span is completed
             return Future.succeededFuture();
         }
-    }
-
-    public Future<Void> endSpan(String traceId) {
-        ResourceDescriptor resource = toResource(traceId);
-        return taskExecutor.submit(() -> {
-            resourceService.deleteResource(resource, EtagHeader.ANY);
-            return null;
-        });
     }
 
     private Future<Void> updateModelStats(String traceId, String spanId, TokenUsage tokenUsage) {
