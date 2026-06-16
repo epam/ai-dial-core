@@ -29,6 +29,8 @@ jobs:
           java-distribution: temurin
       - name: validate_spec
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
         run: |
           ./gradlew publishOpenApiSpec
-        
