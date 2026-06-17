@@ -42,11 +42,7 @@ public class RateLimiter {
     private final ResourceService resourceService;
 
     public Future<Void> increase(
-            Deployment deployment,
-            String bucketLocation,
-            TokenUsage usage,
-            Buffer requestBody,
-            Buffer responseBody) {
+            Deployment deployment, String bucket, TokenUsage usage, Buffer requestBody, Buffer responseBody) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
@@ -62,7 +58,7 @@ public class RateLimiter {
                 }
 
                 String costsPath = getPathToCosts();
-                ResourceDescriptor costResourceDescription = getResourceDescription(bucketLocation, costsPath);
+                ResourceDescriptor costResourceDescription = getResourceDescription(bucket, costsPath);
                 costFuture = taskExecutor.submit(() -> updateCostLimit(costResourceDescription, cost));
             } else {
                 costFuture = Future.succeededFuture();
@@ -73,7 +69,7 @@ public class RateLimiter {
                 tokenFuture = Future.succeededFuture();
             } else {
                 String tokensPath = getPathToTokens(deployment.getName());
-                ResourceDescriptor tokenResourceDescription = getResourceDescription(bucketLocation, tokensPath);
+                ResourceDescriptor tokenResourceDescription = getResourceDescription(bucket, tokensPath);
                 tokenFuture = taskExecutor.submit(() -> updateTokenLimit(tokenResourceDescription, usage.getTotalTokens()));
             }
 

@@ -92,7 +92,7 @@ public class BackgroundJobService {
                 .isExistsAsync());
     }
 
-    public Future<Boolean> cancelStreamingJob(String jobId) {
+    public Future<Boolean> finishStreamingJob(String jobId) {
         return deleteRecordAsync(jobId)
                 .compose(deleted -> {
                     if (!deleted) {

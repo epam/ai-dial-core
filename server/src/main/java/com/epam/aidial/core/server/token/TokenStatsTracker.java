@@ -102,8 +102,14 @@ public class TokenStatsTracker {
         });
     }
 
-    public Future<Void> collectUsage(Deployment deployment, String bucket,
-            TokenUsage usage, Buffer requestBody, Buffer responseBody, String traceId, String spanId) {
+    public Future<Void> collectUsage(
+            Deployment deployment,
+            String bucket,
+            TokenUsage usage,
+            Buffer requestBody,
+            Buffer responseBody,
+            String traceId,
+            String spanId) {
         return rateLimiter.increase(deployment, bucket, usage, requestBody, responseBody)
                 .transform(result -> {
                     if (result.failed()) {

@@ -147,9 +147,9 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void cancelStreamingJobDeletesRecord(Vertx vertx, VertxTestContext ctx) throws Throwable {
+    void finishStreamingJobDeletesRecord(Vertx vertx, VertxTestContext ctx) throws Throwable {
         service.saveJob(proxyContext)
-                .compose(ignored -> service.cancelStreamingJob(JOB_ID))
+                .compose(ignored -> service.finishStreamingJob(JOB_ID))
                 .compose(deleted -> service.isJobActive(JOB_ID)
                         .onSuccess(active -> ctx.verify(() -> {
                             assertTrue(deleted, "cancelStreamingJob should return true when record existed");
@@ -161,8 +161,8 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void cancelStreamingJobReturnsFalseWhenRecordAlreadyGone(Vertx vertx, VertxTestContext ctx) throws Throwable {
-        service.cancelStreamingJob(JOB_ID)
+    void finishStreamingJobReturnsFalseWhenRecordAlreadyGone(Vertx vertx, VertxTestContext ctx) throws Throwable {
+        service.finishStreamingJob(JOB_ID)
                 .onSuccess(deleted -> ctx.verify(() -> {
                     assertFalse(deleted);
                     ctx.completeNow();

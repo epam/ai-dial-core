@@ -140,8 +140,6 @@ class BackgroundJobPollerTest {
         await(ctx);
     }
 
-    // ── helpers ─────────────────────────────────────────────────────────────
-
     private static ResponseMapping buildMapping() {
         return ResponseMapping.builder()
                 .upstreamResponseId(UPSTREAM_RESPONSE_ID)

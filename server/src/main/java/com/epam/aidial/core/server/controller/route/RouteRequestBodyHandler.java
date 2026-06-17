@@ -175,12 +175,9 @@ class RouteRequestBodyHandler {
 
         if (responseStatusCode == 200) {
             context.getUpstreamRoute().succeed();
-            proxy.getRateLimiter().increase(
-                            null,
-                            BucketBuilder.buildInitiatorBucket(context),
-                            context.getTokenUsage(),
-                            context.getRequestBody(),
-                            context.getResponseBody())
+            String bucket = BucketBuilder.buildInitiatorBucket(context);
+            proxy.getRateLimiter()
+                    .increase(null, bucket, context.getTokenUsage(), context.getRequestBody(), context.getResponseBody())
                     .onFailure(error -> log.warn("Failed to increase limit", error));
         }
 

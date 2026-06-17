@@ -17,15 +17,6 @@ public class ResponseIdUtil {
     }
 
     public ResourceDescriptor getDescriptor(String dialResponseId) {
-        return toDescriptor(dialResponseId, ResourceTypes.RESPONSE_MAPPING, BUCKET, BUCKET_LOCATION);
-    }
-
-    public ResourceDescriptor getBackgroundJobDescriptor(String jobId) {
-        return ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.BACKGROUND_JOB, BACKGROUND_JOB_BUCKET, BACKGROUND_JOB_BUCKET_LOCATION, jobId);
-    }
-
-    private ResourceDescriptor toDescriptor(String dialResponseId, ResourceTypes type, String bucket, String bucketLocation) {
         if (!dialResponseId.startsWith(RESPONSE_ID_PREFIX)) {
             throw new IllegalArgumentException("Invalid response id: " + dialResponseId);
         }
@@ -36,6 +27,6 @@ public class ResponseIdUtil {
         String deploymentName = dialResponseId.substring(RESPONSE_ID_PREFIX.length(), underscore);
         String uuid = dialResponseId.substring(underscore + 1);
         String relativePath = deploymentName + "/" + uuid;
-        return ResourceDescriptorFactory.fromDecoded(type, bucket, bucketLocation, relativePath);
+        return ResourceDescriptorFactory.fromDecoded(ResourceTypes.RESPONSE_MAPPING, BUCKET, BUCKET_LOCATION, relativePath);
     }
 }
