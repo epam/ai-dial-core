@@ -8,7 +8,6 @@ import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
@@ -66,7 +65,7 @@ class BackgroundJobPollerTest {
     }
 
     @Test
-    void pollReturnsUsageForTerminalStatus(Vertx vertx, VertxTestContext ctx) throws Throwable {
+    void pollReturnsUsageForTerminalStatus(VertxTestContext ctx) throws Throwable {
         setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
         setupDeploymentMocks();
 
@@ -80,7 +79,7 @@ class BackgroundJobPollerTest {
     }
 
     @Test
-    void pollReturnsNullForNonTerminalStatus(Vertx vertx, VertxTestContext ctx) throws Throwable {
+    void pollReturnsNullForNonTerminalStatus(VertxTestContext ctx) throws Throwable {
         setupHttpMocks("{\"status\":\"in_progress\"}");
         setupDeploymentMocks();
 
@@ -94,7 +93,7 @@ class BackgroundJobPollerTest {
     }
 
     @Test
-    void pollReturnsNullForQueuedStatus(Vertx vertx, VertxTestContext ctx) throws Throwable {
+    void pollReturnsNullForQueuedStatus(VertxTestContext ctx) throws Throwable {
         setupHttpMocks("{\"status\":\"queued\"}");
         setupDeploymentMocks();
 
@@ -108,7 +107,7 @@ class BackgroundJobPollerTest {
     }
 
     @Test
-    void pollFailsWhenDeploymentNotFound(Vertx vertx, VertxTestContext ctx) throws Throwable {
+    void pollFailsWhenDeploymentNotFound(VertxTestContext ctx) throws Throwable {
         Config config = mock(Config.class);
         when(configStore.get()).thenReturn(config);
         when(config.selectDeployment(anyString())).thenReturn(null);
@@ -123,7 +122,7 @@ class BackgroundJobPollerTest {
     }
 
     @Test
-    void pollFailsWhenNoResponsesEndpoint(Vertx vertx, VertxTestContext ctx) throws Throwable {
+    void pollFailsWhenNoResponsesEndpoint(VertxTestContext ctx) throws Throwable {
         Config config = mock(Config.class);
         Deployment deployment = mock(Deployment.class);
         when(configStore.get()).thenReturn(config);
@@ -170,6 +169,7 @@ class BackgroundJobPollerTest {
         when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(httpRequest));
         when(httpRequest.putHeader(anyString(), anyString())).thenReturn(httpRequest);
         when(httpRequest.send()).thenReturn(Future.succeededFuture(httpResponse));
+        when(httpResponse.statusCode()).thenReturn(200);
         when(httpResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer(responseJson)));
     }
 
