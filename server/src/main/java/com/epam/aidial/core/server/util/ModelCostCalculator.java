@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.RoleBasedEntity;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -21,8 +22,9 @@ import java.util.Scanner;
 @UtilityClass
 public class ModelCostCalculator {
 
-    public static BigDecimal calculate(Deployment deployment, TokenUsage tokenUsage, Buffer requestBody, Buffer responseBody) {
-        if (!(deployment instanceof Model model)) {
+    public static BigDecimal calculate(
+            RoleBasedEntity roleBasedEntity, TokenUsage tokenUsage, Buffer requestBody, Buffer responseBody) {
+        if (!(roleBasedEntity instanceof Model model)) {
             return null;
         }
 

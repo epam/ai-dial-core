@@ -270,7 +270,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                                 response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(upstreamRoute.getAttemptCount()));
                                 return response;
                             }))
-                    .onSuccess(this::finishNonStreamingResponse)
+                    .onSuccess(response -> finishNonStreamingResponse(response))
                     .onFailure(this::handleProxyConnectionError);
             return;
         }
@@ -323,7 +323,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         JsonNode tree = JsonUtil.tryParse(body.getBytes());
         if (tree.isObject() && tree instanceof ObjectNode object) {
             JsonNode idNode = object.path("id");
-            if (!idNode.isNull()) {
+            if (idNode.isTextual()) {
                 String upstreamId = idNode.asText();
                 if (!context.isStoreResponse()) {
                     String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());

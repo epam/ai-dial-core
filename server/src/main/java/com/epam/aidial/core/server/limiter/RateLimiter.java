@@ -42,14 +42,14 @@ public class RateLimiter {
     private final ResourceService resourceService;
 
     public Future<Void> increase(
-            Deployment deployment, String bucket, TokenUsage usage, Buffer requestBody, Buffer responseBody) {
+            RoleBasedEntity roleBasedEntity, String bucket, TokenUsage usage, Buffer requestBody, Buffer responseBody) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
                 return Future.succeededFuture();
             }
 
-            BigDecimal cost = ModelCostCalculator.calculate(deployment, usage, requestBody, responseBody);
+            BigDecimal cost = ModelCostCalculator.calculate(roleBasedEntity, usage, requestBody, responseBody);
             Future<Void> costFuture;
             if (cost != null && cost.compareTo(BigDecimal.ZERO) > 0) {
                 if (usage != null) {
@@ -68,7 +68,7 @@ public class RateLimiter {
             if (usage == null || usage.getTotalTokens() <= 0) {
                 tokenFuture = Future.succeededFuture();
             } else {
-                String tokensPath = getPathToTokens(deployment.getName());
+                String tokensPath = getPathToTokens(roleBasedEntity.getName());
                 ResourceDescriptor tokenResourceDescription = getResourceDescription(bucket, tokensPath);
                 tokenFuture = taskExecutor.submit(() -> updateTokenLimit(tokenResourceDescription, usage.getTotalTokens()));
             }

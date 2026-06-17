@@ -33,7 +33,7 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
         }
 
         JsonNode idNode = response.path("id");
-        if (idNode.isNull()) {
+        if (!idNode.isTextual()) {
             return Future.succeededFuture(tree);
         }
 

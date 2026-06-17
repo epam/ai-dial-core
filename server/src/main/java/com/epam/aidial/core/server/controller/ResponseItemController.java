@@ -222,7 +222,7 @@ public class ResponseItemController implements Controller {
             return new ParsedBody(body, null);
         }
         JsonNode idNode = object.path("id");
-        if (!idNode.isNull() && upstreamResponseId.equals(idNode.asText())) {
+        if (idNode.isTextual() && upstreamResponseId.equals(idNode.asText())) {
             object.put("id", dialResponseId);
         }
         ResponsesApiClient.TerminalResult terminalResult = null;
@@ -264,18 +264,14 @@ public class ResponseItemController implements Controller {
                         + "\"type\":\"invalid_request_error\",\"param\":\"response_id\",\"code\":null}}");
     }
 
+    @RequiredArgsConstructor
     public enum Operation {
         GET(HttpMethod.GET, ""),
         CANCEL(HttpMethod.POST, "/cancel"),
         DELETE(HttpMethod.DELETE, "");
 
         private final HttpMethod method;
-
         private final String suffix;
-        Operation(HttpMethod method, String suffix) {
-            this.method = method;
-            this.suffix = suffix;
-        }
     }
 
     private record ParsedBody(Buffer buffer, ResponsesApiClient.TerminalResult terminalResult) {}
