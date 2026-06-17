@@ -32,8 +32,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -195,7 +198,155 @@ class BackgroundJobServiceTest {
         verify(apiKeyStore).invalidatePerRequestApiKey(any());
     }
 
-    // ── helpers ─────────────────────────────────────────────────────────────
+    @Test
+    void pollingContinuesUntilTerminalResult(Vertx vertx, VertxTestContext ctx) throws Throwable {
+        ResponseMapping mapping = buildMapping();
+        when(responseMappingService.getMapping(anyString())).thenReturn(mapping);
+        when(poller.poll(any()))
+                .thenReturn(Future.succeededFuture(null))
+                .thenReturn(Future.succeededFuture(null))
+                .thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(new TokenUsage())));
+        when(configStore.get()).thenReturn(mock(Config.class));
+        when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
+        when(apiKeyStore.invalidatePerRequestApiKey(any()))
+                .thenAnswer(inv -> {
+                    ctx.completeNow();
+                    return Future.succeededFuture(true);
+                });
+
+        service.saveJob(proxyContext)
+                .onSuccess(ignored -> service.startPolling(JOB_ID))
+                .onFailure(ctx::failNow);
+
+        await(ctx);
+        verify(poller, times(3)).poll(any());
+    }
+
+    @Test
+    void pollingAbandonedAfterMaxSequentialFailures(Vertx vertx, VertxTestContext ctx) throws Throwable {
+        BackgroundJobService svc = buildService(vertx, 3);
+        ResponseMapping mapping = buildMapping();
+        when(responseMappingService.getMapping(anyString())).thenReturn(mapping);
+        when(poller.poll(any())).thenAnswer(inv -> Future.failedFuture("upstream error"));
+        when(configStore.get()).thenReturn(mock(Config.class));
+        when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
+        when(apiKeyStore.invalidatePerRequestApiKey(any()))
+                .thenAnswer(inv -> {
+                    ctx.completeNow();
+                    return Future.succeededFuture(true);
+                });
+
+        svc.saveJob(proxyContext)
+                .onSuccess(ignored -> svc.startPolling(JOB_ID))
+                .onFailure(ctx::failNow);
+
+        await(ctx);
+        verify(poller, times(3)).poll(any());
+    }
+
+    @Test
+    void failureCounterResetsOnNonTerminalPoll(Vertx vertx, VertxTestContext ctx) throws Throwable {
+        BackgroundJobService svc = buildService(vertx, 3);
+        ResponseMapping mapping = buildMapping();
+        when(responseMappingService.getMapping(anyString())).thenReturn(mapping);
+        // Without the reset: after fail, fail, non-terminal, fail, fail the counter would hit 3 and give up.
+        // With the reset: counter goes 1, 2, reset-to-0, 1, 2, then terminal completes normally.
+        when(poller.poll(any()))
+                .thenReturn(Future.failedFuture("upstream error"))
+                .thenReturn(Future.failedFuture("upstream error"))
+                .thenReturn(Future.succeededFuture(null))
+                .thenReturn(Future.failedFuture("upstream error"))
+                .thenReturn(Future.failedFuture("upstream error"))
+                .thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(new TokenUsage())));
+        when(configStore.get()).thenReturn(mock(Config.class));
+        when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
+        when(apiKeyStore.invalidatePerRequestApiKey(any()))
+                .thenAnswer(inv -> {
+                    ctx.completeNow();
+                    return Future.succeededFuture(true);
+                });
+
+        svc.saveJob(proxyContext)
+                .onSuccess(ignored -> svc.startPolling(JOB_ID))
+                .onFailure(ctx::failNow);
+
+        await(ctx);
+        verify(poller, times(6)).poll(any());
+    }
+
+    @Test
+    void tryCompleteOnGetFinalizesJobWhenTerminalResult(Vertx vertx, VertxTestContext ctx) throws Throwable {
+        ResponseMapping mapping = buildMapping();
+        when(configStore.get()).thenReturn(mock(Config.class));
+        when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
+        when(apiKeyStore.invalidatePerRequestApiKey(any()))
+                .thenAnswer(inv -> {
+                    ctx.completeNow();
+                    return Future.succeededFuture(true);
+                });
+
+        service.saveJob(proxyContext)
+                .compose(ignored -> service.tryCompleteOnGet(
+                        JOB_ID, mapping, new ResponsesApiClient.TerminalResult(new TokenUsage())))
+                .onFailure(ctx::failNow);
+
+        await(ctx);
+        verify(apiKeyStore).invalidatePerRequestApiKey(any());
+    }
+
+    @Test
+    void tryCompleteOnGetIsNoOpWhenNullResult(Vertx vertx, VertxTestContext ctx) throws Throwable {
+        ResponseMapping mapping = buildMapping();
+
+        service.saveJob(proxyContext)
+                .compose(ignored -> service.tryCompleteOnGet(JOB_ID, mapping, null))
+                .compose(ignored -> service.isJobActive(JOB_ID))
+                .onSuccess(active -> ctx.verify(() -> {
+                    assertTrue(active, "job should remain active after null tryCompleteOnGet");
+                    ctx.completeNow();
+                }))
+                .onFailure(ctx::failNow);
+
+        await(ctx);
+        verify(apiKeyStore, never()).invalidatePerRequestApiKey(any());
+    }
+
+    @Test
+    void tryCompleteOnGetIsNoOpWhenNoRecord(Vertx vertx, VertxTestContext ctx) throws Throwable {
+        ResponseMapping mapping = buildMapping();
+
+        service.tryCompleteOnGet(JOB_ID, mapping, new ResponsesApiClient.TerminalResult(null))
+                .onSuccess(ignored -> ctx.completeNow())
+                .onFailure(ctx::failNow);
+
+        await(ctx);
+        verify(apiKeyStore, never()).invalidatePerRequestApiKey(any());
+    }
+
+    @Test
+    void initResumesActiveJobsOnStartup(Vertx vertx, VertxTestContext ctx) throws Throwable {
+        ResponseMapping mapping = buildMapping();
+        when(responseMappingService.getMapping(anyString())).thenReturn(mapping);
+        when(poller.poll(any()))
+                .thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(new TokenUsage())));
+        when(configStore.get()).thenReturn(mock(Config.class));
+        when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
+        when(apiKeyStore.invalidatePerRequestApiKey(any()))
+                .thenAnswer(inv -> {
+                    ctx.completeNow();
+                    return Future.succeededFuture(true);
+                });
+
+        service.saveJob(proxyContext)
+                .onSuccess(ignored -> {
+                    BackgroundJobService newService = buildService(vertx, 10);
+                    newService.init();
+                })
+                .onFailure(ctx::failNow);
+
+        await(ctx);
+        verify(poller, atLeastOnce()).poll(any());
+    }
 
     private static ResponseMapping buildMapping() {
         return ResponseMapping.builder()
@@ -204,6 +355,17 @@ class BackgroundJobServiceTest {
                 .deploymentName(DEPLOYMENT_NAME)
                 .initiatorBucket("Users/test-user/")
                 .build();
+    }
+
+    private BackgroundJobService buildService(Vertx vertx, int maxFailures) {
+        BackgroundJobService.Settings settings = new BackgroundJobService.Settings();
+        settings.setPollIntervalMs(TEST_POLL_INTERVAL_MS);
+        settings.setMaxSequentialPollFailures(maxFailures);
+        return new BackgroundJobService(
+                vertx, redissonClient, PREFIX,
+                new LockService(redissonClient, null),
+                configStore, apiKeyStore, tokenStatsTracker,
+                responseMappingService, poller, settings);
     }
 
     private static void await(VertxTestContext ctx) throws Throwable {

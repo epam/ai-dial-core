@@ -122,6 +122,67 @@ class BackgroundJobPollerTest {
     }
 
     @Test
+    void pollFailsWhenUpstreamReturnsNonOkStatus(VertxTestContext ctx) throws Throwable {
+        setupDeploymentMocks();
+        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(httpRequest));
+        when(httpRequest.putHeader(anyString(), anyString())).thenReturn(httpRequest);
+        when(httpRequest.send()).thenReturn(Future.succeededFuture(httpResponse));
+        when(httpResponse.statusCode()).thenReturn(500);
+
+        poller.poll(buildMapping())
+                .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
+                .onFailure(error -> ctx.verify(() -> {
+                    assertTrue(error.getMessage().contains("500"));
+                    ctx.completeNow();
+                }));
+        await(ctx);
+    }
+
+    @Test
+    void pollFailsWhenResponseBodyIsNotJson(VertxTestContext ctx) throws Throwable {
+        setupDeploymentMocks();
+        setupHttpMocks("not valid json {{{}");
+
+        poller.poll(buildMapping())
+                .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
+                .onFailure(error -> ctx.completeNow());
+        await(ctx);
+    }
+
+    @Test
+    void pollFailsWhenResponseBodyIsJsonArray(VertxTestContext ctx) throws Throwable {
+        setupDeploymentMocks();
+        setupHttpMocks("[1, 2, 3]");
+
+        poller.poll(buildMapping())
+                .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
+                .onFailure(error -> ctx.verify(() -> {
+                    assertTrue(error.getMessage().contains("not a JSON object"));
+                    ctx.completeNow();
+                }));
+        await(ctx);
+    }
+
+    @Test
+    void pollFailsWhenUpstreamRouteNotFound(VertxTestContext ctx) throws Throwable {
+        Config config = mock(Config.class);
+        Deployment deployment = mock(Deployment.class);
+        when(configStore.get()).thenReturn(config);
+        when(config.selectDeployment(anyString())).thenReturn(deployment);
+        when(deployment.getResponsesEndpoint()).thenReturn("http://test-upstream/responses");
+        when(upstreamRouteProvider.get(any(), any(), anyString()))
+                .thenThrow(new RuntimeException("No available upstream"));
+
+        poller.poll(buildMapping())
+                .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
+                .onFailure(error -> ctx.verify(() -> {
+                    assertTrue(error.getMessage().contains("Failed to get upstream"));
+                    ctx.completeNow();
+                }));
+        await(ctx);
+    }
+
+    @Test
     void pollFailsWhenNoResponsesEndpoint(VertxTestContext ctx) throws Throwable {
         Config config = mock(Config.class);
         Deployment deployment = mock(Deployment.class);
