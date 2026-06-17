@@ -7,7 +7,7 @@ plugins {
 
 allprojects {
     group = 'com.epam.aidial'
-    version = "0.44.4-authdump"
+    version = "0.44.4-authdump-fix1"
 
     apply plugin: 'java'
     apply plugin: 'checkstyle'
