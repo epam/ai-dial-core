@@ -237,7 +237,8 @@ public class AiDial {
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
                     resourceAuthSettingsEncryptionService, resourceCredentialsService);
 
-            ExternalServiceService externalServiceService = new ExternalServiceService(resourceService, resourceAuthSettingsEncryptionService);
+            ExternalServiceService externalServiceService = new ExternalServiceService(
+                    resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService);
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
                     externalServiceService, resourceService, lockService, operatorService, applicationSchemaService,
                     configStore, generator, settings("applications"));

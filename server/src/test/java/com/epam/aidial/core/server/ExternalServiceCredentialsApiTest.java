@@ -1205,6 +1205,146 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testAppPutRemovingExternalServiceCascadesAppCredentials() throws Exception {
+        // Removing a service via the application PUT (dropping it from external_services) must purge its
+        // orphaned APP-level credentials, exactly like the dedicated DELETE endpoint — otherwise a service
+        // re-created with the same id silently inherits the prior owner's stored credentials.
+        String appUrl = createAppWithBillingService("user", "appput-del-app");
+        String scope = appUrl + "/external_services/billing-api";
+
+        Response appSignIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "APPLICATION",
+                    "authentication_type": "API_KEY",
+                    "api_key": "shared"
+                }
+                """.formatted(scope), "authorization", "user");
+        verify(appSignIn, 200, "true");
+
+        // Drop the service by PUTting the app WITHOUT external_services.
+        Response removed = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {
+                    "endpoint": "http://localhost:7001/v1/x",
+                    "display_name": "Appput Del App"
+                }
+                """, "authorization", "user");
+        assertEquals(200, removed.status(), () -> removed.body());
+
+        // Re-create the SAME service; the cascaded APP-level credential must NOT survive → retrieval 404.
+        Response readd = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {
+                    "endpoint": "http://localhost:7001/v1/x",
+                    "display_name": "Appput Del App",
+                    "external_services": {
+                        "billing-api": {
+                            "auth_settings": { "authentication_type": "API_KEY", "api_key_header": "X-API-Key" }
+                        }
+                    }
+                }
+                """, "authorization", "user");
+        assertEquals(200, readd.status(), () -> readd.body());
+
+        ApiKeyData appKey = newAppKey(appUrl, "user");
+        apiKeyStore.assignPerRequestApiKey(appKey);
+        Response retrieve = send(HttpMethod.POST, "/v1/ops/external-service/credentials", null,
+                "{\"url\":\"" + scope + "\"}", "api-key", appKey.getPerRequestKey());
+        assertEquals(404, retrieve.status(), "APP-level credentials must be purged when the service is removed via app PUT");
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testAppPutKeepingExternalServicePreservesAppCredentials() throws Exception {
+        // Guard against over-purging: an ordinary app update that KEEPS the service must not drop its
+        // APP-level credentials.
+        String appUrl = createAppWithBillingService("user", "appput-keep-app");
+        String scope = appUrl + "/external_services/billing-api";
+
+        Response appSignIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "APPLICATION",
+                    "authentication_type": "API_KEY",
+                    "api_key": "shared"
+                }
+                """.formatted(scope), "authorization", "user");
+        verify(appSignIn, 200, "true");
+
+        // Update the app (rename) while keeping the same external service.
+        Response update = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {
+                    "endpoint": "http://localhost:7001/v1/x",
+                    "display_name": "Renamed Keep App",
+                    "external_services": {
+                        "billing-api": {
+                            "auth_settings": { "authentication_type": "API_KEY", "api_key_header": "X-API-Key" }
+                        }
+                    }
+                }
+                """, "authorization", "user");
+        assertEquals(200, update.status(), () -> update.body());
+
+        ApiKeyData appKey = newAppKey(appUrl, "user");
+        apiKeyStore.assignPerRequestApiKey(appKey);
+        Response retrieve = send(HttpMethod.POST, "/v1/ops/external-service/credentials", null,
+                "{\"url\":\"" + scope + "\"}", "api-key", appKey.getPerRequestKey());
+        assertEquals(200, retrieve.status(), () -> retrieve.body());
+        assertEquals("shared", ProxyUtil.MAPPER.readTree(retrieve.body()).get("header_value").asText());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testDeleteApplicationCascadesAppCredentials() throws Exception {
+        // Deleting the whole application drops every external service, so its APP-level credentials must be
+        // purged too — re-creating an app at the same url must not inherit stale tokens.
+        String appUrl = createAppWithBillingService("user", "appdel-app");
+        String scope = appUrl + "/external_services/billing-api";
+
+        Response appSignIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "APPLICATION",
+                    "authentication_type": "API_KEY",
+                    "api_key": "shared"
+                }
+                """.formatted(scope), "authorization", "user");
+        verify(appSignIn, 200, "true");
+
+        Response del = send(HttpMethod.DELETE, "/v1/" + appUrl, null, "", "authorization", "user");
+        assertEquals(200, del.status(), () -> del.body());
+
+        // Re-create the app (same url + service); the previously stored APP-level credential must be gone.
+        createAppWithBillingService("user", "appdel-app");
+
+        ApiKeyData appKey = newAppKey(appUrl, "user");
+        apiKeyStore.assignPerRequestApiKey(appKey);
+        Response retrieve = send(HttpMethod.POST, "/v1/ops/external-service/credentials", null,
+                "{\"url\":\"" + scope + "\"}", "api-key", appKey.getPerRequestKey());
+        assertEquals(404, retrieve.status(), "APP-level credentials must be purged when the application is deleted");
+    }
+
+    private String createAppWithBillingService(String role, String appName) throws Exception {
+        Response bucketResp = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", role);
+        assertEquals(200, bucketResp.status());
+        String bucket = ProxyUtil.MAPPER.readTree(bucketResp.body()).get("bucket").asText();
+        String appUrl = "applications/" + bucket + "/" + appName;
+        Response createApp = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {
+                    "endpoint": "http://localhost:7001/v1/x",
+                    "display_name": "App With Billing",
+                    "external_services": {
+                        "billing-api": {
+                            "auth_settings": { "authentication_type": "API_KEY", "api_key_header": "X-API-Key" }
+                        }
+                    }
+                }
+                """, "authorization", role);
+        assertEquals(200, createApp.status(), () -> createApp.body());
+        return appUrl;
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
     void testDeleteUnknownExternalServiceReturns404() throws Exception {
         String appUrl = createPlainDynamicApp("user", "mgmt-del-missing-app");
         Response del = send(HttpMethod.DELETE, "/v1/" + appUrl + "/external-services/nope",

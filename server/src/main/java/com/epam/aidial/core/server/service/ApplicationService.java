@@ -169,6 +169,7 @@ public class ApplicationService {
                                                                    Application application, boolean preserveForwardAuthToken) {
         prepareApplication(resource, application, preserveForwardAuthToken);
 
+        MutableObject<List<String>> removedExternalServices = new MutableObject<>(List.of());
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
             Application.Function function = application.getFunction();
@@ -202,10 +203,13 @@ public class ApplicationService {
                 }
             }
 
-            externalServiceService.processOnWrite(resource, application, existing);
+            removedExternalServices.setValue(externalServiceService.processOnWrite(resource, application, existing));
 
             return ProxyUtil.convertToString(application);
         });
+
+        // Purge credentials of services dropped by this write (after commit), like the dedicated DELETE.
+        externalServiceService.purgeApplicationCredentials(resource, removedExternalServices.get());
 
         return Pair.of(meta, application);
     }
@@ -243,6 +247,11 @@ public class ApplicationService {
         });
 
         Application application = reference.get();
+
+        // Deleting the app drops every service, so purge their credentials too.
+        if (application.getExternalServices() != null) {
+            externalServiceService.purgeApplicationCredentials(resource, application.getExternalServices().keySet());
+        }
 
         if (isPublicOrReview(resource)) {
             if (application.getFunction() != null) {
