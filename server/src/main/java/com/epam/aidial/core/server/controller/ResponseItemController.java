@@ -185,35 +185,43 @@ public class ResponseItemController implements Controller {
 
     private Future<Void> collectAndForward(HttpClientResponse proxyResponse, ResponseMapping mapping) {
         return proxyResponse.body()
-                .compose(body -> proxy.getTaskExecutor()
-                        .submit(() -> parseBody(body, mapping.getUpstreamResponseId())))
-                .compose(parsed -> {
-                    if (operation.method == HttpMethod.GET && proxyResponse.statusCode() == 200) {
-                        proxy.getBackgroundJobService()
-                                .tryCompleteOnGet(dialResponseId, mapping, parsed.terminalResult())
-                                .onFailure(e -> log.warn("Failed to complete background job on GET {}", dialResponseId, e));
+                .compose(body -> {
+                    if (proxyResponse.statusCode() != 200) {
+                        return sendResponse(proxyResponse, body);
                     }
-                    if (operation.method == HttpMethod.DELETE && proxyResponse.statusCode() == 200) {
-                        return proxy.getTaskExecutor().submit(() -> {
-                            proxy.getResponseMappingService().deleteMapping(dialResponseId);
-                            return parsed.buffer();
-                        });
-                    }
-                    return Future.succeededFuture(parsed.buffer());
-                })
-                .compose(rewritten -> {
-                    context.getResponse().setStatusCode(proxyResponse.statusCode());
-                    String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
-                    if (contentType != null) {
-                        context.getResponse().putHeader(HttpHeaders.CONTENT_TYPE, contentType);
-                    }
-                    context.getResponse().putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
-                    return context.getResponse().end(rewritten);
-                })
-                .mapEmpty();
+                    return proxy.getTaskExecutor()
+                            .submit(() -> rewriteId(body, mapping.getUpstreamResponseId()))
+                            .compose(rewritten -> {
+                                if (operation == Operation.GET) {
+                                    ResponsesApiClient.TerminalResult terminalResult = tryParseTerminalResult(rewritten.object());
+                                    proxy.getBackgroundJobService()
+                                            .tryCompleteOnGet(dialResponseId, mapping, terminalResult)
+                                            .onFailure(e -> log.warn("Failed to complete background job on GET {}", dialResponseId, e));
+                                    return sendResponse(proxyResponse, rewritten.buffer());
+                                }
+                                if (operation == Operation.DELETE) {
+                                    return proxy.getTaskExecutor().submit(() -> {
+                                        proxy.getResponseMappingService().deleteMapping(dialResponseId);
+                                        return null;
+                                    }).compose(ignored -> sendResponse(proxyResponse, rewritten.buffer()));
+                                }
+                                return sendResponse(proxyResponse, rewritten.buffer());
+                            });
+                });
     }
 
-    private ParsedBody parseBody(Buffer body, String upstreamResponseId) {
+    private Future<Void> sendResponse(HttpClientResponse proxyResponse, Buffer body) {
+        HttpServerResponse serverResponse = context.getResponse();
+        serverResponse.setStatusCode(proxyResponse.statusCode());
+        String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
+        if (contentType != null) {
+            serverResponse.putHeader(HttpHeaders.CONTENT_TYPE, contentType);
+        }
+        serverResponse.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
+        return serverResponse.end(body).mapEmpty();
+    }
+
+    private ParsedBody rewriteId(Buffer body, String upstreamResponseId) {
         if (body.length() == 0) {
             return new ParsedBody(body, null);
         }
@@ -225,13 +233,19 @@ public class ResponseItemController implements Controller {
         if (idNode.isTextual() && upstreamResponseId.equals(idNode.asText())) {
             object.put("id", dialResponseId);
         }
-        ResponsesApiClient.TerminalResult terminalResult = null;
+        return new ParsedBody(Buffer.buffer(JsonUtil.serialize(object)), object);
+    }
+
+    private ResponsesApiClient.TerminalResult tryParseTerminalResult(ObjectNode object) {
+        if (object == null) {
+            return null;
+        }
         try {
-            terminalResult = ResponsesApiClient.parseTerminalBody(object);
+            return ResponsesApiClient.parseTerminalBody(object);
         } catch (Exception e) {
             log.warn("Failed to extract terminal result for background job {} on GET", dialResponseId, e);
+            return null;
         }
-        return new ParsedBody(Buffer.buffer(JsonUtil.serialize(object)), terminalResult);
     }
 
     private Future<Void> collectAndForwardStreaming(HttpClientResponse proxyResponse, String upstreamResponseId) {
@@ -260,8 +274,15 @@ public class ResponseItemController implements Controller {
     private static HttpException notFoundException() {
         return new HttpException(
                 HttpStatus.NOT_FOUND,
-                "{\"error\":{\"message\":\"Unknown or expired response_id\","
-                        + "\"type\":\"invalid_request_error\",\"param\":\"response_id\",\"code\":null}}");
+                """
+                        {
+                            "error": {
+                                "message": "Response with id 'resp_123' not found.",
+                                "type": "invalid_request_error",
+                                "param": null,
+                                "code": null
+                            }
+                        }""");
     }
 
     @RequiredArgsConstructor
@@ -274,5 +295,6 @@ public class ResponseItemController implements Controller {
         private final String suffix;
     }
 
-    private record ParsedBody(Buffer buffer, ResponsesApiClient.TerminalResult terminalResult) {}
+    private record ParsedBody(Buffer buffer, ObjectNode object) {
+    }
 }

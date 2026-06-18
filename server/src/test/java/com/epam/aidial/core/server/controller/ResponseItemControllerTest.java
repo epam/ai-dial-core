@@ -123,8 +123,7 @@ public class ResponseItemControllerTest {
         verify(context).respond(
                 argThat((Throwable e) -> e instanceof HttpException
                         && ((HttpException) e).getStatus() == HttpStatus.NOT_FOUND
-                        && e.getMessage().contains("Unknown or expired response_id")
-                        && e.getMessage().contains("response_id")),
+                        && e.getMessage().contains("Response with id 'resp_123' not found.")),
                 anyString());
     }
 
