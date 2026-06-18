@@ -60,6 +60,7 @@ public class ListingTest extends ResourceBaseTest {
                     "content_parts": false, "temperature" : true, "cache" : false,
                     "auto_caching" : false, "parallel_tool_calls": true,
                     "assistant_attachments_in_request": false, "mcp" : false,
+                    "chat_completion": true, "responses_api": false,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
                     "custom_temperature_supported": true, "reasoning_efforts": []
                     }
@@ -76,6 +77,7 @@ public class ListingTest extends ResourceBaseTest {
                     "content_parts": false, "temperature" : true, "cache" : false,
                     "auto_caching" : false, "parallel_tool_calls": true,
                     "assistant_attachments_in_request": false, "mcp" : false,
+                    "chat_completion": true, "responses_api": false,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
                     "custom_temperature_supported": true, "reasoning_efforts": []
                     }
@@ -92,6 +94,7 @@ public class ListingTest extends ResourceBaseTest {
                     "content_parts": false, "temperature" : true, "cache" : false,
                     "auto_caching" : false, "parallel_tool_calls": true,
                     "assistant_attachments_in_request": false, "mcp" : false,
+                    "chat_completion": true, "responses_api": false,
                     "max_tokens_supported": true, "max_completion_tokens_supported": false,
                     "custom_temperature_supported": true, "reasoning_efforts": []
                     }
