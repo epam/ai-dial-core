@@ -145,6 +145,26 @@ public class ResourceAuthSettingsService {
         setGlobalAuthStatus(resourceAuthSettings, allResourceCredentials);
     }
 
+    /**
+     * Enriches external-service auth settings with USER- and APPLICATION-level statuses
+     * (external services use USER/APPLICATION levels, unlike toolsets which use USER/GLOBAL).
+     */
+    public void setExternalServiceAuthStatuses(CredentialsLocator credentialsLocator,
+                                               ResourceAuthSettings resourceAuthSettings,
+                                               String userId) {
+        List<ResourceCredentials> all = resourceCredentialsService.getAllResourceCredentials(credentialsLocator);
+        resourceAuthSettings.setUserLevelAuthStatus(hasUnexpiredCredentials(all, CredentialsLevel.USER, userId)
+                ? ResourceAuthStatus.SIGNED_IN : ResourceAuthStatus.SIGNED_OUT);
+        resourceAuthSettings.setAppLevelAuthStatus(hasUnexpiredCredentials(all, CredentialsLevel.APPLICATION, null)
+                ? ResourceAuthStatus.SIGNED_IN : ResourceAuthStatus.SIGNED_OUT);
+    }
+
+    private boolean hasUnexpiredCredentials(List<ResourceCredentials> all, CredentialsLevel level, String userId) {
+        return all.stream().anyMatch(c -> c.getCredentialsLevel() == level
+                && (userId == null || userId.equals(c.getUserId()))
+                && tokenRefreshStrategyFactory.getTokenValidatorStrategy(c.getAuthenticationType()).hasUnexpiredToken(c));
+    }
+
     private void setUserAuthStatus(ResourceAuthSettings resourceAuthSettings,
                                    List<ResourceCredentials> resourceCredentialsList,
                                    String userId) {

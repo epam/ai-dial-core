@@ -10,11 +10,103 @@ import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.experimental.UtilityClass;
 
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 
 @UtilityClass
 public class CredentialsLocatorFactory {
+
+    public static final String EXTERNAL_SERVICES_SEPARATOR = "/external_services/";
+    private static final String APPLICATIONS_PREFIX = "applications/";
+    private static final String CONFIG_SEGMENT = "config/";
+
+    /**
+     * Builds a {@link CredentialsLocator} for an external-service scope id.
+     *
+     * <p>Accepted scope id shapes (decoded form):
+     * <ul>
+     *     <li>{@code applications/{configAppName}/external_services/{id}} — static-config app</li>
+     *     <li>{@code applications/{bucket}/{path}/external_services/{id}} — dynamic app</li>
+     * </ul>
+     *
+     * <p>For static apps the resource id is normalized to
+     * {@code applications/config/{appName}/external_services/{id}} (per §6.3 of the design doc)
+     * and the APPLICATION bucket is the public bucket. For dynamic apps the resource id is
+     * preserved and the APPLICATION bucket is the owning application's bucket.
+     */
+    public static CredentialsLocator fromExternalServiceScope(String scopeId, ProxyContext proxyContext) {
+        String decoded;
+        try {
+            decoded = UrlUtil.decodePath(scopeId);
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("Invalid external service scope id: " + scopeId);
+        }
+        int separatorIdx = decoded.indexOf(EXTERNAL_SERVICES_SEPARATOR);
+        if (separatorIdx <= 0 || !decoded.startsWith(APPLICATIONS_PREFIX)) {
+            throw new IllegalArgumentException("Invalid external service scope id: " + scopeId);
+        }
+
+        String appPart = decoded.substring(APPLICATIONS_PREFIX.length(), separatorIdx);
+        String externalServiceId = decoded.substring(separatorIdx + EXTERNAL_SERVICES_SEPARATOR.length());
+        if (appPart.isEmpty() || externalServiceId.isEmpty() || externalServiceId.contains("/")) {
+            throw new IllegalArgumentException("Invalid external service scope id: " + scopeId);
+        }
+
+        Map<CredentialsLevel, BucketInfo> bucketInfo = new EnumMap<>(CredentialsLevel.class);
+        bucketInfo.put(CredentialsLevel.USER, CredentialsDescriptorFactory.getUserBucketInfo(proxyContext));
+
+        String resourceId;
+        if (proxyContext.getConfig().isDeploymentExists(appPart)) {
+            // Static-config app: normalize storage path to applications/config/{appName}/external_services/{id}
+            resourceId = APPLICATIONS_PREFIX + CONFIG_SEGMENT
+                    + UrlUtil.encodePath(appPart)
+                    + EXTERNAL_SERVICES_SEPARATOR
+                    + UrlUtil.encodePath(externalServiceId);
+            bucketInfo.put(CredentialsLevel.APPLICATION, CredentialsDescriptorFactory.getPublicBucketInfo());
+        } else {
+            // Dynamic app: resolve owning bucket from the application URL prefix.
+            String appUrl = APPLICATIONS_PREFIX + UrlUtil.encodePath(appPart);
+            ResourceDescriptor appDescriptor;
+            try {
+                appDescriptor = ResourceDescriptorFactory.fromAnyUrl(appUrl, proxyContext.getProxy().getEncryptionService());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Invalid external service scope id: " + scopeId, e);
+            }
+            resourceId = APPLICATIONS_PREFIX
+                    + UrlUtil.encodePath(appPart)
+                    + EXTERNAL_SERVICES_SEPARATOR
+                    + UrlUtil.encodePath(externalServiceId);
+            bucketInfo.put(CredentialsLevel.APPLICATION,
+                    new BucketInfo(appDescriptor.getBucketName(), appDescriptor.getBucketLocation()));
+        }
+
+        return new CredentialsLocator(resourceId, bucketInfo);
+    }
+
+    /**
+     * Parses an external-service scope id and returns the (decoded app prefix, external-service id) pair.
+     * The app prefix is what comes after the leading {@code applications/} segment, e.g. {@code my-app}
+     * for static apps or {@code bucket/path} for dynamic apps.
+     */
+    public static String[] parseExternalServiceScope(String scopeId) {
+        String decoded;
+        try {
+            decoded = UrlUtil.decodePath(scopeId);
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("Invalid external service scope id: " + scopeId);
+        }
+        int separatorIdx = decoded.indexOf(EXTERNAL_SERVICES_SEPARATOR);
+        if (separatorIdx <= 0 || !decoded.startsWith(APPLICATIONS_PREFIX)) {
+            throw new IllegalArgumentException("Invalid external service scope id: " + scopeId);
+        }
+        String appPart = decoded.substring(APPLICATIONS_PREFIX.length(), separatorIdx);
+        String externalServiceId = decoded.substring(separatorIdx + EXTERNAL_SERVICES_SEPARATOR.length());
+        if (appPart.isEmpty() || externalServiceId.isEmpty() || externalServiceId.contains("/")) {
+            throw new IllegalArgumentException("Invalid external service scope id: " + scopeId);
+        }
+        return new String[]{appPart, externalServiceId};
+    }
 
     public static CredentialsLocator fromAnyUrl(
             String resourceIdEncoded,
