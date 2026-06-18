@@ -63,6 +63,7 @@ public class ApplicationService {
     private final AsyncTaskExecutor taskExecutor;
     private final ApiKeyStore apiKeyStore;
     private final EncryptionService encryptionService;
+    private final ExternalServiceService externalServiceService;
     private final ResourceService resourceService;
     private final LockService lockService;
     private final Supplier<String> idGenerator;
@@ -80,6 +81,7 @@ public class ApplicationService {
                               RedissonClient redis,
                               ApiKeyStore apiKeyStore,
                               EncryptionService encryptionService,
+                              ExternalServiceService externalServiceService,
                               ResourceService resourceService,
                               LockService lockService,
                               ApplicationOperatorService operatorService,
@@ -92,6 +94,7 @@ public class ApplicationService {
         this.taskExecutor = taskExecutor;
         this.apiKeyStore = apiKeyStore;
         this.encryptionService = encryptionService;
+        this.externalServiceService = externalServiceService;
         this.resourceService = resourceService;
         this.applicationSchemaService = applicationSchemaService;
         this.configStore = configStore;
@@ -199,10 +202,18 @@ public class ApplicationService {
                 }
             }
 
+            externalServiceService.processOnWrite(resource, application, existing);
+
             return ProxyUtil.convertToString(application);
         });
 
         return Pair.of(meta, application);
+    }
+
+    public Pair<ResourceItemMetadata, Application> getApplicationWithDecryptedSecrets(ResourceDescriptor resource) {
+        Pair<ResourceItemMetadata, Application> result = getApplication(resource);
+        externalServiceService.decryptSecrets(resource, result.getValue());
+        return result;
     }
 
     private static void verifySchemaRichApp(Application application, Application existing) {
@@ -265,6 +276,8 @@ public class ApplicationService {
 
         Pair<ResourceItemMetadata, Application> result = getApplication(source);
         Application application = result.getValue();
+        // Decrypt source secrets so they can be re-encrypted under the destination bucket/path below.
+        externalServiceService.decryptSecrets(source, application);
         if (author == null) {
             author = result.getKey().getAuthor();
         }
@@ -329,6 +342,10 @@ public class ApplicationService {
             if (isPublicOrReview) {
                 replaceLinksInAppProperties(application, fileReplacementLinks);
             }
+
+            // Re-encrypt external-service secrets for the destination bucket/path (§11.4 publication,
+            // §11 copy/move). AAD includes the destination url, so the binding follows the new location.
+            externalServiceService.encryptSecrets(destination, application);
 
             return ProxyUtil.convertToString(application);
         });
