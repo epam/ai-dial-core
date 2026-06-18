@@ -188,6 +188,22 @@ public enum RouteTemplate {
         "/v1/ops/toolset/{operation}"
     ),
 
+    EXTERNAL_SERVICE_CREDENTIALS(
+        "^/v1/ops/external-service/(signin|signout|credentials)$",
+        "/v1/ops/external-service/{operation}"
+    ),
+
+    // External-service definition management (admin/app-owner). Hyphenated path per design §13.2;
+    // appId is a lazy group (static app name or dynamic {bucket}/{path}) per §13.1.
+    EXTERNAL_SERVICES_MANAGEMENT(
+        "^/v1/applications/(?<appId>.+?)/external-services$",
+        "/v1/applications/{appId}/external-services"
+    ),
+    EXTERNAL_SERVICE_MANAGEMENT(
+        "^/v1/applications/(?<appId>.+?)/external-services/(?<id>[^/]+)$",
+        "/v1/applications/{appId}/external-services/{id}"
+    ),
+
     // Other routes
     CONFIG(
             "^/v1/ops/config/reload$",
