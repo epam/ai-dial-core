@@ -2,7 +2,11 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.ExternalService;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -17,6 +21,7 @@ import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -29,6 +34,7 @@ import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -41,6 +47,7 @@ public class ApplicationController {
     private final EncryptionService encryptionService;
     private final AccessService accessService;
     private final ApplicationService applicationService;
+    private final ResourceAuthSettingsService resourceAuthSettingsService;
 
     private final DeploymentService deploymentService;
     private final ApplicationSchemaService applicationSchemaService;
@@ -54,6 +61,7 @@ public class ApplicationController {
         this.encryptionService = context.getProxy().getEncryptionService();
         this.accessService = context.getProxy().getAccessService();
         this.applicationService = context.getProxy().getApplicationService();
+        this.resourceAuthSettingsService = context.getProxy().getResourceAuthSettingsService();
         this.deploymentService = context.getProxy().getDeploymentService();
         this.applicationSchemaService = context.getProxy().getApplicationSchemaService();
         this.deploymentExtractor = new ApplicationDeploymentExtractor(accessService, applicationService, applicationSchemaService);
@@ -61,19 +69,22 @@ public class ApplicationController {
     }
 
     public Future<?> getApplication(String applicationId) {
-        taskExecutor.submit(() -> deploymentService.findDeployment(context, applicationId))
-                .map(deployment -> {
-                    if (deployment instanceof Application application) {
-                        boolean applicationRequestInfoAboutItSelf = applicationId.equals(context.getDecodedSourceDeployment());
-                        if (application.hasApplicationTypeSchemaId()) {
-                            application.setMcp(applicationSchemaService.getMcp(application));
-                            application.setViewerUrl(applicationSchemaService.getStringProperty(application, MetaSchemaHolder.APPLICATION_TYPE_VIEWER_URL));
-                        }
-                        return applicationSchemaService.modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
-                    }
-                    throw new ResourceNotFoundException("Application is not found: " + applicationId);
-                })
-                .map(this::mapApplication)
+        taskExecutor.submit(() -> {
+            if (!(deploymentService.findDeployment(context, applicationId) instanceof Application application)) {
+                throw new ResourceNotFoundException("Application is not found: " + applicationId);
+            }
+            boolean applicationRequestInfoAboutItSelf = applicationId.equals(context.getDecodedSourceDeployment());
+            if (application.hasApplicationTypeSchemaId()) {
+                application.setMcp(applicationSchemaService.getMcp(application));
+                application.setViewerUrl(applicationSchemaService.getStringProperty(application, MetaSchemaHolder.APPLICATION_TYPE_VIEWER_URL));
+            }
+            Application modified = applicationSchemaService.modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
+            ApplicationData data = mapApplication(modified);
+            // Single-app GET enriches per-user sign-in status (one credential lookup per service).
+            // The listing skips this to avoid N×M lookups — it returns the definitions only.
+            enrichExternalServiceStatuses(data);
+            return data;
+        })
                 .onSuccess(data -> context.respond(HttpStatus.OK, data))
                 .onFailure(this::respondError);
 
@@ -288,8 +299,56 @@ public class ApplicationController {
         data.setRoutes(routes);
         data.setViewerUrl(application.getViewerUrl());
         data.setEditorUrl(application.getEditorUrl());
+        data.setExternalServices(buildExternalServiceViews(application));
 
         return data;
+    }
+
+    // Credential-free view (secrets stripped); status is filled only for the single-app GET.
+    private static Map<String, ExternalService> buildExternalServiceViews(Application application) {
+        Map<String, ExternalService> source = application.getExternalServices();
+        if (source == null || source.isEmpty()) {
+            return null;
+        }
+        Map<String, ExternalService> views = new LinkedHashMap<>();
+        source.forEach((id, service) -> {
+            if (service == null) {
+                return;
+            }
+            ResourceAuthSettings safe = service.getAuthSettings() == null ? null
+                    : service.getAuthSettings().toBuilder().clientSecret(null).codeVerifier(null).build();
+            views.put(id, new ExternalService()
+                    .setDisplayName(service.getDisplayName())
+                    .setDescription(service.getDescription())
+                    .setAuthSettings(safe));
+        });
+        return views;
+    }
+
+    private void enrichExternalServiceStatuses(ApplicationData data) {
+        Map<String, ExternalService> services = data.getExternalServices();
+        if (services == null || services.isEmpty()) {
+            return;
+        }
+        // Static-config apps expose getId() as the bare app name; dynamic apps as the full
+        // "applications/{bucket}/{path}" url. Normalize to the scope's {app_id} segment.
+        String appId = data.getId();
+        if (appId != null && appId.startsWith("applications/")) {
+            appId = appId.substring("applications/".length());
+        }
+        for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
+            ResourceAuthSettings authSettings = entry.getValue().getAuthSettings();
+            if (authSettings == null) {
+                continue;
+            }
+            try {
+                String scopeId = "applications/" + appId + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + entry.getKey();
+                CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
+                resourceAuthSettingsService.setExternalServiceAuthStatuses(locator, authSettings, context.getUserId());
+            } catch (RuntimeException e) {
+                log.warn("Failed to compute external-service status for '{}' on '{}'", entry.getKey(), data.getId(), e);
+            }
+        }
     }
 
 }

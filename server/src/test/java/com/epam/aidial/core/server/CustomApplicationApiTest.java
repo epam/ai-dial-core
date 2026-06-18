@@ -161,6 +161,51 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testRawApplicationGetEnrichesStatusStripsSecretsAndIgnoresInjectedStatus() {
+        // The PUT body injects a bogus user_level_auth_status: it must be ignored (READ_ONLY), never persisted.
+        Response put = send(HttpMethod.PUT,
+                "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/ext-svc-app", null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "Ext Svc App",
+                "external_services": {
+                  "salesforce": {
+                    "display_name": "Salesforce",
+                    "auth_settings": {
+                      "authentication_type": "OAUTH",
+                      "client_id": "test-client-id",
+                      "client_secret": "test-client-secret",
+                      "authorization_endpoint": "http://localhost:9876/authorize",
+                      "token_endpoint": "http://localhost:9876/token",
+                      "redirect_uri": "http://localhost:3000/auth/signin",
+                      "user_level_auth_status": "SIGNED_IN"
+                    }
+                  }
+                }
+                }
+                """);
+        verify(put, 200);
+
+        Response get = send(HttpMethod.GET,
+                "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/ext-svc-app", null, "");
+        verify(get, 200);
+
+        JsonObject authSettings = new JsonObject(get.body())
+                .getJsonObject("external_services")
+                .getJsonObject("salesforce")
+                .getJsonObject("auth_settings");
+        // secret-bearing fields stripped on the raw resource GET (mirrors toolset clearAuthSettings)
+        Assertions.assertNull(authSettings.getString("client_secret"));
+        Assertions.assertNull(authSettings.getString("code_verifier"));
+        // non-secret metadata preserved
+        assertEquals("test-client-id", authSettings.getString("client_id"));
+        assertEquals("http://localhost:9876/token", authSettings.getString("token_endpoint"));
+        // status enriched per-user (parity with toolset raw GET) AND not overridable via PUT: the injected
+        // SIGNED_IN is dropped (READ_ONLY); the computed status for the not-signed-in caller is SIGNED_OUT.
+        assertEquals("SIGNED_OUT", authSettings.getString("user_level_auth_status"));
+    }
+
+    @Test
     void testPutApplicationWithEmptyPayload() {
         Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, "");
         verify(response, 400);

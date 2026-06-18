@@ -2,8 +2,11 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
@@ -15,6 +18,7 @@ import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
+import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
@@ -40,6 +44,7 @@ import java.net.ConnectException;
 import java.net.http.HttpConnectTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_GATEWAY;
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
@@ -160,6 +165,9 @@ public class ResourceController extends AccessControlBaseController {
             ResourceItemMetadata meta = result.getKey();
 
             Application application = result.getValue();
+            // Mirror the toolset raw GET (getToolsetData): enrich status, then strip secrets.
+            enrichExternalServiceStatuses(descriptor, application);
+            clearExternalServiceSecrets(application);
             String body = hasWriteAccess
                     ? ProxyUtil.convertToString(application)
                     : ProxyUtil.convertToString(clearApplicationProperties(application));
@@ -167,6 +175,39 @@ public class ResourceController extends AccessControlBaseController {
             return Pair.of(meta, body);
 
         });
+    }
+
+    private void enrichExternalServiceStatuses(ResourceDescriptor descriptor, Application application) {
+        Map<String, ExternalService> services = application.getExternalServices();
+        if (services == null || services.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
+            ResourceAuthSettings authSettings = entry.getValue() == null ? null : entry.getValue().getAuthSettings();
+            if (authSettings == null) {
+                continue;
+            }
+            try {
+                String scopeId = descriptor.getUrl() + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + entry.getKey();
+                CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
+                proxy.getResourceAuthSettingsService().setExternalServiceAuthStatuses(locator, authSettings, context.getUserId());
+            } catch (RuntimeException e) {
+                log.warn("Failed to compute external-service status for '{}' on '{}'", entry.getKey(), descriptor.getUrl(), e);
+            }
+        }
+    }
+
+    private static void clearExternalServiceSecrets(Application application) {
+        Map<String, ExternalService> services = application.getExternalServices();
+        if (services == null) {
+            return;
+        }
+        for (ExternalService service : services.values()) {
+            if (service != null && service.getAuthSettings() != null) {
+                service.getAuthSettings().setClientSecret(null);
+                service.getAuthSettings().setCodeVerifier(null);
+            }
+        }
     }
 
     private Application clearApplicationProperties(Application application) {
