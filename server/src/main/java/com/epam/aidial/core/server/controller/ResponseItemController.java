@@ -192,18 +192,17 @@ public class ResponseItemController implements Controller {
                     return proxy.getTaskExecutor()
                             .submit(() -> rewriteId(body, mapping.getUpstreamResponseId()))
                             .compose(rewritten -> {
-                                if (operation == Operation.GET) {
-                                    ResponsesApiClient.TerminalResult terminalResult = tryParseTerminalResult(rewritten.object());
-                                    proxy.getBackgroundJobService()
-                                            .tryCompleteOnGet(dialResponseId, mapping, terminalResult)
-                                            .onFailure(e -> log.warn("Failed to complete background job on GET {}", dialResponseId, e));
-                                    return sendResponse(proxyResponse, rewritten.buffer());
-                                }
                                 if (operation == Operation.DELETE) {
                                     return proxy.getTaskExecutor().submit(() -> {
                                         proxy.getResponseMappingService().deleteMapping(dialResponseId);
                                         return null;
                                     }).compose(ignored -> sendResponse(proxyResponse, rewritten.buffer()));
+                                }
+                                if (operation == Operation.GET) {
+                                    ResponsesApiClient.TerminalResult terminalResult = tryParseTerminalResult(rewritten.object());
+                                    proxy.getBackgroundJobService()
+                                            .tryCompleteOnGet(dialResponseId, mapping, terminalResult)
+                                            .onFailure(e -> log.warn("Failed to complete background job on GET {}", dialResponseId, e));
                                 }
                                 return sendResponse(proxyResponse, rewritten.buffer());
                             });

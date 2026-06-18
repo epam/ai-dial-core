@@ -112,10 +112,11 @@ class BackgroundJobServiceTest {
 
         lenient().when(proxyContext.getResponseId()).thenReturn(JOB_ID);
         lenient().when(proxyContext.getProxyApiKeyData().getPerRequestKey()).thenReturn("test-per-request-key");
+        lenient().when(responseMappingService.getMapping(anyString())).thenReturn(buildMapping());
     }
 
     @Test
-    void saveJobPersistsRecord(Vertx vertx, VertxTestContext ctx) throws Throwable {
+    void isJobActiveReturnsTrueWhenRecordExists(VertxTestContext ctx) throws Throwable {
         service.saveJob(proxyContext)
                 .compose(ignored -> service.isJobActive(JOB_ID))
                 .onSuccess(active -> ctx.verify(() -> {
@@ -127,19 +128,7 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void isJobActiveReturnsTrueWhenRecordExists(Vertx vertx, VertxTestContext ctx) throws Throwable {
-        service.saveJob(proxyContext)
-                .compose(ignored -> service.isJobActive(JOB_ID))
-                .onSuccess(active -> ctx.verify(() -> {
-                    assertTrue(active);
-                    ctx.completeNow();
-                }))
-                .onFailure(ctx::failNow);
-        await(ctx);
-    }
-
-    @Test
-    void isJobActiveReturnsFalseWhenNoRecord(Vertx vertx, VertxTestContext ctx) throws Throwable {
+    void isJobActiveReturnsFalseWhenNoRecord(VertxTestContext ctx) throws Throwable {
         service.isJobActive(JOB_ID)
                 .onSuccess(active -> ctx.verify(() -> {
                     assertFalse(active);
@@ -150,7 +139,7 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void finishStreamingJobDeletesRecord(Vertx vertx, VertxTestContext ctx) throws Throwable {
+    void finishStreamingJobDeletesRecord(VertxTestContext ctx) throws Throwable {
         service.saveJob(proxyContext)
                 .compose(ignored -> service.finishStreamingJob(JOB_ID))
                 .compose(deleted -> service.isJobActive(JOB_ID)
@@ -164,7 +153,7 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void finishStreamingJobReturnsFalseWhenRecordAlreadyGone(Vertx vertx, VertxTestContext ctx) throws Throwable {
+    void finishStreamingJobReturnsFalseWhenRecordAlreadyGone(VertxTestContext ctx) throws Throwable {
         service.finishStreamingJob(JOB_ID)
                 .onSuccess(deleted -> ctx.verify(() -> {
                     assertFalse(deleted);
@@ -175,9 +164,7 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void submitStartsPollingAndCompletesJob(Vertx vertx, VertxTestContext ctx) throws Throwable {
-        ResponseMapping mapping = buildMapping();
-        when(responseMappingService.getMapping(anyString())).thenReturn(mapping);
+    void submitStartsPollingAndCompletesJob(VertxTestContext ctx) throws Throwable {
         when(poller.poll(any())).thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(new TokenUsage())));
         Config config = mock(Config.class);
         when(configStore.get()).thenReturn(config);
@@ -194,14 +181,11 @@ class BackgroundJobServiceTest {
                 .onFailure(ctx::failNow);
 
         await(ctx);
-
         verify(apiKeyStore).invalidatePerRequestApiKey(any());
     }
 
     @Test
-    void pollingContinuesUntilTerminalResult(Vertx vertx, VertxTestContext ctx) throws Throwable {
-        ResponseMapping mapping = buildMapping();
-        when(responseMappingService.getMapping(anyString())).thenReturn(mapping);
+    void pollingContinuesUntilTerminalResult(VertxTestContext ctx) throws Throwable {
         when(poller.poll(any()))
                 .thenReturn(Future.succeededFuture(null))
                 .thenReturn(Future.succeededFuture(null))
@@ -225,8 +209,6 @@ class BackgroundJobServiceTest {
     @Test
     void pollingAbandonedAfterMaxSequentialFailures(Vertx vertx, VertxTestContext ctx) throws Throwable {
         BackgroundJobService svc = buildService(vertx, 3);
-        ResponseMapping mapping = buildMapping();
-        when(responseMappingService.getMapping(anyString())).thenReturn(mapping);
         when(poller.poll(any())).thenAnswer(inv -> Future.failedFuture("upstream error"));
         when(configStore.get()).thenReturn(mock(Config.class));
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
@@ -247,8 +229,6 @@ class BackgroundJobServiceTest {
     @Test
     void failureCounterResetsOnNonTerminalPoll(Vertx vertx, VertxTestContext ctx) throws Throwable {
         BackgroundJobService svc = buildService(vertx, 3);
-        ResponseMapping mapping = buildMapping();
-        when(responseMappingService.getMapping(anyString())).thenReturn(mapping);
         // Without the reset: after fail, fail, non-terminal, fail, fail the counter would hit 3 and give up.
         // With the reset: counter goes 1, 2, reset-to-0, 1, 2, then terminal completes normally.
         when(poller.poll(any()))
@@ -275,7 +255,7 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void tryCompleteOnGetFinalizesJobWhenTerminalResult(Vertx vertx, VertxTestContext ctx) throws Throwable {
+    void tryCompleteOnGetFinalizesJobWhenTerminalResult(VertxTestContext ctx) throws Throwable {
         ResponseMapping mapping = buildMapping();
         when(configStore.get()).thenReturn(mock(Config.class));
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
@@ -295,7 +275,7 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void tryCompleteOnGetIsNoOpWhenNullResult(Vertx vertx, VertxTestContext ctx) throws Throwable {
+    void tryCompleteOnGetIsNoOpWhenNullResult(VertxTestContext ctx) throws Throwable {
         ResponseMapping mapping = buildMapping();
 
         service.saveJob(proxyContext)
@@ -312,7 +292,7 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void tryCompleteOnGetIsNoOpWhenNoRecord(Vertx vertx, VertxTestContext ctx) throws Throwable {
+    void tryCompleteOnGetIsNoOpWhenNoRecord(VertxTestContext ctx) throws Throwable {
         ResponseMapping mapping = buildMapping();
 
         service.tryCompleteOnGet(JOB_ID, mapping, new ResponsesApiClient.TerminalResult(null))
@@ -325,8 +305,6 @@ class BackgroundJobServiceTest {
 
     @Test
     void initResumesActiveJobsOnStartup(Vertx vertx, VertxTestContext ctx) throws Throwable {
-        ResponseMapping mapping = buildMapping();
-        when(responseMappingService.getMapping(anyString())).thenReturn(mapping);
         when(poller.poll(any()))
                 .thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(new TokenUsage())));
         when(configStore.get()).thenReturn(mock(Config.class));
