@@ -83,10 +83,10 @@ public class ResponseItemController implements Controller {
         Upstream upstream = upstreamRoute.next();
 
         String query = context.getRequest().query();
-        String baseUrl = deployment.getInterfaceBaseUrl(InterfaceType.OPENAI_RESPONSES);
-        String targetUrl = BaseDeploymentPostController.joinBaseUrlAndPath(baseUrl, OPENAI_RESPONSES_BASE_PATH)
-                + "/" + mapping.getUpstreamResponseId() + operation.suffix
-                + (query != null ? "?" + query : "");
+        String targetUrl = BaseDeploymentPostController.joinBaseUrlAndPath(
+                deployment.getInterfaceBaseUrl(InterfaceType.OPENAI_RESPONSES),
+                OPENAI_RESPONSES_BASE_PATH
+        ) + "/" + mapping.getUpstreamResponseId() + operation.suffix + (query != null ? "?" + query : "");
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(targetUrl)
                 .setMethod(operation.method)

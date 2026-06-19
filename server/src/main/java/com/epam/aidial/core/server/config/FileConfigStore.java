@@ -27,6 +27,11 @@ import java.util.Map;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
 
+/**
+ * File-backed {@link ConfigStore}. Loads the dynamic config from one or more JSON files on startup and
+ * reloads them periodically. Also performs best-effort legacy {@code endpoint}/{@code responsesEndpoint}
+ * → {@code interfaces} write-back (Layer B), gated by the {@code ENDPOINT_MIGRATION_TO_INTERFACES} env var.
+ */
 @Slf4j
 public final class FileConfigStore implements ConfigStore {
 

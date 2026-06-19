@@ -167,8 +167,7 @@ public class BaseDeploymentPostController {
     protected Future<HttpClientRequest> createProxyRequest(InterfaceType type) {
         HttpServerRequest request = context.getRequest();
         String baseUrl = context.getDeployment().getInterfaceBaseUrl(type);
-        String uri = joinBaseUrlAndPath(baseUrl, rawPath(request))
-                + (request.query() == null ? "" : "?" + request.query());
+        String uri = joinBaseUrlAndPath(baseUrl, request.uri());
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(uri)
                 .setMethod(request.method())
@@ -177,16 +176,6 @@ public class BaseDeploymentPostController {
                 .setIdleTimeout(proxy.getClientOptions().getIdleTimeout());
 
         return proxy.getClient().request(options);
-    }
-
-    /**
-     * Returns the raw (percent-encoded) request path, without the query string, so percent-encoded
-     * deployment ids are forwarded verbatim.
-     */
-    private static String rawPath(HttpServerRequest request) {
-        String uri = request.uri();
-        int queryStart = uri.indexOf('?');
-        return queryStart >= 0 ? uri.substring(0, queryStart) : uri;
     }
 
     /**

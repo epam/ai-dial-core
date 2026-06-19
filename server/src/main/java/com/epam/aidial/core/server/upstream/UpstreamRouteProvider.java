@@ -160,10 +160,7 @@ public class UpstreamRouteProvider {
         upstream.setEndpoint(endpoint);
         upstream.setResponsesEndpoint(deployment.getResponsesEndpoint());
         upstream.setKey("whatever");
-        // Keep the synthetic upstream id non-null even when the resolver returns null (native interface
-        // config missing the requested interface) so a misconfigured deployment yields a clean 503
-        // rather than an NPE downstream.
-        upstream.setId(endpoint != null ? endpoint : deployment.getName());
+        upstream.setId(endpoint);
         return List.of(upstream);
     }
 

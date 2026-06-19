@@ -297,7 +297,6 @@ public class ResponsesControllerTest {
         when(request.body()).thenReturn(Future.succeededFuture(requestBody));
         when(request.headers()).thenReturn(new HeadersMultiMap());
         when(request.uri()).thenReturn("/responses?arg=value");
-        when(request.query()).thenReturn("arg=value");
         when(upstreamRoute.next()).thenReturn(upstream);
         when(upstreamRoute.get()).thenReturn(upstream);
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
