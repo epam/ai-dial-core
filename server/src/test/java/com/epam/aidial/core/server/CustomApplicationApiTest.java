@@ -1143,6 +1143,76 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                   "routes" : { }
                 }
                 """);
+
+        response = send(HttpMethod.GET, "/openai/applications/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_files", null, "");
+        verifyJsonNotExact(response, 200, """
+                {
+                  "id" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_files",
+                  "application" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/test_app_files",
+                  "display_name" : "test_app",
+                  "icon_url" : "https://mydial.somewhere.com/app-icon.svg",
+                  "description" : "My application description",
+                  "reference" : "@ignore",
+                  "owner" : "EPM-RTC-GPT",
+                  "object" : "application",
+                  "status" : "succeeded",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
+                  "features" : {
+                    "rate" : false,
+                    "tokenize" : false,
+                    "truncate_prompt" : false,
+                    "configuration" : false,
+                    "system_prompt" : true,
+                    "tools" : false,
+                    "seed" : false,
+                    "url_attachments" : false,
+                    "folder_attachments" : false,
+                    "allow_resume" : true,
+                    "accessible_by_per_request_key" : true,
+                    "content_parts" : false,
+                    "temperature" : true,
+                    "cache" : false,
+                    "auto_caching" : false,
+                    "parallel_tool_calls" : true,
+                    "assistant_attachments_in_request" : false,
+                    "mcp" : true,
+                    "chat_completion" : true,
+                    "responses_api" : false,
+                    "max_tokens_supported" : true,
+                    "max_completion_tokens_supported" : false,
+                    "custom_temperature_supported" : true,
+                    "reasoning_efforts" : [ ]
+                  },
+                  "defaults" : { },
+                  "responses_defaults" : { },
+                  "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
+                  "application_properties" : {
+                    "property1" : "test property1"
+                  },
+                  "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                  "routes" : {
+                    "data_sync" : {
+                      "rewritePath" : true,
+                      "paths" : [ "/v1/index/search" ],
+                      "methods" : [ "POST" ],
+                      "upstreams" : [ {
+                        "endpoint" : "http://localhost:4848",
+                        "weight" : 1,
+                        "tier" : 0
+                      } ],
+                      "maxRetryAttempts" : 1,
+                      "order" : 5,
+                      "permissions" : [ "WRITE" ],
+                      "attachmentPaths" : {
+                        "requestBody" : [ ],
+                        "responseBody" : [ ]
+                      }
+                    }
+                  }
+                }
+                """);
     }
 
     @Test
