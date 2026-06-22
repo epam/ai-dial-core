@@ -65,6 +65,14 @@ public enum RouteTemplate {
             "^/v1/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
             "/v1/{resourceType}/{bucket}/{path}"
     ),
+
+    // V2 whole-resource (folder-as-resource) routes.
+    // Single-segment reluctant path with a mandatory trailing slash enforces root-level resources
+    // with folder semantics (e.g. /v2/skills/{bucket}/{name}/).
+    SKILL_FOLDER(
+            "^/v2/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>[^/]+/)$",
+            "/v2/skills/{bucket}/{path}"
+    ),
     RESOURCE_METADATA(
             "^/v1/metadata/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
             "/v1/metadata/{resourceType}/{bucket}/{path}"
