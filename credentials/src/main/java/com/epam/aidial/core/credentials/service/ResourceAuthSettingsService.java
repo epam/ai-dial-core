@@ -153,16 +153,30 @@ public class ResourceAuthSettingsService {
                                                ResourceAuthSettings resourceAuthSettings,
                                                String userId) {
         List<ResourceCredentials> all = resourceCredentialsService.getAllResourceCredentials(credentialsLocator);
-        resourceAuthSettings.setUserLevelAuthStatus(hasUnexpiredCredentials(all, CredentialsLevel.USER, userId)
-                ? ResourceAuthStatus.SIGNED_IN : ResourceAuthStatus.SIGNED_OUT);
-        resourceAuthSettings.setAppLevelAuthStatus(hasUnexpiredCredentials(all, CredentialsLevel.APPLICATION, null)
-                ? ResourceAuthStatus.SIGNED_IN : ResourceAuthStatus.SIGNED_OUT);
+
+        boolean userSignedIn = hasUnexpiredUserCredentials(all, userId);
+        resourceAuthSettings.setUserLevelAuthStatus(userSignedIn ? ResourceAuthStatus.SIGNED_IN : ResourceAuthStatus.SIGNED_OUT);
+
+        boolean appSignedIn = hasUnexpiredApplicationCredentials(all);
+        resourceAuthSettings.setAppLevelAuthStatus(appSignedIn ? ResourceAuthStatus.SIGNED_IN : ResourceAuthStatus.SIGNED_OUT);
     }
 
-    private boolean hasUnexpiredCredentials(List<ResourceCredentials> all, CredentialsLevel level, String userId) {
-        return all.stream().anyMatch(c -> c.getCredentialsLevel() == level
-                && (userId == null || userId.equals(c.getUserId()))
-                && tokenRefreshStrategyFactory.getTokenValidatorStrategy(c.getAuthenticationType()).hasUnexpiredToken(c));
+    // USER-level credentials are scoped to a single signed-in user, so they are filtered by userId.
+    private boolean hasUnexpiredUserCredentials(List<ResourceCredentials> all, String userId) {
+        return all.stream().anyMatch(c -> c.getCredentialsLevel() == CredentialsLevel.USER
+                && userId.equals(c.getUserId())
+                && hasUnexpiredToken(c));
+    }
+
+    // APPLICATION-level credentials are shared by the app and not bound to any user, so no userId filter applies.
+    private boolean hasUnexpiredApplicationCredentials(List<ResourceCredentials> all) {
+        return all.stream().anyMatch(c -> c.getCredentialsLevel() == CredentialsLevel.APPLICATION
+                && hasUnexpiredToken(c));
+    }
+
+    private boolean hasUnexpiredToken(ResourceCredentials credentials) {
+        return tokenRefreshStrategyFactory.getTokenValidatorStrategy(credentials.getAuthenticationType())
+                .hasUnexpiredToken(credentials);
     }
 
     private void setUserAuthStatus(ResourceAuthSettings resourceAuthSettings,

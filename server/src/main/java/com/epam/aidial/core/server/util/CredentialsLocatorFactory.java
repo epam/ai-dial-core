@@ -42,7 +42,9 @@ public class CredentialsLocatorFactory {
         } catch (RuntimeException e) {
             throw new IllegalArgumentException("Invalid external service scope id: " + scopeId);
         }
-        int separatorIdx = decoded.indexOf(EXTERNAL_SERVICES_SEPARATOR);
+        // Service ids never contain '/', so the LAST '/external_services/' is the unambiguous delimiter even when
+        // the application path itself contains an 'external_services' segment.
+        int separatorIdx = decoded.lastIndexOf(EXTERNAL_SERVICES_SEPARATOR);
         if (separatorIdx <= 0 || !decoded.startsWith(APPLICATIONS_PREFIX)) {
             throw new IllegalArgumentException("Invalid external service scope id: " + scopeId);
         }
@@ -96,7 +98,8 @@ public class CredentialsLocatorFactory {
         } catch (RuntimeException e) {
             throw new IllegalArgumentException("Invalid external service scope id: " + scopeId);
         }
-        int separatorIdx = decoded.indexOf(EXTERNAL_SERVICES_SEPARATOR);
+        // See fromExternalServiceScope: the last '/external_services/' is the unambiguous delimiter.
+        int separatorIdx = decoded.lastIndexOf(EXTERNAL_SERVICES_SEPARATOR);
         if (separatorIdx <= 0 || !decoded.startsWith(APPLICATIONS_PREFIX)) {
             throw new IllegalArgumentException("Invalid external service scope id: " + scopeId);
         }
