@@ -46,12 +46,12 @@ public class SkillResourceApiTest extends ResourceBaseTest {
         files.put("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
         files.put("scripts/run.sh", "echo hi".getBytes(StandardCharsets.UTF_8));
 
-        Response put = uploadSkill("/my-skill/", files);
+        Response put = uploadSkill("/my-skill", files);
         verify(put, 200);
         String etag = put.headers().get("etag");
         assertNotNull(etag);
 
-        BinaryResponse zip = downloadSkill("/my-skill/");
+        BinaryResponse zip = downloadSkill("/my-skill");
         assertEquals(200, zip.status());
         assertTrue(zip.headers().get("content-type").startsWith("application/zip"));
         assertEquals(etag, zip.headers().get("etag"));
@@ -70,11 +70,11 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     void testRejectMissingManifest() {
         Map<String, byte[]> files = Map.of("data.txt", "x".getBytes(StandardCharsets.UTF_8));
 
-        Response put = uploadSkill("/no-manifest/", files);
+        Response put = uploadSkill("/no-manifest", files);
         verify(put, 400);
 
         // nothing observable was written
-        assertEquals(404, downloadSkill("/no-manifest/").status());
+        assertEquals(404, downloadSkill("/no-manifest").status());
     }
 
     @Test
@@ -86,37 +86,37 @@ public class SkillResourceApiTest extends ResourceBaseTest {
                 """;
         Map<String, byte[]> files = Map.of("SKILL.md", manifest.getBytes(StandardCharsets.UTF_8));
 
-        Response put = uploadSkill("/bad-frontmatter/", files);
+        Response put = uploadSkill("/bad-frontmatter", files);
         verify(put, 400);
-        assertEquals(404, downloadSkill("/bad-frontmatter/").status());
+        assertEquals(404, downloadSkill("/bad-frontmatter").status());
     }
 
     @Test
     void testRejectUnparseableFrontmatter() {
         Map<String, byte[]> files = Map.of("SKILL.md", "# no frontmatter here".getBytes(StandardCharsets.UTF_8));
 
-        verify(uploadSkill("/no-frontmatter/", files), 400);
+        verify(uploadSkill("/no-frontmatter", files), 400);
     }
 
     @Test
     void testIfMatch() {
         Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
 
-        Response first = uploadSkill("/versioned/", files);
+        Response first = uploadSkill("/versioned", files);
         verify(first, 200);
         String etag = first.headers().get("etag");
 
         // wrong If-Match -> 412
-        verify(uploadSkill("/versioned/", files, "if-match", "\"wrong\""), 412);
+        verify(uploadSkill("/versioned", files, "if-match", "\"wrong\""), 412);
 
         // matching If-Match -> 200
-        verify(uploadSkill("/versioned/", files, "if-match", etag), 200);
+        verify(uploadSkill("/versioned", files, "if-match", etag), 200);
     }
 
     @Test
     void testRejectReservedResourceName() {
         Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
-        verify(uploadSkill("/v/", files), 400);
+        verify(uploadSkill("/v", files), 400);
     }
 
     @Test
@@ -124,20 +124,27 @@ public class SkillResourceApiTest extends ResourceBaseTest {
         Map<String, byte[]> files = new LinkedHashMap<>();
         files.put("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
         files.put(MARKER_NAME, "{}".getBytes(StandardCharsets.UTF_8));
-        verify(uploadSkill("/reserved-part/", files), 400);
+        verify(uploadSkill("/reserved-part", files), 400);
     }
 
     @Test
     void testNestedPathRejectedByRouting() {
         // The v2 route only matches a single root-level path segment.
         Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
-        assertNotEquals(200, uploadSkill("/group/nested/", files).status());
+        assertNotEquals(200, uploadSkill("/group/nested", files).status());
+    }
+
+    @Test
+    void testTrailingSlashRejectedByRouting() {
+        // The v2 route addresses a resource by name without a trailing slash.
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        assertNotEquals(200, uploadSkill("/trailing/", files).status());
     }
 
     @Test
     void testInvisibleToV1FilesApi() {
         Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
-        verify(uploadSkill("/hidden/", files), 200);
+        verify(uploadSkill("/hidden", files), 200);
 
         // v1 files API stores under a different blob prefix and cannot see the skill
         Response viaFiles = send(HttpMethod.GET, "/v1/files/" + bucket + "/hidden/.dial-resource", null, "");

@@ -67,10 +67,10 @@ public enum RouteTemplate {
     ),
 
     // V2 whole-resource (folder-as-resource) routes.
-    // Single-segment reluctant path with a mandatory trailing slash enforces root-level resources
-    // with folder semantics (e.g. /v2/skills/{bucket}/{name}/).
+    // Single-segment reluctant path with no trailing slash enforces root-level resources addressed by
+    // name (e.g. /v2/skills/{bucket}/{name}).
     SKILL_FOLDER(
-            "^/v2/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>[^/]+/)$",
+            "^/v2/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>[^/]+)$",
             "/v2/skills/{bucket}/{path}"
     ),
     RESOURCE_METADATA(
