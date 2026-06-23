@@ -59,7 +59,7 @@ public class ModelCrossRefValidationApiTest extends ResourceBaseTest {
 
     @Test
     void testPutCreateKnownInterceptor() {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cr-known", null,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/cr-known", null,
                 MODEL_BODY_KNOWN_INTERCEPTOR, "authorization", "admin", "If-None-Match", "*");
         verify(put, 200);
         assertNotNull(put.headers().get("etag"));
@@ -67,7 +67,7 @@ public class ModelCrossRefValidationApiTest extends ResourceBaseTest {
 
     @Test
     void testPutCreateUnknownInterceptorReturns422() throws Exception {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cr-unknown", null,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/cr-unknown", null,
                 MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin", "If-None-Match", "*");
         verify(put, 422);
         JsonNode body = ProxyUtil.MAPPER.readTree(put.body());
@@ -82,17 +82,17 @@ public class ModelCrossRefValidationApiTest extends ResourceBaseTest {
 
     @Test
     void testPutCreateUnknownInterceptorNoCommit() {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cr-no-commit", null,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/cr-no-commit", null,
                 MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin", "If-None-Match", "*");
         verify(put, 422);
-        Response get = send(HttpMethod.GET, "/v1/models/public/cr-no-commit", null, "",
+        Response get = send(HttpMethod.GET, "/v1/models/platform/cr-no-commit", null, "",
                 "authorization", "admin");
         verify(get, 404);
     }
 
     @Test
     void testPutCreateMultipleUnknownInterceptors() throws Exception {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cr-multi", null,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/cr-multi", null,
                 MODEL_BODY_TWO_UNKNOWN, "authorization", "admin", "If-None-Match", "*");
         verify(put, 422);
         JsonNode warnings = ProxyUtil.MAPPER.readTree(put.body()).get("validationWarnings");
@@ -103,34 +103,34 @@ public class ModelCrossRefValidationApiTest extends ResourceBaseTest {
 
     @Test
     void testPutCreateEmptyInterceptorsArray() {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cr-empty", null,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/cr-empty", null,
                 MODEL_BODY_EMPTY_INTERCEPTORS, "authorization", "admin", "If-None-Match", "*");
         verify(put, 200);
     }
 
     @Test
     void testPutCreateInterceptorsAbsent() {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cr-absent", null,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/cr-absent", null,
                 MODEL_BODY_NO_INTERCEPTORS, "authorization", "admin", "If-None-Match", "*");
         verify(put, 200);
     }
 
     @Test
     void testPutUpdateUnknownInterceptorReturns422() {
-        verify(send(HttpMethod.PUT, "/v1/models/public/cr-put-bad", null,
+        verify(send(HttpMethod.PUT, "/v1/models/platform/cr-put-bad", null,
                 MODEL_BODY_NO_INTERCEPTORS, "authorization", "admin", "If-None-Match", "*"), 200);
 
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cr-put-bad", null,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/cr-put-bad", null,
                 MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin");
         verify(put, 422);
     }
 
     @Test
     void testPutUpdateKnownInterceptor() {
-        verify(send(HttpMethod.PUT, "/v1/models/public/cr-put-good", null,
+        verify(send(HttpMethod.PUT, "/v1/models/platform/cr-put-good", null,
                 MODEL_BODY_NO_INTERCEPTORS, "authorization", "admin", "If-None-Match", "*"), 200);
 
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cr-put-good", null,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/cr-put-good", null,
                 MODEL_BODY_KNOWN_INTERCEPTOR, "authorization", "admin");
         verify(put, 200);
     }
