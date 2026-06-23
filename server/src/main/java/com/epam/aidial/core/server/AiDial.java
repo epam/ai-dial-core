@@ -172,6 +172,8 @@ public class AiDial {
 
             vertx = Vertx.vertx(vertxOptions);
             HttpClientOptions clientOptions = new HttpClientOptions(settings("client"));
+            // upstream bodies (including SSE streams) are parsed/proxied, so they must be decoded
+            clientOptions.setDecompressionSupported(true);
             HttpProxySelector httpProxySelector = createHttpProxySelector(clientOptions);
             client = vertx.createHttpClient(clientOptions);
             WebSocketClientOptions webSocketClientOptions = new WebSocketClientOptions(settings("webSocketClient"));
