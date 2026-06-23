@@ -1,28 +1,28 @@
 package com.epam.aidial.core.credentials.keymanagement;
 
-import com.amazonaws.services.kms.AWSKMS;
-import com.amazonaws.services.kms.model.DecryptRequest;
-import com.amazonaws.services.kms.model.DecryptResult;
-import com.amazonaws.services.kms.model.EncryptRequest;
-import com.amazonaws.services.kms.model.EncryptResult;
-import com.amazonaws.services.kms.model.IncorrectKeyException;
-import com.amazonaws.services.kms.model.InvalidCiphertextException;
-import com.amazonaws.services.kms.model.InvalidKeyUsageException;
-import com.amazonaws.services.kms.model.KMSInvalidStateException;
 import com.epam.aidial.core.credentials.exception.CekEncryptionException;
+import software.amazon.awssdk.core.SdkBytes;
+import software.amazon.awssdk.services.kms.KmsClient;
+import software.amazon.awssdk.services.kms.model.DecryptRequest;
+import software.amazon.awssdk.services.kms.model.DecryptResponse;
+import software.amazon.awssdk.services.kms.model.EncryptRequest;
+import software.amazon.awssdk.services.kms.model.EncryptResponse;
+import software.amazon.awssdk.services.kms.model.IncorrectKeyException;
+import software.amazon.awssdk.services.kms.model.InvalidCiphertextException;
+import software.amazon.awssdk.services.kms.model.InvalidKeyUsageException;
+import software.amazon.awssdk.services.kms.model.KmsInvalidStateException;
 
-import java.nio.ByteBuffer;
 import java.util.Objects;
 
 public class AwsKeyManagementService implements KeyManagementService {
 
     private static final int KMS_DIRECT_ENCRYPT_LIMIT_BYTES = 4096;
 
-    private final AWSKMS kms;
+    private final KmsClient kms;
     private final String keyId;
     private final String encryptionAlgorithm;
 
-    public AwsKeyManagementService(AWSKMS kms,
+    public AwsKeyManagementService(KmsClient kms,
                                    String keyId,
                                    String encryptionAlgorithm) {
 
@@ -39,14 +39,15 @@ public class AwsKeyManagementService implements KeyManagementService {
                 throw new IllegalArgumentException("Plaintext too large for direct KMS Encrypt (max 4096 bytes).");
             }
 
-            EncryptRequest req = new EncryptRequest()
-                    .withKeyId(keyId)
-                    .withEncryptionAlgorithm(encryptionAlgorithm)
-                    .withPlaintext(ByteBuffer.wrap(plain));
+            EncryptRequest req = EncryptRequest.builder()
+                    .keyId(keyId)
+                    .encryptionAlgorithm(encryptionAlgorithm)
+                    .plaintext(SdkBytes.fromByteArray(plain))
+                    .build();
 
-            EncryptResult result = kms.encrypt(req);
-            return toByteArray(result.getCiphertextBlob());
-        } catch (InvalidKeyUsageException | KMSInvalidStateException e) {
+            EncryptResponse result = kms.encrypt(req);
+            return result.ciphertextBlob().asByteArray();
+        } catch (InvalidKeyUsageException | KmsInvalidStateException e) {
             throw new CekEncryptionException("Encryption error", e);
         }
     }
@@ -56,25 +57,18 @@ public class AwsKeyManagementService implements KeyManagementService {
         try {
             Objects.requireNonNull(encrypted, "encrypted");
 
-            DecryptRequest req = new DecryptRequest()
-                    .withKeyId(keyId)
-                    .withEncryptionAlgorithm(encryptionAlgorithm)
-                    .withCiphertextBlob(ByteBuffer.wrap(encrypted));
+            DecryptRequest req = DecryptRequest.builder()
+                    .keyId(keyId)
+                    .encryptionAlgorithm(encryptionAlgorithm)
+                    .ciphertextBlob(SdkBytes.fromByteArray(encrypted))
+                    .build();
 
-            DecryptResult result = kms.decrypt(req);
-            return toByteArray(result.getPlaintext());
+            DecryptResponse result = kms.decrypt(req);
+            return result.plaintext().asByteArray();
         } catch (InvalidCiphertextException | InvalidKeyUsageException
-                 | IncorrectKeyException | KMSInvalidStateException e) {
+                 | IncorrectKeyException | KmsInvalidStateException e) {
             throw new CekEncryptionException("Decryption error", e);
         }
-    }
-
-    private static byte[] toByteArray(ByteBuffer buffer) {
-        ByteBuffer copy = buffer.asReadOnlyBuffer();
-        copy.rewind();
-        byte[] out = new byte[copy.remaining()];
-        copy.get(out);
-        return out;
     }
 
 }
