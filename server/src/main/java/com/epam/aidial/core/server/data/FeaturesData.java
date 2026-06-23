@@ -32,6 +32,8 @@ public class FeaturesData {
     private boolean parallelToolCalls = true;
     private boolean assistantAttachmentsInRequest = false;
     private boolean mcp = false;
+    private boolean chatCompletion = false;
+    private boolean responsesApi = false;
     private boolean maxTokensSupported = true;
     private boolean maxCompletionTokensSupported = false;
     private boolean customTemperatureSupported = true;
