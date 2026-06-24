@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.util.Compression;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.sun.net.httpserver.HttpServer;
 import io.vertx.core.http.HttpMethod;
@@ -26,6 +27,8 @@ import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("checkstyle:LineLength")
 public class DeploymentPostApiTest extends ResourceBaseTest {
@@ -121,6 +124,44 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
             if (adapterRef.getValue() != null) {
                 adapterRef.getValue().stop(0);
             }
+        }
+    }
+
+    @Test
+    public void testStreaming_DecompressesGzipResponse() {
+        String responseBody = """
+                data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"this is a"}}],"usage":null}\r
+                data: {"id":"chatcmpl-2","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":"stop","delta":{}}],"usage":{"completion_tokens":20,"prompt_tokens":20,"total_tokens":40}}\r
+                data: [DONE]\r
+                """;
+        byte[] gzipped = Compression.compress("gzip", responseBody.getBytes(StandardCharsets.UTF_8));
+
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> {
+                okio.Buffer buffer = new okio.Buffer();
+                buffer.write(gzipped);
+                return new MockResponse()
+                        .setResponseCode(200)
+                        .setHeader("Content-Type", "text/event-stream")
+                        .setHeader("Content-Encoding", "gzip")
+                        .setChunkedBody(buffer, 16);
+            });
+
+            Response response = send(HttpMethod.POST,
+                    "/openai/deployments/gpt-3-turbo/chat/completions", null,
+                    """
+                    {"model":"gpt-3-turbo","stream":true,"messages":[{"role":"user","content":"how are you?"}]}
+                    """,
+                    "content-type", "application/json");
+
+            verify(response, 200);
+            // Without decompression the SSE parser would receive gzip binary and emit nothing;
+            // the decoded event proves the upstream gzip stream was inflated before parsing.
+            assertTrue(response.body().contains("\"content\":\"this is a\""),
+                    "Expected decoded SSE content, but got: " + response.body());
+            // The body delivered to the client is plaintext re-serialized SSE,
+            // so the upstream gzip Content-Encoding header must not leak to the client.
+            assertNull(response.headers().get("Content-Encoding"));
         }
     }
 

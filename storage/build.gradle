@@ -3,8 +3,10 @@ dependencies {
     implementation project(':config')
 
     // External dependencies
-    implementation("com.amazonaws:aws-java-sdk-core:${aws_java_sdk_version}")
-    implementation("com.amazonaws:aws-java-sdk-sts:${aws_java_sdk_version}")
+    implementation platform("software.amazon.awssdk:bom:${aws_sdk_v2_version}")
+    implementation("software.amazon.awssdk:auth")
+    implementation("software.amazon.awssdk:regions")
+    implementation("software.amazon.awssdk:sts")
     implementation("com.azure:azure-identity:${azure_version}")
     implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
     implementation("com.google.auth:google-auth-library-oauth2-http:${google_auth_version}")
@@ -13,6 +15,7 @@ dependencies {
     implementation("org.apache.commons:commons-lang3:${apache_commons_version}")
     implementation("org.apache.jclouds.api:filesystem:${apache_jclouds_version}")
     implementation("org.apache.jclouds:jclouds-allblobstore:${apache_jclouds_version}")
+    implementation("org.apache.jclouds.driver:jclouds-slf4j:2.7.0")
     implementation("org.redisson:redisson:${redisson_version}")
     implementation("org.slf4j:slf4j-api:${slf4j_version}")
 

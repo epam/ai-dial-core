@@ -3,6 +3,7 @@ package com.epam.aidial.core.storage.blobstore;
 import com.epam.aidial.core.storage.blobstore.credential.CredentialProvider;
 import com.epam.aidial.core.storage.blobstore.credential.CredentialProviderFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.google.common.collect.ImmutableSet;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.jclouds.ContextBuilder;
@@ -28,6 +29,7 @@ import org.jclouds.io.ContentMetadataBuilder;
 import org.jclouds.io.Payload;
 import org.jclouds.io.payloads.BaseMutableContentMetadata;
 import org.jclouds.io.payloads.ByteArrayPayload;
+import org.jclouds.logging.slf4j.config.SLF4JLoggingModule;
 import org.jclouds.s3.domain.ObjectMetadataBuilder;
 
 import java.io.Closeable;
@@ -68,6 +70,7 @@ public class BlobStorage implements Closeable {
         }
         CredentialProvider credentialProvider = CredentialProviderFactory.create(provider, config.getIdentity(), config.getCredential());
         builder.credentialsSupplier(credentialProvider::getCredentials);
+        builder.modules(ImmutableSet.of(new SLF4JLoggingModule()));
         this.storeContext = builder.buildView(BlobStoreContext.class);
         this.blobStore = storeContext.getBlobStore();
         this.bucketName = config.getBucket();

@@ -1,7 +1,5 @@
 package com.epam.aidial.core.storage.cache;
 
-import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
@@ -10,6 +8,8 @@ import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
 import org.redisson.config.ConfigSupport;
 import org.redisson.config.CredentialsResolver;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 
 import java.util.Objects;
 
@@ -50,7 +50,7 @@ public class CacheClientFactory {
         String clusterName = Objects.requireNonNull(providerSettings.get("clusterName"), "Redis cluster name must be provided").asText();
         boolean serverless = Objects.requireNonNull(providerSettings.get("serverless"), "Serverless flag must be provided").asBoolean();
         IamAuthTokenRequest iamAuthTokenRequest = new IamAuthTokenRequest(userId, clusterName, region, serverless);
-        AWSCredentialsProvider awsCredentialsProvider = new DefaultAWSCredentialsProviderChain();
+        AwsCredentialsProvider awsCredentialsProvider = DefaultCredentialsProvider.create();
         return new AwsCredentialsResolver(userId, iamAuthTokenRequest, awsCredentialsProvider);
     }
 

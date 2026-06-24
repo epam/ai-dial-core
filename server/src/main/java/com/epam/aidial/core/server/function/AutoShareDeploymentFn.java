@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.UrlUtil;
 
 import javax.annotation.Nullable;
 
@@ -64,7 +65,7 @@ public class AutoShareDeploymentFn extends BaseRequestFunction<RequestObject> {
             return null;
         }
         try {
-            return ResourceDescriptorFactory.fromAnyUrl(id, proxy.getEncryptionService());
+            return ResourceDescriptorFactory.fromAnyUrl(UrlUtil.encodePath(id), proxy.getEncryptionService());
         } catch (Exception e) {
             return null;
         }

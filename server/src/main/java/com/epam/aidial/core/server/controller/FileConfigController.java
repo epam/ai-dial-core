@@ -191,9 +191,11 @@ public class FileConfigController implements Controller {
             case PROJECT_KEY -> config.getKeys();
             case ROUTE -> config.getRoutes();
             case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas();
+            case APPLICATION -> config.getApplications();
+            case TOOL_SET -> config.getToolsets();
             // GLOBAL_SETTINGS has no per-entity map — handled by handleSettings before this helper.
-            // Other types (APPLICATION, TOOL_SET, FILE, PROMPT, CONVERSATION) are not part of the
-            // file-config surface; the route regex restricts {type} to the closed set above.
+            // Other types (FILE, PROMPT, CONVERSATION) are not part of the file-config surface;
+            // the route regex restricts {type} to the closed set above.
             default -> null;
         };
     }
