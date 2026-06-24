@@ -137,7 +137,7 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
         byte[] gzipped = Compression.compress("gzip", responseBody.getBytes(StandardCharsets.UTF_8));
 
         try (TestWebServer server = new TestWebServer(4848)) {
-            server.map(HttpMethod.POST, "/chat/completions", request -> {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-3-turbo/chat/completions", request -> {
                 okio.Buffer buffer = new okio.Buffer();
                 buffer.write(gzipped);
                 return new MockResponse()
