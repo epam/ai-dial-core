@@ -19,7 +19,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Run Security Review
         uses: anthropics/claude-code-security-review@main
