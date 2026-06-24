@@ -7,7 +7,7 @@ plugins {
 
 allprojects {
     group = 'com.epam.aidial'
-    version = "0.0.0"
+    version = "0.45.0-rc.0"
 
     apply plugin: 'java'
     apply plugin: 'checkstyle'
