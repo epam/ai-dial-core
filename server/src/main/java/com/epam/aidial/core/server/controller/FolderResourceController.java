@@ -7,7 +7,6 @@ import com.epam.aidial.core.server.service.folder.FolderResourceHandler;
 import com.epam.aidial.core.server.service.folder.FolderResourceService;
 import com.epam.aidial.core.server.service.folder.SkillHandler;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
@@ -37,15 +36,11 @@ public class FolderResourceController extends AccessControlBaseController {
     private static final Map<ResourceType, FolderResourceHandler> HANDLERS = Map.of(
             ResourceTypes.SKILL, new SkillHandler());
 
-    private static final int PIPE_BUFFER_SIZE = 64 * 1024;
-
     private final FolderResourceService folderResourceService;
-    private final AsyncTaskExecutor asyncTaskExecutor;
 
     public FolderResourceController(Proxy proxy, ProxyContext context, boolean isWriteAccess) {
         super(proxy, context, isWriteAccess);
         this.folderResourceService = proxy.getFolderResourceService();
-        this.asyncTaskExecutor = proxy.getTaskExecutor();
     }
 
     @Override

@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -107,7 +108,7 @@ public class FolderResourceService {
                 String aggregateEtag = aggregate.build();
 
                 long now = System.currentTimeMillis();
-                FolderResourceMarker existing = readMarker(marker);
+                FolderResourceMarker existing = readMarker(marker, false);
                 FolderResourceMarker document = new FolderResourceMarker();
                 document.setType(resource.getType().group());
                 document.setSchemaVersion(SCHEMA_VERSION);
@@ -119,7 +120,7 @@ public class FolderResourceService {
                 document.setAuthor(author);
                 document.setMetadata(handler.buildMarkerMetadata(files));
 
-                String json = ProxyUtil.convertToString(document);
+                String json = Objects.requireNonNull(ProxyUtil.convertToString(document));
                 resourceService.putResource(marker, json, EtagHeader.ANY, author, false);
                 return aggregateEtag;
             } catch (Exception e) {
@@ -134,12 +135,12 @@ public class FolderResourceService {
      * Returns the {@code .dial-resource} marker of the resource, or {@code null} if it does not exist.
      */
     public FolderResourceMarker getMarker(ResourceDescriptor resource) {
-        return readMarker(markerDescriptor(resource));
+        return readMarker(markerDescriptor(resource), true);
     }
 
     @SneakyThrows
-    public Buffer downloadArchive(ResourceDescriptor resource, String currentVersion) {
-        ResourceDescriptor versionFolder = versionFolder(resource, currentVersion);
+    public Buffer downloadArchive(ResourceDescriptor resource, String version) {
+        ResourceDescriptor versionFolder = versionFolder(resource, version);
         ByteArrayOutputStream archive = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(archive)) {
             for (ResourceDescriptor file : listVersionFiles(versionFolder)) {
@@ -185,13 +186,12 @@ public class FolderResourceService {
     }
 
     private String readAggregateEtag(ResourceDescriptor marker) {
-        FolderResourceMarker document = readMarker(marker);
+        FolderResourceMarker document = readMarker(marker, false);
         return document == null ? null : document.getEtag();
     }
 
-    private FolderResourceMarker readMarker(ResourceDescriptor marker) {
-        // The lock (if held) is on this same key, so read without an inner lock to avoid a self-deadlock.
-        String json = resourceService.getResource(marker, EtagHeader.ANY, false);
+    private FolderResourceMarker readMarker(ResourceDescriptor marker, boolean lock) {
+        String json = resourceService.getResource(marker, EtagHeader.ANY, lock);
         if (json == null) {
             return null;
         }
@@ -220,7 +220,7 @@ public class FolderResourceService {
         parentFolders.add(VERSION_PREFIX);
         parentFolders.add(versionId);
         parentFolders.addAll(segments.subList(0, segments.size() - 1));
-        String name = segments.get(segments.size() - 1);
+        String name = segments.getLast();
         return new ResourceDescriptor(resource.getType(), name, parentFolders,
                 resource.getBucketName(), resource.getBucketLocation(), false);
     }
