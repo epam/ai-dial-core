@@ -13,11 +13,12 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagBuilder;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.buffer.Buffer;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -136,13 +137,11 @@ public class FolderResourceService {
         return readMarker(markerDescriptor(resource));
     }
 
-    /**
-     * Writes a ZIP archive of the current version's files (marker excluded) to the given stream. The stream
-     * is closed when the archive is complete. Intended to run on a dedicated worker thread.
-     */
-    public void writeArchive(OutputStream out, ResourceDescriptor resource, FolderResourceMarker document) {
-        ResourceDescriptor versionFolder = versionFolder(resource, document.getCurrentVersion());
-        try (ZipOutputStream zip = new ZipOutputStream(out)) {
+    @SneakyThrows
+    public Buffer downloadArchive(ResourceDescriptor resource, String currentVersion) {
+        ResourceDescriptor versionFolder = versionFolder(resource, currentVersion);
+        ByteArrayOutputStream archive = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(archive)) {
             for (ResourceDescriptor file : listVersionFiles(versionFolder)) {
                 try (ResourceService.ResourceStream resourceStream = resourceService.getResourceStream(file, EtagHeader.ANY)) {
                     if (resourceStream == null) {
@@ -155,9 +154,8 @@ public class FolderResourceService {
                     zip.closeEntry();
                 }
             }
-        } catch (Exception e) {
-            log.warn("Failed to produce archive for: {}", resource.getUrl(), e);
         }
+        return Buffer.buffer(archive.toByteArray());
     }
 
     private List<ResourceDescriptor> listVersionFiles(ResourceDescriptor versionFolder) {

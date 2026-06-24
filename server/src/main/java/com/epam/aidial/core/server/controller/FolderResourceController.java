@@ -8,7 +8,6 @@ import com.epam.aidial.core.server.service.folder.FolderResourceService;
 import com.epam.aidial.core.server.service.folder.SkillHandler;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
-import com.epam.aidial.core.server.vertx.stream.InputStreamReader;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
@@ -21,12 +20,9 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
-import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.impl.HttpUtils;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -112,7 +108,8 @@ public class FolderResourceController extends AccessControlBaseController {
                     if (document == null) {
                         return context.respond(HttpStatus.NOT_FOUND).mapEmpty();
                     }
-                    return streamArchive(resource, document).mapEmpty();
+                    downloadArchive(resource, document);
+                    return Future.succeededFuture();
                 })
                 .recover(error -> {
                     log.warn("Failed to download resource: {}", resource.getUrl(), error);
@@ -121,36 +118,14 @@ public class FolderResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
-    private Future<?> streamArchive(ResourceDescriptor resource, FolderResourceMarker document) {
-        PipedOutputStream pipedOutput = new PipedOutputStream();
-        PipedInputStream pipedInput;
-        try {
-            pipedInput = new PipedInputStream(pipedOutput, PIPE_BUFFER_SIZE);
-        } catch (Exception e) {
-            return context.respond(e, "Failed to download resource: " + resource.getUrl());
-        }
+    private void downloadArchive(ResourceDescriptor resource, FolderResourceMarker document) {
+        Buffer archive = folderResourceService.downloadArchive(resource, document.getCurrentVersion());
 
-        // Dedicated producer thread: the producer blocks on a full pipe until the reader drains, so it
-        // must run independently of the reader to avoid worker-pool starvation.
-        asyncTaskExecutor.submit(() -> {
-            folderResourceService.writeArchive(pipedOutput, resource, document);
-            return null;
-        });
-
-        HttpServerResponse response = context.putHeader(HttpHeaders.CONTENT_TYPE, "application/zip")
+        context.putHeader(HttpHeaders.CONTENT_TYPE, "application/zip")
                 .putHeader(HttpHeaders.ETAG, document.getEtag())
-                .exposeHeaders()
-                .getResponse();
-        response.setChunked(true);
+                .putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(archive.length()))
+                .exposeHeaders();
 
-        InputStreamReader stream = new InputStreamReader(proxy.getVertx(), proxy.getTaskExecutor(), pipedInput);
-        stream.pipe()
-                .endOnFailure(false)
-                .to(response)
-                .onFailure(error -> {
-                    stream.close();
-                    response.reset();
-                });
-        return Future.succeededFuture();
+        context.respond(HttpStatus.OK.getCode(), archive);
     }
 }
