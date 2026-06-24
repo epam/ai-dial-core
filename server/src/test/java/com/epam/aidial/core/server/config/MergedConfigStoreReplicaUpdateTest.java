@@ -49,7 +49,7 @@ public class MergedConfigStoreReplicaUpdateTest {
 
     private static final String POD_ID = "pod-this";
     private static final String KEY_ID = "keys/platform/proj-a";
-    private static final String MODEL_ID = "models/public/gpt-4";
+    private static final String MODEL_ID = "models/platform/gpt-4";
     private static final String SETTINGS_ID = "settings/platform/global";
     private static final String KEY_JSON =
             "{\"project\":\"proj-a\",\"role\":\"admin-role\",\"key\":\"secret-A\"}";
@@ -118,8 +118,8 @@ public class MergedConfigStoreReplicaUpdateTest {
 
     @Test
     public void isManagedEventUrlMatchesManagedSegments() {
-        assertTrue(MergedConfigStore.isManagedEventUrl("models/public/gpt-4"));
-        assertTrue(MergedConfigStore.isManagedEventUrl("schemas/public/s-1"));
+        assertTrue(MergedConfigStore.isManagedEventUrl("models/platform/gpt-4"));
+        assertTrue(MergedConfigStore.isManagedEventUrl("schemas/platform/s-1"));
         assertTrue(MergedConfigStore.isManagedEventUrl("interceptors/public/i-1"));
         assertTrue(MergedConfigStore.isManagedEventUrl("roles/public/r-1"));
         assertTrue(MergedConfigStore.isManagedEventUrl("keys/platform/proj-a"));

@@ -47,7 +47,7 @@ import java.util.function.Function;
  * {@link ConfigStore} implementation that builds the runtime {@link Config} as the
  * union of {@link FileConfigStore} and API-managed entities loaded from
  * {@link ResourceService}. Per design 02 §4: file entries keep simple-name keys
- * ("gpt-4"); API entries use canonical-ID keys ("models/public/gpt-4"). Both
+ * ("gpt-4"); API entries use canonical-ID keys ("models/platform/gpt-4"). Both
  * coexist in the same {@code Config} maps.
  *
  * <p>Slice 2S.9 adds the invalid-entity sibling store. Per-entity failures route
@@ -1058,7 +1058,7 @@ public final class MergedConfigStore implements ConfigStore {
         ConfigPostProcessor.processSemantic(merged, apiKeyStore, base.getKeys(), apiKeysByCanonicalId, onSkip);
 
         // ConfigPostProcessor sets entity.name = mapKey: canonical ID for API entries
-        // ("models/public/foo"), simple name for file entries ("gpt-4"). This is the OQ-23 contract:
+        // ("models/platform/foo"), simple name for file entries ("gpt-4"). This is the OQ-23 contract:
         // canonical IDs surface on legacy /openai/models, /openai/deployments, and rate-limit
         // role-limit lookups for API-managed deployments. The new admin Configuration API listing
         // controller projects simpleName(mapKey) independently per design 03 §4.

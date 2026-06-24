@@ -44,7 +44,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 public class MergedConfigStorePartialUpdateTest {
 
-    private static final String MODEL_ID = "models/public/gpt-4";
+    private static final String MODEL_ID = "models/platform/gpt-4";
     private static final String INTERCEPTOR_ID = "interceptors/platform/chain-a";
     private static final String ROLE_ID = "roles/platform/admin";
     private static final String KEY_ID = "keys/platform/proj-a";
@@ -113,7 +113,7 @@ public class MergedConfigStorePartialUpdateTest {
         Map<String, InvalidEntityRecord> invalidModels = store.getInvalidEntities().get(ResourceTypes.MODEL);
         assertEquals(2, invalidModels.size(), "both cross-ref-invalidated models recorded");
 
-        InvalidEntityRecord fileRecord = invalidModels.get("models/public/gpt-4-file");
+        InvalidEntityRecord fileRecord = invalidModels.get("models/platform/gpt-4-file");
         assertEquals("file", fileRecord.getSource(), "bare-key model attributed to file source");
         assertEquals("gpt-4-file", fileRecord.getSimpleName());
 
@@ -196,12 +196,12 @@ public class MergedConfigStorePartialUpdateTest {
         // Second entry has a type/entity mismatch (Role passed under MODEL type) — putEntity ClassCast.
         List<EntityChange> changes = List.of(
                 new EntityChange(ResourceTypes.MODEL, MODEL_ID, new Model()),
-                new EntityChange(ResourceTypes.MODEL, "models/public/bad", new Role()));
+                new EntityChange(ResourceTypes.MODEL, "models/platform/bad", new Role()));
 
         Map<String, String> failures = store.applyBatch(changes);
 
         assertEquals(1, failures.size(), "one failure recorded");
-        assertTrue(failures.containsKey("models/public/bad"));
+        assertTrue(failures.containsKey("models/platform/bad"));
         assertTrue(store.get().getModels().containsKey(MODEL_ID), "first entry applied despite second failing");
     }
 
