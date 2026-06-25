@@ -18,7 +18,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
-import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -26,6 +25,7 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 
+import javax.annotation.Nullable;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -36,9 +36,6 @@ import java.util.Optional;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
-import javax.annotation.Nullable;
 
 @Slf4j
 public class GfLogStore implements LogStore {
@@ -129,7 +126,7 @@ public class GfLogStore implements LogStore {
             append(entry, Long.toString(tokenUsage.getTotalTokens()), true);
             if (tokenUsage.getPromptTokensDetails() != null) {
                 PromptTokensDetails details = tokenUsage.getPromptTokensDetails();
-                append(entry, ",\"prompt_token_details\":{\"cached_tokens\":", false);
+                append(entry, ",\"prompt_tokens_details\":{\"cached_tokens\":", false);
                 append(entry, Long.toString(details.getCachedTokens()), true);
                 append(entry, "}", false);
             }
