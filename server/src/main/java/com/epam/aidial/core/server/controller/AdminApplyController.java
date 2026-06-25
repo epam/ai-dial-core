@@ -616,6 +616,7 @@ public class AdminApplyController {
         return new ApplyResponse(status, new AdminApplyResponse(applied, failed, responseResults));
     }
 
-    record EntityResult(String entityId, AdminApplyStatus status, String error) {}
+    private record EntityResult(String entityId, AdminApplyStatus status, String error) {}
+
     private record ApplyResponse(HttpStatus status, AdminApplyResponse body) {}
 }

@@ -354,5 +354,6 @@ public class FileConfigController implements Controller {
     }
 
     record ItemsResponse<T>(List<T> items) {}
+
     record NamedEntity(String name) {}
 }
