@@ -132,14 +132,14 @@ public class InterfaceMigrationTest {
     }
 
     @Test
-    public void testHasLegacyEndpointsNativeInterfacesOnly() {
+    public void testHasLegacyEndpointsNativeInterfacesWithStaleLegacy() {
         ObjectNode root = MAPPER.createObjectNode();
         ObjectNode model = root.putObject("models").putObject("native");
         model.put("endpoint", "http://legacy:1/x");
         model.putObject("interfaces").putObject("openaiChatCompletions").put("base_url", "http://native:9999");
 
-        // native interfaces win -> nothing to migrate -> no warning
-        assertFalse(InterfaceMigration.hasLegacyEndpoints(root));
+        // the obsolete legacy field is still detected (write-back strips it even though interfaces win)
+        assertTrue(InterfaceMigration.hasLegacyEndpoints(root));
     }
 
     @Test
@@ -201,18 +201,26 @@ public class InterfaceMigrationTest {
     }
 
     @Test
-    public void testMigrateRawTreeNativeInterfacesUntouched() {
+    public void testMigrateRawTreeStripsLegacyKeepsNativeInterfaces() {
         ObjectNode root = MAPPER.createObjectNode();
         ObjectNode model = root.putObject("models").putObject("native");
         model.put("endpoint", "http://legacy:1/x");
+        model.put("responsesEndpoint", "http://legacy:2/y");
         model.putObject("interfaces")
                 .putObject("openaiChatCompletions")
                 .put("base_url", "http://native:9999");
 
-        assertFalse(InterfaceMigration.migrateRawTree(root));
-        assertEquals("http://legacy:1/x", model.path("endpoint").asText());
+        // the redundant legacy fields are stripped, native interfaces are preserved (not overwritten)
+        assertTrue(InterfaceMigration.migrateRawTree(root));
+        assertFalse(model.has("endpoint"));
+        assertFalse(model.has("responsesEndpoint"));
         assertEquals("http://native:9999",
                 model.path("interfaces").path("openaiChatCompletions").path("base_url").asText()
         );
+        // native interfaces are not augmented from the dropped legacy responsesEndpoint
+        assertTrue(model.path("interfaces").path("openaiResponses").isMissingNode());
+
+        // idempotent
+        assertFalse(InterfaceMigration.migrateRawTree(root));
     }
 }

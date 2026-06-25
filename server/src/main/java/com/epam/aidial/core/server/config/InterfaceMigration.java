@@ -121,9 +121,11 @@ public final class InterfaceMigration {
     }
 
     /**
-     * Non-mutating detector mirroring {@link #migrateRawTree}: returns {@code true} when any model or
-     * application node still carries a legacy {@code endpoint}/{@code responsesEndpoint} that would be
-     * migrated. Used to decide whether to warn when config-file write-back is disabled.
+     * Non-mutating detector mirroring {@link #migrateRawTree}: returns {@code true} when any model,
+     * application or interceptor node still carries a legacy {@code endpoint}/{@code responsesEndpoint}
+     * field that write-back would strip — including nodes that already declare native {@code interfaces}
+     * (the redundant legacy fields are still removed). Used to decide whether to warn when config-file
+     * write-back is disabled.
      */
     public static boolean hasLegacyEndpoints(JsonNode root) {
         if (root == null || !root.isObject()) {
@@ -160,34 +162,46 @@ public final class InterfaceMigration {
     }
 
     /**
-     * Raw-tree migration for a single deployment node. Preserves all other fields and key order.
+     * Raw-tree migration for a single deployment node. Always removes the obsolete {@code endpoint} /
+     * {@code responsesEndpoint} fields; derives {@code interfaces} from them only when the node does not
+     * already declare native interfaces (a non-empty {@code interfaces} wins and is left untouched).
+     * Preserves all other fields and key order. Returns {@code true} when the node was changed.
      */
     static boolean migrateRawDeploymentNode(ObjectNode node) {
         if (node == null || !nodeHasLegacy(node)) {
             return false;
         }
-        JsonNode endpoint = node.get(ENDPOINT_FIELD);
-        JsonNode responsesEndpoint = node.get(RESPONSES_ENDPOINT_FIELD);
-        ObjectNode interfaces = node.objectNode();
-        if (isTextual(endpoint)) {
-            interfaces.set(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(),
-                    interfaceNode(node, authority(endpoint.asText())));
+        if (!hasNativeInterfaces(node)) {
+            JsonNode endpoint = node.get(ENDPOINT_FIELD);
+            JsonNode responsesEndpoint = node.get(RESPONSES_ENDPOINT_FIELD);
+            ObjectNode interfaces = node.objectNode();
+            if (isTextual(endpoint)) {
+                interfaces.set(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(),
+                        interfaceNode(node, authority(endpoint.asText())));
+            }
+            if (isTextual(responsesEndpoint)) {
+                interfaces.set(InterfaceType.OPENAI_RESPONSES.getValue(),
+                        interfaceNode(node, authority(responsesEndpoint.asText())));
+            }
+            node.set(INTERFACES_FIELD, interfaces);
         }
-        if (isTextual(responsesEndpoint)) {
-            interfaces.set(InterfaceType.OPENAI_RESPONSES.getValue(),
-                    interfaceNode(node, authority(responsesEndpoint.asText())));
-        }
-        node.set(INTERFACES_FIELD, interfaces);
         node.remove(ENDPOINT_FIELD);
         node.remove(RESPONSES_ENDPOINT_FIELD);
         return true;
     }
 
+    /**
+     * Literal presence of a legacy {@code endpoint} / {@code responsesEndpoint} field, independent of
+     * whether native {@code interfaces} are declared. These obsolete fields are always stripped by
+     * {@link #migrateRawDeploymentNode} and reported by {@link #hasLegacyEndpoints}.
+     */
     private static boolean nodeHasLegacy(ObjectNode node) {
-        JsonNode existing = node.get(INTERFACES_FIELD);
-        boolean hasInterfaces = existing != null && existing.isObject() && !existing.isEmpty();
-        boolean hasLegacy = isTextual(node.get(ENDPOINT_FIELD)) || isTextual(node.get(RESPONSES_ENDPOINT_FIELD));
-        return hasLegacy && !hasInterfaces;
+        return isTextual(node.get(ENDPOINT_FIELD)) || isTextual(node.get(RESPONSES_ENDPOINT_FIELD));
+    }
+
+    private static boolean hasNativeInterfaces(ObjectNode node) {
+        JsonNode interfaces = node.get(INTERFACES_FIELD);
+        return interfaces != null && interfaces.isObject() && !interfaces.isEmpty();
     }
 
     private static ObjectNode interfaceNode(ObjectNode parent, String baseUrl) {
