@@ -44,6 +44,7 @@ servers:
 security:
 - ApiKeyAuth: []
 tags:
+- name: Admin
 - name: Applications
 - name: Client channel
 - name: Code interpreter
@@ -62,11 +63,11 @@ tags:
 - name: Notifications
 - name: Prompts
 - name: Publications
+- name: Responses API
 - name: Roles
 - name: Routes
 - name: Schemas
 - name: Sharing
-- name: ToolSets
 - name: Toolsets
 - name: User Consent
 paths:
@@ -5282,6 +5283,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      parameters:
+      - name: permissions
+        in: query
+        required: false
+        schema:
+          type: string
   /v1/ops/publication/rule/list:
     post:
       tags:
@@ -5441,7 +5448,7 @@ paths:
       - Conversations
       - Prompts
       - Applications
-      - ToolSets
+      - Toolsets
       summary: /v1/ops/resource/copy
       description: |
         Copies the source resource to the destination.
@@ -5502,7 +5509,7 @@ paths:
       - Conversations
       - Prompts
       - Applications
-      - ToolSets
+      - Toolsets
       summary: /v1/ops/resource/move
       operationId: moveResource
       requestBody:
@@ -7496,12 +7503,6 @@ paths:
         schema:
           type: boolean
       responses:
-        "200":
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MetadataBase"
         "400":
           description: Bad request
           content:
@@ -7528,6 +7529,2419 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Metadata listing is not supported for Global Settings
+          headers:
+            Allow:
+              description: Supported HTTP methods
+              required: false
+              schema:
+                type: string
+  /openai/v1/responses/{response_id}:
+    get:
+      tags:
+      - Responses API
+      summary: "/openai/v1/responses/{response_id}"
+      operationId: getResponseItem
+      parameters:
+      - name: response_id
+        in: path
+        description: The ID of the response to retrieve
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyResponse"
+            text/event-stream:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProxyResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "503":
+          description: "The engine is currently overloaded, please try again later."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    delete:
+      tags:
+      - Responses API
+      summary: "/openai/v1/responses/{response_id}"
+      operationId: deleteResponseItem
+      parameters:
+      - name: response_id
+        in: path
+        description: The ID of the response to delete
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "503":
+          description: "The engine is currently overloaded, please try again later."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /openai/v1/responses/{response_id}/cancel:
+    post:
+      tags:
+      - Responses API
+      summary: "/openai/v1/responses/{response_id}/cancel"
+      operationId: cancelResponseItem
+      parameters:
+      - name: response_id
+        in: path
+        description: The ID of the response to cancel
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "503":
+          description: "The engine is currently overloaded, please try again later."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/admin/apply:
+    post:
+      tags:
+      - Admin
+      summary: /v1/admin/apply
+      operationId: applyConfigManifests
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminApplyRequest"
+        required: true
+      responses:
+        "200":
+          description: Application successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminApplyResponse"
+        "422":
+          description: Precheck failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminApplyResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/admin/config/file/interceptors:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/interceptors
+      operationId: listFileConfigInterceptors
+      responses:
+        "200":
+          description: List of file-sourced interceptors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/admin/config/file/interceptors/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/interceptors/{name}"
+      operationId: getFileConfigInterceptor
+      parameters:
+      - name: name
+        in: path
+        description: Interceptor name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Interceptor"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/admin/config/file/models:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/models
+      operationId: listFileConfigModels
+      responses:
+        "200":
+          description: List of file-sourced models
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/admin/config/file/models/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/models/{name}"
+      operationId: getFileConfigModel
+      parameters:
+      - name: name
+        in: path
+        description: Model name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Model"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/admin/config/file/roles:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/roles
+      operationId: listFileConfigRoles
+      responses:
+        "200":
+          description: List of file-sourced roles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/admin/config/file/roles/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/roles/{name}"
+      operationId: getFileConfigRole
+      parameters:
+      - name: name
+        in: path
+        description: Role name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Role"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/admin/config/file/routes:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/routes
+      operationId: listFileConfigRoutes
+      responses:
+        "200":
+          description: List of file-sourced routes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/admin/config/file/routes/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/routes/{name}"
+      operationId: getFileConfigRoute
+      parameters:
+      - name: name
+        in: path
+        description: Route name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Route"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/admin/config/file/schemas:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/schemas
+      operationId: listFileConfigSchemas
+      responses:
+        "200":
+          description: List of file-sourced application type schemas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/admin/config/file/schemas/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/schemas/{name}"
+      operationId: getFileConfigSchema
+      parameters:
+      - name: name
+        in: path
+        description: Schema name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/ProxyResponse"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/admin/config/file/settings:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/settings
+      operationId: listFileConfigSettings
+      responses:
+        "200":
+          description: List of file-sourced settings (singleton)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/admin/config/file/settings/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/settings/{name}"
+      operationId: getFileConfigSettings
+      parameters:
+      - name: name
+        in: path
+        description: Must be 'global'
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/GlobalSettings"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/admin/health/config:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/health/config
+      operationId: getConfigHealth
+      responses:
+        "200":
+          description: Configuration health status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/admin/validate:
+    post:
+      tags:
+      - Admin
+      summary: /v1/admin/validate
+      operationId: validateConfigManifests
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminApplyRequest"
+        required: true
+      responses:
+        "200":
+          description: Validation successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminValidateResponse"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminValidateResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/interceptors/{bucket}/{path}:
+    get:
+      tags:
+      - Interceptors
+      summary: "/v1/interceptors/{bucket}/{path}"
+      operationId: getInterceptor
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Interceptor name
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the interceptor
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Interceptor"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    put:
+      tags:
+      - Interceptors
+      summary: "/v1/interceptors/{bucket}/{path}"
+      operationId: saveInterceptor
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Interceptor name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Interceptor"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved interceptor
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceItemMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    delete:
+      tags:
+      - Interceptors
+      summary: "/v1/interceptors/{bucket}/{path}"
+      operationId: deleteInterceptor
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Interceptor name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/keys/{bucket}/{path}:
+    get:
+      tags:
+      - Keys
+      summary: "/v1/keys/{bucket}/{path}"
+      operationId: getKey
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Key name
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the key
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Key"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    put:
+      tags:
+      - Keys
+      summary: "/v1/keys/{bucket}/{path}"
+      operationId: saveKey
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Key name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Key"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved key
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceItemMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    delete:
+      tags:
+      - Keys
+      summary: "/v1/keys/{bucket}/{path}"
+      operationId: deleteKey
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Key name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/models/{bucket}/{path}:
+    get:
+      tags:
+      - Models
+      summary: "/v1/models/{bucket}/{path}"
+      operationId: getModelByPath
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Model name
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the model
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Model"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    put:
+      tags:
+      - Models
+      summary: "/v1/models/{bucket}/{path}"
+      operationId: saveModel
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Model name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Model"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved model
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceItemMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    delete:
+      tags:
+      - Models
+      summary: "/v1/models/{bucket}/{path}"
+      operationId: deleteModel
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Model name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/roles/{bucket}/{path}:
+    get:
+      tags:
+      - Roles
+      summary: "/v1/roles/{bucket}/{path}"
+      operationId: getRole
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Role name
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the role
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Role"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    put:
+      tags:
+      - Roles
+      summary: "/v1/roles/{bucket}/{path}"
+      operationId: saveRole
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Role name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Role"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved role
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceItemMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    delete:
+      tags:
+      - Roles
+      summary: "/v1/roles/{bucket}/{path}"
+      operationId: deleteRole
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Role name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/routes/{bucket}/{path}:
+    get:
+      tags:
+      - Routes
+      summary: "/v1/routes/{bucket}/{path}"
+      operationId: getRoute
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Route name
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the route
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Route"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    put:
+      tags:
+      - Routes
+      summary: "/v1/routes/{bucket}/{path}"
+      operationId: saveRoute
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Route name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Route"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved route
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceItemMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    delete:
+      tags:
+      - Routes
+      summary: "/v1/routes/{bucket}/{path}"
+      operationId: deleteRoute
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Route name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/schemas/{bucket}/{path}:
+    get:
+      tags:
+      - Schemas
+      summary: "/v1/schemas/{bucket}/{path}"
+      operationId: getSchema
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: schema ID of custom application
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the schema
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/ProxyResponse"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    put:
+      tags:
+      - Schemas
+      summary: "/v1/schemas/{bucket}/{path}"
+      operationId: saveSchema
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: schema ID of custom application
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProxyRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved schema
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceItemMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    delete:
+      tags:
+      - Schemas
+      summary: "/v1/schemas/{bucket}/{path}"
+      operationId: deleteSchema
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: schema ID of custom application
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/settings/{bucket}/{path}:
+    get:
+      tags:
+      - Global Settings
+      summary: "/v1/settings/{bucket}/{path}"
+      operationId: getGlobalSettings
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Must be 'global'
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/GlobalSettings"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    put:
+      tags:
+      - Global Settings
+      summary: "/v1/settings/{bucket}/{path}"
+      operationId: saveGlobalSettings
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Must be 'global'
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GlobalSettings"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved settings
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceItemMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    delete:
+      tags:
+      - Global Settings
+      summary: "/v1/settings/{bucket}/{path}"
+      operationId: deleteGlobalSettings
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Must be 'global'
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -7638,6 +10052,8 @@ components:
           type: boolean
         cache:
           type: boolean
+        chat_completion:
+          type: boolean
         configuration:
           type: boolean
         content_parts:
@@ -7660,6 +10076,8 @@ components:
           type: array
           items:
             type: string
+        responses_api:
+          type: boolean
         seed:
           type: boolean
         system_prompt:
@@ -10425,6 +12843,129 @@ components:
         rate:
           type: boolean
           default: false
+    ProxyResponse:
+      type: object
+      additionalProperties: true
+    AdminManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/JsonNode"
+    AdminApplyRequest:
+      type: object
+      properties:
+        manifests:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminManifest"
+        precheck:
+          type: boolean
+    AdminApplyResult:
+      type: object
+      properties:
+        entityId:
+          type: string
+        error:
+          type: string
+        status:
+          $ref: "#/components/schemas/AdminApplyStatus"
+    AdminApplyStatus:
+      type: string
+      enum:
+      - applied
+      - applied_invalid
+      - FAILED
+      - skipped
+    AdminApplyResponse:
+      type: object
+      properties:
+        applied:
+          type: integer
+        failed:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminApplyResult"
+    FileConfigControllerNamedEntity:
+      type: object
+      properties:
+        name:
+          type: string
+    FileConfigControllerItemsResponseFileConfigControllerNamedEntity:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileConfigControllerNamedEntity"
+    EntityMetadata:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+    GlobalSettings:
+      type: object
+      properties:
+        globalInterceptors:
+          type: array
+          items:
+            type: string
+        retriableErrorCodes:
+          type: array
+          items:
+            type: integer
+    SkippedEntity:
+      type: object
+      properties:
+        id:
+          type: string
+        reason:
+          type: string
+    HealthResponse:
+      type: object
+      properties:
+        skipped:
+          type: array
+          items:
+            $ref: "#/components/schemas/SkippedEntity"
+        status:
+          type: string
+    ValidationResult:
+      type: object
+      properties:
+        entityId:
+          type: string
+        error:
+          type: string
+        status:
+          $ref: "#/components/schemas/ValidationStatus"
+    ValidationStatus:
+      type: string
+      enum:
+      - valid
+      - FAILED
+      - skipped
+    AdminValidateResponse:
+      type: object
+      properties:
+        failed:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationResult"
+        valid:
+          type: integer
+    ProxyRequest:
+      type: object
+      additionalProperties: true
   securitySchemes:
     ApiKeyAuth:
       type: apiKey

@@ -67,7 +67,7 @@ public class ResourceOperationController {
             path = "/v1/ops/resource/move",
             operationId = "moveResource",
             requestBody = MoveResourcesRequest.class,
-            tags = {"Files", "Conversations", "Prompts", "Applications", "ToolSets"},
+            tags = {"Files", "Conversations", "Prompts", "Applications", "Toolsets"},
             responses = {
                     @ApiResponse(code = 200, description = "Success")
             },
@@ -135,7 +135,7 @@ public class ResourceOperationController {
             path = "/v1/ops/resource/copy",
             operationId = "copyResource",
             requestBody = CopyResourcesRequest.class,
-            tags = {"Files", "Conversations", "Prompts", "Applications", "ToolSets"},
+            tags = {"Files", "Conversations", "Prompts", "Applications", "Toolsets"},
             responses = {
                     @ApiResponse(code = 200, description = "Success")
             },
