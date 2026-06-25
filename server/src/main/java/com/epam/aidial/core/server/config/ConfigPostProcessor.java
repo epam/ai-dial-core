@@ -97,10 +97,11 @@ public final class ConfigPostProcessor {
 
     /**
      * Layer A interface migration (slice: typed interfaces). Migrates legacy
-     * {@code endpoint}/{@code responsesEndpoint} into the {@code interfaces} map for every model and
-     * application, in memory. Idempotent and native-interfaces-preserving. Runs from
+     * {@code endpoint}/{@code responsesEndpoint} into the {@code interfaces} map for every model,
+     * application and interceptor, in memory. Idempotent and native-interfaces-preserving. Runs from
      * {@link #process(Config, ApiKeyStore)} (FileConfigStore startup + reload) and is reused by
      * {@link MergedConfigStore} via {@link #processSemantic}, so it covers all config sources.
+     * Interceptors are routed exactly like models/applications (authority + ingress path).
      */
     static void migrateInterfaces(Config config) {
         for (Model model : config.getModels().values()) {
@@ -108,6 +109,9 @@ public final class ConfigPostProcessor {
         }
         for (Application application : config.getApplications().values()) {
             InterfaceMigration.migrateDeployment(application);
+        }
+        for (Interceptor interceptor : config.getInterceptors().values()) {
+            InterfaceMigration.migrateDeployment(interceptor);
         }
     }
 

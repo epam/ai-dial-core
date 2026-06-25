@@ -26,6 +26,11 @@ import java.util.Map;
  * </ul>
  *
  * <p>Both layers are idempotent and native-interfaces-preserving (a non-empty {@code interfaces} wins).
+ *
+ * <p>Models, applications and interceptors are all migrated the same way: only the legacy endpoint's
+ * authority ({@link #authority(String)}) is kept as the {@code base_url} and the ingress path is appended
+ * at request time. An interceptor exposes whatever interface Core received the request on (chat
+ * completions today), so it is routed exactly like a model/application.
  */
 @Slf4j
 public final class InterfaceMigration {
@@ -36,6 +41,7 @@ public final class InterfaceMigration {
     static final String BASE_URL_FIELD = "base_url";
     static final String MODELS_FIELD = "models";
     static final String APPLICATIONS_FIELD = "applications";
+    static final String INTERCEPTORS_FIELD = "interceptors";
 
     private InterfaceMigration() {
     }
@@ -110,6 +116,7 @@ public final class InterfaceMigration {
         boolean changed = false;
         changed |= migrateRawSection(root.get(MODELS_FIELD));
         changed |= migrateRawSection(root.get(APPLICATIONS_FIELD));
+        changed |= migrateRawSection(root.get(INTERCEPTORS_FIELD));
         return changed;
     }
 
@@ -122,7 +129,9 @@ public final class InterfaceMigration {
         if (root == null || !root.isObject()) {
             return false;
         }
-        return sectionHasLegacy(root.get(MODELS_FIELD)) || sectionHasLegacy(root.get(APPLICATIONS_FIELD));
+        return sectionHasLegacy(root.get(MODELS_FIELD))
+                || sectionHasLegacy(root.get(APPLICATIONS_FIELD))
+                || sectionHasLegacy(root.get(INTERCEPTORS_FIELD));
     }
 
     private static boolean sectionHasLegacy(JsonNode section) {

@@ -26,7 +26,12 @@
     },
     "interceptors": {
         "interceptor1": {
-            "endpoint": "http://localhost:4088/api/v1/interceptor/handle"
+            "endpoint": "http://localhost:4088/api/v1/interceptor/handle",
+            "interfaces": {
+                "openaiChatCompletions": {
+                    "base_url": "http://localhost:4088"
+                }
+            }
         },
         "interceptor2": {
             "endpoint": "http://localhost:4089/api/v1/interceptor/handle"

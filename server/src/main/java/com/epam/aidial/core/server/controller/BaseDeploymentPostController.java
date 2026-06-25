@@ -165,9 +165,18 @@ public class BaseDeploymentPostController {
     }
 
     protected Future<HttpClientRequest> createProxyRequest(InterfaceType type) {
+        return createProxyRequest(type, context.getRequest().uri());
+    }
+
+    /**
+     * Builds the proxy request to {@code base_url} of the given interface joined with an explicit
+     * request path (path + optional query). Used when the forwarded path differs from the ingress
+     * path — e.g. interceptors are addressed by their own name in the deployment path segment.
+     */
+    protected Future<HttpClientRequest> createProxyRequest(InterfaceType type, String pathWithQuery) {
         HttpServerRequest request = context.getRequest();
         String baseUrl = context.getDeployment().getInterfaceBaseUrl(type);
-        String uri = joinBaseUrlAndPath(baseUrl, request.uri());
+        String uri = joinBaseUrlAndPath(baseUrl, pathWithQuery);
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(uri)
                 .setMethod(request.method())

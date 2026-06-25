@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.DeploymentInterface;
+import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -153,6 +154,50 @@ public class InterfaceMigrationTest {
         assertFalse(InterfaceMigration.hasLegacyEndpoints(root));
         assertFalse(InterfaceMigration.hasLegacyEndpoints(MAPPER.createObjectNode()));
         assertFalse(InterfaceMigration.hasLegacyEndpoints(null));
+    }
+
+    @Test
+    public void testMigrateInterceptorUsesAuthority() {
+        // Interceptors are routed exactly like models/applications: authority only.
+        Interceptor interceptor = new Interceptor();
+        interceptor.setEndpoint("http://localhost:4088/api/v1/interceptor/handle");
+
+        assertTrue(InterfaceMigration.migrateDeployment(interceptor));
+        assertEquals("http://localhost:4088",
+                interceptor.getInterfaceBaseUrl(InterfaceType.OPENAI_CHAT_COMPLETIONS));
+        // interceptors carry no Responses endpoint, so no Responses interface
+        assertFalse(interceptor.supportsInterface(InterfaceType.OPENAI_RESPONSES));
+        // idempotent
+        assertFalse(InterfaceMigration.migrateDeployment(interceptor));
+    }
+
+    @Test
+    public void testMigrateRawTreeInterceptorsSection() {
+        ObjectNode root = MAPPER.createObjectNode();
+        ObjectNode interceptor = root.putObject("interceptors").putObject("guard");
+        interceptor.put("endpoint", "http://localhost:4088/api/v1/interceptor/handle");
+
+        assertTrue(InterfaceMigration.migrateRawTree(root));
+
+        JsonNode migrated = root.path("interceptors").path("guard");
+        assertFalse(migrated.has("endpoint"));
+        // authority only, same as models/applications
+        assertEquals("http://localhost:4088",
+                migrated.path("interfaces").path("openaiChatCompletions").path("base_url").asText());
+        assertTrue(migrated.path("interfaces").path("openaiResponses").isMissingNode());
+
+        // idempotent
+        assertFalse(InterfaceMigration.migrateRawTree(root));
+    }
+
+    @Test
+    public void testHasLegacyEndpointsInInterceptors() {
+        ObjectNode root = MAPPER.createObjectNode();
+        root.putObject("interceptors")
+                .putObject("guard")
+                .put("endpoint", "http://localhost:4088/api/v1/interceptor/handle");
+
+        assertTrue(InterfaceMigration.hasLegacyEndpoints(root));
     }
 
     @Test

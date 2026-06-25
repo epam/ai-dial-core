@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -15,6 +15,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -22,14 +23,23 @@ import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
-import io.vertx.core.http.RequestOptions;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 public class InterceptorController extends BaseDeploymentPostController {
+
+    /**
+     * Chat-completions ingress path: {@code /openai/deployments/{id}/(chat/completions|completions|embeddings)}.
+     * Group 1 is the {@code /openai/deployments/} prefix, group 2 the action suffix; the {@code {id}}
+     * segment between them is replaced with the interceptor name when forwarding.
+     */
+    private static final Pattern DEPLOYMENT_PATH = Pattern.compile(
+            "^(/+openai/deployments/).+?(/(?:chat/completions|completions|embeddings))$");
 
     private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
 
@@ -84,26 +94,38 @@ public class InterceptorController extends BaseDeploymentPostController {
     }
 
 
-    private static String buildUri(ProxyContext context) {
-        HttpServerRequest request = context.getRequest();
-        Deployment deployment = context.getDeployment();
-        String endpoint = deployment.getEndpoint();
-        String query = request.query();
-        return endpoint + (query == null ? "" : "?" + query);
-    }
-
     private void sendRequest() {
-        String uri = buildUri(context);
-        RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(uri)
-                .setMethod(context.getRequest().method())
-                .setTraceOperation(context.getTraceOperation())
-                .setConnectTimeout(context.getProxy().getClientOptions().getConnectTimeout())
-                .setIdleTimeout(context.getProxy().getClientOptions().getIdleTimeout());
-
-        proxy.getClient().request(options)
+        createProxyRequest(InterfaceType.OPENAI_CHAT_COMPLETIONS, interceptorPath())
                 .onSuccess(this::handleProxyRequest)
                 .onFailure(this::handleProxyConnectionError);
+    }
+
+    /**
+     * Builds the path used to call the interceptor service. Like models/applications the interceptor's
+     * {@code base_url} is the authority, but the {@code {id}} segment is rewritten to the interceptor's
+     * own name (not the originally called deployment), with the chat-completions/embeddings action
+     * preserved. e.g. {@code /openai/deployments/gpt-5/chat/completions} forwarded to interceptor
+     * {@code guard} becomes {@code /openai/deployments/guard/chat/completions}.
+     */
+    private String interceptorPath() {
+        HttpServerRequest request = context.getRequest();
+        String name = UrlUtil.encodePathSegment(context.getDeployment().getName());
+        String path = rewriteDeploymentSegment(request.path(), name);
+        String query = request.query();
+        return query == null ? path : path + "?" + query;
+    }
+
+    /**
+     * Replaces the {@code {id}} segment of a chat-completions ingress path with the (already
+     * URL-encoded) interceptor name, preserving the {@code /openai/deployments/} prefix and the action
+     * suffix. Returns the path unchanged when it does not match the chat-completions shape.
+     */
+    static String rewriteDeploymentSegment(String path, String encodedInterceptorName) {
+        if (path == null) {
+            return null;
+        }
+        return DEPLOYMENT_PATH.matcher(path)
+                .replaceFirst("$1" + Matcher.quoteReplacement(encodedInterceptorName) + "$2");
     }
 
 
@@ -141,7 +163,7 @@ public class InterceptorController extends BaseDeploymentPostController {
 
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
         log.info("Received header from origin. Endpoint: {}. Status: {}. Headers: {}",
-                context.getDeployment().getEndpoint(),
+                context.getDeployment().getInterfaceBaseUrl(InterfaceType.OPENAI_CHAT_COMPLETIONS),
                 proxyResponse.statusCode(), proxyResponse.headers().size());
 
         Supplier<BufferingReadStream.BaseEventListener> eventListenerSupplier = () ->

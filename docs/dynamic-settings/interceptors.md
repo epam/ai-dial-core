@@ -17,7 +17,9 @@ An object containing deployed DIAL Interceptors and their [parameters](#intercep
 {
   "interceptors": {
     "interceptor1": {
-      "endpoint": "http://localhost:4088/api/v1/interceptor/handle"
+      "interfaces": {
+        "openaiChatCompletions": { "base_url": "http://localhost:4088" }
+      }
     },
     "interceptor2": {
       "endpoint": "http://localhost:4089/api/v1/interceptor/handle"
@@ -29,11 +31,14 @@ An object containing deployed DIAL Interceptors and their [parameters](#intercep
 }
 ```
 
+> `interceptor1` uses the recommended `interfaces` form; `interceptor2`/`interceptor3` use the deprecated `endpoint` form, which is migrated to the same shape at config load.
+
 ### interceptors.<interceptor_name>
 
 An object containing parameters for each [interceptor](#interceptors).
 
-* `endpoint`: The URL of the interceptor service. This URL is used to handle requests and responses for the interceptor. **Required**.
+* `interfaces`: An object declaring the LLM API interfaces the interceptor exposes, keyed by interface type, each with a `base_url` pointing at the interceptor service root. An interceptor sees whatever request Core received and is routed exactly like a model or application: at request time DIAL Core forwards to `{base_url}` + the exact ingress path (e.g. a chat-completions request to `POST /openai/deployments/{name}/chat/completions` is proxied to `{base_url}/openai/deployments/{name}/chat/completions`). An interceptor handling chat completions declares the `openaiChatCompletions` interface. This is the recommended replacement for the deprecated `endpoint` field — see the example below.
+* `endpoint`: **Deprecated** — use `interfaces.openaiChatCompletions.base_url` instead. The URL of the interceptor service used to handle requests and responses for the interceptor. Configs that still use `endpoint` are migrated automatically at config load (the authority `scheme://host[:port]` becomes the `base_url`); see the `ENDPOINT_MIGRATION_TO_INTERFACES` environment variable in the [README](../../README.md#dynamic-settings) for on-disk config write-back. **Required** unless `interfaces` is set.
 * `iconUrl`: A string with the URL with the icon location to display for the interceptor on UI.
 * `description`: A brief summary of what this interceptor does and any parameters it uses (e.g. BLACKLIST=bar or Logs request/response payloads).
 * `displayName`: A string with the interceptor's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs so operators can quickly identify the interceptor.

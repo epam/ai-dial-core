@@ -1580,10 +1580,13 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     return mockResponse;
                 }
             };
-            // After the global interceptor calls back as the `interceptor` deployment, Core forwards the
-            // exact ingress path (D1) to the application, so the adapter sees the interceptor route path.
+            // The interceptor's base_url is the authority; Core rewrites the deployment path segment to
+            // the interceptor's own name (`global`), so the interceptor service is hit at
+            // /openai/deployments/global/chat/completions. After it calls back as the `interceptor`
+            // deployment, Core forwards that callback's ingress path to the application adapter, hit at
+            // /openai/deployments/interceptor/chat/completions.
             server.map(HttpMethod.POST, "/openai/deployments/interceptor/chat/completions", chatCompletionHandler);
-            server.map(HttpMethod.POST, "/interceptor/handle", interceptorHandler);
+            server.map(HttpMethod.POST, "/openai/deployments/global/chat/completions", interceptorHandler);
             var request = createHttpUriRequest(serverPort,
                     "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", "proxyKey1");
             response = client.execute(request, ResourceBaseTest::toResponse);
