@@ -68,14 +68,14 @@ class ResourceTopicSubscribeAllTest {
             latch.countDown();
         })) {
             ResourceEvent event = new ResourceEvent()
-                    .setUrl("models/public/never-pre-registered")
+                    .setUrl("models/platform/never-pre-registered")
                     .setAction(ResourceEvent.Action.CREATE)
                     .setTimestamp(1L)
                     .setEtag("e1");
             topic.publish(event);
 
             Assertions.assertTrue(latch.await(5, TimeUnit.SECONDS));
-            Assertions.assertEquals("models/public/never-pre-registered", received.get().getUrl());
+            Assertions.assertEquals("models/platform/never-pre-registered", received.get().getUrl());
         }
     }
 

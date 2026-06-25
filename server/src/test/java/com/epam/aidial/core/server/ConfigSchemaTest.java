@@ -20,7 +20,7 @@ public class ConfigSchemaTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     void testAdminListsSchemasMetadata() {
-        Response response = send(HttpMethod.GET, "/v1/metadata/schemas/public/", null, "",
+        Response response = send(HttpMethod.GET, "/v1/metadata/schemas/platform/", null, "",
                 "authorization", "admin");
         if (response.status() == 200) {
             JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
@@ -33,6 +33,6 @@ public class ConfigSchemaTest extends ResourceBaseTest {
     @Test
     void testEmptyPathSingleEntityUrlReturns404() {
         // U.0: the per-entity URL with empty name is no longer a listing surface.
-        verify(send(HttpMethod.GET, "/v1/schemas/public/", null, "", "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/schemas/platform/", null, "", "authorization", "admin"), 404);
     }
 }

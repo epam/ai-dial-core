@@ -10,11 +10,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * HTTP integration tests for the per-bucket models listing — slice 1S.2 amended by U.0 (2026-05-20)
- * to live at {@code /v1/metadata/models/public/} and return {@code ResourceFolderMetadata}
+ * to live at {@code /v1/metadata/models/platform/} and return {@code ResourceFolderMetadata}
  * (same shape as the user Resource API). Listings are now blob-only — file-defined models do not
  * surface here.
  *
- * <p>The empty-path single-entity URL {@code /v1/models/public/} now returns 404 (no longer a
+ * <p>The empty-path single-entity URL {@code /v1/models/platform/} now returns 404 (no longer a
  * listing surface).
  */
 public class ConfigModelListTest extends ResourceBaseTest {
@@ -30,10 +30,10 @@ public class ConfigModelListTest extends ResourceBaseTest {
                   "endpoint": "http://localhost:7001/openai/deployments/listed/chat/completions"
                 }
                 """;
-        verify(send(HttpMethod.PUT, "/v1/models/public/listed-model", null, body,
+        verify(send(HttpMethod.PUT, "/v1/models/platform/listed-model", null, body,
                 "authorization", "admin", "If-None-Match", "*"), 200);
 
-        Response response = send(HttpMethod.GET, "/v1/metadata/models/public/", null, "",
+        Response response = send(HttpMethod.GET, "/v1/metadata/models/platform/", null, "",
                 "authorization", "admin");
         verify(response, 200);
         JsonNode node = ProxyUtil.MAPPER.readTree(response.body());
@@ -58,7 +58,7 @@ public class ConfigModelListTest extends ResourceBaseTest {
     @Test
     void testEmptyPathSingleEntityUrlReturns404() {
         // U.0: the per-entity URL with empty path is no longer a listing surface.
-        verify(send(HttpMethod.GET, "/v1/models/public/", null, "", "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/models/platform/", null, "", "authorization", "admin"), 404);
     }
 
     @Test
@@ -66,7 +66,7 @@ public class ConfigModelListTest extends ResourceBaseTest {
     void testMetadataListingHidesFileEntries() {
         // The fixture aidial.config.json defines several file-sourced models (e.g. test-model-v1).
         // Under U.0 blob-only listings, those file entries must NOT appear in metadata items.
-        Response response = send(HttpMethod.GET, "/v1/metadata/models/public/", null, "",
+        Response response = send(HttpMethod.GET, "/v1/metadata/models/platform/", null, "",
                 "authorization", "admin");
         if (response.status() == 200) {
             JsonNode node = ProxyUtil.MAPPER.readTree(response.body());
@@ -85,15 +85,15 @@ public class ConfigModelListTest extends ResourceBaseTest {
 
     @Test
     void testInvalidLimitReturns400() {
-        verify(send(HttpMethod.GET, "/v1/metadata/models/public/", "limit=abc", "",
-                "authorization", "user"), 400);
-        verify(send(HttpMethod.GET, "/v1/metadata/models/public/", "limit=-1", "",
-                "authorization", "user"), 400);
+        verify(send(HttpMethod.GET, "/v1/metadata/models/platform/", "limit=abc", "",
+                "authorization", "admin"), 400);
+        verify(send(HttpMethod.GET, "/v1/metadata/models/platform/", "limit=-1", "",
+                "authorization", "admin"), 400);
     }
 
     @Test
     void testLimitAbove1000Rejected() {
-        verify(send(HttpMethod.GET, "/v1/metadata/models/public/", "limit=1001", "",
-                "authorization", "user"), 400);
+        verify(send(HttpMethod.GET, "/v1/metadata/models/platform/", "limit=1001", "",
+                "authorization", "admin"), 400);
     }
 }

@@ -24,10 +24,10 @@ public class EntityBucketBinding {
     private static final String USER_BUCKET_WILDCARD = "*";
 
     private static final Map<String, Set<String>> ALLOWED_BUCKETS = Map.ofEntries(
-            Map.entry("models", Set.of(ResourceDescriptor.PUBLIC_BUCKET)),
+            Map.entry("models", Set.of(PLATFORM_BUCKET)),
             Map.entry("applications", Set.of(ResourceDescriptor.PUBLIC_BUCKET)),
             Map.entry("toolsets", Set.of(ResourceDescriptor.PUBLIC_BUCKET)),
-            Map.entry("schemas", Set.of(ResourceDescriptor.PUBLIC_BUCKET)),
+            Map.entry("schemas", Set.of(PLATFORM_BUCKET)),
             Map.entry(ResourceTypes.FILE.group(), Set.of(ResourceDescriptor.PUBLIC_BUCKET, USER_BUCKET_WILDCARD)),
             Map.entry(ResourceTypes.PROMPT.group(), Set.of(ResourceDescriptor.PUBLIC_BUCKET, USER_BUCKET_WILDCARD)),
             Map.entry(ResourceTypes.CONVERSATION.group(), Set.of(ResourceDescriptor.PUBLIC_BUCKET, USER_BUCKET_WILDCARD)),
