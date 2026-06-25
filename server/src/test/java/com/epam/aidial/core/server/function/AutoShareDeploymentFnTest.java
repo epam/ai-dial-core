@@ -85,6 +85,22 @@ public class AutoShareDeploymentFnTest {
     }
 
     @Test
+    public void testApply_WhenInitialDeploymentIdContainsSpace() {
+        when(encryptionService.decrypt(anyString())).thenReturn("/Users/user/");
+        when(proxy.getEncryptionService()).thenReturn(encryptionService);
+        when(proxy.getAccessService()).thenReturn(accessService);
+        when(context.getInitialDeployment()).thenReturn("applications/123/demo a_0.0.1");
+        when(accessService.hasReadAccess(any(ResourceDescriptor.class), eq(context))).thenReturn(true);
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+        when(proxy.getDeploymentService()).thenReturn(deploymentService);
+
+        assertFalse(fn.apply(EMPTY_OBJECT));
+        assertFalse(proxyApiKeyData.getAttachedDeployments().isEmpty());
+        assertEquals(ResourceAccessType.READ_ONLY,
+                proxyApiKeyData.getAttachedDeployments().get("applications/123/demo%20a_0.0.1").accessTypes());
+    }
+
+    @Test
     public void testApply_WhenInitialDeploymentIsApp() {
         when(encryptionService.decrypt(anyString())).thenReturn("/Users/user/");
         when(proxy.getEncryptionService()).thenReturn(encryptionService);

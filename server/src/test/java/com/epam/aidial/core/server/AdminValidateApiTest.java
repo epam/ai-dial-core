@@ -43,7 +43,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
         assertEquals(0, parsed.get("failed").asInt());
         assertEquals("valid", parsed.get("results").get(0).get("status").asText());
-        verify(send(HttpMethod.GET, "/v1/models/public/validate-happy-model", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-happy-model", null, "",
                 "authorization", "admin"), 404);
     }
 
@@ -117,7 +117,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
             assertEquals("valid", r.get("status").asText(), () -> "Body: " + response.body());
         }
         // None of these were written.
-        verify(send(HttpMethod.GET, "/v1/schemas/public/validate-schema", null, "",
+        verify(send(HttpMethod.GET, "/v1/schemas/platform/validate-schema", null, "",
                 "authorization", "admin"), 404);
         verify(send(HttpMethod.GET, "/v1/interceptors/platform/validate-int", null, "",
                 "authorization", "admin"), 404);
@@ -127,7 +127,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                 "authorization", "admin"), 404);
         verify(send(HttpMethod.GET, "/v1/routes/platform/validate-route", null, "",
                 "authorization", "admin"), 404);
-        verify(send(HttpMethod.GET, "/v1/models/public/validate-model", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-model", null, "",
                 "authorization", "admin"), 404);
         verify(send(HttpMethod.GET, "/v1/toolsets/public/validate-toolset", null, "",
                 "authorization", "admin"), 404);
@@ -159,7 +159,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         assertEquals(0, parsed.get("valid").asInt());
         assertEquals(1, parsed.get("failed").asInt());
         assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
-        verify(send(HttpMethod.GET, "/v1/models/public/validate-precheck-bad", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-precheck-bad", null, "",
                 "authorization", "admin"), 404);
     }
 
@@ -208,7 +208,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         assertTrue(sawFailed, () -> "Expected one 'FAILED' entry: " + response.body());
         verify(send(HttpMethod.GET, "/v1/interceptors/platform/validate-mixed-int", null, "",
                 "authorization", "admin"), 404);
-        verify(send(HttpMethod.GET, "/v1/models/public/validate-mixed-bad", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-mixed-bad", null, "",
                 "authorization", "admin"), 404);
     }
 
@@ -237,7 +237,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         assertEquals(0, parsed.get("valid").asInt());
         assertEquals(1, parsed.get("failed").asInt());
         assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
-        verify(send(HttpMethod.GET, "/v1/models/public/validate-soft-bad", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-bad", null, "",
                 "authorization", "admin"), 404);
     }
 
@@ -273,9 +273,9 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
         assertEquals(1, parsed.get("failed").asInt());
-        verify(send(HttpMethod.GET, "/v1/models/public/validate-partial-good", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-partial-good", null, "",
                 "authorization", "admin"), 404);
-        verify(send(HttpMethod.GET, "/v1/models/public/validate-partial-bad", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-partial-bad", null, "",
                 "authorization", "admin"), 404);
     }
 
@@ -367,7 +367,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(2, parsed.get("valid").asInt(), () -> "Body: " + response.body());
         assertEquals(0, parsed.get("failed").asInt());
-        verify(send(HttpMethod.GET, "/v1/models/public/validate-order-model", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-order-model", null, "",
                 "authorization", "admin"), 404);
         verify(send(HttpMethod.GET, "/v1/interceptors/platform/validate-order-int", null, "",
                 "authorization", "admin"), 404);
@@ -421,7 +421,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
         assertEquals(1, parsed.get("failed").asInt());
         assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
-        verify(send(HttpMethod.GET, "/v1/models/public/validate-jackson-bad", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-jackson-bad", null, "",
                 "authorization", "admin"), 404);
     }
 
@@ -503,7 +503,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
             assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
             assertEquals(0, parsed.get("failed").asInt());
             assertEquals("valid", parsed.get("results").get(0).get("status").asText());
-            verify(send(HttpMethod.GET, "/v1/models/public/validate-soft-mode", null, "",
+            verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-mode", null, "",
                     "authorization", "admin"), 404);
         }
     }

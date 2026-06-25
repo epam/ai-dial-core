@@ -93,7 +93,7 @@ public class MergedConfigStoreTest {
         Consumer<ResourceEvent> listener = registerAndCaptureListener("pod-self");
 
         listener.accept(new ResourceEvent()
-                .setUrl("models/public/gpt-4")
+                .setUrl("models/platform/gpt-4")
                 .setAction(ResourceEvent.Action.CREATE)
                 .setSenderPodId("pod-self"));
 
@@ -107,7 +107,7 @@ public class MergedConfigStoreTest {
         Consumer<ResourceEvent> listener = registerAndCaptureListener("pod-self");
 
         listener.accept(new ResourceEvent()
-                .setUrl("models/public/gpt-4")
+                .setUrl("models/platform/gpt-4")
                 .setAction(ResourceEvent.Action.UPDATE)
                 .setSenderPodId("pod-other"));
 

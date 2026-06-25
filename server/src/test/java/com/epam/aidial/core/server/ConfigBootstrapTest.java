@@ -43,26 +43,26 @@ public class ConfigBootstrapTest extends ResourceBaseTest {
 
     @Test
     void testAuthenticatedNonAdminPassesAuthGateForPublicBucketGet() {
-        // public/ reads are open to any authenticated caller. U.1 (2026-05-21): the per-entity GET
-        // is blob-only; gpt-4 is a file entry so the result is 404, not 200. 404 (not 401/403)
-        // confirms the auth gate admitted the caller and only the entity lookup failed.
-        Response response = send(HttpMethod.GET, "/v1/models/public/gpt-4", null, "",
+        // public/ reads are open to any authenticated caller. Applications remain in the public
+        // bucket. 404 (not 401/403) confirms the auth gate admitted the caller and only the
+        // entity lookup failed.
+        Response response = send(HttpMethod.GET, "/v1/applications/public/non-existent-app", null, "",
                 "authorization", "user");
         verify(response, 404);
     }
 
     @Test
     void testNonAdminCannotWritePublicEntity() {
-        Response response = send(HttpMethod.PUT, "/v1/models/public/gpt-4", null, "{}",
+        Response response = send(HttpMethod.PUT, "/v1/applications/public/some-app", null, "{}",
                 "authorization", "user");
         verify(response, 403);
     }
 
     @Test
-    void testAdminCanWritePublicEntity() {
-        // U.0 (2026-05-20): PUT is upsert. Bare PUT against a non-existent entity creates it —
+    void testAdminCanWritePlatformModel() {
+        // PUT is upsert. Bare PUT against a non-existent model creates it —
         // an empty body deserializes to a Model with no upstreams; the write succeeds (200).
-        Response response = send(HttpMethod.PUT, "/v1/models/public/non-existent-name", null, "{}",
+        Response response = send(HttpMethod.PUT, "/v1/models/platform/non-existent-name", null, "{}",
                 "authorization", "admin");
         verify(response, 200);
     }
@@ -70,10 +70,9 @@ public class ConfigBootstrapTest extends ResourceBaseTest {
     @Test
     void testApiKeyWithDefaultRolePassesAuthGateForPublicBucketGet() {
         // Default api-key proxyKey1 (role: "default") authenticates but is not admin — public reads
-        // are open to any authenticated caller. U.1 (2026-05-21): per-entity GET is blob-only;
-        // gpt-4 is a file entry so the result is 404, not 200. 404 (not 401) confirms the auth gate
-        // admitted the key and only the entity lookup failed.
-        Response response = send(HttpMethod.GET, "/v1/models/public/gpt-4");
+        // are open to any authenticated caller. Applications remain in the public bucket.
+        // 404 (not 401) confirms the auth gate admitted the key and only the entity lookup failed.
+        Response response = send(HttpMethod.GET, "/v1/applications/public/non-existent-app");
         verify(response, 404);
     }
 
@@ -81,6 +80,13 @@ public class ConfigBootstrapTest extends ResourceBaseTest {
     void testApiKeyWithDefaultRoleCannotReadPlatform() {
         // Default api-key proxyKey1 is authenticated but lacks admin — platform reads require admin.
         Response response = send(HttpMethod.GET, "/v1/interceptors/platform/anything");
+        verify(response, 403);
+    }
+
+    @Test
+    void testApiKeyWithDefaultRoleCannotReadPlatformModel() {
+        // Models are now in the platform bucket — platform reads require admin regardless of entity type.
+        Response response = send(HttpMethod.GET, "/v1/models/platform/anything");
         verify(response, 403);
     }
 

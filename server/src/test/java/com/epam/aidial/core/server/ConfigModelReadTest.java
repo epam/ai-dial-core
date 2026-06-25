@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * HTTP integration tests for slice 1S.1: GET {@code /v1/models/public/{name}} read path.
+ * HTTP integration tests for slice 1S.1: GET {@code /v1/models/platform/{name}} read path.
  * Under U.1 (2026-05-21) the per-entity GET is blob-only and the {@code source} field is retired
  * entirely. File-sourced models surface only via {@code /v1/admin/config/file/models/{name}}.
  */
@@ -16,7 +16,7 @@ public class ConfigModelReadTest extends ResourceBaseTest {
     @Test
     void testFileModelNotAddressableOnPerEntityGet() {
         // U.1: file-sourced entries are no longer addressable on the per-entity surface.
-        Response response = send(HttpMethod.GET, "/v1/models/public/test-model-v1", null, "",
+        Response response = send(HttpMethod.GET, "/v1/models/platform/test-model-v1", null, "",
                 "authorization", "admin");
         verify(response, 404);
     }
@@ -42,7 +42,7 @@ public class ConfigModelReadTest extends ResourceBaseTest {
 
     @Test
     void testMissingModelReturns404() {
-        Response response = send(HttpMethod.GET, "/v1/models/public/no-such-model", null, "",
+        Response response = send(HttpMethod.GET, "/v1/models/platform/no-such-model", null, "",
                 "authorization", "admin");
         verify(response, 404);
     }
