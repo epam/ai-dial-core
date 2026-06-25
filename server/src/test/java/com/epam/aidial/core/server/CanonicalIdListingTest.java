@@ -24,25 +24,25 @@ public class CanonicalIdListingTest extends ResourceBaseTest {
 
     @Test
     void testApiManagedModelSurfacedAsCanonicalIdInOpenAiModels() {
-        verify(send(HttpMethod.PUT, "/v1/models/public/canonical-test", null, API_MODEL_BODY,
+        verify(send(HttpMethod.PUT, "/v1/models/platform/canonical-test", null, API_MODEL_BODY,
                 "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response list = send(HttpMethod.GET, "/openai/models", null, "");
         verify(list, 200);
-        assertTrue(list.body().contains("\"id\":\"models/public/canonical-test\""),
+        assertTrue(list.body().contains("\"id\":\"models/platform/canonical-test\""),
                 () -> "Expected canonical id for API-managed model: " + list.body());
-        assertTrue(list.body().contains("\"model\":\"models/public/canonical-test\""),
+        assertTrue(list.body().contains("\"model\":\"models/platform/canonical-test\""),
                 () -> "Expected canonical model field for API-managed model: " + list.body());
     }
 
     @Test
     void testApiManagedModelSurfacedAsCanonicalIdInOpenAiDeployments() {
-        verify(send(HttpMethod.PUT, "/v1/models/public/canonical-deployments", null, API_MODEL_BODY,
+        verify(send(HttpMethod.PUT, "/v1/models/platform/canonical-deployments", null, API_MODEL_BODY,
                 "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response list = send(HttpMethod.GET, "/openai/deployments", null, "");
         verify(list, 200);
-        assertTrue(list.body().contains("\"id\":\"models/public/canonical-deployments\""),
+        assertTrue(list.body().contains("\"id\":\"models/platform/canonical-deployments\""),
                 () -> "Expected canonical id for API-managed deployment: " + list.body());
     }
 
@@ -62,13 +62,13 @@ public class CanonicalIdListingTest extends ResourceBaseTest {
         // Polish.1 (2026-05-08): admin GET projects the canonical ID for API-managed entries so
         // operators can copy-paste the identifier verbatim. File-sourced entries keep their simple
         // name. Under U.0 the per-entity GET still projects the canonical ID.
-        verify(send(HttpMethod.PUT, "/v1/models/public/admin-listing-projection", null, API_MODEL_BODY,
+        verify(send(HttpMethod.PUT, "/v1/models/platform/admin-listing-projection", null, API_MODEL_BODY,
                 "authorization", "admin", "If-None-Match", "*"), 200);
 
-        Response single = send(HttpMethod.GET, "/v1/models/public/admin-listing-projection", null, "",
+        Response single = send(HttpMethod.GET, "/v1/models/platform/admin-listing-projection", null, "",
                 "authorization", "admin");
         verify(single, 200);
-        assertTrue(single.body().contains("\"name\":\"models/public/admin-listing-projection\""),
+        assertTrue(single.body().contains("\"name\":\"models/platform/admin-listing-projection\""),
                 () -> "Admin GET must project canonical ID for API entries: " + single.body());
     }
 }

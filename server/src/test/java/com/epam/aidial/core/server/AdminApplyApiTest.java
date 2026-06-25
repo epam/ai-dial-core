@@ -56,7 +56,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         }
         verify(send(HttpMethod.GET, "/v1/interceptors/platform/apply-int-1", null, "",
                 "authorization", "admin"), 200);
-        verify(send(HttpMethod.GET, "/v1/models/public/apply-model-1", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-model-1", null, "",
                 "authorization", "admin"), 200);
     }
 
@@ -85,7 +85,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         assertEquals(1, results.size());
         // Mirrors /v1/admin/validate: the offending entry stays FAILED on a precheck rejection.
         assertEquals("FAILED", results.get(0).get("status").asText());
-        verify(send(HttpMethod.GET, "/v1/models/public/apply-precheck-bad", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-precheck-bad", null, "",
                 "authorization", "admin"), 404);
     }
 
@@ -134,7 +134,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         assertEquals(1, skipped, () -> "Body: " + response.body());
         verify(send(HttpMethod.GET, "/v1/interceptors/platform/apply-mixed-int", null, "",
                 "authorization", "admin"), 404);
-        verify(send(HttpMethod.GET, "/v1/models/public/apply-mixed-bad", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-mixed-bad", null, "",
                 "authorization", "admin"), 404);
     }
 
@@ -170,9 +170,9 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
         assertEquals(1, parsed.get("failed").asInt());
-        verify(send(HttpMethod.GET, "/v1/models/public/apply-partial-good", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-partial-good", null, "",
                 "authorization", "admin"), 200);
-        verify(send(HttpMethod.GET, "/v1/models/public/apply-partial-bad", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-partial-bad", null, "",
                 "authorization", "admin"), 404);
     }
 
@@ -207,7 +207,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
         assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
-        verify(send(HttpMethod.GET, "/v1/models/public/apply-overlap-bad", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-overlap-bad", null, "",
                 "authorization", "admin"), 404);
     }
 
@@ -260,7 +260,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         assertEquals("FAILED", unknownResult.get("status").asText());
         assertEquals("Unknown kind: Whatever", unknownResult.get("error").asText());
         // Nothing applied — the valid sibling must not exist.
-        verify(send(HttpMethod.GET, "/v1/models/public/apply-unknown-sibling", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-unknown-sibling", null, "",
                 "authorization", "admin"), 404);
     }
 
@@ -290,7 +290,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
         assertEquals(1, parsed.get("failed").asInt());
-        verify(send(HttpMethod.GET, "/v1/models/public/apply-unknown-pf-sibling", null, "",
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-unknown-pf-sibling", null, "",
                 "authorization", "admin"), 200);
     }
 
@@ -522,7 +522,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
             JsonNode found = null;
             long deadline = System.nanoTime() + 10_000_000_000L;
             while (System.nanoTime() < deadline) {
-                Response get = send(HttpMethod.GET, "/v1/models/public/apply-soft-invalid", null, "",
+                Response get = send(HttpMethod.GET, "/v1/models/platform/apply-soft-invalid", null, "",
                         "authorization", "admin");
                 if (get.status() == 200) {
                     JsonNode node = ProxyUtil.MAPPER.readTree(get.body());

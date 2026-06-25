@@ -383,8 +383,8 @@ public class AdminApplyController {
             return new EntityResult(id, "FAILED", "Schema spec must be a JSON object");
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.APP_TYPE_SCHEMA, ResourceDescriptor.PUBLIC_BUCKET,
-                ResourceDescriptor.PUBLIC_LOCATION, entry.name());
+                ResourceTypes.APP_TYPE_SCHEMA, ResourceDescriptor.PLATFORM_BUCKET,
+                ResourceDescriptor.PLATFORM_LOCATION, entry.name());
         String blobBody;
         try {
             blobBody = ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec());
@@ -468,8 +468,8 @@ public class AdminApplyController {
             return new EntityResult(id, "FAILED", joinWarnings(warnings));
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET,
-                ResourceDescriptor.PUBLIC_LOCATION, entry.name());
+                ResourceTypes.MODEL, ResourceDescriptor.PLATFORM_BUCKET,
+                ResourceDescriptor.PLATFORM_LOCATION, entry.name());
         secretFieldProcessor.encryptFields(model, descriptor);
         String blobBody = ConfigResourceController.serializeForBlob(model);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
