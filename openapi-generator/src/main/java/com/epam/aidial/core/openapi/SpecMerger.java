@@ -115,9 +115,6 @@ public final class SpecMerger {
                 if (isPathOrSchemaField(jsonPath) && skeletonValue.isObject()) {
                     ObjectNode markedNode = skeletonValue.deepCopy();
                     markedNode.put("x-generated", true);
-                    if (jsonPath.equals("paths")) {
-                        tagOperationsAsUncategorized(markedNode);
-                    }
                     result.set(field, markedNode);
                 } else {
                     result.set(field, skeletonValue.deepCopy());
@@ -180,7 +177,6 @@ public final class SpecMerger {
             } else if (skeletonNode != null) {
                 ObjectNode markedNode = skeletonNode.deepCopy();
                 markedNode.put("x-generated", true);
-                tagOperationsAsUncategorized(markedNode);
                 result.set(skeletonRaw, markedNode);
                 addedCount++;
             } else {
@@ -682,20 +678,6 @@ public final class SpecMerger {
         return name;
     }
 
-    private static final Set<String> HTTP_METHODS = Set.of(
-            "get", "post", "put", "delete", "patch", "head", "options"
-    );
-
-    private void tagOperationsAsUncategorized(ObjectNode pathItem) {
-        for (String method : HTTP_METHODS) {
-            JsonNode op = pathItem.get(method);
-            if (op != null && op.isObject()) {
-                ArrayNode tags = yamlMapper.createArrayNode();
-                tags.add("uncategorized");
-                ((ObjectNode) op).set("tags", tags);
-            }
-        }
-    }
 
     private boolean isPathOrSchemaField(String jsonPath) {
         return jsonPath.equals("paths") || jsonPath.equals("components.schemas");

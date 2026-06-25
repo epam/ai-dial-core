@@ -86,6 +86,8 @@ public final class StandardResponses {
                 null,
                 ErrorData.class,
                 new Class<?>[0],
+                new Class<?>[0],
+                Void.class,
                 schemaGenerator
         ));
         return response;

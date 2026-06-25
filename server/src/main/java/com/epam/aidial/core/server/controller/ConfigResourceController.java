@@ -7,6 +7,14 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.openapi.annotations.ApiHeader;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiOperations;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
+import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
@@ -14,6 +22,7 @@ import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.EntityMetadata;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
@@ -109,6 +118,390 @@ public class ConfigResourceController implements Controller {
     }
 
     @Override
+    @ApiOperations({
+            // Models
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/models/{bucket}/{path}",
+                    operationId = "getModelByPath",
+                    tags = {"Models"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Model name"),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = Model.class,
+                                    responseAllOf = {EntityMetadata.class},
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the model", required = true)
+                                    })
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/models/{bucket}/{path}",
+                    operationId = "saveModel",
+                    requestBody = Model.class,
+                    tags = {"Models"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Model name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved model", required = true)
+                                    })
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/models/{bucket}/{path}",
+                    operationId = "deleteModel",
+                    tags = {"Models"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Model name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 204, description = "Success")
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            // Interceptors
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/interceptors/{bucket}/{path}",
+                    operationId = "getInterceptor",
+                    tags = {"Interceptors"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Interceptor name"),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = Interceptor.class,
+                                    responseAllOf = {EntityMetadata.class},
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the interceptor", required = true)
+                                    })
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/interceptors/{bucket}/{path}",
+                    operationId = "saveInterceptor",
+                    requestBody = Interceptor.class,
+                    tags = {"Interceptors"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Interceptor name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved interceptor", required = true)
+                                    })
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/interceptors/{bucket}/{path}",
+                    operationId = "deleteInterceptor",
+                    tags = {"Interceptors"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Interceptor name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 204, description = "Success")
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            // Roles
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/roles/{bucket}/{path}",
+                    operationId = "getRole",
+                    tags = {"Roles"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Role name"),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = Role.class,
+                                    responseAllOf = {EntityMetadata.class},
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the role", required = true)
+                                    })
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/roles/{bucket}/{path}",
+                    operationId = "saveRole",
+                    requestBody = Role.class,
+                    tags = {"Roles"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Role name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved role", required = true)
+                                    })
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/roles/{bucket}/{path}",
+                    operationId = "deleteRole",
+                    tags = {"Roles"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Role name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 204, description = "Success")
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            // Keys
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/keys/{bucket}/{path}",
+                    operationId = "getKey",
+                    tags = {"Keys"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Key name"),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = Key.class,
+                                    responseAllOf = {EntityMetadata.class},
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the key", required = true)
+                                    })
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/keys/{bucket}/{path}",
+                    operationId = "saveKey",
+                    requestBody = Key.class,
+                    tags = {"Keys"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Key name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved key", required = true)
+                                    })
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/keys/{bucket}/{path}",
+                    operationId = "deleteKey",
+                    tags = {"Keys"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Key name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 204, description = "Success")
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            // Routes
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/routes/{bucket}/{path}",
+                    operationId = "getRoute",
+                    tags = {"Routes"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Route name"),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = Route.class,
+                                    responseAllOf = {EntityMetadata.class},
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the route", required = true)
+                                    })
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/routes/{bucket}/{path}",
+                    operationId = "saveRoute",
+                    requestBody = Route.class,
+                    tags = {"Routes"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Route name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved route", required = true)
+                                    })
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/routes/{bucket}/{path}",
+                    operationId = "deleteRoute",
+                    tags = {"Routes"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Route name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 204, description = "Success")
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            // Schemas
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/schemas/{bucket}/{path}",
+                    operationId = "getSchema",
+                    tags = {"Schemas"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", schemaRef = "ProxyResponse", responseAllOf = {EntityMetadata.class},
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the schema", required = true)
+                                    }
+                            )
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/schemas/{bucket}/{path}",
+                    operationId = "saveSchema",
+                    tags = {"Schemas"},
+                    requestBodySchemaRef = "ProxyRequest",
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved schema", required = true)
+                                    })
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/schemas/{bucket}/{path}",
+                    operationId = "deleteSchema",
+                    tags = {"Schemas"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 204, description = "Success")
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            // Global Settings
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/settings/{bucket}/{path}",
+                    operationId = "getGlobalSettings",
+                    tags = {"Global Settings"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Must be 'global'"),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = GlobalSettings.class,
+                                    responseAllOf = {EntityMetadata.class})
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/settings/{bucket}/{path}",
+                    operationId = "saveGlobalSettings",
+                    requestBody = GlobalSettings.class,
+                    tags = {"Global Settings"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Must be 'global'"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved settings", required = true)
+                                    })
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/settings/{bucket}/{path}",
+                    operationId = "deleteGlobalSettings",
+                    tags = {"Global Settings"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Must be 'global'"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 204, description = "Success")
+                    },
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+            )
+    })
     public Future<?> handle() throws Exception {
         if (!EntityBucketBinding.isAllowed(entityType, bucket)) {
             // Body-less 404 — must be indistinguishable from "entity not found" so an unauthenticated

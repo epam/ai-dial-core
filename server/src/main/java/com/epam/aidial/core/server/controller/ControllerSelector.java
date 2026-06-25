@@ -352,6 +352,11 @@ public class ControllerSelector {
                     proxy.getLockService());
             return controller::handle;
         });
+        get(RouteTemplate.CONFIG_HEALTH, (proxy, context, pathMatcher) -> {
+            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+            return new AdminHealthConfigController(context, authService, mergedConfigStore);
+        });
         post(RouteTemplate.CONFIG, (proxy, context, pathMatcher) -> new ConfigController(context));
         post(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));

@@ -4,6 +4,9 @@ import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.server.controller.AdminApplyController;
+import com.epam.aidial.core.server.controller.AdminHealthConfigController;
+import com.epam.aidial.core.server.controller.AdminValidateController;
 import com.epam.aidial.core.server.controller.ApplicationController;
 import com.epam.aidial.core.server.controller.ApplicationMcpProxyController;
 import com.epam.aidial.core.server.controller.ApplicationTypeSchemaController;
@@ -11,12 +14,14 @@ import com.epam.aidial.core.server.controller.BucketController;
 import com.epam.aidial.core.server.controller.ClientChannelController;
 import com.epam.aidial.core.server.controller.CodeInterpreterController;
 import com.epam.aidial.core.server.controller.ConfigController;
+import com.epam.aidial.core.server.controller.ConfigResourceController;
 import com.epam.aidial.core.server.controller.ConfigResourceMetadataController;
 import com.epam.aidial.core.server.controller.ConsentController;
 import com.epam.aidial.core.server.controller.DeploymentController;
 import com.epam.aidial.core.server.controller.DeploymentFeatureController;
 import com.epam.aidial.core.server.controller.DeploymentPostController;
 import com.epam.aidial.core.server.controller.DownloadFileController;
+import com.epam.aidial.core.server.controller.FileConfigController;
 import com.epam.aidial.core.server.controller.FileMetadataController;
 import com.epam.aidial.core.server.controller.InvitationController;
 import com.epam.aidial.core.server.controller.LimitController;
@@ -28,6 +33,7 @@ import com.epam.aidial.core.server.controller.RateResponseController;
 import com.epam.aidial.core.server.controller.ResourceController;
 import com.epam.aidial.core.server.controller.ResourceCredentialsController;
 import com.epam.aidial.core.server.controller.ResourceOperationController;
+import com.epam.aidial.core.server.controller.ResponseItemController;
 import com.epam.aidial.core.server.controller.ResponsesController;
 import com.epam.aidial.core.server.controller.ShareController;
 import com.epam.aidial.core.server.controller.ToolSetController;
@@ -45,6 +51,9 @@ import java.util.List;
 public final class AnnotationEndpointCollector {
 
     private static final List<Class<?>> CONTROLLER_CLASSES = List.of(
+            AdminApplyController.class,
+            AdminHealthConfigController.class,
+            AdminValidateController.class,
             ApplicationController.class,
             ApplicationMcpProxyController.class,
             ApplicationTypeSchemaController.class,
@@ -52,12 +61,14 @@ public final class AnnotationEndpointCollector {
             ClientChannelController.class,
             CodeInterpreterController.class,
             ConfigController.class,
+            ConfigResourceController.class,
             ConfigResourceMetadataController.class,
             ConsentController.class,
             DeploymentController.class,
             DeploymentFeatureController.class,
             DeploymentPostController.class,
             DownloadFileController.class,
+            FileConfigController.class,
             FileMetadataController.class,
             InvitationController.class,
             LimitController.class,
@@ -69,6 +80,7 @@ public final class AnnotationEndpointCollector {
             ResourceController.class,
             ResourceCredentialsController.class,
             ResourceOperationController.class,
+            ResponseItemController.class,
             ResponsesController.class,
             ShareController.class,
             ToolSetController.class,

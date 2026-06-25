@@ -25,8 +25,9 @@ final class ResponseProfileBuilder {
      */
     static void addProfileResponses(ApiResponses responses, ResponseProfile profile, DtoSchemaGenerator schemaGenerator) {
         for (String code : profile.getResponseCodes()) {
-            ApiResponse response = createStandardResponse(code, schemaGenerator);
-            responses.addApiResponse(code, response);
+            responses.computeIfAbsent(
+                    code,
+                    k -> createStandardResponse(code, schemaGenerator));
         }
     }
 

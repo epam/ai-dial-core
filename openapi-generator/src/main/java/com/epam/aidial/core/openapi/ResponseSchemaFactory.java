@@ -85,22 +85,139 @@ final class ResponseSchemaFactory {
     }
 
     public static Schema<?> oneOf(Class<?>[] types, DtoSchemaGenerator schemaGenerator) {
+        return oneOf(null, types, schemaGenerator);
+    }
+
+    /**
+     * Creates a oneOf schema combining schemaRef (if present) with the provided types.
+     *
+     * @param schemaRef schema reference to include first, or null
+     * @param types classes to include in oneOf
+     * @param schemaGenerator schema generator for type resolution
+     * @return ComposedSchema with oneOf items
+     */
+    public static Schema<?> oneOf(String schemaRef, Class<?>[] types, DtoSchemaGenerator schemaGenerator) {
         ComposedSchema schema = new ComposedSchema();
+
+        // Include schemaRef as first element if specified
+        if (StringUtils.isNotBlank(schemaRef)) {
+            schema.addOneOfItem(forBody(schemaRef, null, schemaGenerator));
+        }
+
+        // Add all types
         for (Class<?> type : types) {
             schema.addOneOfItem(forBody(type, schemaGenerator));
         }
+
         return schema;
     }
 
     public static Schema<?> oneOfForContentType(String contentType, Class<?>[] types, DtoSchemaGenerator schemaGenerator) {
+        return oneOfForContentType(contentType, null, types, schemaGenerator);
+    }
+
+    /**
+     * Creates oneOf schema with content-type specific handling (e.g., SSE streams).
+     *
+     * @param contentType content type (e.g., text/event-stream)
+     * @param schemaRef schema reference to include first, or null
+     * @param types classes to include in oneOf
+     * @param schemaGenerator schema generator for type resolution
+     * @return Schema with oneOf composition
+     */
+    public static Schema<?> oneOfForContentType(String contentType, String schemaRef,
+                                                 Class<?>[] types, DtoSchemaGenerator schemaGenerator) {
         if (TEXT_EVENT_STREAM.equals(contentType)) {
             ComposedSchema schema = new ComposedSchema();
+            // Include schemaRef as first element if specified
+            if (StringUtils.isNotBlank(schemaRef)) {
+                schema.addOneOfItem(streamArray(schemaRef, null, schemaGenerator));
+            }
             for (Class<?> type : types) {
                 schema.addOneOfItem(streamArray(null, type, schemaGenerator));
             }
             return schema;
         }
-        return oneOf(types, schemaGenerator);
+        return oneOf(schemaRef, types, schemaGenerator);
+    }
+
+    /**
+     * Creates an allOf schema combining the body type (if not Void) with additional types.
+     * The body is included as the first element if present.
+     *
+     * @param bodyClass body class to include first, or null
+     * @param additionalTypes additional classes to combine with allOf
+     * @param schemaGenerator schema generator for type resolution
+     * @return ComposedSchema with allOf items
+     */
+    public static Schema<?> allOf(Class<?> bodyClass, Class<?>[] additionalTypes, DtoSchemaGenerator schemaGenerator) {
+        return allOf(null, bodyClass, additionalTypes, schemaGenerator);
+    }
+
+    /**
+     * Creates an allOf schema combining schemaRef and/or body with additional types.
+     *
+     * @param schemaRef schema reference to include first, or null
+     * @param bodyClass body class to include, or null
+     * @param additionalTypes additional classes to combine with allOf
+     * @param schemaGenerator schema generator for type resolution
+     * @return ComposedSchema with allOf items
+     */
+    public static Schema<?> allOf(String schemaRef, Class<?> bodyClass, Class<?>[] additionalTypes,
+                                   DtoSchemaGenerator schemaGenerator) {
+        ComposedSchema schema = new ComposedSchema();
+
+        // Include schemaRef as first element if specified
+        if (StringUtils.isNotBlank(schemaRef)) {
+            schema.addAllOfItem(forBody(schemaRef, null, schemaGenerator));
+        }
+
+        // Include body as element if specified
+        if (bodyClass != null && bodyClass != Void.class) {
+            schema.addAllOfItem(forBody(bodyClass, schemaGenerator));
+        }
+
+        // Add all additional types
+        for (Class<?> type : additionalTypes) {
+            schema.addAllOfItem(forBody(type, schemaGenerator));
+        }
+
+        return schema;
+    }
+
+    /**
+     * Creates allOf schema with content-type specific handling (e.g., SSE streams).
+     *
+     * @param contentType content type (e.g., text/event-stream)
+     * @param bodyClass body class to include first, or null
+     * @param additionalTypes additional classes to combine with allOf
+     * @param schemaGenerator schema generator for type resolution
+     * @return Schema with allOf composition, wrapped in array for SSE
+     */
+    public static Schema<?> allOfForContentType(String contentType, Class<?> bodyClass,
+                                                 Class<?>[] additionalTypes, DtoSchemaGenerator schemaGenerator) {
+        return allOfForContentType(contentType, null, bodyClass, additionalTypes, schemaGenerator);
+    }
+
+    /**
+     * Creates allOf schema with content-type specific handling (e.g., SSE streams).
+     *
+     * @param contentType content type (e.g., text/event-stream)
+     * @param schemaRef schema reference to include first, or null
+     * @param bodyClass body class to include, or null
+     * @param additionalTypes additional classes to combine with allOf
+     * @param schemaGenerator schema generator for type resolution
+     * @return Schema with allOf composition, wrapped in array for SSE
+     */
+    public static Schema<?> allOfForContentType(String contentType, String schemaRef, Class<?> bodyClass,
+                                                 Class<?>[] additionalTypes, DtoSchemaGenerator schemaGenerator) {
+        if (TEXT_EVENT_STREAM.equals(contentType)) {
+            // For SSE, wrap the allOf composition in an array
+            ArraySchema arraySchema = new ArraySchema();
+            arraySchema.setItems(allOf(schemaRef, bodyClass, additionalTypes, schemaGenerator));
+            return arraySchema;
+        }
+        return allOf(schemaRef, bodyClass, additionalTypes, schemaGenerator);
     }
 
     public static Schema<?> streamArray(String schemaRef, Type body, DtoSchemaGenerator schemaGenerator) {

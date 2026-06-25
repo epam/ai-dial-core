@@ -2,6 +2,12 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiOperations;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
+import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResponseMapping;
@@ -40,6 +46,51 @@ public class ResponseItemController implements Controller {
     private final Operation operation;
 
     @Override
+    @ApiOperations({
+            @ApiOperation(
+                    method = "GET",
+                    path = "/openai/v1/responses/{response_id}",
+                    operationId = "getResponseItem",
+                    tags = {"Responses API"},
+                    parameters = {
+                            @ApiParameter(name = "response_id", in = ParameterIn.PATH, required = true,
+                                    description = "The ID of the response to retrieve")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", schemaRef = "ProxyResponse"),
+                            @ApiResponse(code = 200, description = "Success", schemaRef = "ProxyResponse", contentTypes = {"text/event-stream"})
+                    },
+                    responseProfile = ResponseProfile.RESPONSE_ITEM_PROXY
+            ),
+            @ApiOperation(
+                    method = "POST",
+                    path = "/openai/v1/responses/{response_id}/cancel",
+                    operationId = "cancelResponseItem",
+                    tags = {"Responses API"},
+                    parameters = {
+                            @ApiParameter(name = "response_id", in = ParameterIn.PATH, required = true,
+                                    description = "The ID of the response to cancel")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", schemaRef = "ProxyResponse")
+                    },
+                    responseProfile = ResponseProfile.RESPONSE_ITEM_PROXY
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/openai/v1/responses/{response_id}",
+                    operationId = "deleteResponseItem",
+                    tags = {"Responses API"},
+                    parameters = {
+                            @ApiParameter(name = "response_id", in = ParameterIn.PATH, required = true,
+                                    description = "The ID of the response to delete")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", schemaRef = "ProxyResponse")
+                    },
+                    responseProfile = ResponseProfile.RESPONSE_ITEM_PROXY
+            )
+    })
     public Future<?> handle() {
         return proxy.getTaskExecutor().submit(this::loadMapping)
                 .compose(this::forwardToUpstream)

@@ -1,7 +1,9 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -272,6 +274,9 @@ public class PublicationController {
             operationId = "listPublishedResources",
             requestBody = ListPublishedResourcesRequest.class,
             tags = {"Publications"},
+            parameters = {
+                    @ApiParameter(name = "permissions", in = ParameterIn.QUERY)
+            },
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = MetadataBase.class, wrapper = Collection.class)
             },

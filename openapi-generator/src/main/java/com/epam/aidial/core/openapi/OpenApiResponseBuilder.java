@@ -43,7 +43,8 @@ public final class OpenApiResponseBuilder {
                 return r;
             });
             Content content = ResponseContentFactory.build(annotation.contentTypes(), annotation.schemaRef(),
-                    resolveResponseType(annotation), annotation.responseOneOf(), schemaGenerator);
+                    resolveResponseType(annotation), annotation.responseOneOf(), annotation.responseAllOf(),
+                    annotation.body(), schemaGenerator);
             if (content == null) {
                 continue;
             }
@@ -58,9 +59,16 @@ public final class OpenApiResponseBuilder {
     }
 
     private static Type resolveResponseType(ApiResponse response) {
+        // responseOneOf takes highest precedence
         if (response.responseOneOf() != null && response.responseOneOf().length > 0) {
             return null;
         }
+
+        // responseAllOf takes precedence over body/wrapper
+        if (response.responseAllOf() != null && response.responseAllOf().length > 0) {
+            return null;  // Signal special handling needed
+        }
+
         if (response.body() == Void.class) {
             return null;
         }
@@ -77,8 +85,18 @@ public final class OpenApiResponseBuilder {
                 if (!response.schemaRef().isBlank()) {
                     schemaGenerator.registerExternalSchema(response.schemaRef());
                 }
+
                 if (response.responseOneOf() != null && response.responseOneOf().length > 0) {
                     for (Class<?> type : response.responseOneOf()) {
+                        ResponseSchemaFactory.registerResponseBody(type, schemaGenerator);
+                    }
+                } else if (response.responseAllOf() != null && response.responseAllOf().length > 0) {
+                    // Register body if present (check directly since resolveResponseType returns null for allOf)
+                    if (response.body() != Void.class) {
+                        ResponseSchemaFactory.registerResponseBody(response.body(), schemaGenerator);
+                    }
+                    // Register all allOf types
+                    for (Class<?> type : response.responseAllOf()) {
                         ResponseSchemaFactory.registerResponseBody(type, schemaGenerator);
                     }
                 } else {
