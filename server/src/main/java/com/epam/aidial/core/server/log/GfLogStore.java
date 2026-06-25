@@ -25,7 +25,6 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 
-import javax.annotation.Nullable;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -36,6 +35,7 @@ import java.util.Optional;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import javax.annotation.Nullable;
 
 @Slf4j
 public class GfLogStore implements LogStore {
