@@ -171,9 +171,8 @@ public class BackgroundJobService {
                     if (dialId == null) {
                         return Future.succeededFuture();
                     }
-                    String stateKey = stateKey(dialId);
                     long leaseUntil = System.currentTimeMillis() + settings.getLeaseTimeoutMs();
-                    return executeClaim(stateKey, now, leaseUntil, dialId, owner)
+                    return executeClaim(stateKey(dialId), now, leaseUntil, dialId, owner)
                             .compose(claimResult -> {
                                 if (claimResult == null || claimResult.isEmpty()) {
                                     return tryClaimAndPoll();
@@ -220,10 +219,9 @@ public class BackgroundJobService {
     }
 
     private Future<Void> poll(String dialId, long owner, int attempts, int errors) {
-        String stateKey = stateKey(dialId);
-
         return taskExecutor.submit(() -> loadJobData(dialId))
                 .compose(pair -> {
+                    String stateKey = stateKey(dialId);
                     if (pair == null) {
                         log.info("Background job {} record or mapping not found, stopping polling", dialId);
                         return executeComplete(dialId, stateKey, owner);
@@ -338,7 +336,7 @@ public class BackgroundJobService {
                 RScript.Mode.READ_WRITE,
                 """
                         local owner = redis.call('HGET', KEYS[2], 'owner')
-                        if owner ~= ARGV[2] then
+                        if owner ~= false and owner ~= ARGV[2] then
                             return 0
                         end
                         redis.call('ZREM', KEYS[1], ARGV[1])
