@@ -18,6 +18,7 @@ dependencies {
     implementation("com.epam.deltix:gflog-api:${epam_deltix_gflog_version}")
     implementation("com.epam.deltix:gflog-core:${epam_deltix_gflog_version}")
     implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${jackson_core_version}")
     implementation("com.google.auth:google-auth-library-oauth2-http:${google_auth_version}")
     implementation("com.google.protobuf:protobuf-java:${google_protobuf_version}")
     implementation("com.jayway.jsonpath:json-path:${jayway_jsonpath_version}")
