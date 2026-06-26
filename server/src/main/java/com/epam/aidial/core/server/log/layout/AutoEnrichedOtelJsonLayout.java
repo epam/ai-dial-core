@@ -156,3 +156,4 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         );
     }
 }
+
