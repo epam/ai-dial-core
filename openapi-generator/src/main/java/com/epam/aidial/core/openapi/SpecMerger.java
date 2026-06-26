@@ -12,12 +12,15 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 public final class SpecMerger {
 
@@ -158,7 +161,8 @@ public final class SpecMerger {
             manualNodeByNorm.putIfAbsent(norm, (ObjectNode) entry.getValue());
         });
 
-        Set<String> allNormalized = new LinkedHashSet<>();
+        // Collect all paths and sort alphabetically for deterministic output
+        Set<String> allNormalized = new TreeSet<>();
         manual.fields().forEachRemaining(entry ->
                 allNormalized.add(OpenApiPathNormalizer.normalizePath(entry.getKey())));
         skeleton.fields().forEachRemaining(entry ->
@@ -193,7 +197,8 @@ public final class SpecMerger {
     private ObjectNode mergeComponentSchemas(ObjectNode skeleton, ObjectNode manual) {
         ObjectNode result = yamlMapper.createObjectNode();
 
-        Set<String> allSchemas = new LinkedHashSet<>();
+        // Sort schema names alphabetically for deterministic output
+        Set<String> allSchemas = new TreeSet<>();
         manual.fieldNames().forEachRemaining(allSchemas::add);
         skeleton.fieldNames().forEachRemaining(allSchemas::add);
 
@@ -299,10 +304,29 @@ public final class SpecMerger {
     private JsonNode mergeResponses(ObjectNode skeleton, ObjectNode manual) {
         ObjectNode result = yamlMapper.createObjectNode();
 
-        Set<String> allCodes = new LinkedHashSet<>();
-
+        // Collect all response codes
+        List<String> allCodes = new ArrayList<>();
         manual.fieldNames().forEachRemaining(allCodes::add);
-        skeleton.fieldNames().forEachRemaining(allCodes::add);
+        skeleton.fieldNames().forEachRemaining(code -> {
+            if (!allCodes.contains(code)) {
+                allCodes.add(code);
+            }
+        });
+
+        // Sort response codes: numeric codes ascending, "default" last
+        allCodes.sort((code1, code2) -> {
+            if ("default".equals(code1)) {
+                return 1;
+            }
+            if ("default".equals(code2)) {
+                return -1;
+            }
+            try {
+                return Integer.compare(Integer.parseInt(code1), Integer.parseInt(code2));
+            } catch (NumberFormatException e) {
+                return code1.compareTo(code2);
+            }
+        });
 
         for (String code : allCodes) {
             JsonNode skeletonResponse = skeleton.get(code);
@@ -499,7 +523,8 @@ public final class SpecMerger {
     private ObjectNode mergeContent(ObjectNode skeletonContent, ObjectNode manualContent, String jsonPath) {
         ObjectNode result = yamlMapper.createObjectNode();
 
-        Set<String> allMediaTypes = new LinkedHashSet<>();
+        // Sort media types alphabetically for deterministic output
+        Set<String> allMediaTypes = new TreeSet<>();
         manualContent.fieldNames().forEachRemaining(allMediaTypes::add);
         skeletonContent.fieldNames().forEachRemaining(allMediaTypes::add);
 

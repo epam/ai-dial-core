@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Stream;
 
 public class SpecAssembler {
@@ -84,9 +85,9 @@ public class SpecAssembler {
         apiKeyScheme.setName("Api-Key");
         components.addSecuritySchemes("ApiKeyAuth", apiKeyScheme);
 
-        // Add schemas from DtoSchemaGenerator
+        // Add schemas from DtoSchemaGenerator, sorted alphabetically for deterministic output
         Map<String, ObjectNode> generatedSchemas = schemaGenerator.getSchemas();
-        Map<String, Schema> swaggerSchemas = new LinkedHashMap<>();
+        Map<String, Schema> swaggerSchemas = new TreeMap<>();
         for (Map.Entry<String, ObjectNode> entry : generatedSchemas.entrySet()) {
             swaggerSchemas.put(entry.getKey(), convertToSwaggerSchema(entry.getValue()));
         }

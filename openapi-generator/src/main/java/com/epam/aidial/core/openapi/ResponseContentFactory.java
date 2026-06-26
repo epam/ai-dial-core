@@ -5,6 +5,8 @@ import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.media.MediaType;
 import io.swagger.v3.oas.models.media.Schema;
 
+import java.util.Arrays;
+
 final class ResponseContentFactory {
 
     private ResponseContentFactory() {
@@ -12,6 +14,10 @@ final class ResponseContentFactory {
 
     static Content build(String[] contentTypes, ApiSchema apiSchema, DtoSchemaGenerator schemaGenerator) {
         Content content = new Content();
+
+        // Sort content types alphabetically for deterministic ordering
+        Arrays.sort(contentTypes);
+
         for (String contentType : contentTypes) {
             Schema<?> schema = ResponseSchemaFactory.forContentType(contentType, apiSchema, schemaGenerator);
 

@@ -19,7 +19,40 @@ public final class OpenApiResponseBuilder {
         if (endpoint.responseProfile() != ResponseProfile.NONE) {
             ResponseProfileBuilder.addProfileResponses(responses, endpoint.responseProfile(), schemaGenerator);
         }
-        return responses;
+        return sortResponses(responses);
+    }
+
+    /**
+     * Sorts responses by status code to ensure deterministic ordering.
+     * Numeric codes are sorted ascending, "default" appears last.
+     */
+    private static ApiResponses sortResponses(ApiResponses responses) {
+        if (responses == null || responses.isEmpty()) {
+            return responses;
+        }
+
+        ApiResponses sorted = new ApiResponses();
+        responses.keySet().stream()
+                .sorted((code1, code2) -> {
+                    // "default" always comes last
+                    if ("default".equals(code1)) {
+                        return 1;
+                    }
+                    if ("default".equals(code2)) {
+                        return -1;
+                    }
+
+                    // Numeric codes sort numerically
+                    try {
+                        return Integer.compare(Integer.parseInt(code1), Integer.parseInt(code2));
+                    } catch (NumberFormatException e) {
+                        // Fallback to string comparison for non-numeric codes
+                        return code1.compareTo(code2);
+                    }
+                })
+                .forEach(code -> sorted.addApiResponse(code, responses.get(code)));
+
+        return sorted;
     }
 
     private static ApiResponses buildExplicitResponses(EndpointMetadata.Endpoint endpoint, DtoSchemaGenerator schemaGenerator) {
