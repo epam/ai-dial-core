@@ -1,7 +1,10 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -61,9 +64,9 @@ public class PublicationController {
             path = "/v1/ops/publication/list",
             operationId = "getPublications",
             tags = {"Publications"},
-            requestBody = ResourceLink.class,
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
             responses = {
-                @ApiResponse(code = 200, description = "Success", body = Publication.class, wrapper = List.class)
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = List.class, typeArguments = {Publication.class}))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
@@ -86,10 +89,10 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/get",
             operationId = "getPublication",
-            requestBody = ResourceLink.class,
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
             tags = {"Publications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Publication.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Publication.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
@@ -112,10 +115,10 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/create",
             operationId = "createPublication",
-            requestBody = Publication.class,
+            requestBody = @ApiSchema(implementation = Publication.class),
             tags = {"Publications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Publication.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Publication.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
@@ -136,7 +139,7 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/delete",
             operationId = "deletePublication",
-            requestBody = ResourceLink.class,
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
             tags = {"Publications"},
             responses = {
                     @ApiResponse(code = 200, description = "Success")
@@ -162,10 +165,10 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/update",
             operationId = "updatePublication",
-            requestBody = Publication.class,
+            requestBody = @ApiSchema(implementation = Publication.class),
             tags = {"Publications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Publication.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Publication.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
@@ -189,10 +192,10 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/approve",
             operationId = "approvePublication",
-            requestBody = ResourceLink.class,
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
             tags = {"Publications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Publication.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Publication.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
@@ -217,10 +220,10 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/reject",
             operationId = "rejectPublication",
-            requestBody = RejectPublicationRequest.class,
+            requestBody = @ApiSchema(implementation = RejectPublicationRequest.class),
             tags = {"Publications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Publication.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Publication.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
@@ -244,10 +247,10 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/rule/list",
             operationId = "getPublicationRules",
-            requestBody = ResourceLink.class,
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
             tags = {"Publications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Rules.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Rules.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
@@ -270,10 +273,13 @@ public class PublicationController {
             method = "POST",
             path = "/v1/ops/publication/resource/list",
             operationId = "listPublishedResources",
-            requestBody = ListPublishedResourcesRequest.class,
+            requestBody = @ApiSchema(implementation = ListPublishedResourcesRequest.class),
             tags = {"Publications"},
+            parameters = {
+                    @ApiParameter(name = "permissions", in = ParameterIn.QUERY)
+            },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = MetadataBase.class, wrapper = Collection.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Collection.class, typeArguments = {MetadataBase.class}))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )

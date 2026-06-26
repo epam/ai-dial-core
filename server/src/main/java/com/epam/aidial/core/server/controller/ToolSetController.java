@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -54,7 +55,7 @@ public class ToolSetController {
                             description = OpenApiDescriptions.TOOLSET_NAME)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ToolSetData.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ToolSetData.class))
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
@@ -79,7 +80,7 @@ public class ToolSetController {
             operationId = "getToolSets",
             tags = {"Deployment listing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ToolSetData.class, wrapper = ListData.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ListData.class, typeArguments = {ToolSetData.class}))
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )

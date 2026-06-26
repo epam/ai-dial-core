@@ -5,13 +5,12 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 /**
  * Fail-closed coverage for the Configuration/Admin API surface (finding #1): when
  * {@code access.admin.rules} is empty/unconfigured, {@link com.epam.aidial.core.server.security.AccessService#hasExplicitAdminAccess}
- * denies all platform reads+writes, public writes, and every {@code /v1/admin/*} endpoint — even for
- * an otherwise-admin caller. Public reads stay open. Legacy {@link RuleMatcher} empty-rules=allow-all
+ * denies all reads and writes on the platform bucket, public writes, and every {@code /v1/admin/*}
+ * endpoint — even for an otherwise-admin caller. Legacy {@link RuleMatcher} empty-rules=allow-all
  * paths are untouched.
  */
 public class ConfigAdminFailClosedTest extends ResourceBaseTest {
@@ -66,18 +65,15 @@ public class ConfigAdminFailClosedTest extends ResourceBaseTest {
     }
 
     @Test
-    void testPublicModelWriteDeniedWhenRulesEmpty() {
-        verify(send(HttpMethod.PUT, "/v1/models/public/m1", null, "{}",
+    void testPlatformModelWriteDeniedWhenRulesEmpty() {
+        verify(send(HttpMethod.PUT, "/v1/models/platform/m1", null, "{}",
                 "authorization", "admin"), 403);
     }
 
     @Test
-    void testPublicModelReadStaysOpenWhenRulesEmpty() {
-        // Public reads remain open to any authenticated caller; the entity lookup may 404 but must
-        // never be the fail-closed 403.
-        Response response = send(HttpMethod.GET, "/v1/models/public/m1", null, "",
-                "authorization", "admin");
-        assertNotEquals(403, response.status(), () -> "Public read must stay open: " + response.body());
+    void testPlatformModelReadDeniedWhenRulesEmpty() {
+        verify(send(HttpMethod.GET, "/v1/models/platform/m1", null, "",
+                "authorization", "admin"), 403);
     }
 
     @Test

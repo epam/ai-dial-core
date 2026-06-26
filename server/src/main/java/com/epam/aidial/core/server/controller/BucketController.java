@@ -1,8 +1,8 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -27,7 +27,7 @@ public class BucketController {
             operationId = "getUserBucket",
             tags = {"Files", "Conversations", "Prompts", "Applications", "Toolsets"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Bucket.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Bucket.class))
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED)
     public Future<?> getBucket() {

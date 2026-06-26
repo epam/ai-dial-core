@@ -1,11 +1,10 @@
 package com.epam.aidial.core.openapi;
 
-import com.epam.aidial.core.openapi.schema.OpenApiBinary;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import io.swagger.v3.oas.models.media.ArraySchema;
 import io.swagger.v3.oas.models.media.ComposedSchema;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.media.StringSchema;
-import org.apache.commons.lang3.StringUtils;
 
 import java.lang.reflect.Type;
 import java.util.LinkedHashMap;
@@ -38,115 +37,35 @@ final class ResponseSchemaFactory {
             || schemaRef.startsWith("https://");
     }
 
-    public static Schema<?> forContentType(String contentType, String schemaRef, Type body, DtoSchemaGenerator schemaGenerator) {
-        if (TEXT_EVENT_STREAM.equals(contentType)) {
-            return StringUtils.isBlank(schemaRef) && (body == null || body == Void.class || body == String.class)
-                ? new StringSchema()
-                : streamArray(schemaRef, body, schemaGenerator);
-        }
-        return forBody(schemaRef, body, schemaGenerator);
-    }
+    // ========== Helper Methods for ApiSchema ==========
 
-    public static Schema<?> forBody(Type body, DtoSchemaGenerator schemaGenerator) {
-        return forBody(null, body, schemaGenerator);
-    }
+    /**
+     * Helper to create schema for a simple class reference.
+     * Java array types are inlined as OpenAPI array schemas rather than component references.
+     */
+    private static Schema<?> forBody(Class<?> clazz, DtoSchemaGenerator gen) {
+        // Inline primitive types
+        if (OpenApiParameterBuilder.isInlinePrimitiveType(clazz)) {
+            return OpenApiParameterBuilder.inlinePrimitiveSchema(clazz);
+        }
 
-    public static Schema<?> forBody(String schemaRef, Type body, DtoSchemaGenerator schemaGenerator) {
-        if (StringUtils.isNotBlank(schemaRef)) {
-            Schema<Object> schema = new Schema<>();
-            // Only preserve file path for truly external references
-            // Project schemas should use schema names that get loaded as components
-            if (isTrulyExternalRef(schemaRef)) {
-                schema.set$ref(schemaRef);
-            } else {
-                schema.set$ref(COMPONENTS_SCHEMAS_PREFIX + schemaRef);
-            }
-            return schema;
+        // Inline Java array types
+        if (clazz.isArray()) {
+            Class<?> componentType = clazz.getComponentType();
+            ArraySchema arraySchema = new ArraySchema();
+            arraySchema.setItems(forBody(componentType, gen));
+            return arraySchema;
         }
-        if (!hasBodyType(body)) {
-            return null;
-        }
-        if (body instanceof Class<?> clazz) {
-            if (clazz == OpenApiBinary.class) {
-                return binaryStringSchema();
-            }
-            if (OpenApiParameterBuilder.isInlinePrimitiveType(clazz)) {
-                return OpenApiParameterBuilder.inlinePrimitiveSchema(clazz);
-            }
-            if (clazz.isArray()) {
-                ArraySchema schema = new ArraySchema();
-                schema.setItems(forBody(null, clazz.getComponentType(), schemaGenerator));
-                return schema;
-            }
-        }
+
+        // Component reference for DTOs
         Schema<Object> refSchema = new Schema<>();
-        refSchema.set$ref(COMPONENTS_SCHEMAS_PREFIX + schemaGenerator.resolveTypeName(body));
+        refSchema.set$ref(COMPONENTS_SCHEMAS_PREFIX + gen.resolveTypeName(clazz));
         return refSchema;
     }
 
-    public static Schema<?> oneOf(Class<?>[] types, DtoSchemaGenerator schemaGenerator) {
-        ComposedSchema schema = new ComposedSchema();
-        for (Class<?> type : types) {
-            schema.addOneOfItem(forBody(type, schemaGenerator));
-        }
-        return schema;
-    }
-
-    public static Schema<?> oneOfForContentType(String contentType, Class<?>[] types, DtoSchemaGenerator schemaGenerator) {
-        if (TEXT_EVENT_STREAM.equals(contentType)) {
-            ComposedSchema schema = new ComposedSchema();
-            for (Class<?> type : types) {
-                schema.addOneOfItem(streamArray(null, type, schemaGenerator));
-            }
-            return schema;
-        }
-        return oneOf(types, schemaGenerator);
-    }
-
-    public static Schema<?> streamArray(String schemaRef, Type body, DtoSchemaGenerator schemaGenerator) {
-        if (StringUtils.isNotBlank(schemaRef)) {
-            Schema<Object> arraySchema = new Schema<>();
-            arraySchema.setType("array");
-
-            Schema<Object> itemRef = new Schema<>();
-            // Only preserve file path for truly external references
-            if (isTrulyExternalRef(schemaRef)) {
-                itemRef.set$ref(schemaRef);
-            } else {
-                itemRef.set$ref(COMPONENTS_SCHEMAS_PREFIX + schemaRef);
-            }
-
-            arraySchema.setItems(itemRef);
-
-            return arraySchema;
-        }
-        if (!(body instanceof Class<?> clazz) || clazz == Void.class) {
-            return null;
-        }
-        if (clazz == OpenApiBinary.class) {
-            return forBody(schemaRef, body, schemaGenerator);
-        }
-        Schema<Object> arraySchema = new Schema<>();
-        arraySchema.setType("array");
-        if (OpenApiParameterBuilder.isInlinePrimitiveType(clazz)) {
-            arraySchema.setItems(OpenApiParameterBuilder.inlinePrimitiveSchema(clazz));
-        } else {
-            Schema<Object> itemRef = new Schema<>();
-            itemRef.set$ref(COMPONENTS_SCHEMAS_PREFIX + schemaGenerator.resolveTypeName(clazz));
-            arraySchema.setItems(itemRef);
-        }
-        return arraySchema;
-    }
-
-    public static boolean hasBodyType(Type type) {
-        return type != null && !(type instanceof Class<?> clazz && clazz == Void.class);
-    }
-
-    public static boolean hasRequestOneOf(EndpointMetadata.Endpoint endpoint) {
-        return endpoint.requestOneOf() != null
-            && endpoint.requestOneOf().length > 0;
-    }
-
+    /**
+     * Helper to create binary string schema.
+     */
     public static Schema<byte[]> binaryStringSchema() {
         Schema<byte[]> schema = new Schema<>();
         schema.setType("string");
@@ -154,12 +73,9 @@ final class ResponseSchemaFactory {
         return schema;
     }
 
-    public static boolean isMultipartBinaryUpload(Type body, String contentType) {
-        return MULTIPART_FORM_DATA.equals(contentType)
-                && body instanceof Class<?> clazz
-                && clazz == OpenApiBinary.class;
-    }
-
+    /**
+     * Multipart binary file upload schema.
+     */
     public static Schema<?> multipartBinaryFileUploadSchema() {
         Schema<Object> objectSchema = new Schema<>();
         objectSchema.setType("object");
@@ -170,22 +86,338 @@ final class ResponseSchemaFactory {
         return objectSchema;
     }
 
-    public static void registerRequestBody(Type body, String contentType, DtoSchemaGenerator schemaGenerator) {
-        if (!hasBodyType(body) || isMultipartBinaryUpload(body, contentType)) {
-            return;
+    // ========== ApiSchema Support ==========
+
+    /**
+     * Main entry point for ApiSchema resolution.
+     * Validates schema and delegates to appropriate strategy.
+     */
+    public static Schema<?> forSchema(ApiSchema schema, DtoSchemaGenerator gen) {
+        if (schema == null || isEmpty(schema)) {
+            return null;  // Void / no body
         }
-        if (body instanceof Class<?> clazz
-                && (clazz == OpenApiBinary.class || OpenApiParameterBuilder.isInlinePrimitiveType(clazz))) {
-            return;
+
+        // Validation first
+        validateSchema(schema);
+
+        // Strategy 1: Java DTO (with optional type arguments)
+        if (schema.implementation() != Void.class) {
+            return forImplementation(schema, gen);
         }
-        schemaGenerator.processType(body);
+
+        // Strategy 2: External/project schema reference (top-level only)
+        if (!schema.schemaRef().isEmpty() && !hasComposition(schema)) {
+            return forSchemaRef(schema.schemaRef());
+        }
+
+        // Strategy 3: Composition (oneOf/allOf, schemaRef can be element)
+        if (hasComposition(schema)) {
+            return forComposition(schema, gen);
+        }
+
+        throw new IllegalArgumentException(
+            "ApiSchema must specify implementation, schemaRef, or composition"
+        );
     }
 
-    public static void registerResponseBody(Type body, DtoSchemaGenerator schemaGenerator) {
-        if (!hasBodyType(body) || body instanceof Class<?> clazz
-                && (clazz == OpenApiBinary.class || OpenApiParameterBuilder.isInlinePrimitiveType(clazz))) {
+    /**
+     * Validates schema configuration with depth tracking to prevent excessive nesting.
+     */
+    private static void validateSchema(ApiSchema schema) {
+        validateSchema(schema, 0);
+    }
+
+    /**
+     * Validates schema configuration.
+     * Ensures mutually exclusive strategies, valid field combinations, and reasonable nesting depth.
+     *
+     * @param schema the schema to validate
+     * @param depth current nesting depth (0 for top-level)
+     * @throws IllegalArgumentException if schema is invalid
+     */
+    private static void validateSchema(ApiSchema schema, int depth) {
+        final int maxDepth = 10;
+        if (depth > maxDepth) {
+            throw new IllegalArgumentException(
+                "ApiSchema nesting depth exceeds maximum of " + maxDepth + ". "
+                    + "This may indicate an overly complex schema definition."
+            );
+        }
+
+        boolean hasImpl = schema.implementation() != Void.class;
+        boolean hasRef = !schema.schemaRef().isEmpty();
+        boolean hasOneOf = schema.oneOf().length > 0 || schema.oneOfSchemaRefs().length > 0;
+        boolean hasAllOf = schema.allOf().length > 0 || schema.allOfSchemaRefs().length > 0;
+        boolean hasComp = hasOneOf || hasAllOf;
+
+        // Rule 1: Exactly one primary strategy
+        int primaryStrategies = 0;
+        if (hasImpl) {
+            primaryStrategies++;
+        }
+        if (hasRef && !hasComp) {
+            primaryStrategies++;
+        }
+        if (hasComp) {
+            primaryStrategies++;
+        }
+
+        if (primaryStrategies > 1) {
+            throw new IllegalArgumentException(
+                "ApiSchema has conflicting primary strategies at depth " + depth + ". "
+                    + "Exactly one of the following must be specified: "
+                    + "implementation, schemaRef (standalone), or composition (oneOf/allOf). "
+                    + "Note: schemaRef can appear as element within composition."
+            );
+        }
+
+        if (primaryStrategies == 0 && depth == 0) {
+            return; // Empty top-level schema OK (means Void)
+        }
+
+        // Rule 2: implementation-specific validation
+        if (hasImpl) {
+            if (schema.typeArguments().length > 0) {
+                for (Class<?> typeArg : schema.typeArguments()) {
+                    if (typeArg == Void.class) {
+                        throw new IllegalArgumentException("typeArguments cannot contain Void.class");
+                    }
+                }
+            }
+            if (hasRef) {
+                throw new IllegalArgumentException("Cannot combine implementation with schemaRef at same level");
+            }
+            if (hasComp) {
+                throw new IllegalArgumentException(
+                    "Cannot combine implementation with oneOf/allOf at same level. "
+                        + "Use composition with implementation as element instead."
+                );
+            }
+        }
+
+        // Rule 3: typeArguments only valid with implementation
+        if (schema.typeArguments().length > 0 && !hasImpl) {
+            throw new IllegalArgumentException("typeArguments can only be used with implementation");
+        }
+
+        // Rule 4: Composition validation
+        if (hasComp) {
+            if (hasOneOf && hasAllOf) {
+                throw new IllegalArgumentException(
+                    "Cannot combine oneOf and allOf at same level. Use nested composition if you need both."
+                );
+            }
+
+            int compositionSize = schema.oneOf().length + schema.oneOfSchemaRefs().length
+                                + schema.allOf().length + schema.allOfSchemaRefs().length;
+            if (compositionSize == 0) {
+                throw new IllegalArgumentException("Composition (oneOf/allOf) must have at least one element");
+            }
+        }
+    }
+
+    /**
+     * Handles Java DTO schemas with optional generic type arguments.
+     */
+    private static Schema<?> forImplementation(ApiSchema schema, DtoSchemaGenerator gen) {
+        Class<?> implClass = schema.implementation();
+
+        if (OpenApiParameterBuilder.isInlinePrimitiveType(implClass)) {
+            return OpenApiParameterBuilder.inlinePrimitiveSchema(implClass);
+        }
+
+        Type type;
+        if (schema.typeArguments().length > 0) {
+            type = EndpointMetadata.paramType(implClass, schema.typeArguments());
+        } else {
+            type = implClass;
+        }
+
+        gen.processType(type);
+        Schema<Object> refSchema = new Schema<>();
+        refSchema.set$ref(COMPONENTS_SCHEMAS_PREFIX + gen.resolveTypeName(type));
+        return refSchema;
+    }
+
+    /**
+     * Handles external/project schema references.
+     */
+    private static Schema<?> forSchemaRef(String schemaRef) {
+        Schema<Object> schema = new Schema<>();
+        if (isTrulyExternalRef(schemaRef)) {
+            schema.set$ref(schemaRef);
+        } else {
+            schema.set$ref(COMPONENTS_SCHEMAS_PREFIX + schemaRef);
+        }
+        return schema;
+    }
+
+
+    /**
+     * Handles composition schemas (oneOf, allOf).
+     */
+    private static Schema<?> forComposition(ApiSchema schema, DtoSchemaGenerator gen) {
+        ComposedSchema composedSchema = new ComposedSchema();
+
+        // Add schemaRef elements first
+        for (String schemaRef : schema.oneOfSchemaRefs()) {
+            composedSchema.addOneOfItem(forSchemaRef(schemaRef));
+        }
+
+        // Add class elements
+        for (Class<?> clazz : schema.oneOf()) {
+            composedSchema.addOneOfItem(forBody(clazz, gen));
+        }
+
+        // Add allOf schemaRef elements first
+        for (String schemaRef : schema.allOfSchemaRefs()) {
+            composedSchema.addAllOfItem(forSchemaRef(schemaRef));
+        }
+
+        // Add allOf class elements
+        for (Class<?> clazz : schema.allOf()) {
+            composedSchema.addAllOfItem(forBody(clazz, gen));
+        }
+
+        applyMetadata(composedSchema, schema);
+        return composedSchema;
+    }
+
+    /**
+     * Content-type aware schema resolution.
+     */
+    public static Schema<?> forContentType(String contentType, ApiSchema schema, DtoSchemaGenerator gen) {
+        if (TEXT_EVENT_STREAM.equals(contentType)) {
+            Schema<?> baseSchema = forSchema(schema, gen);
+            if (baseSchema == null) {
+                return new StringSchema();
+            }
+            // For oneOf/allOf composition, wrap each element in array
+            if (baseSchema instanceof ComposedSchema composedSchema) {
+                ComposedSchema wrappedComposed = new ComposedSchema();
+                if (composedSchema.getOneOf() != null) {
+                    for (Schema<?> item : composedSchema.getOneOf()) {
+                        ArraySchema arraySchema = new ArraySchema();
+                        arraySchema.setItems(item);
+                        wrappedComposed.addOneOfItem(arraySchema);
+                    }
+                }
+                if (composedSchema.getAllOf() != null) {
+                    for (Schema<?> item : composedSchema.getAllOf()) {
+                        ArraySchema arraySchema = new ArraySchema();
+                        arraySchema.setItems(item);
+                        wrappedComposed.addAllOfItem(arraySchema);
+                    }
+                }
+                applyMetadata(wrappedComposed, schema);
+                return wrappedComposed;
+            }
+            // For schema refs (external schemas), wrap in array
+            if (baseSchema.get$ref() != null) {
+                ArraySchema arraySchema = new ArraySchema();
+                arraySchema.setItems(baseSchema);
+                return arraySchema;
+            }
+            // For primitive/inline schemas (like String), return as-is (no array wrapping)
+            return baseSchema;
+        }
+        return forSchema(schema, gen);
+    }
+
+    /**
+     * Special case: multipart binary detection.
+     */
+    public static boolean isMultipartBinaryUpload(ApiSchema schema, String contentType) {
+        return MULTIPART_FORM_DATA.equals(contentType)
+            && schema.implementation() == byte[].class;
+    }
+
+    /**
+     * Register schemas for ApiSchema annotation.
+     */
+    public static void registerSchema(ApiSchema schema, DtoSchemaGenerator gen) {
+        if (isEmpty(schema)) {
             return;
         }
-        schemaGenerator.processType(body);
+
+        validateSchema(schema);
+
+        if (schema.implementation() != Void.class) {
+            Class<?> implClass = schema.implementation();
+            if (!OpenApiParameterBuilder.isInlinePrimitiveType(implClass)) {
+                Type type;
+                if (schema.typeArguments().length > 0) {
+                    type = EndpointMetadata.paramType(implClass, schema.typeArguments());
+                } else {
+                    type = implClass;
+                }
+                gen.processType(type);
+            }
+        }
+
+        if (!schema.schemaRef().isEmpty() && !isTrulyExternalRef(schema.schemaRef())) {
+            gen.registerExternalSchema(schema.schemaRef());
+        }
+
+        // Register oneOf classes
+        for (Class<?> clazz : schema.oneOf()) {
+            if (!OpenApiParameterBuilder.isInlinePrimitiveType(clazz)) {
+                if (clazz.isArray()) {
+                    // Register component type, not the array wrapper
+                    gen.processType(clazz.getComponentType());
+                } else {
+                    gen.processType(clazz);
+                }
+            }
+        }
+
+        // Register oneOf schemaRefs
+        for (String schemaRef : schema.oneOfSchemaRefs()) {
+            if (!isTrulyExternalRef(schemaRef)) {
+                gen.registerExternalSchema(schemaRef);
+            }
+        }
+
+        // Register allOf classes
+        for (Class<?> clazz : schema.allOf()) {
+            if (!OpenApiParameterBuilder.isInlinePrimitiveType(clazz)) {
+                if (clazz.isArray()) {
+                    // Register component type, not the array wrapper
+                    gen.processType(clazz.getComponentType());
+                } else {
+                    gen.processType(clazz);
+                }
+            }
+        }
+
+        // Register allOf schemaRefs
+        for (String schemaRef : schema.allOfSchemaRefs()) {
+            if (!isTrulyExternalRef(schemaRef)) {
+                gen.registerExternalSchema(schemaRef);
+            }
+        }
+    }
+
+    private static void applyMetadata(Schema<?> schema, ApiSchema apiSchema) {
+        if (!apiSchema.description().isEmpty()) {
+            schema.setDescription(apiSchema.description());
+        }
+        if (apiSchema.nullable()) {
+            schema.setNullable(true);
+        }
+    }
+
+    static boolean isEmpty(ApiSchema schema) {
+        return schema.implementation() == Void.class
+            && schema.schemaRef().isEmpty()
+            && schema.oneOf().length == 0
+            && schema.oneOfSchemaRefs().length == 0
+            && schema.allOf().length == 0
+            && schema.allOfSchemaRefs().length == 0;
+    }
+
+    private static boolean hasComposition(ApiSchema schema) {
+        return schema.oneOf().length > 0 || schema.oneOfSchemaRefs().length > 0
+            || schema.allOf().length > 0 || schema.allOfSchemaRefs().length > 0;
     }
 }

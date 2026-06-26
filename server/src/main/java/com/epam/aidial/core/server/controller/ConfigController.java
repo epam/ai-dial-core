@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -24,7 +25,7 @@ public class ConfigController implements Controller {
             operationId = "reloadConfig",
             tags = {"Config"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Config.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Config.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )

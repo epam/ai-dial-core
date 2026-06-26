@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
@@ -66,8 +67,8 @@ public class ResourceOperationController {
             method = "POST",
             path = "/v1/ops/resource/move",
             operationId = "moveResource",
-            requestBody = MoveResourcesRequest.class,
-            tags = {"Files", "Conversations", "Prompts", "Applications", "ToolSets"},
+            requestBody = @ApiSchema(implementation = MoveResourcesRequest.class),
+            tags = {"Files", "Conversations", "Prompts", "Applications", "Toolsets"},
             responses = {
                     @ApiResponse(code = 200, description = "Success")
             },
@@ -134,8 +135,8 @@ public class ResourceOperationController {
             method = "POST",
             path = "/v1/ops/resource/copy",
             operationId = "copyResource",
-            requestBody = CopyResourcesRequest.class,
-            tags = {"Files", "Conversations", "Prompts", "Applications", "ToolSets"},
+            requestBody = @ApiSchema(implementation = CopyResourcesRequest.class),
+            tags = {"Files", "Conversations", "Prompts", "Applications", "Toolsets"},
             responses = {
                     @ApiResponse(code = 200, description = "Success")
             },
@@ -206,12 +207,12 @@ public class ResourceOperationController {
             method = "POST",
             path = "/v1/ops/resource/subscribe",
             operationId = "subscribeToResources",
-            requestBody = SubscribeResourcesRequest.class,
+            requestBody = @ApiSchema(implementation = SubscribeResourcesRequest.class),
             contentType = "text/event-stream",
             tags = {"Notifications"},
             responses = {
                     @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
-                            body = ResourceEvent.class, contentTypes = {"text/event-stream"}),
+                            body = @ApiSchema(implementation = ResourceEvent.class), contentTypes = {"text/event-stream"}),
                     @ApiResponse(code = 400, description = OpenApiDescriptions.RESPONSE_BAD_REQUEST),
                     @ApiResponse(code = 401, description = OpenApiDescriptions.RESPONSE_UNAUTHORIZED),
                     @ApiResponse(code = 500, description = OpenApiDescriptions.RESPONSE_SERVER_ERROR)

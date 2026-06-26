@@ -9,13 +9,13 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
@@ -88,8 +88,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                             description = OpenApiDescriptions.UPSTREAM_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionResponse", contentTypes = {"application/json"}),
-                    @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionStreamResponse", contentTypes = {"text/event-stream"})
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "CreateChatCompletionResponse"), contentTypes = {"application/json"}),
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "CreateChatCompletionStreamResponse"), contentTypes = {"text/event-stream"})
             },
             responseProfile = ResponseProfile.RESPONSES_API)
     @ApiOperation(
@@ -97,7 +97,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             path = "/openai/deployments/{deployment_name}/chat/completions",
             operationId = "sendChatCompletionRequest",
             tags = {"LLM"},
-            requestBodySchemaRef = "ChatCompletionRequest",
+            requestBody = @ApiSchema(schemaRef = "ChatCompletionRequest"),
             parameters = {
                     @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
                             description = OpenApiDescriptions.DEPLOYMENT_NAME),
@@ -113,8 +113,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             },
             responses = {
 
-                    @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionResponse"),
-                    @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionStreamResponse", contentTypes = {"text/event-stream"})
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "CreateChatCompletionResponse")),
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "CreateChatCompletionStreamResponse"), contentTypes = {"text/event-stream"})
             },
             responseProfile = ResponseProfile.RESPONSES_API)
     @ApiOperation(
@@ -122,7 +122,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             path = "/openai/deployments/{deployment_name}/embeddings",
             operationId = "createEmbedding",
             tags = {"LLM"},
-            requestBodySchemaRef = "EmbeddingsRequest",
+            requestBody = @ApiSchema(schemaRef = "EmbeddingsRequest"),
             parameters = {
                     @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
                             description = OpenApiDescriptions.DEPLOYMENT_NAME),
@@ -132,7 +132,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                             description = "Must be application/json")
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", schemaRef = "EmbeddingResponse")
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "EmbeddingResponse"))
             },
             responseProfile = ResponseProfile.RESPONSES_API)
     public Future<?> handle(String deploymentId) {

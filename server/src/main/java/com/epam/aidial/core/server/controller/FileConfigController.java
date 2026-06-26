@@ -1,8 +1,22 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.GlobalSettings;
+import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Role;
+import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiOperations;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
+import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.data.EntityMetadata;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -15,6 +29,7 @@ import io.vertx.core.http.HttpMethod;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -53,6 +68,194 @@ public class FileConfigController implements Controller {
     private final String name;
 
     @Override
+    @ApiOperations({
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/models",
+                    operationId = "listFileConfigModels",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced models",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class}))
+                    },
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/models/{name}",
+                    operationId = "getFileConfigModel",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Model name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Model.class, EntityMetadata.class}))
+                    },
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/interceptors",
+                    operationId = "listFileConfigInterceptors",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced interceptors",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class}))
+                    },
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/interceptors/{name}",
+                    operationId = "getFileConfigInterceptor",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Interceptor name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Interceptor.class, EntityMetadata.class}))
+                    },
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/roles",
+                    operationId = "listFileConfigRoles",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced roles",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class}))
+                    },
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/roles/{name}",
+                    operationId = "getFileConfigRole",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Role name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Role.class, EntityMetadata.class}))
+                    },
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/routes",
+                    operationId = "listFileConfigRoutes",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced routes",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class}))
+                    },
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/routes/{name}",
+                    operationId = "getFileConfigRoute",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Route name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Route.class, EntityMetadata.class}))
+                    },
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/schemas",
+                    operationId = "listFileConfigSchemas",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced application type schemas",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class}))
+                    },
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/schemas/{name}",
+                    operationId = "getFileConfigSchema",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Schema name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"ProxyResponse"}, allOf = {EntityMetadata.class}))
+                    },
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/settings",
+                    operationId = "listFileConfigSettings",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced settings (singleton)",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class}))
+                    },
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/settings/{name}",
+                    operationId = "getFileConfigSettings",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Must be 'global'")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {GlobalSettings.class, EntityMetadata.class}))
+                    },
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            )
+    })
     public Future<?> handle() {
         HttpMethod method = context.getRequest().method();
         if (method != HttpMethod.GET && method != HttpMethod.HEAD) {
@@ -191,10 +394,16 @@ public class FileConfigController implements Controller {
             case PROJECT_KEY -> config.getKeys();
             case ROUTE -> config.getRoutes();
             case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas();
+            case APPLICATION -> config.getApplications();
+            case TOOL_SET -> config.getToolsets();
             // GLOBAL_SETTINGS has no per-entity map — handled by handleSettings before this helper.
-            // Other types (APPLICATION, TOOL_SET, FILE, PROMPT, CONVERSATION) are not part of the
-            // file-config surface; the route regex restricts {type} to the closed set above.
+            // Other types (FILE, PROMPT, CONVERSATION) are not part of the file-config surface;
+            // the route regex restricts {type} to the closed set above.
             default -> null;
         };
     }
+
+    record ItemsResponse<T>(List<T> items) {}
+
+    record NamedEntity(String name) {}
 }

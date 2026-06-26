@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -33,7 +34,7 @@ public class LimitController {
             operationId = "getDeploymentLimits",
             tags = {"Limits"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = LimitStats.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = LimitStats.class))
             },
             responseProfile = ResponseProfile.LIMIT_WITH_NOT_FOUND,
             parameters = {

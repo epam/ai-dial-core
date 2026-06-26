@@ -479,14 +479,14 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testSchemaPutCreate200HappyPath() {
-        Response put = send(HttpMethod.PUT, "/v1/schemas/public/test-schema-create",
+        Response put = send(HttpMethod.PUT, "/v1/schemas/platform/test-schema-create",
                 null, SCHEMA_BODY, "authorization", "admin", "If-None-Match", "*");
         verify(put, 200);
         assertNotNull(put.headers().get("etag"));
         assertTrue(put.body().contains("\"name\":\"test-schema-create\""),
                 () -> "Expected name in body: " + put.body());
 
-        Response get = send(HttpMethod.GET, "/v1/schemas/public/test-schema-create", null, "",
+        Response get = send(HttpMethod.GET, "/v1/schemas/platform/test-schema-create", null, "",
                 "authorization", "admin");
         verify(get, 200);
         assertTrue(get.body().contains("json-schema.org"),
@@ -495,24 +495,24 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testSchemaPutIfNoneMatchStar412OnExisting() {
-        verify(send(HttpMethod.PUT, "/v1/schemas/public/test-schema-conflict", null,
+        verify(send(HttpMethod.PUT, "/v1/schemas/platform/test-schema-conflict", null,
                 SCHEMA_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
-        Response again = send(HttpMethod.PUT, "/v1/schemas/public/test-schema-conflict", null,
+        Response again = send(HttpMethod.PUT, "/v1/schemas/platform/test-schema-conflict", null,
                 SCHEMA_BODY, "authorization", "admin", "If-None-Match", "*");
         verify(again, 412);
     }
 
     @Test
     void testSchemaPut200HappyPathUpdate() {
-        verify(send(HttpMethod.PUT, "/v1/schemas/public/test-schema-update", null,
+        verify(send(HttpMethod.PUT, "/v1/schemas/platform/test-schema-update", null,
                 SCHEMA_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
 
-        Response put = send(HttpMethod.PUT, "/v1/schemas/public/test-schema-update", null,
+        Response put = send(HttpMethod.PUT, "/v1/schemas/platform/test-schema-update", null,
                 SCHEMA_BODY_UPDATED, "authorization", "admin");
         verify(put, 200);
         assertNotNull(put.headers().get("etag"));
 
-        Response get = send(HttpMethod.GET, "/v1/schemas/public/test-schema-update", null, "",
+        Response get = send(HttpMethod.GET, "/v1/schemas/platform/test-schema-update", null, "",
                 "authorization", "admin");
         verify(get, 200);
         assertTrue(get.body().contains("\"age\""), () -> "Expected updated schema property: " + get.body());
@@ -520,28 +520,28 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
 
     @Test
     void testSchemaPutBareUpsertCreatesOnMissing() {
-        Response put = send(HttpMethod.PUT, "/v1/schemas/public/no-such-schema-create", null,
+        Response put = send(HttpMethod.PUT, "/v1/schemas/platform/no-such-schema-create", null,
                 SCHEMA_BODY, "authorization", "admin");
         verify(put, 200);
     }
 
     @Test
     void testSchemaDelete204HappyPath() {
-        verify(send(HttpMethod.PUT, "/v1/schemas/public/test-schema-delete", null,
+        verify(send(HttpMethod.PUT, "/v1/schemas/platform/test-schema-delete", null,
                 SCHEMA_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
 
-        Response del = send(HttpMethod.DELETE, "/v1/schemas/public/test-schema-delete", null, "",
+        Response del = send(HttpMethod.DELETE, "/v1/schemas/platform/test-schema-delete", null, "",
                 "authorization", "admin");
         verify(del, 204);
 
-        Response get = send(HttpMethod.GET, "/v1/schemas/public/test-schema-delete", null, "",
+        Response get = send(HttpMethod.GET, "/v1/schemas/platform/test-schema-delete", null, "",
                 "authorization", "admin");
         verify(get, 404);
     }
 
     @Test
     void testSchemaDelete404OnMissing() {
-        Response del = send(HttpMethod.DELETE, "/v1/schemas/public/no-such-schema-del", null, "",
+        Response del = send(HttpMethod.DELETE, "/v1/schemas/platform/no-such-schema-del", null, "",
                 "authorization", "admin");
         verify(del, 404);
     }

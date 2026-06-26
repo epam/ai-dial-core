@@ -25,8 +25,9 @@ final class ResponseProfileBuilder {
      */
     static void addProfileResponses(ApiResponses responses, ResponseProfile profile, DtoSchemaGenerator schemaGenerator) {
         for (String code : profile.getResponseCodes()) {
-            ApiResponse response = createStandardResponse(code, schemaGenerator);
-            responses.addApiResponse(code, response);
+            responses.computeIfAbsent(
+                    code,
+                    k -> createStandardResponse(code, schemaGenerator));
         }
     }
 
@@ -43,8 +44,8 @@ final class ResponseProfileBuilder {
         // ErrorData is used by all error responses except 304, 405, and 412
         for (String code : profile.getResponseCodes()) {
             if (!"304".equals(code) && !"405".equals(code) && !"412".equals(code)) {
-                ResponseSchemaFactory.registerResponseBody(
-                        com.epam.aidial.core.server.data.ErrorData.class,
+                ResponseSchemaFactory.registerSchema(
+                        ApiSchemaBuilder.forImplementation(com.epam.aidial.core.server.data.ErrorData.class),
                         schemaGenerator
                 );
                 return; // Only need to register once

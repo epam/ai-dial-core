@@ -6,7 +6,6 @@ import io.swagger.v3.oas.models.headers.Header;
 import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 
-import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -42,8 +41,7 @@ public final class OpenApiResponseBuilder {
 
                 return r;
             });
-            Content content = ResponseContentFactory.build(annotation.contentTypes(), annotation.schemaRef(),
-                    resolveResponseType(annotation), annotation.responseOneOf(), schemaGenerator);
+            Content content = ResponseContentFactory.build(annotation.contentTypes(), annotation.body(), schemaGenerator);
             if (content == null) {
                 continue;
             }
@@ -57,33 +55,11 @@ public final class OpenApiResponseBuilder {
         return responses;
     }
 
-    private static Type resolveResponseType(ApiResponse response) {
-        if (response.responseOneOf() != null && response.responseOneOf().length > 0) {
-            return null;
-        }
-        if (response.body() == Void.class) {
-            return null;
-        }
-        if (response.wrapper() != Void.class) {
-            return EndpointMetadata.paramType(response.wrapper(), response.body());
-        }
-        return response.body();
-    }
-
     public static void registerResponseSchemas(EndpointMetadata.Endpoint endpoint, DtoSchemaGenerator schemaGenerator) {
         // Register schemas from explicit @ApiResponse annotations
         if (endpoint.responses() != null) {
             for (ApiResponse response : endpoint.responses()) {
-                if (!response.schemaRef().isBlank()) {
-                    schemaGenerator.registerExternalSchema(response.schemaRef());
-                }
-                if (response.responseOneOf() != null && response.responseOneOf().length > 0) {
-                    for (Class<?> type : response.responseOneOf()) {
-                        ResponseSchemaFactory.registerResponseBody(type, schemaGenerator);
-                    }
-                } else {
-                    ResponseSchemaFactory.registerResponseBody(resolveResponseType(response), schemaGenerator);
-                }
+                ResponseSchemaFactory.registerSchema(response.body(), schemaGenerator);
             }
         }
         // Register schemas from ResponseProfile (e.g., ErrorData for error responses)

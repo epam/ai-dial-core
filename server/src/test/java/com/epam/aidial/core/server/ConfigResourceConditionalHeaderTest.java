@@ -41,13 +41,13 @@ public class ConfigResourceConditionalHeaderTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     void testGet304OnMatchingIfNoneMatch() {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cond-304", null, MODEL_BODY,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/cond-304", null, MODEL_BODY,
                 "authorization", "admin", "If-None-Match", "*");
         verify(put, 200);
         String etag = put.headers().get("etag");
         assertNotNull(etag, () -> "PUT must emit an ETag header: " + put.headers());
 
-        Response notModified = send(HttpMethod.GET, "/v1/models/public/cond-304", null, "",
+        Response notModified = send(HttpMethod.GET, "/v1/models/platform/cond-304", null, "",
                 "authorization", "admin", "If-None-Match", etag);
         verify(notModified, 304);
         // 304 carries no body content per RFC 7232.
@@ -57,19 +57,19 @@ public class ConfigResourceConditionalHeaderTest extends ResourceBaseTest {
 
     @Test
     void testGet200OnStaleIfNoneMatch() {
-        verify(send(HttpMethod.PUT, "/v1/models/public/cond-stale", null, MODEL_BODY,
+        verify(send(HttpMethod.PUT, "/v1/models/platform/cond-stale", null, MODEL_BODY,
                 "authorization", "admin", "If-None-Match", "*"), 200);
 
-        Response stale = send(HttpMethod.GET, "/v1/models/public/cond-stale", null, "",
+        Response stale = send(HttpMethod.GET, "/v1/models/platform/cond-stale", null, "",
                 "authorization", "admin", "If-None-Match", "\"stale-etag\"");
         verify(stale, 200);
-        assertTrue(stale.body().contains("\"name\":\"models/public/cond-stale\""),
+        assertTrue(stale.body().contains("\"name\":\"models/platform/cond-stale\""),
                 () -> "Expected full body on stale If-None-Match: " + stale.body());
     }
 
     @Test
     void testPost405OnModelsEntityUrl() {
-        Response post = send(HttpMethod.POST, "/v1/models/public/any-name", null, MODEL_BODY,
+        Response post = send(HttpMethod.POST, "/v1/models/platform/any-name", null, MODEL_BODY,
                 "authorization", "admin");
         verify(post, 405);
         assertAllowHeader(post);
@@ -93,7 +93,7 @@ public class ConfigResourceConditionalHeaderTest extends ResourceBaseTest {
 
     @Test
     void testPost405OnSchemasEntityUrl() {
-        Response post = send(HttpMethod.POST, "/v1/schemas/public/any-name", null,
+        Response post = send(HttpMethod.POST, "/v1/schemas/platform/any-name", null,
                 "{\"type\": \"object\"}", "authorization", "admin");
         verify(post, 405);
         assertAllowHeader(post);
@@ -101,44 +101,44 @@ public class ConfigResourceConditionalHeaderTest extends ResourceBaseTest {
 
     @Test
     void testPutIfNoneMatchStarCreates() {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cond-create", null, MODEL_BODY,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/cond-create", null, MODEL_BODY,
                 "authorization", "admin", "If-None-Match", "*");
         verify(put, 200);
     }
 
     @Test
     void testPutIfNoneMatchStar412OnExisting() {
-        verify(send(HttpMethod.PUT, "/v1/models/public/cond-exists", null, MODEL_BODY,
+        verify(send(HttpMethod.PUT, "/v1/models/platform/cond-exists", null, MODEL_BODY,
                 "authorization", "admin", "If-None-Match", "*"), 200);
-        Response again = send(HttpMethod.PUT, "/v1/models/public/cond-exists", null, MODEL_BODY,
+        Response again = send(HttpMethod.PUT, "/v1/models/platform/cond-exists", null, MODEL_BODY,
                 "authorization", "admin", "If-None-Match", "*");
         verify(again, 412);
     }
 
     @Test
     void testPutBareUpsertCreates() {
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cond-bare", null, MODEL_BODY,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/cond-bare", null, MODEL_BODY,
                 "authorization", "admin");
         verify(put, 200);
 
-        Response get = send(HttpMethod.GET, "/v1/models/public/cond-bare", null, "",
+        Response get = send(HttpMethod.GET, "/v1/models/platform/cond-bare", null, "",
                 "authorization", "admin");
         verify(get, 200);
     }
 
     @Test
     void testPutIfMatch412OnMismatch() {
-        verify(send(HttpMethod.PUT, "/v1/models/public/cond-cas", null, MODEL_BODY,
+        verify(send(HttpMethod.PUT, "/v1/models/platform/cond-cas", null, MODEL_BODY,
                 "authorization", "admin", "If-None-Match", "*"), 200);
 
-        Response put = send(HttpMethod.PUT, "/v1/models/public/cond-cas", null, MODEL_BODY,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/cond-cas", null, MODEL_BODY,
                 "authorization", "admin", "If-Match", "\"wrong-etag\"");
         verify(put, 412);
     }
 
     @Test
     void testPutIfMatchSucceedsOnCurrentEtag() {
-        Response create = send(HttpMethod.PUT, "/v1/models/public/cond-cas-ok", null, MODEL_BODY,
+        Response create = send(HttpMethod.PUT, "/v1/models/platform/cond-cas-ok", null, MODEL_BODY,
                 "authorization", "admin", "If-None-Match", "*");
         verify(create, 200);
         String etag = create.headers().get("etag");
@@ -150,7 +150,7 @@ public class ConfigResourceConditionalHeaderTest extends ResourceBaseTest {
                   "endpoint": "http://localhost:7001/openai/deployments/cond-cas-ok/v2/chat/completions"
                 }
                 """;
-        Response update = send(HttpMethod.PUT, "/v1/models/public/cond-cas-ok", null, updatedBody,
+        Response update = send(HttpMethod.PUT, "/v1/models/platform/cond-cas-ok", null, updatedBody,
                 "authorization", "admin", "If-Match", etag);
         verify(update, 200);
         String newEtag = update.headers().get("etag");
@@ -163,10 +163,10 @@ public class ConfigResourceConditionalHeaderTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     void testMetadataListingReturnsResourceFolderMetadata() {
-        verify(send(HttpMethod.PUT, "/v1/models/public/cond-listed", null, MODEL_BODY,
+        verify(send(HttpMethod.PUT, "/v1/models/platform/cond-listed", null, MODEL_BODY,
                 "authorization", "admin", "If-None-Match", "*"), 200);
 
-        Response list = send(HttpMethod.GET, "/v1/metadata/models/public/", null, "",
+        Response list = send(HttpMethod.GET, "/v1/metadata/models/platform/", null, "",
                 "authorization", "admin");
         verify(list, 200);
         JsonNode body = ProxyUtil.MAPPER.readTree(list.body());
@@ -182,7 +182,7 @@ public class ConfigResourceConditionalHeaderTest extends ResourceBaseTest {
                 // Resource API metadata projection. ETag is not populated on folder-listing
                 // entries for compressed types (parity with the existing Resource API metadata).
                 assertEquals("MODEL", item.get("resourceType").asText());
-                assertEquals("public", item.get("bucket").asText());
+                assertEquals("platform", item.get("bucket").asText());
                 found = true;
             }
         }
@@ -210,7 +210,7 @@ public class ConfigResourceConditionalHeaderTest extends ResourceBaseTest {
         // File fixtures (aidial.config.json) include 'test-model-v1' / 'chat-gpt-35-turbo' /
         // 'embedding-ada' which under U.1 are reachable only via /v1/admin/config/file/...; they
         // must NOT appear in the blob-only metadata listing.
-        Response list = send(HttpMethod.GET, "/v1/metadata/models/public/", null, "",
+        Response list = send(HttpMethod.GET, "/v1/metadata/models/platform/", null, "",
                 "authorization", "admin");
         if (list.status() == 200) {
             JsonNode body = ProxyUtil.MAPPER.readTree(list.body());
@@ -233,25 +233,25 @@ public class ConfigResourceConditionalHeaderTest extends ResourceBaseTest {
 
     @Test
     void testMetadataListingInvalidLimitReturns400() {
-        verify(send(HttpMethod.GET, "/v1/metadata/models/public/", "limit=abc", "",
+        verify(send(HttpMethod.GET, "/v1/metadata/models/platform/", "limit=abc", "",
                 "authorization", "admin"), 400);
-        verify(send(HttpMethod.GET, "/v1/metadata/models/public/", "limit=1001", "",
+        verify(send(HttpMethod.GET, "/v1/metadata/models/platform/", "limit=1001", "",
                 "authorization", "admin"), 400);
     }
 
     @Test
     void testMetadataListingRejectsNonGetVerbs() {
-        Response post = send(HttpMethod.POST, "/v1/metadata/models/public/", null, "",
+        Response post = send(HttpMethod.POST, "/v1/metadata/models/platform/", null, "",
                 "authorization", "admin");
         verify(post, 405);
         assertEquals("GET", post.headers().get("Allow"));
 
-        Response put = send(HttpMethod.PUT, "/v1/metadata/models/public/", null, "{}",
+        Response put = send(HttpMethod.PUT, "/v1/metadata/models/platform/", null, "{}",
                 "authorization", "admin");
         verify(put, 405);
         assertEquals("GET", put.headers().get("Allow"));
 
-        Response delete = send(HttpMethod.DELETE, "/v1/metadata/models/public/", null, "",
+        Response delete = send(HttpMethod.DELETE, "/v1/metadata/models/platform/", null, "",
                 "authorization", "admin");
         verify(delete, 405);
         assertEquals("GET", delete.headers().get("Allow"));

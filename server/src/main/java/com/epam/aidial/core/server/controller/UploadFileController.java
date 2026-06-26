@@ -3,10 +3,10 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
-import com.epam.aidial.core.openapi.schema.OpenApiBinary;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -41,7 +41,7 @@ public class UploadFileController extends AccessControlBaseController {
             operationId = "uploadFile",
             contentType = "multipart/form-data",
             tags = {"Files"},
-            requestBody = OpenApiBinary.class,
+            requestBody = @ApiSchema(implementation = byte[].class),
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                     @ApiParameter(name = "file_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.FILE_PATH),
@@ -49,7 +49,7 @@ public class UploadFileController extends AccessControlBaseController {
                     @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_FILE)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = FileMetadata.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = FileMetadata.class))
             },
             responseProfile = ResponseProfile.CONDITIONAL_WRITE
     )

@@ -10,6 +10,7 @@ import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -76,7 +77,7 @@ public class DeploymentController {
                             description = OpenApiDescriptions.DEPLOYMENT_NAME)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = DeploymentData.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = DeploymentData.class))
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
@@ -103,7 +104,7 @@ public class DeploymentController {
             operationId = "getDeployments",
             tags = {"Deployment listing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = DeploymentData.class, wrapper = ListData.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ListData.class, typeArguments = {DeploymentData.class}))
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
@@ -131,7 +132,7 @@ public class DeploymentController {
                             allowableValues = {"chat", "embedding", "mcp", "custom_ui", "all"})
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = DeploymentData.class, wrapper = List.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = List.class, typeArguments = {DeploymentData.class}))
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )

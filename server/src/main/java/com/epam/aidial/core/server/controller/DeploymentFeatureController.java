@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -64,7 +65,7 @@ public class DeploymentFeatureController {
                             description = OpenApiDescriptions.DEPLOYMENT_NAME)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", schemaRef = "ConfigurationResponse")
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ConfigurationResponse"))
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
@@ -72,9 +73,9 @@ public class DeploymentFeatureController {
             method = "POST",
             path = "/v1/deployments/{deployment_name}/tokenize",
             operationId = "tokenize",
-            requestBodySchemaRef = "TokenizeRequest",
+            requestBody = @ApiSchema(schemaRef = "TokenizeRequest"),
             responses = {
-                    @ApiResponse(code = 200, description = "Success", schemaRef = "TokenizeResponse")
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "TokenizeResponse"))
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
@@ -82,9 +83,9 @@ public class DeploymentFeatureController {
             method = "POST",
             path = "/v1/deployments/{deployment_name}/truncate_prompt",
             operationId = "truncatePrompt",
-            requestBodySchemaRef = "TruncatePromptRequest",
+            requestBody = @ApiSchema(schemaRef = "TruncatePromptRequest"),
             responses = {
-                    @ApiResponse(code = 200, description = "Success", schemaRef = "TruncatePromptResponse")
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "TruncatePromptResponse"))
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )

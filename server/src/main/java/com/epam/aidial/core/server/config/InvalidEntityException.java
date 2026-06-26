@@ -14,7 +14,7 @@ import java.util.List;
  * the merged {@code Config} (design 02 §4.1).
  *
  * <p>{@code mapKey} is the entry's key as iterated — the canonical ID for blob
- * entries ({@code models/public/gpt-4}) and the simple name for file-defined
+ * entries ({@code models/platform/gpt-4}) and the simple name for file-defined
  * entries.
  */
 @Getter

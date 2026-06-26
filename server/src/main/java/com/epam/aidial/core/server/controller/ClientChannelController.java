@@ -4,6 +4,7 @@ import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -72,7 +73,7 @@ public class ClientChannelController {
                             description = OpenApiDescriptions.CLIENT_CHANNEL_ID_RECONNECT)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = String.class, contentTypes = {"text/event-stream"},
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = String.class), contentTypes = {"text/event-stream"},
                             headers = {
                                     @ApiHeader(name = Proxy.HEADER_CLIENT_CHANNEL_ID, description = "Channel ID for reconnection", required = true)
                             })
@@ -113,7 +114,7 @@ public class ClientChannelController {
             method = "POST",
             path = "/v1/ops/client-channel/report",
             operationId = "reportClientChannel",
-            requestBody = RpcResponse.class,
+            requestBody = @ApiSchema(implementation = RpcResponse.class),
             tags = {"Client channel"},
             parameters = {
                     @ApiParameter(name = Proxy.HEADER_CLIENT_CHANNEL_ID, in = ParameterIn.HEADER, required = true,
@@ -182,7 +183,7 @@ public class ClientChannelController {
             method = "POST",
             path = "/v1/ops/client-channel/interact",
             operationId = "interactClientChannel",
-            requestOneOf = {RpcRequest.class, RpcRequest[].class},
+            requestBody = @ApiSchema(oneOf = {RpcRequest.class, RpcRequest[].class}),
             contentType = "application/json",
 
             tags = {"Client channel"},
@@ -191,7 +192,7 @@ public class ClientChannelController {
                             description = OpenApiDescriptions.CLIENT_CHANNEL_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", contentTypes = "text/event-stream", body = String.class)
+                    @ApiResponse(code = 200, description = "Success", contentTypes = "text/event-stream", body = @ApiSchema(implementation = String.class))
             },
             responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST
     )

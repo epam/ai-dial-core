@@ -15,13 +15,7 @@ public @interface ApiResponse {
 
     String description();
 
-    Class<?> body() default Void.class;
-
-    Class<?>[] responseOneOf() default {};
-
-    Class<?> wrapper() default Void.class;
-
-    String schemaRef() default "";
+    ApiSchema body() default @ApiSchema;
 
     String[] contentTypes() default {"application/json"};
 

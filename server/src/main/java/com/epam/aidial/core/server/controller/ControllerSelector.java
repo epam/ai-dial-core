@@ -81,6 +81,11 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
+        get(RouteTemplate.SKILL_FOLDER, (proxy, context, pathMatcher) -> {
+            FolderResourceController controller = new FolderResourceController(proxy, context, false);
+            String path = context.getRequest().path();
+            return () -> controller.handle(resourcePathV2(path));
+        });
         get(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
         get(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
         // Wire POST/PUT/DELETE so the controller can emit a proper 405 + Allow header (RFC 7231)
@@ -352,6 +357,11 @@ public class ControllerSelector {
                     proxy.getLockService());
             return controller::handle;
         });
+        get(RouteTemplate.CONFIG_HEALTH, (proxy, context, pathMatcher) -> {
+            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+            return new AdminHealthConfigController(context, authService, mergedConfigStore);
+        });
         post(RouteTemplate.CONFIG, (proxy, context, pathMatcher) -> new ConfigController(context));
         post(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
@@ -424,6 +434,11 @@ public class ControllerSelector {
             return () -> controller.handle(resourcePath(path));
         });
         put(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
+        put(RouteTemplate.SKILL_FOLDER, (proxy, context, pathMatcher) -> {
+            FolderResourceController controller = new FolderResourceController(proxy, context, true);
+            String path = context.getRequest().path();
+            return () -> controller.handle(resourcePathV2(path));
+        });
 
         // add deployment routes
         ControllerRoute.Initializer applicationRouteTemplate = ((proxy, context, pathMatcher) -> {
@@ -514,6 +529,16 @@ public class ControllerSelector {
 
         if (url.startsWith("/v1/metadata/")) {
             prefix = "/v1/metadata/";
+        }
+
+        return url.substring(prefix.length());
+    }
+
+    private String resourcePathV2(String url) {
+        String prefix = "/v2/";
+
+        if (!url.startsWith(prefix)) {
+            throw new IllegalArgumentException("Resource url must start with /v2/: " + url);
         }
 
         return url.substring(prefix.length());

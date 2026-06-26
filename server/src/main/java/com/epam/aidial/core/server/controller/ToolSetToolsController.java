@@ -13,6 +13,7 @@ import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -106,7 +107,7 @@ public class ToolSetToolsController implements Controller {
                             description = OpenApiDescriptions.TOOLSET_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", schemaRef = "ToolSetToolsResponse")
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ToolSetToolsResponse"))
             },
             responseProfile = ResponseProfile.TOOLSET_TOOLS)
     @ApiOperation(
@@ -119,7 +120,7 @@ public class ToolSetToolsController implements Controller {
                             description = OpenApiDescriptions.TOOLSET_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", schemaRef = "AllowedToolsResponse")
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "AllowedToolsResponse"))
             },
             responseProfile = ResponseProfile.TOOLSET_TOOLS)
     public Future<?> handle() {

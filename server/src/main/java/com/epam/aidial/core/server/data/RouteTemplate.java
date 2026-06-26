@@ -65,6 +65,14 @@ public enum RouteTemplate {
             "^/v1/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
             "/v1/{resourceType}/{bucket}/{path}"
     ),
+
+    // V2 whole-resource (folder-as-resource) routes.
+    // Single-segment reluctant path with no trailing slash enforces root-level resources addressed by
+    // name (e.g. /v2/skills/{bucket}/{name}).
+    SKILL_FOLDER(
+            "^/v2/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>[^/]+)$",
+            "/v2/skills/{bucket}/{path}"
+    ),
     RESOURCE_METADATA(
             "^/v1/metadata/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
             "/v1/metadata/{resourceType}/{bucket}/{path}"
@@ -86,7 +94,7 @@ public enum RouteTemplate {
     ),
 
     ADMIN_FILE_CONFIG(
-            "^/v1/admin/config/file/(?<type>models|interceptors|roles|keys|routes|schemas|settings)(?:/(?<name>.+))?$",
+            "^/v1/admin/config/file/(?<type>models|interceptors|roles|keys|routes|schemas|settings|applications|toolsets)(?:/(?<name>.+))?$",
             "/v1/admin/config/file/{type}/{name}"
     ),
 

@@ -1,11 +1,12 @@
 package com.epam.aidial.core.openapi;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
-import com.epam.aidial.core.openapi.schema.OpenApiBinary;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.ResourceLink;
 import io.swagger.v3.core.util.Yaml;
@@ -22,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OpenApiResponseBuilderTest {
@@ -66,14 +68,13 @@ class OpenApiResponseBuilderTest {
                 "POST",
                 "/openai/deployments/{deployment_name}/chat/completions",
                 "createChatCompletion",
-                null,
-                null,
-                null,
+                null,  // requestBody
                 new String[]{"LLM"},
                 "application/json",
                 new ApiParameter[0],
                 responses,
-                ResponseProfile.RESPONSES_API
+                ResponseProfile.RESPONSES_API,
+                new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
@@ -183,10 +184,9 @@ class OpenApiResponseBuilderTest {
         EndpointMetadata.Endpoint endpoint = endpointWithResponses(responses);
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
 
-        ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, schemaGenerator);
-        var success = apiResponses.get("200");
-        assertNotNull(success.getContent().get("application/json").getSchema().getOneOf(),
-                "When both body and responseOneOf are specified, responseOneOf should take precedence");
+        assertThrows(IllegalArgumentException.class, () ->
+                OpenApiResponseBuilder.buildResponses(endpoint, schemaGenerator),
+                "ApiSchema with both implementation and oneOf should throw validation error");
     }
 
     @Test
@@ -196,14 +196,13 @@ class OpenApiResponseBuilderTest {
                 "POST",
                 "/openai/deployments/{deployment_name}/chat/completions",
                 "createChatCompletion",
-                null,
-                null,
-                null,
+                null,  // requestBody
                 new String[]{"LLM"},
                 "application/json",
                 new ApiParameter[0],
                 responses,
-                ResponseProfile.RESPONSES_API
+                ResponseProfile.RESPONSES_API,
+                new ApiExtension[0]
         );
 
         ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, new DtoSchemaGenerator());
@@ -240,14 +239,13 @@ class OpenApiResponseBuilderTest {
                 "POST",
                 "/openai/deployments/{deployment_name}/completions",
                 "createCompletion",
-                null,
-                null,
-                null,
+                null,  // requestBody
                 new String[]{"LLM"},
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.RESPONSES_API
+                ResponseProfile.RESPONSES_API,
+                new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
@@ -268,14 +266,13 @@ class OpenApiResponseBuilderTest {
                 "GET",
                 "/v1/application_type_schemas/schema",
                 "getCustomApplicationSchema",
-                null,
-                null,
-                null,
+                null,  // requestBody
                 new String[]{"Applications"},
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.AUTHENTICATED_OPERATION
+                ResponseProfile.AUTHENTICATED_OPERATION,
+                new ApiExtension[0]
         );
 
         ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, new DtoSchemaGenerator());
@@ -292,14 +289,13 @@ class OpenApiResponseBuilderTest {
                 "POST",
                 "/v1/ops/application/deploy",
                 "deployApplication",
-                ResourceLink.class,
-                null,
-                null,
+                ApiSchemaBuilder.forImplementation(ResourceLink.class),
                 new String[]{"Applications"},
                 "application/json",
                 new ApiParameter[0],
                 responses,
-                ResponseProfile.APPLICATION_OPS
+                ResponseProfile.APPLICATION_OPS,
+                new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
@@ -318,14 +314,13 @@ class OpenApiResponseBuilderTest {
                 "POST",
                 "/v1/ops/application/logs",
                 "getApplicationLogs",
-                ResourceLink.class,
-                null,
-                null,
+                ApiSchemaBuilder.forImplementation(ResourceLink.class),
                 new String[]{"Applications"},
                 "application/json",
                 new ApiParameter[0],
                 responses,
-                ResponseProfile.APPLICATION_OPS
+                ResponseProfile.APPLICATION_OPS,
+                new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
@@ -343,14 +338,13 @@ class OpenApiResponseBuilderTest {
                 "POST",
                 "/v1/ops/toolset/signin",
                 "toolsetSignin",
-                null,
-                null,
-                null,
+                null,  // requestBody
                 new String[]{"Toolsets"},
                 "application/json",
                 new ApiParameter[0],
                 responses,
-                ResponseProfile.AUTHORIZED_OPERATION
+                ResponseProfile.AUTHORIZED_OPERATION,
+                new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
@@ -369,14 +363,13 @@ class OpenApiResponseBuilderTest {
                 "PUT",
                 "/v1/files/{bucket}/{file_path}",
                 "uploadFile",
-                null,
-                null,
-                null,
+                null, // requestBody
                 new String[]{"Files"},
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.CONDITIONAL_WRITE
+                ResponseProfile.CONDITIONAL_WRITE,
+                new ApiExtension[0]
         );
 
         ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, new DtoSchemaGenerator());
@@ -505,26 +498,25 @@ class OpenApiResponseBuilderTest {
                 "POST",
                 "/openai/deployments/{deployment_name}/chat/completions",
                 "createChatCompletion",
-                null,
-                null,
-                null,
+                null,  // requestBody
                 new String[]{"LLM"},
                 "application/json",
                 new com.epam.aidial.core.openapi.annotations.ApiParameter[0],
                 responses,
-                ResponseProfile.NONE
+                ResponseProfile.NONE,
+                new ApiExtension[0]
         );
     }
 
     private static class AnnotatedMethods {
 
-        @ApiResponse(code = 200, description = "Streaming response", schemaRef = "CreateChatCompletionResponse",
+        @ApiResponse(code = 200, description = "Streaming response", body = @ApiSchema(schemaRef = "CreateChatCompletionResponse"),
                 contentTypes = {"application/json"}
         )
-        @ApiResponse(code = 200, description = "Streaming response", schemaRef = "CreateChatCompletionStreamResponse",
+        @ApiResponse(code = 200, description = "Streaming response", body = @ApiSchema(schemaRef = "CreateChatCompletionStreamResponse"),
                 contentTypes = {"text/event-stream"}
         )
-        @ApiResponse(code = 404, description = "Deployment not found", body = ErrorData.class)
+        @ApiResponse(code = 404, description = "Deployment not found", body = @ApiSchema(implementation = ErrorData.class))
         void annotatedResponses() {
         }
 
@@ -536,50 +528,50 @@ class OpenApiResponseBuilderTest {
         void noContentResponse() {
         }
 
-        @ApiResponse(code = 200, description = "Success", schemaRef = "CreateChatCompletionResponse")
-        @ApiResponse(code = 401, description = "Unauthorized", body = ErrorData.class)
-        @ApiResponse(code = 404, description = "Not found", body = ErrorData.class)
-        @ApiResponse(code = 429, description = "Rate limit", body = ErrorData.class)
-        @ApiResponse(code = 500, description = "Server error", body = ErrorData.class)
-        @ApiResponse(code = 502, description = "Upstream error", body = ErrorData.class)
-        @ApiResponse(code = 503, description = "Overloaded", body = ErrorData.class)
+        @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "CreateChatCompletionResponse"))
+        @ApiResponse(code = 401, description = "Unauthorized", body = @ApiSchema(implementation = ErrorData.class))
+        @ApiResponse(code = 404, description = "Not found", body = @ApiSchema(implementation = ErrorData.class))
+        @ApiResponse(code = 429, description = "Rate limit", body = @ApiSchema(implementation = ErrorData.class))
+        @ApiResponse(code = 500, description = "Server error", body = @ApiSchema(implementation = ErrorData.class))
+        @ApiResponse(code = 502, description = "Upstream error", body = @ApiSchema(implementation = ErrorData.class))
+        @ApiResponse(code = 503, description = "Overloaded", body = @ApiSchema(implementation = ErrorData.class))
         void multipleResponses() {
         }
 
         @ApiResponse(
                 code = 200,
                 description = "Success",
-                body = OpenApiBinary.class,
+                body = @ApiSchema(implementation = byte[].class),
                 contentTypes = {"application/octet-stream"}
         )
         void binaryResponse() {
         }
 
-        @ApiResponse(code = 500, description = "Server error", body = ErrorData.class)
-        @ApiResponse(code = 200, description = "Success", body = ErrorData.class)
-        @ApiResponse(code = 404, description = "Not found", body = ErrorData.class)
+        @ApiResponse(code = 500, description = "Server error", body = @ApiSchema(implementation = ErrorData.class))
+        @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ErrorData.class))
+        @ApiResponse(code = 404, description = "Not found", body = @ApiSchema(implementation = ErrorData.class))
         void unorderedResponses() {
         }
 
-        @ApiResponse(code = 200, description = "Streaming response", schemaRef = "CreateChatCompletionResponse",
+        @ApiResponse(code = 200, description = "Streaming response", body = @ApiSchema(schemaRef = "CreateChatCompletionResponse"),
                 contentTypes = {"application/json"})
-        @ApiResponse(code = 200, description = "Streaming response", schemaRef = "CreateChatCompletionStreamResponse",
+        @ApiResponse(code = 200, description = "Streaming response", body = @ApiSchema(schemaRef = "CreateChatCompletionStreamResponse"),
                 contentTypes = {"text/event-stream"})
         void responsesApiResponses() {
         }
 
-        @ApiResponse(code = 200, description = "", body = Application.Logs.class)
+        @ApiResponse(code = 200, description = "", body = @ApiSchema(implementation = Application.Logs.class))
         void applicationLogsResponses() {
         }
 
-        @ApiResponse(code = 200, description = "", body = Boolean.class)
+        @ApiResponse(code = 200, description = "", body = @ApiSchema(implementation = Boolean.class))
         void primitiveBooleanResponses() {
         }
 
         @ApiResponse(
                 code = 200,
                 description = "Multiple response types",
-                responseOneOf = {ErrorData.class, ResourceLink.class}
+                body = @ApiSchema(oneOf = {ErrorData.class, ResourceLink.class})
         )
         void oneOfResponse() {
         }
@@ -587,7 +579,7 @@ class OpenApiResponseBuilderTest {
         @ApiResponse(
                 code = 200,
                 description = "Stream with multiple types",
-                responseOneOf = {ErrorData.class, ResourceLink.class},
+                body = @ApiSchema(oneOf = {ErrorData.class, ResourceLink.class}),
                 contentTypes = {"text/event-stream"}
         )
         void oneOfStreamResponse() {
@@ -595,9 +587,8 @@ class OpenApiResponseBuilderTest {
 
         @ApiResponse(
                 code = 200,
-                description = "Invalid: both body and responseOneOf",
-                body = ErrorData.class,
-                responseOneOf = {ErrorData.class, ResourceLink.class}
+                description = "Invalid: mixed implementation and oneOf",
+                body = @ApiSchema(implementation = ErrorData.class, oneOf = {ErrorData.class, ResourceLink.class})
         )
         void invalidBothBodyAndOneOf() {
         }
@@ -628,11 +619,11 @@ class OpenApiResponseBuilderTest {
         void simpleResponse() {
         }
 
-        @ApiResponse(code = 200, description = "Truly external schema", schemaRef = "../external/ExternalResponse.yaml")
+        @ApiResponse(code = 200, description = "Truly external schema", body = @ApiSchema(schemaRef = "../external/ExternalResponse.yaml"))
         void trulyExternalSchemaResponse() {
         }
 
-        @ApiResponse(code = 200, description = "Schema by name", schemaRef = "MyResponseSchema")
+        @ApiResponse(code = 200, description = "Schema by name", body = @ApiSchema(schemaRef = "MyResponseSchema"))
         void schemaNameResponse() {
         }
     }
