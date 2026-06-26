@@ -3,6 +3,7 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
     implementation("com.networknt:json-schema-validator:${networknt_version}")
     implementation("org.hibernate.validator:hibernate-validator:${hibernate_validator_version}")
+    implementation("jakarta.annotation:jakarta.annotation-api:${jakarta_annotation_api_version}")
 
     // Test dependencies
     testImplementation platform("org.junit:junit-bom:${junit_version}")

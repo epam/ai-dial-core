@@ -3,6 +3,9 @@ package com.epam.aidial.core.server.config;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.validation.ValidationModule;
+import com.fasterxml.jackson.core.util.DefaultIndenter;
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
+import com.fasterxml.jackson.core.util.Separators;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -30,12 +33,16 @@ import javax.annotation.Nullable;
 /**
  * File-backed {@link ConfigStore}. Loads the dynamic config from one or more JSON files on startup and
  * reloads them periodically. Also performs best-effort legacy {@code endpoint}/{@code responsesEndpoint}
- * → {@code interfaces} write-back (Layer B), gated by the {@code ENDPOINT_MIGRATION_TO_INTERFACES} env var.
+ * → {@code interfaces} write-back (Layer B), gated by the {@code config.migrateLegacyEndpoints} setting.
  */
 @Slf4j
 public final class FileConfigStore implements ConfigStore {
 
-    private static final String ENDPOINT_MIGRATION_ENV_VAR = "ENDPOINT_MIGRATION_TO_INTERFACES";
+    private static final String MIGRATE_LEGACY_ENDPOINTS_SETTING = "migrateLegacyEndpoints";
+
+    // Conventional pretty printer for config write-back: 2-space indent, multi-line arrays, and a
+    // `"key": value` separator (no space before the colon, unlike Jackson's default `"key" : value`).
+    private static final DefaultPrettyPrinter PRETTY_PRINTER = createPrettyPrinter();
 
     private final JsonMapper jsonMapper;
     private final String[] paths;
@@ -47,9 +54,9 @@ public final class FileConfigStore implements ConfigStore {
 
     public FileConfigStore(Vertx vertx, JsonObject settings, @Nullable ApiKeyStore apiKeyStore,
                            List<Consumer<Config>> initialOnReloadCallbacks) {
-        // Config-file write-back (Layer B) is opt-in via the ENDPOINT_MIGRATION_TO_INTERFACES env var.
+        // Config-file write-back (Layer B) is opt-in via the `config.migrateLegacyEndpoints` setting.
         this(vertx, settings, apiKeyStore, initialOnReloadCallbacks,
-                Boolean.parseBoolean(System.getenv(ENDPOINT_MIGRATION_ENV_VAR)));
+                settings.getBoolean(MIGRATE_LEGACY_ENDPOINTS_SETTING, false));
     }
 
     // Package-private seam: lets tests drive the write-back gate without setting an env var.
@@ -123,8 +130,8 @@ public final class FileConfigStore implements ConfigStore {
                     }
                 } else if (InterfaceMigration.hasLegacyEndpoints(root)) {
                     log.warn("The `endpoint` and `responsesEndpoint` config in '{}' is obsolete and should be "
-                            + "migrated to `interfaces` config. To perform automatic migration set environment "
-                            + "variable `{}` as `true`.", path, ENDPOINT_MIGRATION_ENV_VAR);
+                            + "migrated to `interfaces` config. To perform automatic on-disk migration set the "
+                            + "`config.{}` setting to `true`.", path, MIGRATE_LEGACY_ENDPOINTS_SETTING);
                 }
             }
 
@@ -154,7 +161,7 @@ public final class FileConfigStore implements ConfigStore {
             return;
         }
         try {
-            byte[] content = jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(migratedTree);
+            byte[] content = jsonMapper.writer(PRETTY_PRINTER).writeValueAsBytes(migratedTree);
             Path dir = file.toAbsolutePath().getParent();
             Path temp = Files.createTempFile(dir, file.getFileName().toString(), ".tmp");
             try {
@@ -226,5 +233,15 @@ public final class FileConfigStore implements ConfigStore {
                 .setMergeable(!overwriteArrays);
 
         return mapper;
+    }
+
+    private static DefaultPrettyPrinter createPrettyPrinter() {
+        DefaultIndenter indenter = new DefaultIndenter("  ", "\n");
+        DefaultPrettyPrinter printer = new DefaultPrettyPrinter()
+                .withSeparators(Separators.createDefaultInstance()
+                        .withObjectFieldValueSpacing(Separators.Spacing.AFTER));
+        printer.indentObjectsWith(indenter);
+        printer.indentArraysWith(indenter);
+        return printer;
     }
 }

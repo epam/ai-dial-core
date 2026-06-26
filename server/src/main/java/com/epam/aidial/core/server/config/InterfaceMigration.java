@@ -20,12 +20,13 @@ import java.util.Map;
  *       every config load/reload (file, blob, Configuration API) so routing always sees interfaces.</li>
  *   <li><b>Layer B</b> — {@link #migrateRawTree(JsonNode)} rewrites the raw JSON tree, preserving every
  *       other field/key order/unknown property. Used by {@link FileConfigStore} for best-effort
- *       config-file write-back, opt-in via the {@code ENDPOINT_MIGRATION_TO_INTERFACES} env var. When
+ *       config-file write-back, opt-in via the {@code config.migrateLegacyEndpoints} setting. When
  *       it is disabled the file is left untouched and {@link #hasLegacyEndpoints(JsonNode)} drives an
  *       obsolescence warning instead.</li>
  * </ul>
  *
- * <p>Both layers are idempotent and native-interfaces-preserving (a non-empty {@code interfaces} wins).
+ * <p>Both layers are idempotent and merge per interface type: a natively declared interface always
+ * wins, while a legacy field whose interface type is not declared yet fills the gap.
  *
  * <p>Models, applications and interceptors are all migrated the same way: only the legacy endpoint's
  * authority ({@link #authority(String)}) is kept as the {@code base_url} and the ingress path is appended
@@ -72,36 +73,34 @@ public final class InterfaceMigration {
     }
 
     /**
-     * Layer A. Populates {@code deployment.interfaces} from legacy {@code endpoint} /
-     * {@code responsesEndpoint} when no interfaces are declared yet. Returns {@code true} when the
-     * deployment was changed.
+     * Layer A. Fills in {@code deployment.interfaces} from the legacy {@code endpoint} /
+     * {@code responsesEndpoint} fields, per interface type: a natively declared interface always wins,
+     * but a legacy field whose interface type is not declared yet is added (authority only). Returns
+     * {@code true} when the deployment was changed.
      */
     public static boolean migrateDeployment(Deployment deployment) {
         if (deployment == null) {
             return false;
         }
         Map<String, DeploymentInterface> existing = deployment.getInterfaces();
-        if (existing != null && !existing.isEmpty()) {
-            return false; // native interfaces always win
+        Map<String, DeploymentInterface> merged =
+                existing == null ? new LinkedHashMap<>() : new LinkedHashMap<>(existing);
+        boolean changed = false;
+
+        String chatType = InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue();
+        if (deployment.getEndpoint() != null && !merged.containsKey(chatType)) {
+            merged.put(chatType, new DeploymentInterface(authority(deployment.getEndpoint())));
+            changed = true;
         }
-        Map<String, DeploymentInterface> migrated = new LinkedHashMap<>();
-        if (deployment.getEndpoint() != null) {
-            migrated.put(
-                    InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(),
-                    new DeploymentInterface(authority(deployment.getEndpoint()))
-            );
+        String responsesType = InterfaceType.OPENAI_RESPONSES.getValue();
+        if (deployment.getResponsesEndpoint() != null && !merged.containsKey(responsesType)) {
+            merged.put(responsesType, new DeploymentInterface(authority(deployment.getResponsesEndpoint())));
+            changed = true;
         }
-        if (deployment.getResponsesEndpoint() != null) {
-            migrated.put(
-                    InterfaceType.OPENAI_RESPONSES.getValue(),
-                    new DeploymentInterface(authority(deployment.getResponsesEndpoint()))
-            );
+        if (changed) {
+            deployment.setInterfaces(merged);
         }
-        if (migrated.isEmpty()) {
-            return false;
-        }
-        deployment.setInterfaces(migrated);
-        return true;
+        return changed;
     }
 
     /**
@@ -163,26 +162,29 @@ public final class InterfaceMigration {
 
     /**
      * Raw-tree migration for a single deployment node. Always removes the obsolete {@code endpoint} /
-     * {@code responsesEndpoint} fields; derives {@code interfaces} from them only when the node does not
-     * already declare native interfaces (a non-empty {@code interfaces} wins and is left untouched).
-     * Preserves all other fields and key order. Returns {@code true} when the node was changed.
+     * {@code responsesEndpoint} fields; merges them into {@code interfaces} per interface type — a
+     * natively declared interface wins and is left untouched, but a legacy field whose interface type
+     * is not declared yet is added (authority only). Preserves all other fields and key order. Returns
+     * {@code true} when the node was changed.
      */
     static boolean migrateRawDeploymentNode(ObjectNode node) {
         if (node == null || !nodeHasLegacy(node)) {
             return false;
         }
-        if (!hasNativeInterfaces(node)) {
-            JsonNode endpoint = node.get(ENDPOINT_FIELD);
-            JsonNode responsesEndpoint = node.get(RESPONSES_ENDPOINT_FIELD);
-            ObjectNode interfaces = node.objectNode();
-            if (isTextual(endpoint)) {
-                interfaces.set(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(),
-                        interfaceNode(node, authority(endpoint.asText())));
-            }
-            if (isTextual(responsesEndpoint)) {
-                interfaces.set(InterfaceType.OPENAI_RESPONSES.getValue(),
-                        interfaceNode(node, authority(responsesEndpoint.asText())));
-            }
+        JsonNode existing = node.get(INTERFACES_FIELD);
+        ObjectNode interfaces = existing instanceof ObjectNode object ? object : node.objectNode();
+
+        JsonNode endpoint = node.get(ENDPOINT_FIELD);
+        if (isTextual(endpoint) && !interfaces.has(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue())) {
+            interfaces.set(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(),
+                    interfaceNode(node, authority(endpoint.asText())));
+        }
+        JsonNode responsesEndpoint = node.get(RESPONSES_ENDPOINT_FIELD);
+        if (isTextual(responsesEndpoint) && !interfaces.has(InterfaceType.OPENAI_RESPONSES.getValue())) {
+            interfaces.set(InterfaceType.OPENAI_RESPONSES.getValue(),
+                    interfaceNode(node, authority(responsesEndpoint.asText())));
+        }
+        if (interfaces != existing && !interfaces.isEmpty()) {
             node.set(INTERFACES_FIELD, interfaces);
         }
         node.remove(ENDPOINT_FIELD);
@@ -197,11 +199,6 @@ public final class InterfaceMigration {
      */
     private static boolean nodeHasLegacy(ObjectNode node) {
         return isTextual(node.get(ENDPOINT_FIELD)) || isTextual(node.get(RESPONSES_ENDPOINT_FIELD));
-    }
-
-    private static boolean hasNativeInterfaces(ObjectNode node) {
-        JsonNode interfaces = node.get(INTERFACES_FIELD);
-        return interfaces != null && interfaces.isObject() && !interfaces.isEmpty();
     }
 
     private static ObjectNode interfaceNode(ObjectNode parent, String baseUrl) {

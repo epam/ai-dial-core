@@ -8,6 +8,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class DeploymentInterfacesTest {
@@ -19,10 +20,10 @@ public class DeploymentInterfacesTest {
         assertEquals(InterfaceType.OPENAI_CHAT_COMPLETIONS, InterfaceType.fromValue("openaiChatCompletions"));
         assertEquals(InterfaceType.OPENAI_RESPONSES, InterfaceType.fromValue("openaiResponses"));
         // anthropicMessages / geminiGenerateContent are reserved for a future task and not defined yet
-        assertNull(InterfaceType.fromValue("anthropicMessages"));
-        assertNull(InterfaceType.fromValue("geminiGenerateContent"));
-        assertNull(InterfaceType.fromValue("unknown"));
-        assertNull(InterfaceType.fromValue(null));
+        assertThrows(IllegalArgumentException.class, () -> InterfaceType.fromValue("anthropicMessages"));
+        assertThrows(IllegalArgumentException.class, () -> InterfaceType.fromValue("geminiGenerateContent"));
+        assertThrows(IllegalArgumentException.class, () -> InterfaceType.fromValue("unknown"));
+        assertThrows(IllegalArgumentException.class, () -> InterfaceType.fromValue(null));
     }
 
     @Test
@@ -50,9 +51,10 @@ public class DeploymentInterfacesTest {
 
     @Test
     public void testDeserializeBaseUrlAndAlias() throws Exception {
+        // getInterfaceBaseUrl strips the trailing slash so it can be concatenated with a request path
         String snakeCase = "{\"interfaces\":{\"openaiChatCompletions\":{\"base_url\":\"http://a:5000/\"}}}";
         Model model = MAPPER.readValue(snakeCase, Model.class);
-        assertEquals("http://a:5000/", model.getInterfaceBaseUrl(InterfaceType.OPENAI_CHAT_COMPLETIONS));
+        assertEquals("http://a:5000", model.getInterfaceBaseUrl(InterfaceType.OPENAI_CHAT_COMPLETIONS));
 
         String camelCase = "{\"interfaces\":{\"openaiResponses\":{\"baseUrl\":\"http://b:6000\"}}}";
         Model aliased = MAPPER.readValue(camelCase, Model.class);

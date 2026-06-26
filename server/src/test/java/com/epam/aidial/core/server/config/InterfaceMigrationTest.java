@@ -201,7 +201,7 @@ public class InterfaceMigrationTest {
     }
 
     @Test
-    public void testMigrateRawTreeStripsLegacyKeepsNativeInterfaces() {
+    public void testMigrateRawTreeMergesLegacyIntoNativeInterfaces() {
         ObjectNode root = MAPPER.createObjectNode();
         ObjectNode model = root.putObject("models").putObject("native");
         model.put("endpoint", "http://legacy:1/x");
@@ -210,17 +210,36 @@ public class InterfaceMigrationTest {
                 .putObject("openaiChatCompletions")
                 .put("base_url", "http://native:9999");
 
-        // the redundant legacy fields are stripped, native interfaces are preserved (not overwritten)
+        // legacy fields are stripped; the natively-declared chat interface is preserved (not
+        // overwritten by the legacy endpoint), and the not-yet-declared responses interface is filled in
         assertTrue(InterfaceMigration.migrateRawTree(root));
         assertFalse(model.has("endpoint"));
         assertFalse(model.has("responsesEndpoint"));
         assertEquals("http://native:9999",
                 model.path("interfaces").path("openaiChatCompletions").path("base_url").asText()
         );
-        // native interfaces are not augmented from the dropped legacy responsesEndpoint
-        assertTrue(model.path("interfaces").path("openaiResponses").isMissingNode());
+        assertEquals("http://legacy:2",
+                model.path("interfaces").path("openaiResponses").path("base_url").asText()
+        );
 
         // idempotent
         assertFalse(InterfaceMigration.migrateRawTree(root));
+    }
+
+    @Test
+    public void testMigrateDeploymentFillsMissingInterfaceFromLegacy() {
+        // Native chat interface declared; a legacy responsesEndpoint is added to enable the Responses API.
+        Model model = new Model();
+        model.setResponsesEndpoint("https://api.openai.com/openai/v1/responses");
+        model.setInterfaces(Map.of(
+                InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(),
+                new DeploymentInterface("http://localhost:6001")));
+
+        assertTrue(InterfaceMigration.migrateDeployment(model));
+        // native chat interface preserved, responses interface filled in from the legacy field (authority)
+        assertEquals("http://localhost:6001", model.getInterfaceBaseUrl(InterfaceType.OPENAI_CHAT_COMPLETIONS));
+        assertEquals("https://api.openai.com", model.getInterfaceBaseUrl(InterfaceType.OPENAI_RESPONSES));
+        // idempotent
+        assertFalse(InterfaceMigration.migrateDeployment(model));
     }
 }

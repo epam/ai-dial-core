@@ -24,18 +24,16 @@ public enum InterfaceType {
     }
 
     /**
-     * Resolves an interface type from its string value, or {@code null} when the value is
-     * unknown/null. Unknown keys are tolerated (treated as "interface not supported").
+     * Resolves an interface type from its string value.
+     *
+     * @throws IllegalArgumentException if the value does not match any known interface type.
      */
     public static InterfaceType fromValue(String value) {
-        if (value == null) {
-            return null;
-        }
         for (InterfaceType type : values()) {
             if (type.value.equals(value)) {
                 return type;
             }
         }
-        return null;
+        throw new IllegalArgumentException("Unknown interface type: " + value);
     }
 }

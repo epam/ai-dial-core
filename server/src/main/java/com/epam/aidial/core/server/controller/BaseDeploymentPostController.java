@@ -169,14 +169,15 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * Builds the proxy request to {@code base_url} of the given interface joined with an explicit
+     * Builds the proxy request to the {@code base_url} of the given interface, appending an explicit
      * request path (path + optional query). Used when the forwarded path differs from the ingress
      * path — e.g. interceptors are addressed by their own name in the deployment path segment.
+     * The {@code base_url} is trailing-slash normalized by {@code Deployment#getInterfaceBaseUrl}
+     * and the path always starts with a slash, so plain concatenation yields a valid absolute URI.
      */
     protected Future<HttpClientRequest> createProxyRequest(InterfaceType type, String pathWithQuery) {
         HttpServerRequest request = context.getRequest();
-        String baseUrl = context.getDeployment().getInterfaceBaseUrl(type);
-        String uri = joinBaseUrlAndPath(baseUrl, pathWithQuery);
+        String uri = context.getDeployment().getInterfaceBaseUrl(type) + pathWithQuery;
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(uri)
                 .setMethod(request.method())
@@ -185,27 +186,6 @@ public class BaseDeploymentPostController {
                 .setIdleTimeout(proxy.getClientOptions().getIdleTimeout());
 
         return proxy.getClient().request(options);
-    }
-
-    /**
-     * Joins an interface {@code base_url} with a request path: strips trailing slashes from the base,
-     * collapses leading slashes on the path to exactly one. e.g. {@code http://a:5000/} + {@code //x}
-     * → {@code http://a:5000/x}; {@code http://a:5000/to-responses} + {@code /openai/v1/responses}
-     * → {@code http://a:5000/to-responses/openai/v1/responses}.
-     */
-    static String joinBaseUrlAndPath(String baseUrl, String path) {
-        String base = baseUrl == null ? "" : baseUrl;
-        int end = base.length();
-        while (end > 0 && base.charAt(end - 1) == '/') {
-            end--;
-        }
-        base = base.substring(0, end);
-
-        String suffix = path == null ? "" : path.replaceFirst("^/+", "/");
-        if (!suffix.startsWith("/")) {
-            suffix = "/" + suffix;
-        }
-        return base + suffix;
     }
 
     protected Future<HttpClientResponse> sendProxyRequest(

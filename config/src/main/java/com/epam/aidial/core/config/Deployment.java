@@ -2,6 +2,7 @@ package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import jakarta.annotation.Nullable;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -75,15 +76,21 @@ public abstract class Deployment extends RoleBasedEntity {
     private List<String> dependencies = List.of();
 
     /**
-     * Returns the {@code base_url} declared for the given interface type, or {@code null} when the
-     * deployment does not declare that interface.
+     * Returns the {@code base_url} declared for the given interface type (with any trailing slash
+     * stripped so it can be concatenated directly with a leading-slash request path), or
+     * {@code null} when the deployment does not declare that interface.
      */
-    public String getInterfaceBaseUrl(InterfaceType type) {
+    @Nullable
+    public String getInterfaceBaseUrl(@Nullable InterfaceType type) {
         if (interfaces == null || type == null) {
             return null;
         }
         DeploymentInterface deploymentInterface = interfaces.get(type.getValue());
-        return deploymentInterface == null ? null : deploymentInterface.getBaseUrl();
+        if (deploymentInterface == null || deploymentInterface.getBaseUrl() == null) {
+            return null;
+        }
+        String baseUrl = deploymentInterface.getBaseUrl();
+        return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
     }
 
     /**

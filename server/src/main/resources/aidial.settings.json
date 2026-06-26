@@ -41,6 +41,7 @@
     "files": [],
     "reload": 60000,
     "onInvalidEntity": "abort",
+    "migrateLegacyEndpoints": false,
     "write": {
       "softValidation": false
     }
