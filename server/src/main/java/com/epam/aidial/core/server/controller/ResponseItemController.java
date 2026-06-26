@@ -45,7 +45,6 @@ public class ResponseItemController implements Controller {
 
     private final Proxy proxy;
     private final ProxyContext context;
-    private final String dialResponseId;
     private final Operation operation;
 
     /**
@@ -135,7 +134,7 @@ public class ResponseItemController implements Controller {
         if (operation != Operation.DELETE) {
             return Future.succeededFuture(mapping);
         }
-        return proxy.getBackgroundJobService().isJobActive(dialResponseId)
+        return proxy.getBackgroundJobService().isJobActive(context.getResponseId())
                 .compose(active -> active
                         ? Future.failedFuture(new HttpException(HttpStatus.CONFLICT,
                                 "Cannot delete response while background job is in progress"))
@@ -143,7 +142,7 @@ public class ResponseItemController implements Controller {
     }
 
     private ResponseMapping loadMapping() {
-        ResponseMapping mapping = proxy.getResponseMappingService().getMapping(dialResponseId);
+        ResponseMapping mapping = proxy.getResponseMappingService().getMapping(context.getResponseId());
         if (mapping == null) {
             throw notFoundException();
         }
@@ -194,15 +193,15 @@ public class ResponseItemController implements Controller {
                             .compose(rewritten -> {
                                 if (operation == Operation.DELETE) {
                                     return proxy.getTaskExecutor().submit(() -> {
-                                        proxy.getResponseMappingService().deleteMapping(dialResponseId);
+                                        proxy.getResponseMappingService().deleteMapping(context.getResponseId());
                                         return null;
                                     }).compose(ignored -> sendResponse(proxyResponse, rewritten.buffer()));
                                 }
                                 if (operation == Operation.GET) {
                                     ResponsesApiClient.TerminalResult terminalResult = tryParseTerminalResult(rewritten.object());
                                     proxy.getBackgroundJobService()
-                                            .tryCompleteOnGet(dialResponseId, mapping, terminalResult)
-                                            .onFailure(e -> log.warn("Failed to complete background job on GET {}", dialResponseId, e));
+                                            .tryCompleteOnGet(context.getResponseId(), mapping, terminalResult)
+                                            .onFailure(e -> log.warn("Failed to complete background job on GET {}", context.getResponseId(), e));
                                 }
                                 return sendResponse(proxyResponse, rewritten.buffer());
                             });
@@ -230,7 +229,7 @@ public class ResponseItemController implements Controller {
         }
         JsonNode idNode = object.path("id");
         if (idNode.isTextual() && upstreamResponseId.equals(idNode.asText())) {
-            object.put("id", dialResponseId);
+            object.put("id", context.getResponseId());
         }
         return new ParsedBody(Buffer.buffer(JsonUtil.serialize(object)), object);
     }
@@ -242,7 +241,7 @@ public class ResponseItemController implements Controller {
         try {
             return ResponsesApiClient.parseTerminalBody(object);
         } catch (Exception e) {
-            log.warn("Failed to extract terminal result for background job {} on GET", dialResponseId, e);
+            log.warn("Failed to extract terminal result for background job {} on GET", context.getResponseId(), e);
             return null;
         }
     }

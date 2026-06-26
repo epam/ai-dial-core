@@ -176,7 +176,6 @@ public class ResponsesControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(context.respond(any(HttpException.class)))
                 .thenAnswer(invocation -> complete(textContext));
-        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
@@ -199,7 +198,6 @@ public class ResponsesControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(context.respond(any(HttpException.class)))
                 .thenAnswer(invocation -> complete(textContext));
-        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(proxy.getDeploymentService().findDeployment(context, "test"))
                 .thenReturn(deployment);
         when(proxy.getRateLimiter().limit(context, deployment)).thenReturn(Future.succeededFuture(
@@ -663,6 +661,7 @@ public class ResponsesControllerTest {
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(context.getUserId()).thenReturn("test-user");
         when(proxy.getResponseMappingService().saveMapping(any(), any())).thenReturn(expectedDialId);
+        when(proxy.getBackgroundJobService().finishStreamingJob(anyString())).thenReturn(Future.succeededFuture(Boolean.TRUE));
 
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getTokenStats(context))
@@ -686,6 +685,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).isStreamingRequest();
         doCallRealMethod().when(context).setStoreResponse(anyBoolean());
         doCallRealMethod().when(context).isStoreResponse();
+        doCallRealMethod().when(context).setResponseId(anyString());
+        doCallRealMethod().when(context).getResponseId();
 
         controller.handle();
 

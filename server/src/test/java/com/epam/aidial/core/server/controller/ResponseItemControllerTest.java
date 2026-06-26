@@ -78,7 +78,8 @@ public class ResponseItemControllerTest {
     private HttpServerRequest serverRequest;
 
     private ResponseItemController controller(String dialId, ResponseItemController.Operation op) {
-        return new ResponseItemController(proxy, context, dialId, op);
+        when(context.getResponseId()).thenReturn(dialId);
+        return new ResponseItemController(proxy, context, op);
     }
 
     @Test
