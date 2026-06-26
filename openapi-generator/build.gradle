@@ -111,6 +111,6 @@ Run publishOpenApiSpec or review changes manually.
     }
 }
 
-tasks.register('publishOpenApiSpec') {
+tasks.register('validateOpenApiSpec') {
     dependsOn checkOpenApiDiff
 }
