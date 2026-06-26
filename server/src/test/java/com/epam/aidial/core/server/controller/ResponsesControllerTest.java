@@ -17,7 +17,6 @@ import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
-import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
