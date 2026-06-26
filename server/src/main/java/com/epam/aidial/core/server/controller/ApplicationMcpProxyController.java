@@ -6,6 +6,7 @@ import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -46,13 +47,14 @@ public class ApplicationMcpProxyController extends McpProxyController {
                     path = "/v1/deployments/{deployment_name}/mcp",
                     operationId = "postApplicationMcp",
                     tags = {"Deployments", "MCP"},
+                    requestBody = @ApiSchema(schemaRef = "ProxyRequest"),
                     parameters = {
                             @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
                                     description = OpenApiDescriptions.DEPLOYMENT_IDENTIFIER)
                     },
                     responses = {
-                        @ApiResponse(code = 200, description = "Success")
-                        //, schemaRef = "https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http")
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse")
+                            )
                     },
                     responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST)
     })

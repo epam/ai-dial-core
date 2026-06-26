@@ -68,6 +68,7 @@ tags:
 - name: Routes
 - name: Schemas
 - name: Sharing
+- name: Skills
 - name: Toolsets
 - name: User Consent
 paths:
@@ -2589,13 +2590,6 @@ paths:
         schema:
           type: string
       responses:
-        "200":
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ConfigurationResponse"
-                description: JSON schema of the configuration parameters the given deployment.
         "401":
           description: Invalid Authentication
           content:
@@ -2620,6 +2614,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyResponse"
   /v1/deployments/{deployment_name}/limits:
     get:
       tags:
@@ -2707,7 +2707,7 @@ paths:
         content:
           application/json:
             schema:
-              type: string
+              $ref: "#/components/schemas/ProxyRequest"
               description: "A JSON object satisfying [mcp specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-06-18/schema.json).       \n"
       responses:
         "200":
@@ -2715,7 +2715,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/ProxyResponse"
                 description: "A JSON object satisfying [mcp specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-06-18/schema.json)."
         "400":
           description: Bad request
@@ -6496,6 +6496,10 @@ paths:
       responses:
         "200":
           description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyResponse"
         "400":
           description: Bad request
           content:
@@ -6538,6 +6542,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProxyRequest"
+        required: true
     delete:
       tags:
       - Toolsets
@@ -7590,6 +7600,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
     delete:
       tags:
       - Responses API
@@ -7633,6 +7644,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /openai/v1/responses/{response_id}/cancel:
     post:
       tags:
@@ -7677,6 +7689,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/apply:
     post:
       tags:
@@ -7726,6 +7739,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/interceptors:
     get:
       tags:
@@ -7759,6 +7773,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/interceptors/{name}:
     get:
       tags:
@@ -7801,6 +7816,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/models:
     get:
       tags:
@@ -7834,6 +7850,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/models/{name}:
     get:
       tags:
@@ -7876,6 +7893,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/roles:
     get:
       tags:
@@ -7909,6 +7927,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/roles/{name}:
     get:
       tags:
@@ -7951,6 +7970,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/routes:
     get:
       tags:
@@ -7984,6 +8004,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/routes/{name}:
     get:
       tags:
@@ -8026,6 +8047,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/schemas:
     get:
       tags:
@@ -8059,6 +8081,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/schemas/{name}:
     get:
       tags:
@@ -8101,6 +8124,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/settings:
     get:
       tags:
@@ -8134,6 +8158,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/settings/{name}:
     get:
       tags:
@@ -8176,6 +8201,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/health/config:
     get:
       tags:
@@ -8209,6 +8235,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/validate:
     post:
       tags:
@@ -8258,6 +8285,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/interceptors/{bucket}/{path}:
     get:
       tags:
@@ -8340,6 +8368,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
     put:
       tags:
       - Interceptors
@@ -8431,6 +8460,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
     delete:
       tags:
       - Interceptors
@@ -8500,6 +8530,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/keys/{bucket}/{path}:
     get:
       tags:
@@ -8582,6 +8613,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
     put:
       tags:
       - Keys
@@ -8673,6 +8705,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
     delete:
       tags:
       - Keys
@@ -8742,6 +8775,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/models/{bucket}/{path}:
     get:
       tags:
@@ -8824,6 +8858,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
     put:
       tags:
       - Models
@@ -8915,6 +8950,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
     delete:
       tags:
       - Models
@@ -8984,6 +9020,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/roles/{bucket}/{path}:
     get:
       tags:
@@ -9066,6 +9103,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
     put:
       tags:
       - Roles
@@ -9157,6 +9195,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
     delete:
       tags:
       - Roles
@@ -9226,6 +9265,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/routes/{bucket}/{path}:
     get:
       tags:
@@ -9308,6 +9348,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
     put:
       tags:
       - Routes
@@ -9399,6 +9440,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
     delete:
       tags:
       - Routes
@@ -9468,6 +9510,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/schemas/{bucket}/{path}:
     get:
       tags:
@@ -9550,6 +9593,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
     put:
       tags:
       - Schemas
@@ -9641,6 +9685,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
     delete:
       tags:
       - Schemas
@@ -9710,6 +9755,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/settings/{bucket}/{path}:
     get:
       tags:
@@ -9786,6 +9832,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
     put:
       tags:
       - Global Settings
@@ -9877,6 +9924,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
     delete:
       tags:
       - Global Settings
@@ -9946,6 +9994,169 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v2/skills/{bucket}/{path}:
+    get:
+      tags:
+      - Skills
+      summary: "/v2/skills/{bucket}/{path}"
+      operationId: downloadSkillFolder
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The resource path within the bucket.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Folder resource downloaded as ZIP archive
+          headers:
+            ETag:
+              description: The ETag of the resource version
+              required: false
+              schema:
+                type: string
+            Content-Length:
+              description: Size of the ZIP archive in bytes
+              required: false
+              schema:
+                type: integer
+                format: int32
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Folder resource not found
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Skills
+      summary: "/v2/skills/{bucket}/{path}"
+      operationId: uploadSkillFolder
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The resource path within the bucket.
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: "ETag of the version to replace. Use * to overwrite any existing version, or omit to create only if not exists."
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              required:
+              - file
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+        required: true
+      responses:
+        "200":
+          description: Folder resource uploaded successfully
+          headers:
+            ETag:
+              description: The ETag of the uploaded resource version
+              required: false
+              schema:
+                type: string
+        "400":
+          description: Bad request - invalid content type or malformed request
+        "412":
+          description: Precondition failed - ETag mismatch
+        "304":
+          description: Not Modified
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
 components:
   schemas:
     ApplicationData:
@@ -10786,6 +10997,7 @@ components:
       - ROUTE
       - GLOBAL_SETTINGS
       - RESPONSE_MAPPING
+      - SKILL
     ShareMetadata:
       type: object
       properties:
@@ -11701,6 +11913,7 @@ components:
       - ROUTE
       - GLOBAL_SETTINGS
       - RESPONSE_MAPPING
+      - SKILL
     Rule:
       type: object
       properties:
@@ -12643,10 +12856,6 @@ components:
           type: string
           enum:
           - embedding
-    ConfigurationResponse:
-      type: object
-      additionalProperties: true
-      description: Dynamic configuration response
     TokenizeRequest:
       required:
       - inputs

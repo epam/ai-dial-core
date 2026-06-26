@@ -23,6 +23,7 @@ import com.epam.aidial.core.server.controller.DeploymentPostController;
 import com.epam.aidial.core.server.controller.DownloadFileController;
 import com.epam.aidial.core.server.controller.FileConfigController;
 import com.epam.aidial.core.server.controller.FileMetadataController;
+import com.epam.aidial.core.server.controller.FolderResourceController;
 import com.epam.aidial.core.server.controller.InvitationController;
 import com.epam.aidial.core.server.controller.LimitController;
 import com.epam.aidial.core.server.controller.ModelController;
@@ -69,6 +70,7 @@ public final class AnnotationEndpointCollector {
             DownloadFileController.class,
             FileConfigController.class,
             FileMetadataController.class,
+            FolderResourceController.class,
             InvitationController.class,
             LimitController.class,
             ModelController.class,

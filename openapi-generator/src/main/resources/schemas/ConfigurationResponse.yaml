@@ -1,3 +1,0 @@
-type: object
-description: Dynamic configuration response
-additionalProperties: true

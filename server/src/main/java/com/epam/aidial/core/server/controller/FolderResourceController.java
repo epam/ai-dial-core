@@ -1,5 +1,13 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
+import com.epam.aidial.core.openapi.annotations.ApiHeader;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
+import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
@@ -60,6 +68,32 @@ public class FolderResourceController extends AccessControlBaseController {
         return context.respond(HttpStatus.METHOD_NOT_ALLOWED);
     }
 
+    @ApiOperation(
+            method = "PUT",
+            path = "/v2/skills/{bucket}/{path}",
+            operationId = "uploadSkillFolder",
+            tags = {"Skills"},
+            contentType = "multipart/form-data",
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true),
+                    @ApiParameter(name = "If-Match", in = ParameterIn.HEADER,
+                        description = "ETag of the version to replace. Use * to overwrite any existing version, or omit to create only if not exists.")
+            },
+            requestBody = @ApiSchema(implementation = byte[].class),
+            responses = {
+                    @ApiResponse(code = 200, description = "Folder resource uploaded successfully",
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "The ETag of the uploaded resource version")
+                            }),
+                    @ApiResponse(code = 400, description = "Bad request - invalid content type or malformed request"),
+                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch")
+            },
+            responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL,
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     private Future<?> put(ResourceDescriptor resource, FolderResourceHandler handler) {
         HttpServerRequest request = context.getRequest();
         String contentType = request.getHeader(HttpHeaderNames.CONTENT_TYPE);
@@ -97,6 +131,30 @@ public class FolderResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/v2/skills/{bucket}/{path}",
+            operationId = "downloadSkillFolder",
+            tags = {"Skills"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Folder resource downloaded as ZIP archive",
+                            body = @ApiSchema(implementation = byte[].class),
+                            contentTypes = {"application/zip"},
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "The ETag of the resource version"),
+                                    @ApiHeader(name = "Content-Length", description = "Size of the ZIP archive in bytes", schema = Integer.class)
+                            }),
+                    @ApiResponse(code = 404, description = "Folder resource not found")
+            },
+            responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL,
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     private Future<?> get(ResourceDescriptor resource) {
         proxy.getTaskExecutor().submit(() -> folderResourceService.getMarker(resource))
                 .compose(document -> {

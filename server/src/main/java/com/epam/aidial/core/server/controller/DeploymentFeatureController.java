@@ -65,7 +65,7 @@ public class DeploymentFeatureController {
                             description = OpenApiDescriptions.DEPLOYMENT_NAME)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ConfigurationResponse"))
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse"))
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
