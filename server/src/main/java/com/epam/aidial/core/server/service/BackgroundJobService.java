@@ -17,6 +17,7 @@ import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.NodeType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
@@ -205,25 +206,27 @@ public class BackgroundJobService {
                 });
     }
 
+    private Map.Entry<BackgroundJobRecord, ResponseMapping> loadJobData(String dialId) {
+        BackgroundJobRecord record = loadBackgroundJobRecord(dialId);
+        if (record == null) {
+            return null;
+        }
+        ResponseMapping mapping = responseMappingService.getMapping(dialId);
+        if (mapping == null) {
+            log.warn("Missing response mapping for background job {}", dialId);
+            return null;
+        }
+        return Map.entry(record, mapping);
+    }
+
     private Future<Void> poll(String dialId, long owner, int attempts, int errors) {
         String stateKey = stateKey(dialId);
 
-        return taskExecutor.submit(() -> {
-            BackgroundJobRecord record = loadBackgroundJobRecord(dialId);
-            if (record == null) {
-                return null;
-            }
-            ResponseMapping mapping = responseMappingService.getMapping(dialId);
-            if (mapping == null) {
-                log.warn("Missing response mapping for background job {}", dialId);
-                return null;
-            }
-            return Map.entry(record, mapping);
-        })
+        return taskExecutor.submit(() -> loadJobData(dialId))
                 .compose(pair -> {
                     if (pair == null) {
                         log.info("Background job {} record or mapping not found, stopping polling", dialId);
-                        return executeComplete(dialId, stateKey, owner).mapEmpty();
+                        return executeComplete(dialId, stateKey, owner);
                     }
                     BackgroundJobRecord record = pair.getKey();
                     ResponseMapping mapping = pair.getValue();
@@ -235,8 +238,7 @@ public class BackgroundJobService {
                                                     settings.getPollIntervalMs() * Math.pow(settings.getPollBackoffFactor(), attempts),
                                                     settings.getMaxPollIntervalMs());
                                             long nextPollTime = System.currentTimeMillis() + backoff;
-                                            return executeReschedule(dialId, stateKey, owner, nextPollTime, attempts + 1, 0)
-                                                    .mapEmpty();
+                                            return executeReschedule(dialId, stateKey, owner, nextPollTime, attempts + 1, 0);
                                         }
                                         return completeAndProcess(dialId, stateKey, owner, record, mapping, result.usage());
                                     },
@@ -249,8 +251,7 @@ public class BackgroundJobService {
                                         log.warn("Poll failed for background job {} ({}/{})", dialId, newErrors,
                                                 settings.getMaxSequentialPollFailures(), error);
                                         long nextPollTime = System.currentTimeMillis() + settings.getPollIntervalMs();
-                                        return executeReschedule(dialId, stateKey, owner, nextPollTime, attempts, newErrors)
-                                                .mapEmpty();
+                                        return executeReschedule(dialId, stateKey, owner, nextPollTime, attempts, newErrors);
                                     });
                 });
     }
@@ -269,12 +270,12 @@ public class BackgroundJobService {
             TokenUsage usage) {
         return taskExecutor.submit(() -> resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId), EtagHeader.ANY))
                 .compose(deleted -> {
-                    Future<Void> redisCleanup = executeComplete(dialId, stateKey, owner).mapEmpty();
+                    Future<Void> redisCleanup = executeComplete(dialId, stateKey, owner);
                     if (!deleted) {
                         log.info("Background job {} already completed by another handler, skipping processing", dialId);
                         return redisCleanup;
                     }
-                    return redisCleanup.compose(ignored -> processResult(dialId, record, mapping, usage));
+                    return redisCleanup.eventually(() -> processResult(dialId, record, mapping, usage));
                 });
     }
 
@@ -300,7 +301,7 @@ public class BackgroundJobService {
                 String.valueOf(owner)));
     }
 
-    private Future<Long> executeReschedule(
+    private Future<Void> executeReschedule(
             String dialId, String stateKey, long owner, long nextPollTime, int attempts, int errors) {
         return toFuture(script.<Long>evalAsync(
                 RScript.Mode.READ_WRITE,
@@ -321,16 +322,18 @@ public class BackgroundJobService {
                 String.valueOf(nextPollTime),
                 String.valueOf(attempts),
                 String.valueOf(errors)))
-                .onSuccess(result -> {
+                .map(result -> {
                     if (result == 1L) {
                         log.debug("Background job {} rescheduled, attempts={}, errors={}", dialId, attempts, errors);
                     } else {
                         log.warn("Background job {} reschedule skipped (owner mismatch)", dialId);
                     }
+
+                    return null;
                 });
     }
 
-    private Future<Long> executeComplete(String dialId, String stateKey, long owner) {
+    private Future<Void> executeComplete(String dialId, String stateKey, long owner) {
         return toFuture(script.<Long>evalAsync(
                 RScript.Mode.READ_WRITE,
                 """
@@ -346,12 +349,14 @@ public class BackgroundJobService {
                 List.of(scheduleKey, stateKey),
                 dialId,
                 String.valueOf(owner)))
-                .onSuccess(result -> {
+                .map(result -> {
                     if (result == 1L) {
                         log.info("Background job {} completed and removed from Redis", dialId);
                     } else {
                         log.warn("Background job {} complete skipped (owner mismatch)", dialId);
                     }
+
+                    return null;
                 });
     }
 
@@ -386,6 +391,18 @@ public class BackgroundJobService {
         return Future.succeededFuture();
     }
 
+    private void expireJob(String dialId) {
+        Map.Entry<BackgroundJobRecord, ResponseMapping> pair = loadJobData(dialId);
+        if (pair == null) {
+            return;
+        }
+        boolean deleted = resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId), EtagHeader.ANY);
+        if (deleted) {
+            processResult(dialId, pair.getKey(), pair.getValue(), null)
+                    .onFailure(e -> log.warn("BackgroundJobService: failed to finalize expired job {}", dialId, e));
+        }
+    }
+
     private Future<Boolean> invalidatePerRequestKey(String key) {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey(key);
@@ -416,7 +433,15 @@ public class BackgroundJobService {
                     long now = System.currentTimeMillis();
                     for (MetadataBase item : items) {
                         if (item.getNodeType() == NodeType.ITEM) {
-                            schedule.addIfAbsent(now, item.getName());
+                            String dialId = item.getName();
+                            if (item instanceof ResourceItemMetadata meta
+                                    && meta.getCreatedAt() != null
+                                    && now - meta.getCreatedAt() >= settings.getJobTtlMs()) {
+                                log.warn("BackgroundJobService: expiring job {}, age={}ms", dialId, now - meta.getCreatedAt());
+                                expireJob(dialId);
+                            } else {
+                                schedule.addIfAbsent(now, dialId);
+                            }
                         }
                     }
                 }
@@ -436,7 +461,7 @@ public class BackgroundJobService {
         long maxPollIntervalMs = TimeUnit.MINUTES.toMillis(5);
         double pollBackoffFactor = 2.0;
         int maxSequentialPollFailures = 10;
-        long defaultJobTtlMs = TimeUnit.DAYS.toMillis(1);
+        long jobTtlMs = TimeUnit.DAYS.toMillis(1);
         long leaseTimeoutMs = TimeUnit.MINUTES.toMillis(5);
         int maxParallelJobs = 100;
         long scanIntervalMs = TimeUnit.MINUTES.toMillis(10);
