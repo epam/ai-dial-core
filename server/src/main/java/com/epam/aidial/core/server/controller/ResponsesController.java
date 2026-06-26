@@ -13,6 +13,7 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
@@ -296,7 +297,10 @@ public class ResponsesController extends BaseDeploymentPostController {
     private Future<Void> finishNonStreamingResponse(HttpServerResponse response) {
         Buffer responseBody = context.getResponseBody();
         if (context.isBackgroundJob() && context.getResponseId() != null) {
-            proxy.getBackgroundJobService().saveJob(context)
+            BackgroundJobRecord record = new BackgroundJobRecord(
+                    context.getProxyApiKeyData().getPerRequestKey(),
+                    context.isOriginalCall());
+            proxy.getBackgroundJobService().saveJob(context.getResponseId(), record)
                     .onSuccess(ignored -> proxy.getBackgroundJobService().startPolling(context.getResponseId()));
             response.end(responseBody);
         } else {
@@ -327,6 +331,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 String upstreamId = idNode.asText();
                 if (!context.isStoreResponse()) {
                     String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
+                    context.setResponseId(dialId);
                     object.put("id", dialId);
                     return Future.succeededFuture(Buffer.buffer(JsonUtil.serialize(object)));
                 }
@@ -340,8 +345,8 @@ public class ResponsesController extends BaseDeploymentPostController {
                 return proxy.getTaskExecutor()
                         .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
                         .map(dialId -> {
-                            object.put("id", dialId);
                             context.setResponseId(dialId);
+                            object.put("id", dialId);
                             return Buffer.buffer(JsonUtil.serialize(object));
                         });
             }

@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.function;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
@@ -12,12 +13,10 @@ import io.vertx.core.Future;
 
 public class ReplaceResponseIdFn extends BaseResponseFunction {
 
-    private String dialId;
     private String upstreamId;
 
-    public ReplaceResponseIdFn(Proxy proxy, ProxyContext context, String dialId, String upstreamId) {
+    public ReplaceResponseIdFn(Proxy proxy, ProxyContext context, String upstreamId) {
         super(proxy, context);
-        this.dialId = dialId;
         this.upstreamId = upstreamId;
     }
 
@@ -45,7 +44,7 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
         }
 
         if (upstreamId.equals(currentId)) {
-            response.put("id", dialId);
+            response.put("id", context.getResponseId());
         }
 
         return Future.succeededFuture(tree);
@@ -53,7 +52,8 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
 
     private Future<JsonNode> saveIdMapping(ObjectNode response, JsonNode tree) {
         if (!context.isStoreResponse()) {
-            dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
+            String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
+            context.setResponseId(dialId);
             response.put("id", dialId);
             return Future.succeededFuture(tree);
         }
@@ -66,18 +66,18 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
                 .build();
         return proxy.getTaskExecutor()
                 .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
-                .compose(generatedDialId -> {
+                .compose(dialId -> {
+                    context.setResponseId(dialId);
+                    response.put("id", dialId);
+
                     if (!context.isBackgroundJob()) {
-                        return Future.succeededFuture(generatedDialId);
+                        return Future.succeededFuture();
                     }
-                    context.setResponseId(generatedDialId);
-                    return proxy.getBackgroundJobService().saveJob(context)
-                            .map(ignored -> generatedDialId);
+                    BackgroundJobRecord record = new BackgroundJobRecord(
+                            context.getProxyApiKeyData().getPerRequestKey(),
+                            context.isOriginalCall());
+                    return proxy.getBackgroundJobService().saveJob(context.getResponseId(), record);
                 })
-                .map(generatedDialId -> {
-                    dialId = generatedDialId;
-                    response.put("id", generatedDialId);
-                    return tree;
-                });
+                .map(tree);
     }
 }

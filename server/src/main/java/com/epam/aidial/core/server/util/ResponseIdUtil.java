@@ -16,7 +16,7 @@ public class ResponseIdUtil {
         return RESPONSE_ID_PREFIX + deploymentName + "_" + uuid;
     }
 
-    public ResourceDescriptor getDescriptor(String dialResponseId) {
+    public ResourceDescriptor getResponseMappingDescriptor(String dialResponseId) {
         if (!dialResponseId.startsWith(RESPONSE_ID_PREFIX)) {
             throw new IllegalArgumentException("Invalid response id: " + dialResponseId);
         }
@@ -28,5 +28,10 @@ public class ResponseIdUtil {
         String uuid = dialResponseId.substring(underscore + 1);
         String relativePath = deploymentName + "/" + uuid;
         return ResourceDescriptorFactory.fromDecoded(ResourceTypes.RESPONSE_MAPPING, BUCKET, BUCKET_LOCATION, relativePath);
+    }
+
+    public ResourceDescriptor getBackgroundJobDescriptor(String jobId) {
+        return ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.BACKGROUND_JOB, BACKGROUND_JOB_BUCKET, BACKGROUND_JOB_BUCKET_LOCATION, jobId);
     }
 }

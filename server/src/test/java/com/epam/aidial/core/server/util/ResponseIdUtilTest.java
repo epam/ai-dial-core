@@ -24,8 +24,8 @@ public class ResponseIdUtilTest {
     }
 
     @Test
-    public void testGetDescriptor() {
-        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor("dial_gpt-4_abc123");
+    public void testGetResponseMappingDescriptor() {
+        ResourceDescriptor descriptor = ResponseIdUtil.getResponseMappingDescriptor("dial_gpt-4_abc123");
 
         assertEquals(ResourceTypes.RESPONSE_MAPPING, descriptor.getType());
         assertEquals(ResponseIdUtil.BUCKET, descriptor.getBucketName());
@@ -35,42 +35,42 @@ public class ResponseIdUtilTest {
     }
 
     @Test
-    public void testGetDescriptorRoundTrip() {
+    public void testGetResponseMappingDescriptorRoundTrip() {
         String deploymentName = "gpt-4o";
         String uuid = "550e8400e29b41d4a716446655440000";
         String responseId = ResponseIdUtil.createResponseId(deploymentName, uuid);
 
-        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(responseId);
+        ResourceDescriptor descriptor = ResponseIdUtil.getResponseMappingDescriptor(responseId);
 
         assertEquals(deploymentName, descriptor.getParentPath());
         assertEquals(uuid, descriptor.getName());
     }
 
     @Test
-    public void testGetDescriptorWithUnderscoredDeployment() {
+    public void testGetResponseMappingDescriptorWithUnderscoredDeployment() {
         // deployment names with underscores: last underscore separates uuid
-        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor("dial_my_model_uuid-xyz");
+        ResourceDescriptor descriptor = ResponseIdUtil.getResponseMappingDescriptor("dial_my_model_uuid-xyz");
 
         assertEquals("my_model", descriptor.getParentPath());
         assertEquals("uuid-xyz", descriptor.getName());
     }
 
     @Test
-    public void testGetDescriptorInvalidPrefix() {
+    public void testGetResponseMappingDescriptorInvalidPrefix() {
         assertThrows(IllegalArgumentException.class,
-                () -> ResponseIdUtil.getDescriptor("chatcmpl-abc123"));
+                () -> ResponseIdUtil.getResponseMappingDescriptor("chatcmpl-abc123"));
     }
 
     @Test
-    public void testGetDescriptorMissingUnderscore() {
+    public void testGetResponseMappingDescriptorMissingUnderscore() {
         // "dial_" prefix but no trailing underscore beyond prefix
         assertThrows(IllegalArgumentException.class,
-                () -> ResponseIdUtil.getDescriptor("dial_nounderscore"));
+                () -> ResponseIdUtil.getResponseMappingDescriptor("dial_nounderscore"));
     }
 
     @Test
-    public void testGetDescriptorEmptyString() {
+    public void testGetResponseMappingDescriptorEmptyString() {
         assertThrows(IllegalArgumentException.class,
-                () -> ResponseIdUtil.getDescriptor(""));
+                () -> ResponseIdUtil.getResponseMappingDescriptor(""));
     }
 }

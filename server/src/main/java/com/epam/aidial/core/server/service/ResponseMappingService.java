@@ -46,20 +46,20 @@ public class ResponseMappingService {
 
     public String saveMapping(ProxyContext context, ResponseMapping mapping) {
         String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), generator.get());
-        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(dialId);
+        ResourceDescriptor descriptor = ResponseIdUtil.getResponseMappingDescriptor(dialId);
         resourceService.putResource(descriptor, ProxyUtil.convertToString(mapping), EtagHeader.NEW_ONLY);
         return dialId;
     }
 
     @Nullable
     public ResponseMapping getMapping(String dialId) {
-        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(dialId);
+        ResourceDescriptor descriptor = ResponseIdUtil.getResponseMappingDescriptor(dialId);
         String json = resourceService.getResource(descriptor);
         return ProxyUtil.convertToObject(json, ResponseMapping.class);
     }
 
     public void deleteMapping(String dialId) {
-        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(dialId);
+        ResourceDescriptor descriptor = ResponseIdUtil.getResponseMappingDescriptor(dialId);
         resourceService.deleteResource(descriptor, EtagHeader.ANY);
     }
 
@@ -126,7 +126,7 @@ public class ResponseMappingService {
 
     private void deleteExpiredItem(String deploymentName, String uuid) {
         try {
-            ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(ResponseIdUtil.createResponseId(deploymentName, uuid));
+            ResourceDescriptor descriptor = ResponseIdUtil.getResponseMappingDescriptor(ResponseIdUtil.createResponseId(deploymentName, uuid));
             resourceService.deleteResource(descriptor, EtagHeader.ANY);
             log.debug("Housekeeping: deleted expired response mapping {}/{}", deploymentName, uuid);
         } catch (Throwable e) {

@@ -3,13 +3,23 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
-import com.epam.aidial.core.storage.service.LockService;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
+import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.data.NodeType;
+import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonObject;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
 import org.junit.jupiter.api.AfterAll;
@@ -21,18 +31,26 @@ import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.Redisson;
+import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -44,6 +62,7 @@ import static org.mockito.Mockito.when;
 class BackgroundJobServiceTest {
 
     private static final long TEST_POLL_INTERVAL_MS = 20;
+    private static final long TEST_LEASE_TIMEOUT_MS = 100;
     private static final String PREFIX = "testprefix";
     private static final String JOB_ID = "dial_test-model_abc123";
     private static final String DEPLOYMENT_NAME = "test-model";
@@ -71,6 +90,8 @@ class BackgroundJobServiceTest {
     @Mock
     private BackgroundJobPoller poller;
 
+    private ResourceService resourceService;
+    private Map<String, String> resourceStore;
     private BackgroundJobService service;
 
     @BeforeAll
@@ -102,13 +123,14 @@ class BackgroundJobServiceTest {
     @BeforeEach
     void setUp(Vertx vertx) {
         redissonClient.getKeys().flushall();
-        LockService lockService = new LockService(redissonClient, null);
-        BackgroundJobService.Settings testSettings = new BackgroundJobService.Settings();
-        testSettings.setPollIntervalMs(TEST_POLL_INTERVAL_MS);
-        service = new BackgroundJobService(
-                vertx, redissonClient, PREFIX, lockService,
-                configStore, apiKeyStore, tokenStatsTracker,
-                responseMappingService, poller, testSettings);
+        resourceStore = new ConcurrentHashMap<>();
+        resourceService = buildResourceServiceMock();
+
+        BackgroundJobService.Settings settings = buildTestSettings(10);
+        AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
+                new JsonObject().put("useVirtualThreads", false));
+        service = new BackgroundJobService(vertx, redissonClient, PREFIX, resourceService, taskExecutor,
+                configStore, apiKeyStore, tokenStatsTracker, responseMappingService, poller, settings);
 
         lenient().when(proxyContext.getResponseId()).thenReturn(JOB_ID);
         lenient().when(proxyContext.getProxyApiKeyData().getPerRequestKey()).thenReturn("test-per-request-key");
@@ -117,7 +139,7 @@ class BackgroundJobServiceTest {
 
     @Test
     void isJobActiveReturnsTrueWhenRecordExists(VertxTestContext ctx) throws Throwable {
-        service.saveJob(proxyContext)
+        service.saveJob(proxyContext.getResponseId(), buildRecord())
                 .compose(ignored -> service.isJobActive(JOB_ID))
                 .onSuccess(active -> ctx.verify(() -> {
                     assertTrue(active);
@@ -140,11 +162,11 @@ class BackgroundJobServiceTest {
 
     @Test
     void finishStreamingJobDeletesRecord(VertxTestContext ctx) throws Throwable {
-        service.saveJob(proxyContext)
+        service.saveJob(proxyContext.getResponseId(), buildRecord())
                 .compose(ignored -> service.finishStreamingJob(JOB_ID))
                 .compose(deleted -> service.isJobActive(JOB_ID)
                         .onSuccess(active -> ctx.verify(() -> {
-                            assertTrue(deleted, "cancelStreamingJob should return true when record existed");
+                            assertTrue(deleted, "finishStreamingJob should return true when record existed");
                             assertFalse(active, "job should no longer be active after cancellation");
                             ctx.completeNow();
                         })))
@@ -164,11 +186,10 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void submitStartsPollingAndCompletesJob(VertxTestContext ctx) throws Throwable {
+    void saveJobStartsPollingAndCompletesJob(VertxTestContext ctx) throws Throwable {
         when(poller.poll(any())).thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(new TokenUsage())));
         Config config = mock(Config.class);
         when(configStore.get()).thenReturn(config);
-
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
         when(apiKeyStore.invalidatePerRequestApiKey(any()))
                 .thenAnswer(inv -> {
@@ -176,9 +197,8 @@ class BackgroundJobServiceTest {
                     return Future.succeededFuture(true);
                 });
 
-        service.saveJob(proxyContext)
-                .onSuccess(ignored -> service.startPolling(JOB_ID))
-                .onFailure(ctx::failNow);
+        service.init();
+        service.saveJob(proxyContext.getResponseId(), buildRecord()).onFailure(ctx::failNow);
 
         await(ctx);
         verify(apiKeyStore).invalidatePerRequestApiKey(any());
@@ -198,9 +218,8 @@ class BackgroundJobServiceTest {
                     return Future.succeededFuture(true);
                 });
 
-        service.saveJob(proxyContext)
-                .onSuccess(ignored -> service.startPolling(JOB_ID))
-                .onFailure(ctx::failNow);
+        service.init();
+        service.saveJob(proxyContext.getResponseId(), buildRecord()).onFailure(ctx::failNow);
 
         await(ctx);
         verify(poller, times(3)).poll(any());
@@ -218,9 +237,8 @@ class BackgroundJobServiceTest {
                     return Future.succeededFuture(true);
                 });
 
-        svc.saveJob(proxyContext)
-                .onSuccess(ignored -> svc.startPolling(JOB_ID))
-                .onFailure(ctx::failNow);
+        svc.init();
+        svc.saveJob(proxyContext.getResponseId(), buildRecord()).onFailure(ctx::failNow);
 
         await(ctx);
         verify(poller, times(3)).poll(any());
@@ -246,9 +264,8 @@ class BackgroundJobServiceTest {
                     return Future.succeededFuture(true);
                 });
 
-        svc.saveJob(proxyContext)
-                .onSuccess(ignored -> svc.startPolling(JOB_ID))
-                .onFailure(ctx::failNow);
+        svc.init();
+        svc.saveJob(proxyContext.getResponseId(), buildRecord()).onFailure(ctx::failNow);
 
         await(ctx);
         verify(poller, times(6)).poll(any());
@@ -265,7 +282,7 @@ class BackgroundJobServiceTest {
                     return Future.succeededFuture(true);
                 });
 
-        service.saveJob(proxyContext)
+        service.saveJob(proxyContext.getResponseId(), buildRecord())
                 .compose(ignored -> service.tryCompleteOnGet(
                         JOB_ID, mapping, new ResponsesApiClient.TerminalResult(new TokenUsage())))
                 .onFailure(ctx::failNow);
@@ -278,7 +295,7 @@ class BackgroundJobServiceTest {
     void tryCompleteOnGetIsNoOpWhenNullResult(VertxTestContext ctx) throws Throwable {
         ResponseMapping mapping = buildMapping();
 
-        service.saveJob(proxyContext)
+        service.saveJob(proxyContext.getResponseId(), buildRecord())
                 .compose(ignored -> service.tryCompleteOnGet(JOB_ID, mapping, null))
                 .compose(ignored -> service.isJobActive(JOB_ID))
                 .onSuccess(active -> ctx.verify(() -> {
@@ -304,7 +321,7 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void initResumesActiveJobsOnStartup(Vertx vertx, VertxTestContext ctx) throws Throwable {
+    void startupScanPicksUpJobsFromResourceService(Vertx vertx, VertxTestContext ctx) throws Throwable {
         when(poller.poll(any()))
                 .thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(new TokenUsage())));
         when(configStore.get()).thenReturn(mock(Config.class));
@@ -315,15 +332,94 @@ class BackgroundJobServiceTest {
                     return Future.succeededFuture(true);
                 });
 
-        service.saveJob(proxyContext)
+        // Save a job via the first service instance (adds record to ResourceService + ZSET)
+        service.saveJob(proxyContext.getResponseId(), buildRecord())
                 .onSuccess(ignored -> {
+                    // Flush the ZSET entry to simulate a crash (record in ResourceService but not ZSET)
+                    redissonClient.getKeys().flushall();
+                    // New service instance: scan should re-add the job
                     BackgroundJobService newService = buildService(vertx, 10);
+                    newService.scan();
                     newService.init();
                 })
                 .onFailure(ctx::failNow);
 
         await(ctx);
         verify(poller, atLeastOnce()).poll(any());
+    }
+
+    @Test
+    void startupScanDoesNotOverwriteExistingScheduledScore(VertxTestContext ctx) throws Throwable {
+        service.saveJob(proxyContext.getResponseId(), buildRecord())
+                .onSuccess(ignored -> {
+                    // Override score to a far future time (job already scheduled)
+                    long futureScore = System.currentTimeMillis() + 60_000;
+                    RScoredSortedSet<String> schedule = redissonClient.getScoredSortedSet(
+                            "background_job_schedule:" + PREFIX + "/queue", StringCodec.INSTANCE);
+                    schedule.add(futureScore, JOB_ID);
+
+                    service.scan();
+
+                    Double score = schedule.getScore(JOB_ID);
+                    ctx.verify(() -> {
+                        assertTrue(score != null && score >= futureScore,
+                                "scan should not overwrite existing future score");
+                        ctx.completeNow();
+                    });
+                })
+                .onFailure(ctx::failNow);
+        await(ctx);
+    }
+
+    private ResourceService buildResourceServiceMock() {
+        ResourceService mock = mock(ResourceService.class);
+        lenient().when(mock.putResource(any(ResourceDescriptor.class), anyString(), any(EtagHeader.class)))
+                .thenAnswer(inv -> {
+                    ResourceDescriptor desc = inv.getArgument(0);
+                    resourceStore.put(desc.getAbsoluteFilePath(), inv.getArgument(1));
+                    return null;
+                });
+        lenient().when(mock.getResource(any(ResourceDescriptor.class)))
+                .thenAnswer(inv -> {
+                    ResourceDescriptor desc = inv.getArgument(0);
+                    return resourceStore.get(desc.getAbsoluteFilePath());
+                });
+        lenient().when(mock.deleteResource(any(ResourceDescriptor.class), any(EtagHeader.class)))
+                .thenAnswer(inv -> {
+                    ResourceDescriptor desc = inv.getArgument(0);
+                    return resourceStore.remove(desc.getAbsoluteFilePath()) != null;
+                });
+        lenient().when(mock.getResourceMetadata(any(ResourceDescriptor.class)))
+                .thenAnswer(inv -> {
+                    ResourceDescriptor desc = inv.getArgument(0);
+                    return resourceStore.containsKey(desc.getAbsoluteFilePath())
+                            ? new ResourceItemMetadata() : null;
+                });
+        lenient().when(mock.getFolderMetadata(any(), any(), anyInt(), anyBoolean()))
+                .thenAnswer(inv -> {
+                    if (resourceStore.isEmpty()) {
+                        return null;
+                    }
+                    List<MetadataBase> items = resourceStore.keySet().stream()
+                            .map(path -> {
+                                String name = path.substring(path.lastIndexOf('/') + 1);
+                                ResourceItemMetadata meta = new ResourceItemMetadata();
+                                meta.setName(name);
+                                meta.setNodeType(NodeType.ITEM);
+                                return (MetadataBase) meta;
+                            })
+                            .toList();
+                    ResourceFolderMetadata folder = mock(ResourceFolderMetadata.class);
+                    doReturn(items).when(folder).getItems();
+                    when(folder.getNextToken()).thenReturn(null);
+                    return folder;
+                });
+        return mock;
+    }
+
+    private BackgroundJobRecord buildRecord() {
+        return new BackgroundJobRecord(proxyContext.getProxyApiKeyData().getPerRequestKey(),
+                proxyContext.getApiKeyData().getPerRequestKey() == null);
     }
 
     private static ResponseMapping buildMapping() {
@@ -336,14 +432,19 @@ class BackgroundJobServiceTest {
     }
 
     private BackgroundJobService buildService(Vertx vertx, int maxFailures) {
+        BackgroundJobService.Settings settings = buildTestSettings(maxFailures);
+        AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
+                new JsonObject().put("useVirtualThreads", false));
+        return new BackgroundJobService(vertx, redissonClient, PREFIX, resourceService, taskExecutor,
+                configStore, apiKeyStore, tokenStatsTracker, responseMappingService, poller, settings);
+    }
+
+    private static BackgroundJobService.Settings buildTestSettings(int maxFailures) {
         BackgroundJobService.Settings settings = new BackgroundJobService.Settings();
         settings.setPollIntervalMs(TEST_POLL_INTERVAL_MS);
         settings.setMaxSequentialPollFailures(maxFailures);
-        return new BackgroundJobService(
-                vertx, redissonClient, PREFIX,
-                new LockService(redissonClient, null),
-                configStore, apiKeyStore, tokenStatsTracker,
-                responseMappingService, poller, settings);
+        settings.setLeaseTimeoutMs(TEST_LEASE_TIMEOUT_MS);
+        return settings;
     }
 
     private static void await(VertxTestContext ctx) throws Throwable {

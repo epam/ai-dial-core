@@ -282,4 +282,8 @@ public class ProxyContext {
     public ProxyContext copyWith(ApiKeyData newApiKeyData) {
         return new ProxyContext(proxy, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
     }
+
+    public boolean isOriginalCall() {
+        return apiKeyData.getPerRequestKey() == null;
+    }
 }

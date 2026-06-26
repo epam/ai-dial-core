@@ -249,7 +249,7 @@ public class ResponseItemController implements Controller {
 
     private Future<Void> collectAndForwardStreaming(HttpClientResponse proxyResponse, String upstreamResponseId) {
         CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-        ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context, dialResponseId, upstreamResponseId);
+        ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context, upstreamResponseId);
         BufferingReadStream responseStream = new BufferingReadStream(
                 proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024),
