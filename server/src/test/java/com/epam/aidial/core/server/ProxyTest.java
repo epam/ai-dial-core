@@ -20,7 +20,13 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
-import io.vertx.core.http.*;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpConnection;
+import io.vertx.core.http.HttpHeaders;
+import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.HttpVersion;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,15 +41,30 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.slf4j.Logger;
 
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_API_KEY;
 import static com.epam.aidial.core.server.Proxy.HEALTH_CHECK_PATH;
 import static com.epam.aidial.core.storage.blobstore.Storage.DEFAULT_MAX_UPLOADED_FILE_SIZE_BYTES;
-import static com.epam.aidial.core.storage.http.HttpStatus.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
+import static com.epam.aidial.core.storage.http.HttpStatus.HTTP_VERSION_NOT_SUPPORTED;
+import static com.epam.aidial.core.storage.http.HttpStatus.METHOD_NOT_ALLOWED;
+import static com.epam.aidial.core.storage.http.HttpStatus.OK;
+import static com.epam.aidial.core.storage.http.HttpStatus.REQUEST_ENTITY_TOO_LARGE;
+import static com.epam.aidial.core.storage.http.HttpStatus.UNAUTHORIZED;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)

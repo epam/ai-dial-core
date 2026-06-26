@@ -7,6 +7,7 @@ import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -76,7 +77,7 @@ public class ApplicationController {
                             description = OpenApiDescriptions.APPLICATION_NAME)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ApplicationData.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ApplicationData.class))
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
@@ -106,7 +107,7 @@ public class ApplicationController {
             operationId = "getApplications",
             tags = {"Deployment listing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ApplicationData.class, wrapper = ListData.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ListData.class, typeArguments = {ApplicationData.class}))
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
@@ -138,10 +139,10 @@ public class ApplicationController {
             method = "POST",
             path = "/v1/ops/application/deploy",
             operationId = "deployApplication",
-            requestBody = ResourceLink.class,
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
             tags = {"Applications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Application.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
@@ -164,10 +165,10 @@ public class ApplicationController {
             method = "POST",
             path = "/v1/ops/application/undeploy",
             operationId = "undeployApplication",
-            requestBody = ResourceLink.class,
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
             tags = {"Applications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Application.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
@@ -190,10 +191,10 @@ public class ApplicationController {
             method = "POST",
             path = "/v1/ops/application/redeploy",
             operationId = "redeployApplication",
-            requestBody = ResourceLink.class,
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
             tags = {"Applications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Application.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
@@ -216,10 +217,10 @@ public class ApplicationController {
             method = "POST",
             path = "/v1/ops/application/logs",
             operationId = "getApplicationLogs",
-            requestBody = ResourceLink.class,
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
             tags = {"Applications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Application.Logs.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.Logs.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )

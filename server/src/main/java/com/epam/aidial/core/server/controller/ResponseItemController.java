@@ -6,6 +6,7 @@ import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
@@ -57,8 +58,8 @@ public class ResponseItemController implements Controller {
                                     description = "The ID of the response to retrieve")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", schemaRef = "ProxyResponse"),
-                            @ApiResponse(code = 200, description = "Success", schemaRef = "ProxyResponse", contentTypes = {"text/event-stream"})
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse")),
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse"), contentTypes = {"text/event-stream"})
                     },
                     responseProfile = ResponseProfile.RESPONSE_ITEM_PROXY
             ),
@@ -72,7 +73,7 @@ public class ResponseItemController implements Controller {
                                     description = "The ID of the response to cancel")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", schemaRef = "ProxyResponse")
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse"))
                     },
                     responseProfile = ResponseProfile.RESPONSE_ITEM_PROXY
             ),
@@ -86,7 +87,7 @@ public class ResponseItemController implements Controller {
                                     description = "The ID of the response to delete")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", schemaRef = "ProxyResponse")
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse"))
                     },
                     responseProfile = ResponseProfile.RESPONSE_ITEM_PROXY
             )

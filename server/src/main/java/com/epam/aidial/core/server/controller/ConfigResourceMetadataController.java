@@ -4,6 +4,7 @@ import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -98,7 +99,7 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
             },
             responses = {
-                @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
             )
@@ -115,7 +116,7 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
             },
             responses = {
-                @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
@@ -132,7 +133,7 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
             },
             responses = {
-                @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
             )
@@ -149,7 +150,7 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
             },
             responses = {
-                @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
         )
@@ -166,7 +167,7 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
             },
             responses = {
-                @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
         )
@@ -183,7 +184,7 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
             },
             responses = {
-                @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
         )

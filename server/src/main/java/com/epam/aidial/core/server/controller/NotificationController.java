@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -34,7 +35,7 @@ public class NotificationController {
             operationId = "getNotifications",
             tags = {"Notifications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Notifications.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Notifications.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
@@ -50,7 +51,7 @@ public class NotificationController {
             method = "POST",
             path = "/v1/ops/notification/delete",
             operationId = "deleteNotifications",
-            requestBody = DeleteNotificationRequest.class,
+            requestBody = @ApiSchema(implementation = DeleteNotificationRequest.class),
             tags = {"Notifications"},
             responses = {
                     @ApiResponse(code = 200, description = "Success")

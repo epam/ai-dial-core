@@ -3,9 +3,9 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.schema.OpenApiBinary;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -38,7 +38,7 @@ public class DownloadFileController extends AccessControlBaseController {
             },
             responses = {
                     @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
-                            body = OpenApiBinary.class, contentTypes = {"application/octet-stream"}),
+                            body = @ApiSchema(implementation = byte[].class), contentTypes = {"application/octet-stream"}),
                     @ApiResponse(code = 401, description = OpenApiDescriptions.RESPONSE_INVALID_AUTHENTICATION)
             }
     )

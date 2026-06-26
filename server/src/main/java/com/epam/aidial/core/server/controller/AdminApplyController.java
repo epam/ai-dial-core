@@ -11,6 +11,7 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
@@ -122,10 +123,10 @@ public class AdminApplyController {
             path = "/v1/admin/apply",
             operationId = "applyConfigManifests",
             tags = {"Admin"},
-            requestBody = AdminApplyRequest.class,
+            requestBody = @ApiSchema(implementation = AdminApplyRequest.class),
             responses = {
-                    @ApiResponse(code = 200, description = "Application successful", body = AdminApplyResponse.class),
-                    @ApiResponse(code = 422, description = "Precheck failed", body = AdminApplyResponse.class)
+                    @ApiResponse(code = 200, description = "Application successful", body = @ApiSchema(implementation = AdminApplyResponse.class)),
+                    @ApiResponse(code = 422, description = "Precheck failed", body = @ApiSchema(implementation = AdminApplyResponse.class))
             },
             responseProfile = ResponseProfile.ADMIN_BATCH
     )

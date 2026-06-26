@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -35,7 +36,7 @@ public class ConsentController {
                             description = OpenApiDescriptions.DEPLOYMENT_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ReviewConsentResponse.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ReviewConsentResponse.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
@@ -50,7 +51,7 @@ public class ConsentController {
             method = "POST",
             path = "/v1/consent/{deployment_id}",
             operationId = "acceptUserConsent",
-            requestBody = AcceptConsentRequest.class,
+            requestBody = @ApiSchema(implementation = AcceptConsentRequest.class),
             tags = {"User Consent"},
             parameters = {
                     @ApiParameter(name = "deployment_id", in = ParameterIn.PATH, required = true,

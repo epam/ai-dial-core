@@ -16,6 +16,7 @@ import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionSe
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -68,9 +69,9 @@ public class ResourceCredentialsController {
             path = "/v1/ops/toolset/signin",
             operationId = "toolsetSignin",
             tags = {"Toolsets"},
-            requestBody = ResourceSignInRequest.class,
+            requestBody = @ApiSchema(implementation = ResourceSignInRequest.class),
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Boolean.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Boolean.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION)
     public Future<?> signIn() {
@@ -115,9 +116,9 @@ public class ResourceCredentialsController {
             path = "/v1/ops/toolset/signout",
             operationId = "toolSetSignout",
             tags = {"Toolsets"},
-            requestBody = ResourceSignOutRequest.class,
+            requestBody = @ApiSchema(implementation = ResourceSignOutRequest.class),
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Boolean.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Boolean.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION)
     public Future<?> signOut() {

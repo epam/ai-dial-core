@@ -43,7 +43,6 @@ import com.epam.aidial.core.server.controller.UploadFileController;
 import com.epam.aidial.core.server.controller.UserInfoController;
 
 import java.lang.reflect.Method;
-import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -157,14 +156,11 @@ public final class AnnotationEndpointCollector {
             ApiParameter[] parameters,
             ApiResponse[] responses
     ) {
-        Type requestBody = op.requestBody() == Void.class ? null : op.requestBody();
         return new EndpointMetadata.Endpoint(
                 op.method(),
                 op.path(),
                 op.operationId(),
-                requestBody,
-                op.requestOneOf(),
-                op.requestBodySchemaRef(),
+                op.requestBody(),
                 op.tags(),
                 op.contentType(),
                 parameters,

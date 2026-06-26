@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -25,7 +26,7 @@ public class RateResponseController extends DeploymentFeatureController {
             method = "POST",
             path = "/v1/{deployment_name}/rate",
             operationId = "rateDeployment",
-            requestBodySchemaRef = "RateRequest",
+            requestBody = @ApiSchema(schemaRef = "RateRequest"),
             parameters = {
                     @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
                             description = OpenApiDescriptions.DEPLOYMENT_NAME)

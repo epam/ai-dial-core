@@ -13,9 +13,7 @@ public @interface ApiOperation {
     String method();
     String path();
     String operationId();
-    Class<?> requestBody() default Void.class;
-    Class<?>[] requestOneOf() default {};
-    String requestBodySchemaRef() default "";
+    ApiSchema requestBody() default @ApiSchema;
     String[] tags() default {};
     String contentType() default "application/json";
     ApiParameter[] parameters() default {};

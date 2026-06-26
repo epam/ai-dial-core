@@ -83,11 +83,7 @@ public final class StandardResponses {
         response.setDescription(description);
         response.setContent(ResponseContentFactory.build(
                 new String[]{"application/json"},
-                null,
-                ErrorData.class,
-                new Class<?>[0],
-                new Class<?>[0],
-                Void.class,
+                ApiSchemaBuilder.forImplementation(ErrorData.class),
                 schemaGenerator
         ));
         return response;

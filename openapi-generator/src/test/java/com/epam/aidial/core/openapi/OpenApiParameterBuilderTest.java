@@ -190,11 +190,9 @@ class OpenApiParameterBuilderTest {
                 "POST",
                 path,
                 "testOperation",
-                null,
-                null,
-                null,
-                new String[0],
-                "application/json",
+                null,  // requestBody (ApiSchema)
+                new String[0],  // tags
+                "application/json",  // contentType
                 parameters,
                 new com.epam.aidial.core.openapi.annotations.ApiResponse[0],
                 ResponseProfile.NONE

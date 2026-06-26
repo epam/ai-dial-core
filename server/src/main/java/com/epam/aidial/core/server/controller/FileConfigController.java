@@ -10,6 +10,7 @@ import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.ProxyContext;
@@ -73,7 +74,9 @@ public class FileConfigController implements Controller {
                     operationId = "listFileConfigModels",
                     tags = {"Admin"},
                     responses = {
-                            @ApiResponse(code = 200, description = "List of file-sourced models", body = NamedEntity.class, wrapper = ItemsResponse.class)
+                            @ApiResponse(code = 200, description = "List of file-sourced models",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class}))
                     },
                     responseProfile = ResponseProfile.ADMIN_READ_ONLY
             ),
@@ -86,7 +89,7 @@ public class FileConfigController implements Controller {
                             @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Model name")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = Model.class, responseAllOf = {EntityMetadata.class})
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Model.class, EntityMetadata.class}))
                     },
                     responseProfile = ResponseProfile.ADMIN_READ_ONLY
             ),
@@ -96,7 +99,9 @@ public class FileConfigController implements Controller {
                     operationId = "listFileConfigInterceptors",
                     tags = {"Admin"},
                     responses = {
-                            @ApiResponse(code = 200, description = "List of file-sourced interceptors", body = NamedEntity.class, wrapper = ItemsResponse.class)
+                            @ApiResponse(code = 200, description = "List of file-sourced interceptors",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class}))
                     },
                     responseProfile = ResponseProfile.ADMIN_READ_ONLY
             ),
@@ -109,7 +114,7 @@ public class FileConfigController implements Controller {
                             @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Interceptor name")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = Interceptor.class, responseAllOf = {EntityMetadata.class})
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Interceptor.class, EntityMetadata.class}))
                     },
                     responseProfile = ResponseProfile.ADMIN_READ_ONLY
             ),
@@ -119,7 +124,9 @@ public class FileConfigController implements Controller {
                     operationId = "listFileConfigRoles",
                     tags = {"Admin"},
                     responses = {
-                            @ApiResponse(code = 200, description = "List of file-sourced roles", body = NamedEntity.class, wrapper = ItemsResponse.class)
+                            @ApiResponse(code = 200, description = "List of file-sourced roles",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class}))
                     },
                     responseProfile = ResponseProfile.ADMIN_READ_ONLY
             ),
@@ -132,7 +139,7 @@ public class FileConfigController implements Controller {
                             @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Role name")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = Role.class, responseAllOf = {EntityMetadata.class})
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Role.class, EntityMetadata.class}))
                     },
                     responseProfile = ResponseProfile.ADMIN_READ_ONLY
             ),
@@ -142,7 +149,9 @@ public class FileConfigController implements Controller {
                     operationId = "listFileConfigRoutes",
                     tags = {"Admin"},
                     responses = {
-                            @ApiResponse(code = 200, description = "List of file-sourced routes", body = NamedEntity.class, wrapper = ItemsResponse.class)
+                            @ApiResponse(code = 200, description = "List of file-sourced routes",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class}))
                     },
                     responseProfile = ResponseProfile.ADMIN_READ_ONLY
             ),
@@ -155,7 +164,7 @@ public class FileConfigController implements Controller {
                             @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Route name")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = Route.class, responseAllOf = {EntityMetadata.class})
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Route.class, EntityMetadata.class}))
                     },
                     responseProfile = ResponseProfile.ADMIN_READ_ONLY
             ),
@@ -165,7 +174,9 @@ public class FileConfigController implements Controller {
                     operationId = "listFileConfigSchemas",
                     tags = {"Admin"},
                     responses = {
-                            @ApiResponse(code = 200, description = "List of file-sourced application type schemas", body = NamedEntity.class, wrapper = ItemsResponse.class)
+                            @ApiResponse(code = 200, description = "List of file-sourced application type schemas",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class}))
                     },
                     responseProfile = ResponseProfile.ADMIN_READ_ONLY
             ),
@@ -178,7 +189,7 @@ public class FileConfigController implements Controller {
                             @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Schema name")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", schemaRef = "ProxyResponse", responseAllOf = {EntityMetadata.class})
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"ProxyResponse"}, allOf = {EntityMetadata.class}))
                     },
                     responseProfile = ResponseProfile.ADMIN_READ_ONLY
             ),
@@ -188,7 +199,9 @@ public class FileConfigController implements Controller {
                     operationId = "listFileConfigSettings",
                     tags = {"Admin"},
                     responses = {
-                            @ApiResponse(code = 200, description = "List of file-sourced settings (singleton)", body = NamedEntity.class, wrapper = ItemsResponse.class)
+                            @ApiResponse(code = 200, description = "List of file-sourced settings (singleton)",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class}))
                     },
                     responseProfile = ResponseProfile.ADMIN_READ_ONLY
             ),
@@ -201,7 +214,7 @@ public class FileConfigController implements Controller {
                             @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Must be 'global'")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = GlobalSettings.class, responseAllOf = {EntityMetadata.class})
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {GlobalSettings.class, EntityMetadata.class}))
                     },
                     responseProfile = ResponseProfile.ADMIN_READ_ONLY
             )

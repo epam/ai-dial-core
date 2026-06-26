@@ -9,6 +9,7 @@ import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -90,7 +91,7 @@ public class ResourceController extends AccessControlBaseController {
                     method = "PUT",
                     path = "/v1/applications/{bucket}/{application_path}",
                     operationId = "saveCustomApplication",
-                    requestBody = Application.class,
+                    requestBody = @ApiSchema(implementation = Application.class),
                     tags = {"Applications"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
@@ -100,7 +101,7 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_APPLICATION)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved application", required = true)
                                     })
@@ -118,7 +119,7 @@ public class ResourceController extends AccessControlBaseController {
                                     description = OpenApiDescriptions.APPLICATION_PATH)
                     },
                 responses = {
-                @ApiResponse(code = 200, description = "Success", body = Application.class,
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class),
                             headers = {
                                     @ApiHeader(name = "ETag", description = "Entity tag for the application", required = true)
                             })
@@ -155,7 +156,7 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_PERMISSIONS_APPLICATIONS, schema = Boolean.class)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
                 },
                 responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
             ),
@@ -164,7 +165,7 @@ public class ResourceController extends AccessControlBaseController {
                     method = "PUT",
                     path = "/v1/conversations/{bucket}/{conversation_path}",
                     operationId = "saveConversation",
-                    requestBody = Conversation.class,
+                    requestBody = @ApiSchema(implementation = Conversation.class),
                     tags = {"Conversations"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
@@ -174,7 +175,7 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_CONVERSATION)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
                             headers = {
                                     @ApiHeader(name = "ETag", description = "Entity tag for the saved conversation", required = true)
                             })
@@ -192,7 +193,7 @@ public class ResourceController extends AccessControlBaseController {
                                     description = OpenApiDescriptions.CONVERSATION_PATH)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Conversation.class,
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Conversation.class),
                             headers = {
                                     @ApiHeader(name = "ETag", description = "Entity tag for the conversation", required = true)
                             })
@@ -230,7 +231,7 @@ public class ResourceController extends AccessControlBaseController {
                                 schema = Boolean.class)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
                 },
                 responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
             ),
@@ -239,7 +240,7 @@ public class ResourceController extends AccessControlBaseController {
                     method = "PUT",
                     path = "/v1/prompts/{bucket}/{prompt_path}",
                     operationId = "savePrompt",
-                    requestBody = Prompt.class,
+                    requestBody = @ApiSchema(implementation = Prompt.class),
                     tags = {"Prompts"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
@@ -248,7 +249,7 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_PROMPT)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
                             headers = {
                                     @ApiHeader(name = "ETag", description = "Entity tag for the saved prompt", required = true)
                             })
@@ -265,7 +266,7 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = Prompt.class,
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Prompt.class),
                             headers = {
                                     @ApiHeader(name = "ETag", description = "Entity tag for the prompt", required = true)
                             })
@@ -301,7 +302,7 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_PERMISSIONS_PROMPTS, schema = Boolean.class)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
                 },
                 responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
             ),
@@ -310,7 +311,7 @@ public class ResourceController extends AccessControlBaseController {
                     method = "PUT",
                     path = "/v1/toolsets/{bucket}/{toolset_path}",
                     operationId = "saveToolSet",
-                    requestBody = ToolSet.class,
+                    requestBody = @ApiSchema(implementation = ToolSet.class),
                     tags = {"Toolsets"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
@@ -319,7 +320,7 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_TOOLSET)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
                             headers = {
                                     @ApiHeader(name = "ETag", description = "Entity tag for the saved toolset", required = true)
                             })
@@ -336,7 +337,7 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ToolSet.class,
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ToolSet.class),
                             headers = {
                                     @ApiHeader(name = "ETag", description = "Entity tag for the toolset", required = true)
                             })
@@ -372,7 +373,7 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_PERMISSIONS_TOOLSETS, schema = Boolean.class)
                     },
                 responses = {
-                    @ApiResponse(code = 200, description = "Success", body = MetadataBase.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
                 },
                 responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
             ),

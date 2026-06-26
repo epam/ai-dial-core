@@ -3,10 +3,10 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
-import com.epam.aidial.core.openapi.schema.OpenApiBinary;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteRequest;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteResponse;
@@ -60,10 +60,10 @@ public class CodeInterpreterController {
             method = "POST",
             path = "/v1/ops/code_interpreter/open_session",
             operationId = "openSession",
-            requestBody = CodeInterpreterSessionId.class,
+            requestBody = @ApiSchema(implementation = CodeInterpreterSessionId.class),
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = CodeInterpreterSession.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterSession.class))
             },
             responseProfile = ResponseProfile.CODE_INTERPRETER
     )
@@ -85,10 +85,10 @@ public class CodeInterpreterController {
             method = "POST",
             path = "/v1/ops/code_interpreter/close_session",
             operationId = "closeSession",
-            requestBody = CodeInterpreterSessionId.class,
+            requestBody = @ApiSchema(implementation = CodeInterpreterSessionId.class),
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = CodeInterpreterSession.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterSession.class))
             },
             responseProfile = ResponseProfile.CODE_INTERPRETER
     )
@@ -109,10 +109,10 @@ public class CodeInterpreterController {
             method = "POST",
             path = "/v1/ops/code_interpreter/get_session",
             operationId = "getSession",
-            requestBody = CodeInterpreterSessionId.class,
+            requestBody = @ApiSchema(implementation = CodeInterpreterSessionId.class),
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = CodeInterpreterSession.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterSession.class))
             },
             responseProfile = ResponseProfile.CODE_INTERPRETER
     )
@@ -133,10 +133,10 @@ public class CodeInterpreterController {
             method = "POST",
             path = "/v1/ops/code_interpreter/execute_code",
             operationId = "executeCode",
-            requestBody = CodeInterpreterExecuteRequest.class,
+            requestBody = @ApiSchema(implementation = CodeInterpreterExecuteRequest.class),
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = CodeInterpreterExecuteResponse.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterExecuteResponse.class))
             },
             responseProfile = ResponseProfile.CODE_INTERPRETER
     )
@@ -160,7 +160,7 @@ public class CodeInterpreterController {
             operationId = "uploadFileToCodeInterpreter",
             tags = {"Code interpreter"},
             contentType = "multipart/form-data",
-            requestBody = OpenApiBinary.class,
+            requestBody = @ApiSchema(implementation = byte[].class),
             parameters = {
                     @ApiParameter(
                             name = "session_id",
@@ -170,7 +170,7 @@ public class CodeInterpreterController {
                     )
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = CodeInterpreterFile.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterFile.class))
             },
             responseProfile = ResponseProfile.CODE_INTERPRETER
     )
@@ -209,11 +209,11 @@ public class CodeInterpreterController {
             method = "POST",
             path = "/v1/ops/code_interpreter/download_file",
             operationId = "downloadFileFromCodeInterpreter",
-            requestBody = CodeInterpreterFile.class,
+            requestBody = @ApiSchema(implementation = CodeInterpreterFile.class),
             tags = {"Code interpreter"},
             responses = {
                     @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
-                        body = OpenApiBinary.class, contentTypes = {"application/octet-stream"}),
+                        body = @ApiSchema(implementation = byte[].class), contentTypes = {"application/octet-stream"}),
             },
             responseProfile = ResponseProfile.CODE_INTERPRETER
     )
@@ -247,10 +247,10 @@ public class CodeInterpreterController {
             method = "POST",
             path = "/v1/ops/code_interpreter/list_files",
             operationId = "listFilesFromCodeInterpreter",
-            requestBody = CodeInterpreterSessionId.class,
+            requestBody = @ApiSchema(implementation = CodeInterpreterSessionId.class),
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = CodeInterpreterFiles.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterFiles.class))
             },
             responseProfile = ResponseProfile.CODE_INTERPRETER
     )
@@ -271,10 +271,10 @@ public class CodeInterpreterController {
             method = "POST",
             path = "/v1/ops/code_interpreter/transfer_input_file",
             operationId = "transferInputFile",
-            requestBody = CodeInterpreterInputFile.class,
+            requestBody = @ApiSchema(implementation = CodeInterpreterInputFile.class),
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = CodeInterpreterFile.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterFile.class))
             },
             responseProfile = ResponseProfile.CODE_INTERPRETER
     )
@@ -295,10 +295,10 @@ public class CodeInterpreterController {
             method = "POST",
             path = "/v1/ops/code_interpreter/transfer_output_file",
             operationId = "transferOutputFile",
-            requestBody = CodeInterpreterOutputFile.class,
+            requestBody = @ApiSchema(implementation = CodeInterpreterOutputFile.class),
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = FileMetadata.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = FileMetadata.class))
             },
             responseProfile = ResponseProfile.CODE_INTERPRETER
     )

@@ -5,11 +5,13 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.parameters.Parameter;
 
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 public final class OpenApiParameterBuilder {
 
@@ -98,13 +100,51 @@ public final class OpenApiParameterBuilder {
                 || schemaClass == long.class || schemaClass == Long.class
                 || schemaClass == float.class || schemaClass == Float.class
                 || schemaClass == double.class || schemaClass == Double.class
-                || schemaClass == String.class;
+                || schemaClass == String.class
+                || schemaClass == byte[].class
+                || schemaClass == UUID.class
+                || schemaClass == Instant.class
+                || schemaClass == LocalDate.class;
     }
 
     static Schema<Object> inlinePrimitiveSchema(Class<?> schemaClass) {
         Schema<Object> schema = new Schema<>();
         schema.setType(mapSchemaType(schemaClass));
+
+        String format = mapSchemaFormat(schemaClass);
+        if (format != null) {
+            schema.setFormat(format);
+        }
+
         return schema;
+    }
+
+    static String mapSchemaFormat(Class<?> schemaClass) {
+        if (schemaClass == long.class || schemaClass == Long.class) {
+            return "int64";
+        }
+        if (schemaClass == int.class || schemaClass == Integer.class) {
+            return "int32";
+        }
+        if (schemaClass == float.class || schemaClass == Float.class) {
+            return "float";
+        }
+        if (schemaClass == double.class || schemaClass == Double.class) {
+            return "double";
+        }
+        if (schemaClass == byte[].class) {
+            return "binary";
+        }
+        if (schemaClass == UUID.class) {
+            return "uuid";
+        }
+        if (schemaClass == Instant.class) {
+            return "date-time";
+        }
+        if (schemaClass == LocalDate.class) {
+            return "date";
+        }
+        return null;
     }
 
     static String mapSchemaType(Class<?> schemaClass) {
@@ -119,6 +159,7 @@ public final class OpenApiParameterBuilder {
                 || schemaClass == float.class || schemaClass == Float.class) {
             return "number";
         }
+        // String, byte[], UUID, Instant, LocalDate all map to "string"
         return "string";
     }
 

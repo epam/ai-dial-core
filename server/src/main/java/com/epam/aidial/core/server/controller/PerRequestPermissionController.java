@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -45,7 +46,7 @@ public class PerRequestPermissionController {
             method = "POST",
             path = "/v1/ops/resource/per-request-permissions/grant",
             operationId = "grantPerRequestPermissions",
-            requestBody = PerRequestReceiver.class,
+            requestBody = @ApiSchema(implementation = PerRequestReceiver.class),
             tags = {"Sharing"},
             responses = {
                     @ApiResponse(code = 200, description = "Success")
@@ -56,7 +57,7 @@ public class PerRequestPermissionController {
             method = "POST",
             path = "/v1/ops/resource/per-request-permissions/revoke",
             operationId = "revokePerRequestPermissions",
-            requestBody = PerRequestReceiver.class,
+            requestBody = @ApiSchema(implementation = PerRequestReceiver.class),
             tags = {"Sharing"},
             responses = {
                     @ApiResponse(code = 200, description = "Success")
@@ -67,10 +68,10 @@ public class PerRequestPermissionController {
             method = "POST",
             path = "/v1/ops/resource/per-request-permissions/list",
             operationId = "getPerRequestPermissions",
-            requestBody = ListPermissionRequest.class,
+            requestBody = @ApiSchema(implementation = ListPermissionRequest.class),
             tags = {"Sharing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", responseOneOf = {ResourcePermissionList.class, PerRequestReceiverList.class})
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(oneOf = {ResourcePermissionList.class, PerRequestReceiverList.class}))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )

@@ -3,7 +3,6 @@ package com.epam.aidial.core.openapi;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
-import com.epam.aidial.core.openapi.schema.OpenApiBinary;
 import com.epam.aidial.core.server.data.ResourceLink;
 import io.swagger.v3.core.util.Yaml;
 import io.swagger.v3.oas.models.Operation;
@@ -25,11 +24,9 @@ class OpenApiRequestBodyBuilderTest {
                 "PUT",
                 "/v1/files/{bucket}/{file_path}",
                 "uploadFile",
-                OpenApiBinary.class,
-                null,
-                null,
-                new String[]{"Files"},
-                "multipart/form-data",
+                ApiSchemaBuilder.forImplementation(byte[].class),  // requestBody
+                new String[]{"Files"},  // tags
+                "multipart/form-data",  // contentType
                 new ApiParameter[0],
                 new ApiResponse[0],
                 ResponseProfile.CONDITIONAL_WRITE
@@ -62,9 +59,7 @@ class OpenApiRequestBodyBuilderTest {
                 "POST",
                 "/openai/deployments/{deployment_name}/chat/completions",
                 "createChatCompletion",
-                ResourceLink.class,
-                null,
-                null,
+                ApiSchemaBuilder.forImplementation(ResourceLink.class),
                 new String[]{"Applications"},
                 "application/json",
                 new ApiParameter[0],
@@ -88,9 +83,7 @@ class OpenApiRequestBodyBuilderTest {
                 "GET",
                 "/v1/example",
                 "getExample",
-                Void.class,
-                null,
-                null,
+                ApiSchemaBuilder.forImplementation(Void.class),
                 new String[]{"Examples"},
                 "application/json",
                 new ApiParameter[0],
@@ -107,9 +100,7 @@ class OpenApiRequestBodyBuilderTest {
                 "PUT",
                 "/v1/files/{bucket}/{file_path}",
                 "uploadFile",
-                OpenApiBinary.class,
-                null,
-                null,
+                ApiSchemaBuilder.forImplementation(byte[].class),
                 new String[]{"Files"},
                 "multipart/form-data",
                 new ApiParameter[0],
@@ -134,9 +125,7 @@ class OpenApiRequestBodyBuilderTest {
                 "POST",
                 "/v1/example",
                 "postFlag",
-                Boolean.class,
-                null,
-                null,
+                ApiSchemaBuilder.forImplementation(Boolean.class),
                 new String[]{"Examples"},
                 "application/json",
                 new ApiParameter[0],
@@ -160,9 +149,7 @@ class OpenApiRequestBodyBuilderTest {
                 "POST",
                 "/v1/binary",
                 "postBinary",
-                OpenApiBinary.class,
-                null,
-                null,
+                ApiSchemaBuilder.forImplementation(byte[].class),
                 new String[]{"Test"},
                 "application/json",
                 new ApiParameter[0],
@@ -184,9 +171,7 @@ class OpenApiRequestBodyBuilderTest {
                 "POST",
                 "/v1/example",
                 "postExample",
-                null,
-                null,
-                "../external/ExternalSchema.yaml",
+                ApiSchemaBuilder.forSchemaRef("../external/ExternalSchema.yaml"),
                 new String[]{"Test"},
                 "application/json",
                 new ApiParameter[0],
@@ -211,9 +196,7 @@ class OpenApiRequestBodyBuilderTest {
                 "POST",
                 "/v1/example",
                 "postExample",
-                null,
-                null,
-                "MySchema",
+                ApiSchemaBuilder.forSchemaRef("MySchema"),
                 new String[]{"Test"},
                 "application/json",
                 new ApiParameter[0],

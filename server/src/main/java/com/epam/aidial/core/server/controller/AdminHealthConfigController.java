@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
@@ -43,7 +44,7 @@ public class AdminHealthConfigController implements Controller {
             operationId = "getConfigHealth",
             tags = {"Admin"},
             responses = {
-                    @ApiResponse(code = 200, description = "Configuration health status", body = HealthResponse.class)
+                    @ApiResponse(code = 200, description = "Configuration health status", body = @ApiSchema(implementation = HealthResponse.class))
             },
             responseProfile = ResponseProfile.ADMIN_READ_ONLY
     )

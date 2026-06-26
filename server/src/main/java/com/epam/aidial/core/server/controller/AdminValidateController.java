@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
@@ -56,10 +57,10 @@ public class AdminValidateController implements Controller {
             path = "/v1/admin/validate",
             operationId = "validateConfigManifests",
             tags = {"Admin"},
-            requestBody = AdminApplyRequest.class,
+            requestBody = @ApiSchema(implementation = AdminApplyRequest.class),
             responses = {
-                    @ApiResponse(code = 200, description = "Validation successful", body = AdminValidateResponse.class),
-                    @ApiResponse(code = 422, description = "Validation failed", body = AdminValidateResponse.class)
+                    @ApiResponse(code = 200, description = "Validation successful", body = @ApiSchema(implementation = AdminValidateResponse.class)),
+                    @ApiResponse(code = 422, description = "Validation failed", body = @ApiSchema(implementation = AdminValidateResponse.class))
             },
             responseProfile = ResponseProfile.ADMIN_BATCH
     )

@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -58,10 +59,10 @@ public class ShareController {
             method = "POST",
             path = "/v1/ops/resource/share/create",
             operationId = "shareResource",
-            requestBody = ShareResourcesRequest.class,
+            requestBody = @ApiSchema(implementation = ShareResourcesRequest.class),
             tags = {"Sharing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = InvitationLink.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = InvitationLink.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
@@ -69,10 +70,10 @@ public class ShareController {
             method = "POST",
             path = "/v1/ops/resource/share/list",
             operationId = "getSharedResources",
-            requestBody = ListSharedResourcesRequest.class,
+            requestBody = @ApiSchema(implementation = ListSharedResourcesRequest.class),
             tags = {"Sharing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = SharedResourcesResponse.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = SharedResourcesResponse.class))
             },
             responseProfile = ResponseProfile.AUTHORIZED_OPERATION
     )
@@ -80,7 +81,7 @@ public class ShareController {
             method = "POST",
             path = "/v1/ops/resource/share/revoke",
             operationId = "revokeSharedResources",
-            requestBody = RevokeResourcesRequest.class,
+            requestBody = @ApiSchema(implementation = RevokeResourcesRequest.class),
             tags = {"Sharing"},
             responses = {
                     @ApiResponse(code = 200, description = "Success")
@@ -91,7 +92,7 @@ public class ShareController {
             method = "POST",
             path = "/v1/ops/resource/share/discard",
             operationId = "discardSharedResources",
-            requestBody = ResourceLinkCollection.class,
+            requestBody = @ApiSchema(implementation = ResourceLinkCollection.class),
             tags = {"Sharing"},
             responses = {
                     @ApiResponse(code = 200, description = "Success")
@@ -102,7 +103,7 @@ public class ShareController {
             method = "POST",
             path = "/v1/ops/resource/share/copy",
             operationId = "copySharedResources",
-            requestBody = CopySharedAccessRequest.class,
+            requestBody = @ApiSchema(implementation = CopySharedAccessRequest.class),
             tags = {"Sharing"},
             responses = {
                     @ApiResponse(code = 200, description = "Success")

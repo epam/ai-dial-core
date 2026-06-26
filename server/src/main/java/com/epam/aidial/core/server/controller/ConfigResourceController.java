@@ -12,6 +12,7 @@ import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -131,8 +132,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = Model.class,
-                                    responseAllOf = {EntityMetadata.class},
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Model.class, EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the model", required = true)
                                     })
@@ -143,7 +143,7 @@ public class ConfigResourceController implements Controller {
                     method = "PUT",
                     path = "/v1/models/{bucket}/{path}",
                     operationId = "saveModel",
-                    requestBody = Model.class,
+                    requestBody = @ApiSchema(implementation = Model.class),
                     tags = {"Models"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
@@ -152,7 +152,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved model", required = true)
                                     })
@@ -186,8 +186,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = Interceptor.class,
-                                    responseAllOf = {EntityMetadata.class},
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Interceptor.class, EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the interceptor", required = true)
                                     })
@@ -198,7 +197,7 @@ public class ConfigResourceController implements Controller {
                     method = "PUT",
                     path = "/v1/interceptors/{bucket}/{path}",
                     operationId = "saveInterceptor",
-                    requestBody = Interceptor.class,
+                    requestBody = @ApiSchema(implementation = Interceptor.class),
                     tags = {"Interceptors"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
@@ -207,7 +206,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved interceptor", required = true)
                                     })
@@ -241,8 +240,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = Role.class,
-                                    responseAllOf = {EntityMetadata.class},
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Role.class, EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the role", required = true)
                                     })
@@ -253,7 +251,7 @@ public class ConfigResourceController implements Controller {
                     method = "PUT",
                     path = "/v1/roles/{bucket}/{path}",
                     operationId = "saveRole",
-                    requestBody = Role.class,
+                    requestBody = @ApiSchema(implementation = Role.class),
                     tags = {"Roles"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
@@ -262,7 +260,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved role", required = true)
                                     })
@@ -296,8 +294,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = Key.class,
-                                    responseAllOf = {EntityMetadata.class},
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Key.class, EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the key", required = true)
                                     })
@@ -308,7 +305,7 @@ public class ConfigResourceController implements Controller {
                     method = "PUT",
                     path = "/v1/keys/{bucket}/{path}",
                     operationId = "saveKey",
-                    requestBody = Key.class,
+                    requestBody = @ApiSchema(implementation = Key.class),
                     tags = {"Keys"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
@@ -317,7 +314,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved key", required = true)
                                     })
@@ -351,8 +348,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = Route.class,
-                                    responseAllOf = {EntityMetadata.class},
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Route.class, EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the route", required = true)
                                     })
@@ -363,7 +359,7 @@ public class ConfigResourceController implements Controller {
                     method = "PUT",
                     path = "/v1/routes/{bucket}/{path}",
                     operationId = "saveRoute",
-                    requestBody = Route.class,
+                    requestBody = @ApiSchema(implementation = Route.class),
                     tags = {"Routes"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
@@ -372,7 +368,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved route", required = true)
                                     })
@@ -406,7 +402,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", schemaRef = "ProxyResponse", responseAllOf = {EntityMetadata.class},
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"ProxyResponse"}, allOf = {EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the schema", required = true)
                                     }
@@ -419,7 +415,7 @@ public class ConfigResourceController implements Controller {
                     path = "/v1/schemas/{bucket}/{path}",
                     operationId = "saveSchema",
                     tags = {"Schemas"},
-                    requestBodySchemaRef = "ProxyRequest",
+                    requestBody = @ApiSchema(schemaRef = "ProxyRequest"),
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
@@ -427,7 +423,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved schema", required = true)
                                     })
@@ -461,8 +457,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = GlobalSettings.class,
-                                    responseAllOf = {EntityMetadata.class})
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {GlobalSettings.class, EntityMetadata.class}))
                     },
                     responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
             ),
@@ -470,7 +465,7 @@ public class ConfigResourceController implements Controller {
                     method = "PUT",
                     path = "/v1/settings/{bucket}/{path}",
                     operationId = "saveGlobalSettings",
-                    requestBody = GlobalSettings.class,
+                    requestBody = @ApiSchema(implementation = GlobalSettings.class),
                     tags = {"Global Settings"},
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
@@ -479,7 +474,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = ResourceItemMetadata.class,
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved settings", required = true)
                                     })

@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.TokenLimits;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -39,7 +40,7 @@ public class ModelController {
                             description = OpenApiDescriptions.MODEL_NAME)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ModelData.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ModelData.class))
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )
@@ -65,7 +66,7 @@ public class ModelController {
             operationId = "getModels",
             tags = {"Deployment listing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = ModelData.class, wrapper = ListData.class)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ListData.class, typeArguments = {ModelData.class}))
             },
             responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
     )

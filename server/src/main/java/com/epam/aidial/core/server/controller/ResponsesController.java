@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
@@ -69,7 +70,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             method = "POST",
             path = "/openai/v1/responses",
             operationId = "createResponse",
-            requestBody = ResponsesApiRequest.class,
+            requestBody = @ApiSchema(implementation = ResponsesApiRequest.class),
             tags = {"LLM"},
             parameters = {
                     @ApiParameter(name = "Content-Type", in = ParameterIn.HEADER, required = true,
