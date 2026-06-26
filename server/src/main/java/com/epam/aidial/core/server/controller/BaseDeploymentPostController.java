@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
+import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -177,14 +178,21 @@ public class BaseDeploymentPostController {
                     tokenUsage = new TokenUsage();
                 }
                 context.setTokenUsage(tokenUsage);
-                tokenUsageFuture = proxy.getTokenStatsTracker().collectUsage(
-                        context.getDeployment(),
-                        BucketBuilder.buildInitiatorBucket(context),
-                        context.getTokenUsage(),
-                        context.getRequestBody(),
-                        context.getResponseBody(),
-                        context.getTraceId(),
-                        context.getSpanId());
+                String bucket = BucketBuilder.buildInitiatorBucket(context);
+                TokenUsage usage = context.getTokenUsage();
+                tokenUsageFuture = proxy.getRateLimiter().increase(
+                        context.getDeployment(), bucket, usage, context.getRequestBody(), context.getResponseBody())
+                        .transform(result -> {
+                            if (result.failed()) {
+                                log.warn("Failed to increase limit", result.cause());
+                            }
+                            String traceId = context.getTraceId();
+                            String spanId = context.getSpanId();
+                            if (traceId != null && spanId != null) {
+                                return proxy.getTokenStatsTracker().updateModelStats(traceId, spanId, usage);
+                            }
+                            return Future.succeededFuture();
+                        });
             }
         } else {
             tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context)

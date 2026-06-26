@@ -1,9 +1,6 @@
 package com.epam.aidial.core.server.token;
 
-import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -12,7 +9,6 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
-import io.vertx.core.buffer.Buffer;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +26,6 @@ public class TokenStatsTracker {
 
     private final AsyncTaskExecutor taskExecutor;
     private final ResourceService resourceService;
-    private final RateLimiter rateLimiter;
 
     /**
      * Starts current span.
@@ -77,8 +72,7 @@ public class TokenStatsTracker {
      * Ends current span.
      */
     public Future<Void> endSpan(ProxyContext context) {
-        ApiKeyData apiKeyData = context.getApiKeyData();
-        if (apiKeyData.getPerRequestKey() == null) {
+        if (context.isOriginalRequest()) {
             return endSpan(context.getTraceId());
         } else {
             // we don't need to remove the span from trace context right now.
@@ -87,7 +81,7 @@ public class TokenStatsTracker {
         }
     }
 
-    private Future<Void> updateModelStats(String traceId, String spanId, TokenUsage tokenUsage) {
+    public Future<Void> updateModelStats(String traceId, String spanId, TokenUsage tokenUsage) {
         ResourceDescriptor resource = toResource(traceId);
         return taskExecutor.submit(() -> {
             resourceService.computeResource(resource, json -> {
@@ -100,26 +94,6 @@ public class TokenStatsTracker {
             });
             return null;
         });
-    }
-
-    public Future<Void> collectUsage(
-            Deployment deployment,
-            String bucket,
-            TokenUsage usage,
-            Buffer requestBody,
-            Buffer responseBody,
-            String traceId,
-            String spanId) {
-        return rateLimiter.increase(deployment, bucket, usage, requestBody, responseBody)
-                .transform(result -> {
-                    if (result.failed()) {
-                        log.warn("Failed to increase limit", result.cause());
-                    }
-                    if (traceId != null && spanId != null) {
-                        return updateModelStats(traceId, spanId, usage);
-                    }
-                    return Future.succeededFuture();
-                });
     }
 
     @Data

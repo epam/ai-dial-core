@@ -67,7 +67,7 @@ public class ResponseMappingService {
         log.debug("Housekeeping: scanning for expired response mappings");
         try {
             ResourceDescriptor root = ResourceDescriptorFactory.fromDecoded(
-                    ResourceTypes.RESPONSE_MAPPING, ResponseIdUtil.BUCKET, ResponseIdUtil.BUCKET_LOCATION, null);
+                    ResourceTypes.RESPONSE_MAPPING, ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET, ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET_LOCATION, null);
             cleanDeploymentSubfolders(root);
         } catch (Throwable e) {
             log.warn("Housekeeping: failed to clean expired response mappings", e);
@@ -96,7 +96,7 @@ public class ResponseMappingService {
 
     private void cleanItemsInDeploymentFolder(String deploymentName) {
         ResourceDescriptor subfolder = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.RESPONSE_MAPPING, ResponseIdUtil.BUCKET, ResponseIdUtil.BUCKET_LOCATION, deploymentName + "/");
+                ResourceTypes.RESPONSE_MAPPING, ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET, ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET_LOCATION, deploymentName + "/");
 
         long now = System.currentTimeMillis();
         String token = null;

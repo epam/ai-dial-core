@@ -75,7 +75,7 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
                     }
                     BackgroundJobRecord record = new BackgroundJobRecord(
                             context.getProxyApiKeyData().getPerRequestKey(),
-                            context.isOriginalCall());
+                            context.isOriginalRequest());
                     return proxy.getBackgroundJobService().saveJob(context.getResponseId(), record);
                 })
                 .map(tree);

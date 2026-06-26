@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.ResponseMapping;
+import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -79,6 +80,9 @@ class BackgroundJobServiceTest {
     private ConfigStore configStore;
 
     @Mock
+    private RateLimiter rateLimiter;
+
+    @Mock
     private TokenStatsTracker tokenStatsTracker;
 
     @Mock
@@ -130,7 +134,7 @@ class BackgroundJobServiceTest {
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
                 new JsonObject().put("useVirtualThreads", false));
         service = new BackgroundJobService(vertx, redissonClient, PREFIX, resourceService, taskExecutor,
-                configStore, apiKeyStore, tokenStatsTracker, responseMappingService, poller, settings);
+                configStore, apiKeyStore, rateLimiter, tokenStatsTracker, responseMappingService, poller, settings);
 
         lenient().when(proxyContext.getResponseId()).thenReturn(JOB_ID);
         lenient().when(proxyContext.getProxyApiKeyData().getPerRequestKey()).thenReturn("test-per-request-key");
@@ -436,7 +440,7 @@ class BackgroundJobServiceTest {
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
                 new JsonObject().put("useVirtualThreads", false));
         return new BackgroundJobService(vertx, redissonClient, PREFIX, resourceService, taskExecutor,
-                configStore, apiKeyStore, tokenStatsTracker, responseMappingService, poller, settings);
+                configStore, apiKeyStore, rateLimiter, tokenStatsTracker, responseMappingService, poller, settings);
     }
 
     private static BackgroundJobService.Settings buildTestSettings(int maxFailures) {

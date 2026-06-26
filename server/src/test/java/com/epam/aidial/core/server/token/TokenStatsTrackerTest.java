@@ -1,16 +1,12 @@
 package com.epam.aidial.core.server.token;
 
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.limiter.RateLimiter;
-import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,14 +23,12 @@ import redis.embedded.RedisServer;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.util.UUID;
 import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -47,12 +41,6 @@ public class TokenStatsTrackerTest {
 
     @Mock
     private AsyncTaskExecutor taskExecutor;
-
-    @Mock
-    private RateLimiter rateLimiter;
-
-    @Mock
-    private EncryptionService encryptionService;
 
     @Mock
     private BlobStorage blobStorage;
@@ -101,7 +89,7 @@ public class TokenStatsTrackerTest {
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
         ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
-        tracker = new TokenStatsTracker(taskExecutor, resourceService, rateLimiter);
+        tracker = new TokenStatsTracker(taskExecutor, resourceService);
     }
 
     /**
@@ -118,7 +106,7 @@ public class TokenStatsTrackerTest {
         ProxyContext chatBackend = mock(ProxyContext.class);
         when(chatBackend.getSpanId()).thenReturn("chat");
         when(chatBackend.getTraceId()).thenReturn(traceId);
-        when(chatBackend.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(chatBackend.isOriginalRequest()).thenReturn(true);
 
         // chat calls app -> core starts span
         tracker.startSpan(chatBackend);
@@ -128,9 +116,6 @@ public class TokenStatsTrackerTest {
         when(app.getSpanId()).thenReturn("app");
         when(app.getTraceId()).thenReturn(traceId);
         when(app.getParentSpanId()).thenReturn("chat");
-        ApiKeyData apiKeyData = new ApiKeyData();
-        apiKeyData.setPerRequestKey("key");
-        when(app.getApiKeyData()).thenReturn(apiKeyData);
 
         // app calls model -> core starts span
         tracker.startSpan(app);
@@ -143,10 +128,7 @@ public class TokenStatsTrackerTest {
         modelTokenUsage.setAggCost(new BigDecimal("10.0"));
 
         // core receives response from model
-        when(app.getTokenUsage()).thenReturn(modelTokenUsage);
-        when(rateLimiter.increase(any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
-
-        tracker.collectUsage(null, null, app.getTokenUsage(), null, null, app.getTraceId(), app.getSpanId());
+        tracker.updateModelStats(traceId, "app", modelTokenUsage);
 
         // core ends span for request to model
         tracker.endSpan(app);

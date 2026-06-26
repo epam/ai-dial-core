@@ -17,6 +17,7 @@ import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
+import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -311,7 +312,7 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getRateLimiter().limit(context, deployment))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
-        when(proxy.getTokenStatsTracker().collectUsage(any(), any(), any(), any(), any(), any(), any()))
+        when(proxy.getRateLimiter().increase(any(), any(), any(), any(), any()))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getClient()).thenReturn(httpClient);
@@ -425,8 +426,6 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getRateLimiter().limit(context, deployment))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
-        when(proxy.getTokenStatsTracker().collectUsage(any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
         when(proxy.getClient()).thenReturn(httpClient);

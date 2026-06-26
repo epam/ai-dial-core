@@ -114,7 +114,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         proxy.getConsentService().verifyUserConsent(context, deployment);
 
         Features features = deployment.getFeatures();
-        boolean isPerRequestKey = !context.isOriginalCall();
+        boolean isPerRequestKey = !context.isOriginalRequest();
         if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
             throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", model, context.getApiKeyData().getSourceDeployment()));
         }
@@ -305,7 +305,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         if (context.isBackgroundJob() && context.getResponseId() != null) {
             BackgroundJobRecord record = new BackgroundJobRecord(
                     context.getProxyApiKeyData().getPerRequestKey(),
-                    context.isOriginalCall());
+                    context.isOriginalRequest());
             proxy.getBackgroundJobService().saveJob(context.getResponseId(), record)
                     .onSuccess(ignored -> proxy.getBackgroundJobService().startPolling(context.getResponseId()));
             response.end(responseBody);

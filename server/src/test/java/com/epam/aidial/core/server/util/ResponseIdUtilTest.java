@@ -28,8 +28,8 @@ public class ResponseIdUtilTest {
         ResourceDescriptor descriptor = ResponseIdUtil.getResponseMappingDescriptor("dial_gpt-4_abc123");
 
         assertEquals(ResourceTypes.RESPONSE_MAPPING, descriptor.getType());
-        assertEquals(ResponseIdUtil.BUCKET, descriptor.getBucketName());
-        assertEquals(ResponseIdUtil.BUCKET_LOCATION, descriptor.getBucketLocation());
+        assertEquals(ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET, descriptor.getBucketName());
+        assertEquals(ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET_LOCATION, descriptor.getBucketLocation());
         assertEquals("gpt-4", descriptor.getParentPath());
         assertEquals("abc123", descriptor.getName());
     }

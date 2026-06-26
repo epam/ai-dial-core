@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.ResponseMapping;
+import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -53,6 +54,7 @@ public class BackgroundJobService {
     private final AsyncTaskExecutor taskExecutor;
     private final ConfigStore configStore;
     private final ApiKeyStore apiKeyStore;
+    private final RateLimiter rateLimiter;
     private final TokenStatsTracker tokenStatsTracker;
     private final ResponseMappingService responseMappingService;
     private final BackgroundJobPoller poller;
@@ -69,6 +71,7 @@ public class BackgroundJobService {
             AsyncTaskExecutor taskExecutor,
             ConfigStore configStore,
             ApiKeyStore apiKeyStore,
+            RateLimiter rateLimiter,
             TokenStatsTracker tokenStatsTracker,
             ResponseMappingService responseMappingService,
             BackgroundJobPoller poller,
@@ -81,6 +84,7 @@ public class BackgroundJobService {
         this.taskExecutor = taskExecutor;
         this.configStore = configStore;
         this.apiKeyStore = apiKeyStore;
+        this.rateLimiter = rateLimiter;
         this.tokenStatsTracker = tokenStatsTracker;
         this.responseMappingService = responseMappingService;
         this.poller = poller;
@@ -102,7 +106,7 @@ public class BackgroundJobService {
         String json = ProxyUtil.convertToString(record);
         ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(dialId);
         long now = System.currentTimeMillis();
-        return taskExecutor.<Void>submit(() -> {
+        return taskExecutor.submit(() -> {
             resourceService.putResource(descriptor, json, EtagHeader.NEW_ONLY);
             return null;
         })
@@ -377,8 +381,16 @@ public class BackgroundJobService {
 
                     Future<Void> future = Future.succeededFuture();
                     if (deployment instanceof Model && usage != null) {
-                        future = tokenStatsTracker.collectUsage(
-                                deployment, responseMapping.getInitiatorBucket(), usage, null, null, traceId, spanId);
+                        future = rateLimiter.increase(deployment, responseMapping.getInitiatorBucket(), usage, null, null)
+                                .transform(result -> {
+                                    if (result.failed()) {
+                                        log.warn("Failed to increase limit", result.cause());
+                                    }
+                                    if (traceId != null && spanId != null) {
+                                        return tokenStatsTracker.updateModelStats(traceId, spanId, usage);
+                                    }
+                                    return Future.succeededFuture();
+                                });
                     }
                     if (traceId != null && Boolean.TRUE.equals(jobRecord.isRootSpan())) {
                         future = future.compose(ignored -> tokenStatsTracker.endSpan(traceId));

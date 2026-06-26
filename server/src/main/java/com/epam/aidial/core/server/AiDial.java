@@ -279,7 +279,7 @@ public class AiDial {
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
                     accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
 
-            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, resourceService, rateLimiter);
+            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, resourceService);
 
             HeartbeatService heartbeatService = new HeartbeatService(
                     vertx, taskExecutor, settings("resources").getLong("heartbeatPeriod"));
@@ -324,7 +324,7 @@ public class AiDial {
                     Json.decodeValue(settings("backgroundJob").toBuffer(), BackgroundJobService.Settings.class);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(), resourceService, taskExecutor,
-                    configStore, apiKeyStore, tokenStatsTracker,
+                    configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                     responseMappingService, backgroundJobPoller, backgroundJobSettings);
             backgroundJobService.init();
 

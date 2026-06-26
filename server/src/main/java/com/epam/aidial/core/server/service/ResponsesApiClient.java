@@ -15,6 +15,8 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import lombok.RequiredArgsConstructor;
 
+import javax.annotation.Nullable;
+
 @RequiredArgsConstructor
 public class ResponsesApiClient {
     private final HttpClient httpClient;
@@ -38,6 +40,7 @@ public class ResponsesApiClient {
         return !("queued".equals(status) || "in_progress".equals(status));
     }
 
+    @Nullable
     public static TerminalResult parseTerminalBody(ObjectNode tree) {
         try {
             JsonNode statusNode = tree.path("status");
