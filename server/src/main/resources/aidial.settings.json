@@ -110,7 +110,6 @@
     "maxPollIntervalMs": 300000,
     "pollBackoffFactor": 2.0,
     "maxSequentialPollFailures": 10,
-    "defaultJobTtlMs": 86400000
     "defaultJobTtlMs": 86400000,
     "leaseTimeoutMs": 300000,
     "maxParallelJobs": 100,
