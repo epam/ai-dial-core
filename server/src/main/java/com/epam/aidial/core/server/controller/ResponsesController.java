@@ -49,6 +49,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 
 @Slf4j
@@ -113,7 +114,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         proxy.getConsentService().verifyUserConsent(context, deployment);
 
         Features features = deployment.getFeatures();
-        boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
+        boolean isPerRequestKey = !context.isOriginalCall();
         if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
             throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", model, context.getApiKeyData().getSourceDeployment()));
         }
@@ -188,7 +189,12 @@ public class ResponsesController extends BaseDeploymentPostController {
         context.setBackgroundJob(request.isBackground());
         ProxyUtil.processChain(request, enhancementFunctions);
         // Enhancement functions update the api key, and it should be saved after that
-        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+        if (request.isBackground()) {
+            Duration jobTtl = Duration.ofMillis(proxy.getBackgroundJobService().getJobTtlMs());
+            proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData, jobTtl);
+        } else {
+            proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+        }
 
         context.setRequestBody(Buffer.buffer(request.serialize()));
 

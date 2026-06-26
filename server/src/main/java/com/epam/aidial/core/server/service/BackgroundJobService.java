@@ -452,6 +452,10 @@ public class BackgroundJobService {
         return null;
     }
 
+    public long getJobTtlMs() {
+        return settings.getJobTtlMs();
+    }
+
     @JsonIgnoreProperties(ignoreUnknown = true)
     @Data
     public static class Settings {
