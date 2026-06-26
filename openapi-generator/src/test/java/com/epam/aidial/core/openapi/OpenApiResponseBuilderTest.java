@@ -1,6 +1,7 @@
 package com.epam.aidial.core.openapi;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
@@ -72,7 +73,8 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 responses,
-                ResponseProfile.RESPONSES_API
+                ResponseProfile.RESPONSES_API,
+                new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
@@ -199,7 +201,8 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 responses,
-                ResponseProfile.RESPONSES_API
+                ResponseProfile.RESPONSES_API,
+                new ApiExtension[0]
         );
 
         ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, new DtoSchemaGenerator());
@@ -241,7 +244,8 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.RESPONSES_API
+                ResponseProfile.RESPONSES_API,
+                new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
@@ -267,7 +271,8 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.AUTHENTICATED_OPERATION
+                ResponseProfile.AUTHENTICATED_OPERATION,
+                new ApiExtension[0]
         );
 
         ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, new DtoSchemaGenerator());
@@ -289,7 +294,8 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 responses,
-                ResponseProfile.APPLICATION_OPS
+                ResponseProfile.APPLICATION_OPS,
+                new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
@@ -313,7 +319,8 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 responses,
-                ResponseProfile.APPLICATION_OPS
+                ResponseProfile.APPLICATION_OPS,
+                new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
@@ -336,7 +343,8 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 responses,
-                ResponseProfile.AUTHORIZED_OPERATION
+                ResponseProfile.AUTHORIZED_OPERATION,
+                new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
@@ -360,7 +368,8 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.CONDITIONAL_WRITE
+                ResponseProfile.CONDITIONAL_WRITE,
+                new ApiExtension[0]
         );
 
         ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, new DtoSchemaGenerator());
@@ -494,7 +503,8 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new com.epam.aidial.core.openapi.annotations.ApiParameter[0],
                 responses,
-                ResponseProfile.NONE
+                ResponseProfile.NONE,
+                new ApiExtension[0]
         );
     }
 

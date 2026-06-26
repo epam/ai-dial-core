@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
@@ -61,7 +62,10 @@ public class ResponseItemController implements Controller {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse")),
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse"), contentTypes = {"text/event-stream"})
                     },
-                    responseProfile = ResponseProfile.RESPONSE_ITEM_PROXY
+                    responseProfile = ResponseProfile.RESPONSE_ITEM_PROXY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             ),
             @ApiOperation(
                     method = "POST",
@@ -75,7 +79,10 @@ public class ResponseItemController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse"))
                     },
-                    responseProfile = ResponseProfile.RESPONSE_ITEM_PROXY
+                    responseProfile = ResponseProfile.RESPONSE_ITEM_PROXY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -89,7 +96,10 @@ public class ResponseItemController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse"))
                     },
-                    responseProfile = ResponseProfile.RESPONSE_ITEM_PROXY
+                    responseProfile = ResponseProfile.RESPONSE_ITEM_PROXY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             )
     })
     public Future<?> handle() {

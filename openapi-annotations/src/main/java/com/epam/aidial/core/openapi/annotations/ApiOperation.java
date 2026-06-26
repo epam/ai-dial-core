@@ -19,4 +19,5 @@ public @interface ApiOperation {
     ApiParameter[] parameters() default {};
     ApiResponse[] responses() default {};
     ResponseProfile responseProfile() default ResponseProfile.NONE;
+    ApiExtension[] extensions() default {};
 }

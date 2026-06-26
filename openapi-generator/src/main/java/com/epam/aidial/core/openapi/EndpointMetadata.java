@@ -1,6 +1,7 @@
 package com.epam.aidial.core.openapi;
 
 
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
@@ -20,7 +21,8 @@ public final class EndpointMetadata {
             String contentType,
             ApiParameter[] parameters,
             ApiResponse[] responses,
-            ResponseProfile responseProfile
+            ResponseProfile responseProfile,
+            ApiExtension[] extensions
     ) {
     }
 

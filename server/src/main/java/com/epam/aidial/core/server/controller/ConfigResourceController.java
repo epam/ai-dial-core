@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiOperations;
@@ -137,7 +138,10 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the model", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             @ApiOperation(
                     method = "PUT",
@@ -157,7 +161,10 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved model", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -172,7 +179,10 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 204, description = "Success")
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             // Interceptors
             @ApiOperation(
@@ -191,7 +201,10 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the interceptor", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             @ApiOperation(
                     method = "PUT",
@@ -211,7 +224,10 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved interceptor", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -226,7 +242,10 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 204, description = "Success")
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             // Roles
             @ApiOperation(
@@ -245,7 +264,10 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the role", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             @ApiOperation(
                     method = "PUT",
@@ -265,7 +287,10 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved role", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -280,7 +305,10 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 204, description = "Success")
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             // Keys
             @ApiOperation(
@@ -299,7 +327,10 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the key", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             @ApiOperation(
                     method = "PUT",
@@ -319,7 +350,10 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved key", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -334,7 +368,10 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 204, description = "Success")
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             // Routes
             @ApiOperation(
@@ -353,7 +390,10 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the route", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             @ApiOperation(
                     method = "PUT",
@@ -373,7 +413,10 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved route", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -388,7 +431,10 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 204, description = "Success")
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             // Schemas
             @ApiOperation(
@@ -408,7 +454,10 @@ public class ConfigResourceController implements Controller {
                                     }
                             )
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             @ApiOperation(
                     method = "PUT",
@@ -428,7 +477,10 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved schema", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -443,7 +495,10 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 204, description = "Success")
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             // Global Settings
             @ApiOperation(
@@ -459,7 +514,10 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {GlobalSettings.class, EntityMetadata.class}))
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             @ApiOperation(
                     method = "PUT",
@@ -479,7 +537,10 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved settings", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -494,7 +555,10 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 204, description = "Success")
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL
+                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
             )
     })
     public Future<?> handle() throws Exception {

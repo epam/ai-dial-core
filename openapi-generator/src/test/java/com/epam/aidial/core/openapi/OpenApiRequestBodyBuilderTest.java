@@ -1,5 +1,6 @@
 package com.epam.aidial.core.openapi;
 
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ResponseProfile;
@@ -29,7 +30,8 @@ class OpenApiRequestBodyBuilderTest {
                 "multipart/form-data",  // contentType
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.CONDITIONAL_WRITE
+                ResponseProfile.CONDITIONAL_WRITE,
+                new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiRequestBodyBuilder.registerRequestBodySchemas(endpoint, schemaGenerator);
@@ -64,7 +66,8 @@ class OpenApiRequestBodyBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.NONE
+                ResponseProfile.NONE,
+                new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiRequestBodyBuilder.registerRequestBodySchemas(endpoint, schemaGenerator);
@@ -88,7 +91,8 @@ class OpenApiRequestBodyBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.NONE
+                ResponseProfile.NONE,
+                new ApiExtension[0]
         );
 
         assertNull(OpenApiRequestBodyBuilder.build(endpoint, new DtoSchemaGenerator()));
@@ -105,7 +109,8 @@ class OpenApiRequestBodyBuilderTest {
                 "multipart/form-data",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.CONDITIONAL_WRITE
+                ResponseProfile.CONDITIONAL_WRITE,
+                new ApiExtension[0]
         );
 
         Operation operation = new Operation();
@@ -130,7 +135,8 @@ class OpenApiRequestBodyBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.NONE
+                ResponseProfile.NONE,
+                new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiRequestBodyBuilder.registerRequestBodySchemas(endpoint, schemaGenerator);
@@ -154,7 +160,8 @@ class OpenApiRequestBodyBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.NONE
+                ResponseProfile.NONE,
+                new ApiExtension[0]
         );
 
         RequestBody requestBody = OpenApiRequestBodyBuilder.build(endpoint, new DtoSchemaGenerator());
@@ -176,7 +183,8 @@ class OpenApiRequestBodyBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.NONE
+                ResponseProfile.NONE,
+                new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiRequestBodyBuilder.registerRequestBodySchemas(endpoint, schemaGenerator);
@@ -201,7 +209,8 @@ class OpenApiRequestBodyBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.NONE
+                ResponseProfile.NONE,
+                new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
         OpenApiRequestBodyBuilder.registerRequestBodySchemas(endpoint, schemaGenerator);

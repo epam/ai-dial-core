@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
@@ -46,7 +47,10 @@ public class AdminHealthConfigController implements Controller {
             responses = {
                     @ApiResponse(code = 200, description = "Configuration health status", body = @ApiSchema(implementation = HealthResponse.class))
             },
-            responseProfile = ResponseProfile.ADMIN_READ_ONLY
+            responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
     )
     public Future<?> handle() throws Exception {
         if (!authorizationService.isAdmin(context)) {

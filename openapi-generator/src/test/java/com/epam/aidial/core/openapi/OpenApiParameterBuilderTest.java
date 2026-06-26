@@ -195,7 +195,8 @@ class OpenApiParameterBuilderTest {
                 "application/json",  // contentType
                 parameters,
                 new com.epam.aidial.core.openapi.annotations.ApiResponse[0],
-                ResponseProfile.NONE
+                ResponseProfile.NONE,
+                new com.epam.aidial.core.openapi.annotations.ApiExtension[0]
         );
     }
 

@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
@@ -78,7 +79,10 @@ public class FileConfigController implements Controller {
                                     body = @ApiSchema(implementation = ItemsResponse.class,
                                             typeArguments = {NamedEntity.class}))
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -91,7 +95,10 @@ public class FileConfigController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Model.class, EntityMetadata.class}))
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -103,7 +110,10 @@ public class FileConfigController implements Controller {
                                     body = @ApiSchema(implementation = ItemsResponse.class,
                                             typeArguments = {NamedEntity.class}))
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -116,7 +126,10 @@ public class FileConfigController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Interceptor.class, EntityMetadata.class}))
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -128,7 +141,10 @@ public class FileConfigController implements Controller {
                                     body = @ApiSchema(implementation = ItemsResponse.class,
                                             typeArguments = {NamedEntity.class}))
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -141,7 +157,10 @@ public class FileConfigController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Role.class, EntityMetadata.class}))
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -153,7 +172,10 @@ public class FileConfigController implements Controller {
                                     body = @ApiSchema(implementation = ItemsResponse.class,
                                             typeArguments = {NamedEntity.class}))
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -166,7 +188,10 @@ public class FileConfigController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Route.class, EntityMetadata.class}))
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -178,7 +203,10 @@ public class FileConfigController implements Controller {
                                     body = @ApiSchema(implementation = ItemsResponse.class,
                                             typeArguments = {NamedEntity.class}))
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -191,7 +219,10 @@ public class FileConfigController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"ProxyResponse"}, allOf = {EntityMetadata.class}))
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -203,7 +234,10 @@ public class FileConfigController implements Controller {
                                     body = @ApiSchema(implementation = ItemsResponse.class,
                                             typeArguments = {NamedEntity.class}))
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -216,7 +250,10 @@ public class FileConfigController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {GlobalSettings.class, EntityMetadata.class}))
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY
+                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
             )
     })
     public Future<?> handle() {

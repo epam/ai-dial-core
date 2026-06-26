@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
@@ -62,7 +63,10 @@ public class AdminValidateController implements Controller {
                     @ApiResponse(code = 200, description = "Validation successful", body = @ApiSchema(implementation = AdminValidateResponse.class)),
                     @ApiResponse(code = 422, description = "Validation failed", body = @ApiSchema(implementation = AdminValidateResponse.class))
             },
-            responseProfile = ResponseProfile.ADMIN_BATCH
+            responseProfile = ResponseProfile.ADMIN_BATCH,
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
     )
     public Future<?> handle() {
         if (!authorizationService.isAdmin(context)) {

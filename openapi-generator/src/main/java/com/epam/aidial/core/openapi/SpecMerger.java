@@ -226,9 +226,21 @@ public final class SpecMerger {
 
     private JsonNode mergeField(String fieldName, JsonNode skeletonValue,
             JsonNode manualValue, String jsonPath) {
-        // Extension fields always prefer manual
+        // Extension fields prefer skeleton (from annotations), but merge recursively for complex types
         if (fieldName.startsWith("x-")) {
-            return manualValue.deepCopy();
+            // For simple values (strings, numbers, booleans), always take skeleton
+            if (!skeletonValue.isObject() && !skeletonValue.isArray()) {
+                return skeletonValue.deepCopy();
+            }
+            // For objects and arrays, merge recursively to preserve manual documentation within
+            if (skeletonValue.isObject() && manualValue.isObject()) {
+                return mergeNodes((ObjectNode) skeletonValue, (ObjectNode) manualValue, jsonPath);
+            }
+            if (skeletonValue.isArray() && manualValue.isArray()) {
+                return mergeArrays((ArrayNode) skeletonValue, (ArrayNode) manualValue, jsonPath);
+            }
+            // If types don't match, prefer skeleton
+            return skeletonValue.deepCopy();
         }
         // Security always comes from generated spec
         if ("security".equals(fieldName)) {
@@ -386,12 +398,34 @@ public final class SpecMerger {
     /**
      * Merges schema objects with skeleton structure as absolute source of truth.
      * Manual specifications can only contribute documentation fields (description,
-     * example, examples, title, x-* extensions) but never structural fields
+     * example, examples, title) but never structural fields
      * (type, properties, items, required, allOf, oneOf, anyOf, $ref, discriminator).
+     * x-* extensions are merged recursively to preserve manual documentation within.
      */
     private ObjectNode mergeSchemaNodes(ObjectNode skeleton, ObjectNode manual) {
         ObjectNode result = skeleton.deepCopy();
         overlayDocumentationFields(manual, result);
+
+        // Merge x-* extensions recursively to preserve manual documentation within
+        for (Iterator<String> it = manual.fieldNames(); it.hasNext();) {
+            String field = it.next();
+            if (field.startsWith("x-")) {
+                JsonNode manualExt = manual.get(field);
+                JsonNode skeletonExt = result.get(field);
+
+                if (skeletonExt != null && manualExt != null) {
+                    // Both have the extension - merge recursively
+                    if (skeletonExt.isArray() && manualExt.isArray()) {
+                        result.set(field, mergeArrays((ArrayNode) skeletonExt, (ArrayNode) manualExt, ""));
+                    } else if (skeletonExt.isObject() && manualExt.isObject()) {
+                        result.set(field, mergeNodes((ObjectNode) skeletonExt, (ObjectNode) manualExt, ""));
+                    }
+                    // Otherwise keep skeleton value (already in result from deepCopy)
+                }
+                // If only in manual, don't add it (skeleton is source of truth for which extensions exist)
+            }
+        }
+
         return result;
     }
 
@@ -432,12 +466,19 @@ public final class SpecMerger {
                 } else if (inSkeleton) {
                     result.set(field, skeletonMedia.get(field).deepCopy());
                 }
-            } else if (MANUAL_PREFERRED_FIELDS.contains(field) || field.startsWith("x-")) {
+            } else if (MANUAL_PREFERRED_FIELDS.contains(field)) {
                 // Documentation fields: prefer manual
                 if (inManual) {
                     result.set(field, manualMedia.get(field).deepCopy());
                 } else {
                     result.set(field, skeletonMedia.get(field).deepCopy());
+                }
+            } else if (field.startsWith("x-")) {
+                // Extension fields: prefer skeleton (from annotations)
+                if (inSkeleton) {
+                    result.set(field, skeletonMedia.get(field).deepCopy());
+                } else {
+                    result.set(field, manualMedia.get(field).deepCopy());
                 }
             } else {
                 // Other fields: prefer skeleton
@@ -512,11 +553,18 @@ public final class SpecMerger {
                 } else {
                     result.set("content", manual.get("content").deepCopy());
                 }
-            } else if (MANUAL_PREFERRED_FIELDS.contains(field) || field.startsWith("x-")) {
+            } else if (MANUAL_PREFERRED_FIELDS.contains(field)) {
                 if (inManual) {
                     result.set(field, manual.get(field).deepCopy());
                 } else if (inSkeleton) {
                     result.set(field, skeleton.get(field).deepCopy());
+                }
+            } else if (field.startsWith("x-")) {
+                // Extension fields: prefer skeleton (from annotations)
+                if (inSkeleton) {
+                    result.set(field, skeleton.get(field).deepCopy());
+                } else if (inManual) {
+                    result.set(field, manual.get(field).deepCopy());
                 }
             } else {
                 if (inSkeleton) {
@@ -572,11 +620,18 @@ public final class SpecMerger {
                 } else {
                     result.set("headers", manual.get("headers").deepCopy());
                 }
-            } else if (MANUAL_PREFERRED_FIELDS.contains(field) || field.startsWith("x-")) {
+            } else if (MANUAL_PREFERRED_FIELDS.contains(field)) {
                 if (inManual) {
                     result.set(field, manual.get(field).deepCopy());
                 } else if (inSkeleton) {
                     result.set(field, skeleton.get(field).deepCopy());
+                }
+            } else if (field.startsWith("x-")) {
+                // Extension fields: prefer skeleton (from annotations)
+                if (inSkeleton) {
+                    result.set(field, skeleton.get(field).deepCopy());
+                } else if (inManual) {
+                    result.set(field, manual.get(field).deepCopy());
                 }
             } else {
                 if (inSkeleton) {
@@ -591,9 +646,11 @@ public final class SpecMerger {
     }
 
     /**
-     * Overlays only documentation and extension fields from manual onto skeleton target,
-     * without modifying any structural schema fields. For nested structural fields like
-     * properties, recursively overlays documentation within the skeleton structure.
+     * Overlays only documentation fields from manual onto skeleton target,
+     * without modifying any structural schema fields or extension fields (x-*).
+     * Extension fields are controlled by annotations and come from the skeleton.
+     * For nested structural fields like properties, recursively overlays documentation
+     * within the skeleton structure.
      */
     private void overlayDocumentationFields(ObjectNode manual, ObjectNode target) {
         for (String field : MANUAL_PREFERRED_FIELDS) {
@@ -601,12 +658,7 @@ public final class SpecMerger {
                 target.set(field, manual.get(field).deepCopy());
             }
         }
-        for (Iterator<String> it = manual.fieldNames(); it.hasNext();) {
-            String field = it.next();
-            if (field.startsWith("x-")) {
-                target.set(field, manual.get(field).deepCopy());
-            }
-        }
+        // Note: x-* extensions are NOT overlaid from manual - they come from skeleton (annotations)
 
         // Recursively overlay documentation in nested structural fields
         if (manual.has("properties") && target.has("properties")) {
