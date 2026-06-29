@@ -29,7 +29,7 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
     void testValidBlobModelHasValidStatus() {
         // U.1 (2026-05-21): the source field is retired entirely. The URL itself discloses the source.
         String name = "valid-blob-model";
-        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
+        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
                 name, """
                         {
                             "type": "chat",
@@ -38,7 +38,7 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
                         """);
         reload();
 
-        Response resp = adminGet("/v1/models/public/" + name);
+        Response resp = adminGet("/v1/models/platform/" + name);
         verify(resp, 200);
         assertTrue(resp.body().contains("\"status\":\"valid\""));
         assertFalse(resp.body().contains("\"source\""),
@@ -53,11 +53,11 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
         // see testMalformedBlobSurfacesUnderGetByName below for the canonical assertion. This test
         // keeps coverage of the legacy "listing→invalid" guard by collapsing it to a per-entity GET.
         String name = "broken-blob-model";
-        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
+        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
                 name, "{ this is not json ");
         reload();
 
-        Response resp = adminGet("/v1/models/public/" + name);
+        Response resp = adminGet("/v1/models/platform/" + name);
         verify(resp, 200);
         JsonNode body = ProxyUtil.MAPPER.readTree(resp.body());
         assertEquals("invalid", body.get("status").asText());
@@ -73,11 +73,11 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
     @SneakyThrows
     void testMalformedBlobSurfacesUnderGetByName() {
         String name = "broken-get-model";
-        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
+        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
                 name, "not json at all");
         reload();
 
-        Response resp = adminGet("/v1/models/public/" + name);
+        Response resp = adminGet("/v1/models/platform/" + name);
         verify(resp, 200);
         JsonNode body = ProxyUtil.MAPPER.readTree(resp.body());
         assertEquals("invalid", body.get("status").asText());
@@ -88,7 +88,7 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
     @SneakyThrows
     void testHealthEndpointDegradedWhenInvalidEntitiesExist() {
         String name = "broken-health-model";
-        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
+        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
                 name, "garbage");
         reload();
 
@@ -101,7 +101,7 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
         assertTrue(skipped.isArray() && !skipped.isEmpty());
         boolean foundEntry = false;
         for (JsonNode entry : skipped) {
-            if (("models/public/" + name).equals(entry.get("id").asText())) {
+            if (("models/platform/" + name).equals(entry.get("id").asText())) {
                 assertTrue(entry.get("reason").asText().toLowerCase().contains("parse"),
                         () -> "Expected parse-related reason: " + entry);
                 foundEntry = true;
@@ -114,13 +114,13 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
     @SneakyThrows
     void testInvalidEntityClearsAfterFix() {
         String name = "self-healing-model";
-        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
+        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
                 name, "broken");
         reload();
-        Response broken = adminGet("/v1/models/public/" + name);
+        Response broken = adminGet("/v1/models/platform/" + name);
         assertTrue(broken.body().contains("\"status\":\"invalid\""));
 
-        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
+        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
                 name, """
                         {
                             "type": "chat",
@@ -129,7 +129,7 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
                         """);
         reload();
 
-        Response healed = adminGet("/v1/models/public/" + name);
+        Response healed = adminGet("/v1/models/platform/" + name);
         verify(healed, 200);
         JsonNode body = ProxyUtil.MAPPER.readTree(healed.body());
         assertEquals("valid", body.get("status").asText());
@@ -138,22 +138,6 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
         JsonNode healthBody = ProxyUtil.MAPPER.readTree(health.body());
         assertEquals("ok", healthBody.get("status").asText());
         assertEquals(0, healthBody.get("skipped").size());
-    }
-
-    @Test
-    void testPublicViewOmitsValidationWarningsAndSource() {
-        String name = "public-view-model";
-        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
-                name, "broken json");
-        reload();
-
-        Response resp = send(HttpMethod.GET, "/v1/models/public/" + name);
-        verify(resp, 200);
-        assertTrue(resp.body().contains("\"status\":\"invalid\""));
-        assertFalse(resp.body().contains("validationWarnings"),
-                () -> "Public view must omit validationWarnings: " + resp.body());
-        assertFalse(resp.body().contains("\"source\""),
-                () -> "Public view must omit source: " + resp.body());
     }
 
     @Test

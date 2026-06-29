@@ -262,6 +262,8 @@ public class ApplicationController {
         data.setDescription(application.getDescription());
         FeaturesData featuresData = FeaturesData.createFeatures(application.getFeatures());
         featuresData.setMcp(application.getMcp() != null);
+        featuresData.setChatCompletion(application.getEndpoint() != null);
+        featuresData.setResponsesApi(application.getResponsesEndpoint() != null);
         data.setFeatures(featuresData);
         data.setInputAttachmentTypes(application.getInputAttachmentTypes());
         data.setMaxInputAttachments(application.getMaxInputAttachments());

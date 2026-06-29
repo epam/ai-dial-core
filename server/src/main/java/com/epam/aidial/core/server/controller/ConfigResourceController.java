@@ -199,7 +199,7 @@ public class ConfigResourceController implements Controller {
             return Future.succeededFuture();
         }
         // Per-entity GET is blob-only (U.1): MergedConfigStore keys API entries by canonical ID
-        // ("models/public/gpt-4"); file-sourced entries are not addressable here. Operators
+        // ("models/platform/gpt-4"); file-sourced entries are not addressable here. Operators
         // inspect file entries via /v1/admin/config/file/{type}[/{name}] — see FileConfigController.
         T item = source.get(canonicalId());
         if (item != null) {
@@ -280,7 +280,7 @@ public class ConfigResourceController implements Controller {
     private ResourceDescriptor descriptorFor(ResourceTypes type) {
         return switch (type) {
             case MODEL -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.MODEL,
-                    ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path);
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case INTERCEPTOR -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.INTERCEPTOR,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case ROLE -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROLE,
@@ -290,7 +290,7 @@ public class ConfigResourceController implements Controller {
             case ROUTE -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROUTE,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case APP_TYPE_SCHEMA -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.APP_TYPE_SCHEMA,
-                    ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path);
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             default -> null;
         };
     }

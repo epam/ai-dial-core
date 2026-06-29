@@ -56,7 +56,7 @@ public class ModelCrossRefValidationSoftModeApiTest extends ResourceBaseTest {
 
     @Test
     void testSoftModeCommitsUnknownRef() {
-        Response post = send(HttpMethod.PUT, "/v1/models/public/soft-cr-unknown", null,
+        Response post = send(HttpMethod.PUT, "/v1/models/platform/soft-cr-unknown", null,
                 MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin", "If-None-Match", "*");
         verify(post, 200);
         assertNotNull(post.headers().get("etag"));
@@ -64,12 +64,12 @@ public class ModelCrossRefValidationSoftModeApiTest extends ResourceBaseTest {
 
     @Test
     void testSoftModeShowsStatusInvalidPostRebuild() {
-        Response post = send(HttpMethod.PUT, "/v1/models/public/soft-cr-invalid", null,
+        Response post = send(HttpMethod.PUT, "/v1/models/platform/soft-cr-invalid", null,
                 MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin", "If-None-Match", "*");
         verify(post, 200);
 
         JsonNode body = waitForGetMatching(
-                "/v1/models/public/soft-cr-invalid",
+                "/v1/models/platform/soft-cr-invalid",
                 node -> "invalid".equals(node.path("status").asText()));
         JsonNode warnings = body.get("validationWarnings");
         assertNotNull(warnings, () -> "Expected validationWarnings: " + body);
@@ -80,15 +80,15 @@ public class ModelCrossRefValidationSoftModeApiTest extends ResourceBaseTest {
 
     @Test
     void testSoftModePutCommitsUnknownRef() {
-        verify(send(HttpMethod.PUT, "/v1/models/public/soft-cr-put", null,
+        verify(send(HttpMethod.PUT, "/v1/models/platform/soft-cr-put", null,
                 MODEL_BODY_NO_INTERCEPTORS, "authorization", "admin", "If-None-Match", "*"), 200);
 
-        Response put = send(HttpMethod.PUT, "/v1/models/public/soft-cr-put", null,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/soft-cr-put", null,
                 MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin");
         verify(put, 200);
 
         JsonNode body = waitForGetMatching(
-                "/v1/models/public/soft-cr-put",
+                "/v1/models/platform/soft-cr-put",
                 node -> "invalid".equals(node.path("status").asText()));
         JsonNode warnings = body.get("validationWarnings");
         assertNotNull(warnings);
@@ -97,12 +97,12 @@ public class ModelCrossRefValidationSoftModeApiTest extends ResourceBaseTest {
 
     @Test
     void testSoftModeKnownRefStillValid() {
-        Response post = send(HttpMethod.PUT, "/v1/models/public/soft-cr-good", null,
+        Response post = send(HttpMethod.PUT, "/v1/models/platform/soft-cr-good", null,
                 MODEL_BODY_KNOWN_INTERCEPTOR, "authorization", "admin", "If-None-Match", "*");
         verify(post, 200);
 
         JsonNode body = waitForGetMatching(
-                "/v1/models/public/soft-cr-good",
+                "/v1/models/platform/soft-cr-good",
                 node -> "valid".equals(node.path("status").asText()));
         assertEquals("valid", body.get("status").asText());
     }

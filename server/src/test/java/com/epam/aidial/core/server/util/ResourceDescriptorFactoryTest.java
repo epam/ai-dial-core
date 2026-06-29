@@ -267,10 +267,10 @@ public class ResourceDescriptorFactoryTest {
 
     @Test
     public void testUrlSegmentRoundTrip_Schemas() {
-        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl("schemas/public/foo", null);
-        assertEquals("schemas/public/foo", descriptor.getUrl());
-        assertEquals("schemas/public/foo", descriptor.getDecodedUrl());
-        assertEquals("public/app_type_schemas/foo", descriptor.getAbsoluteFilePath());
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl("schemas/platform/foo", null);
+        assertEquals("schemas/platform/foo", descriptor.getUrl());
+        assertEquals("schemas/platform/foo", descriptor.getDecodedUrl());
+        assertEquals("platform/app_type_schemas/foo", descriptor.getAbsoluteFilePath());
     }
 
     @Test
@@ -283,9 +283,9 @@ public class ResourceDescriptorFactoryTest {
 
     @Test
     public void testUrlSegmentDefault_NonAliasedType() {
-        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl("models/public/gpt-4", null);
-        assertEquals("models/public/gpt-4", descriptor.getUrl());
-        assertEquals("public/models/gpt-4", descriptor.getAbsoluteFilePath());
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl("models/platform/gpt-4", null);
+        assertEquals("models/platform/gpt-4", descriptor.getUrl());
+        assertEquals("platform/models/gpt-4", descriptor.getAbsoluteFilePath());
     }
 
     @Test

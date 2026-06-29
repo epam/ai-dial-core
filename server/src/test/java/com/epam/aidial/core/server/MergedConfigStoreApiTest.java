@@ -32,7 +32,7 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
     @Test
     void testFileModelNotAddressableOnPerEntityGet() {
         // U.1 (2026-05-21): per-entity GET is blob-only; file entries are not addressable here.
-        Response response = send(HttpMethod.GET, "/v1/models/public/test-model-v1", null, "",
+        Response response = send(HttpMethod.GET, "/v1/models/platform/test-model-v1", null, "",
                 "authorization", "admin");
         verify(response, 404);
     }
@@ -63,27 +63,27 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
                     "endpoint": "http://localhost:7001/openai/deployments/blob-model/chat/completions"
                 }
                 """;
-        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
+        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
                 blobName, body);
 
         Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
         assertEquals(200, reload.status());
 
         Config merged = dial.getProxy().getConfigStore().get();
-        Model blobModel = merged.getModels().get("models/public/" + blobName);
+        Model blobModel = merged.getModels().get("models/platform/" + blobName);
         assertNotNull(blobModel, () -> "Expected canonical-ID key in merged Config: " + merged.getModels().keySet());
         // Slice 2S.15 / OQ-23: Model.name carries the canonical ID for API-managed entries so
         // legacy /openai/models, /openai/deployments, and rate-limit role-limit lookups see the
         // canonical form. Polish.1 (2026-05-08) extends this to the admin Configuration API GET
         // / listing projection — canonical ID for API entries, simple name for file entries.
-        assertEquals("models/public/" + blobName, blobModel.getName(),
+        assertEquals("models/platform/" + blobName, blobModel.getName(),
                 "Entity.name carries the canonical ID for API-managed entries");
         assertNotNull(merged.getModels().get("test-model-v1"), "File model must still coexist by simple name");
 
-        Response get = send(HttpMethod.GET, "/v1/models/public/" + blobName, null, "",
+        Response get = send(HttpMethod.GET, "/v1/models/platform/" + blobName, null, "",
                 "authorization", "admin");
         verify(get, 200);
-        assertTrue(get.body().contains("\"name\":\"models/public/" + blobName + "\""),
+        assertTrue(get.body().contains("\"name\":\"models/platform/" + blobName + "\""),
                 () -> "Expected canonical name in projection: " + get.body());
         assertTrue(get.body().contains("\"endpoint\""),
                 () -> "Expected endpoint field in projection: " + get.body());
@@ -130,13 +130,13 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
                     "endpoint": "http://localhost:7001/openai/deployments/list-blob/chat/completions"
                 }
                 """;
-        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
+        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
                 blobName, body);
 
         Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
         assertEquals(200, reload.status());
 
-        Response list = send(HttpMethod.GET, "/v1/metadata/models/public/", null, "",
+        Response list = send(HttpMethod.GET, "/v1/metadata/models/platform/", null, "",
                 "authorization", "admin");
         verify(list, 200);
         assertTrue(list.body().contains("\"name\":\"" + blobName + "\""),
@@ -147,11 +147,11 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
     void testFileEntriesDoNotAppearInMetadataListing() {
         // U.0 (2026-05-20) — metadata listings are blob-only. U.1 (2026-05-21): file entries are
         // reachable via /v1/admin/config/file/{type}/{name} (no longer via per-entity GET).
-        Response list = send(HttpMethod.GET, "/v1/metadata/models/public/", null, "",
+        Response list = send(HttpMethod.GET, "/v1/metadata/models/platform/", null, "",
                 "authorization", "admin");
         if (list.status() == 200) {
             assertTrue(!list.body().contains("\"name\":\"test-model-v1\"")
-                            || list.body().contains("\"name\":\"models/public/test-model-v1\""),
+                            || list.body().contains("\"name\":\"models/platform/test-model-v1\""),
                     () -> "File simple-name entry must not appear in metadata listing: " + list.body());
         }
         Response single = send(HttpMethod.GET, "/v1/admin/config/file/models/test-model-v1", null, "",
@@ -173,7 +173,7 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         assertEquals(200, reload.status());
 
         String blobName = "post-reload-blob";
-        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION,
+        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
                 blobName, """
                         {
                             "type": "chat",
@@ -188,7 +188,7 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         }
 
         Config merged = dial.getProxy().getConfigStore().get();
-        assertNull(merged.getModels().get("models/public/" + blobName),
+        assertNull(merged.getModels().get("models/platform/" + blobName),
                 "post-reload blob must not surface without an explicit reload (debounce was leaked)");
     }
 
@@ -199,14 +199,14 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         // ApiKeyStore.addProjectKeys. A reload must keep the file-defined api-key valid.
         // U.1: the file model is no longer addressable via per-entity GET; assert auth works by
         // checking a non-401 status (404 is the expected post-U.1 outcome for the file entry).
-        Response resp = send(HttpMethod.GET, "/v1/models/public/test-model-v1");
+        Response resp = send(HttpMethod.GET, "/v1/models/platform/test-model-v1");
         assertNotEquals(401, resp.status(),
                 () -> "proxyKey1 auth must succeed before reload: " + resp.status());
 
         Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
         assertEquals(200, reload.status());
 
-        Response after = send(HttpMethod.GET, "/v1/models/public/test-model-v1");
+        Response after = send(HttpMethod.GET, "/v1/models/platform/test-model-v1");
         assertNotEquals(401, after.status(),
                 () -> "proxyKey1 auth must survive the reload: " + after.status());
     }
