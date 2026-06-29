@@ -186,10 +186,11 @@ public class AiDial {
 
             AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx, settings("asyncTaskExecutor"));
 
-            boolean collectClaims = Boolean.parseBoolean(System.getProperty("aidial.log.collectClaims", "false"));
-            boolean collectHeaders = Boolean.parseBoolean(System.getProperty("aidial.log.collectHeaders", "false"));
+            JsonObject logSettings = settings("log");
+            boolean collectClaims = logSettings.getBoolean("collectClaims", false);
+            boolean collectHeaders = logSettings.getBoolean("collectHeaders", false);
             Set<String> headersBlacklist = parseHeadersBlacklist(
-                    System.getProperty("aidial.log.headersBlacklist", "authorization,api-key"));
+                    logSettings.getString("headersBlacklist", "authorization,api-key,cookie,proxy-authorization"));
             LogStore logStore = new GfLogStore(collectClaims, collectHeaders, headersBlacklist);
 
             if (accessTokenValidator == null) {

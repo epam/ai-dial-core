@@ -371,6 +371,36 @@ public class GfLogStoreTest {
         assertEquals("text/plain, application/json", headerNode.get("Accept").asText());
     }
 
+    @SneakyThrows
+    @Test
+    public void testClaimsAndHeadersComposeIntoValidLogJson() {
+        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+        headers.add("Authorization", "Bearer secret");
+        headers.add("X-Conversation-Id", "conv-1");
+
+        HttpServerRequest request = mock(HttpServerRequest.class);
+        when(request.headers()).thenReturn(headers);
+        ProxyContext context = mock(ProxyContext.class);
+        when(context.getRequest()).thenReturn(request);
+        when(context.getUserId()).thenReturn("user-1");
+        when(context.getUserRoles()).thenReturn(List.of("admin"));
+        when(context.getProject()).thenReturn("proj");
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        GfLogStore store = new GfLogStore(true, true, Set.of("authorization"));
+        // mirror the order/position used by the real log line: both sections follow a preceding object member
+        store.appendClaims(context, entry);
+        store.appendHeaders(context, entry);
+
+        JsonNode root = ProxyUtil.MAPPER.readTree("{\"user\":{}" + buffer + "}");
+        assertEquals("user-1", root.get("claims").get("userId").asText());
+        assertEquals("proj", root.get("claims").get("project").asText());
+        assertFalse(root.get("headers").has("Authorization"));
+        assertEquals("conv-1", root.get("headers").get("X-Conversation-Id").asText());
+    }
+
     private static LogEntry capturingEntry(StringBuilder buffer) {
         LogEntry entry = mock(LogEntry.class);
         when(entry.append(anyChar())).thenAnswer(cb -> {

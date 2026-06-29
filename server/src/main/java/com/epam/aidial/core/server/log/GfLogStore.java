@@ -32,6 +32,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Scanner;
 import java.util.Set;
@@ -257,7 +258,7 @@ public class GfLogStore implements LogStore {
         MultiMap headers = context.getRequest().headers();
         boolean[] first = {true};
         for (String name : headers.names()) {
-            if (headersBlacklist.contains(name.toLowerCase())) {
+            if (headersBlacklist.contains(name.toLowerCase(Locale.ROOT))) {
                 continue;
             }
             appendSeparator(entry, first);
