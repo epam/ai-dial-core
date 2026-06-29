@@ -113,6 +113,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RedissonClient;
 
 import java.io.FileInputStream;
@@ -121,7 +122,9 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
@@ -133,6 +136,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Setter
@@ -182,7 +186,11 @@ public class AiDial {
 
             AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx, settings("asyncTaskExecutor"));
 
-            LogStore logStore = new GfLogStore();
+            boolean collectClaims = Boolean.parseBoolean(System.getProperty("aidial.log.collectClaims", "false"));
+            boolean collectHeaders = Boolean.parseBoolean(System.getProperty("aidial.log.collectHeaders", "false"));
+            Set<String> headersBlacklist = parseHeadersBlacklist(
+                    System.getProperty("aidial.log.headersBlacklist", "authorization,api-key"));
+            LogStore logStore = new GfLogStore(collectClaims, collectHeaders, headersBlacklist);
 
             if (accessTokenValidator == null) {
                 String claimsLogLevel = settings.getString("claimsLogLevel", "DEBUG");
@@ -603,6 +611,17 @@ public class AiDial {
         OpenTelemetryOptions otelOpts = new OpenTelemetryOptions(openTelemetry);
         otelOpts.setFactory(new DialTracingFactory(otelOpts.getFactory()));
         vertxOptions.setTracingOptions(otelOpts);
+    }
+
+    private static Set<String> parseHeadersBlacklist(String value) {
+        if (StringUtils.isBlank(value)) {
+            return Set.of();
+        }
+        return Arrays.stream(value.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(s -> s.toLowerCase(Locale.ROOT))
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     private static String getOtlSetting(String envVar, String systemProperty) {

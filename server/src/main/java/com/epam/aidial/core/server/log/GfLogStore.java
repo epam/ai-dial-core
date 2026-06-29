@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -33,6 +34,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 import java.util.Scanner;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import javax.annotation.Nullable;
@@ -54,8 +56,14 @@ public class GfLogStore implements LogStore {
     }
 
     private final ExecutorService executor;
+    private final boolean collectClaims;
+    private final boolean collectHeaders;
+    private final Set<String> headersBlacklist;
 
-    public GfLogStore() {
+    public GfLogStore(boolean collectClaims, boolean collectHeaders, Set<String> headersBlacklist) {
+        this.collectClaims = collectClaims;
+        this.collectHeaders = collectHeaders;
+        this.headersBlacklist = headersBlacklist == null ? Set.of() : headersBlacklist;
         BasicThreadFactory factory = BasicThreadFactory.builder()
                 .namingPattern("gflog-store-%d")
                 .daemon(true)
@@ -114,6 +122,14 @@ public class GfLogStore implements LogStore {
         append(entry, "\",\"title\":\"", false);
         append(entry, context.getRequestHeader(Proxy.HEADER_JOB_TITLE), true);
         append(entry, "\"}", false);
+
+        if (collectClaims) {
+            appendClaims(context, entry);
+        }
+
+        if (collectHeaders) {
+            appendHeaders(context, entry);
+        }
 
         TokenUsage tokenUsage = context.getTokenUsage();
         if (tokenUsage != null) {
@@ -216,6 +232,62 @@ public class GfLogStore implements LogStore {
         }
 
         append(entry, "\"}}", false);
+    }
+
+    @VisibleForTesting
+    void appendClaims(ProxyContext context, LogEntry entry) throws JsonProcessingException {
+        append(entry, ",\"claims\":{", false);
+        boolean[] first = {true};
+        appendStringMember(entry, "userId", context.getUserId(), first);
+        List<String> roles = context.getUserRoles();
+        if (roles != null) {
+            appendSeparator(entry, first);
+            append(entry, "\"roles\":", false);
+            append(entry, ProxyUtil.MAPPER.writeValueAsString(roles), false);
+        }
+        appendStringMember(entry, "project", context.getProject(), first);
+        appendStringMember(entry, "userHash", context.getUserHash(), first);
+        appendStringMember(entry, "userDisplayName", context.getUserDisplayName(), first);
+        append(entry, "}", false);
+    }
+
+    @VisibleForTesting
+    void appendHeaders(ProxyContext context, LogEntry entry) {
+        append(entry, ",\"headers\":{", false);
+        MultiMap headers = context.getRequest().headers();
+        boolean[] first = {true};
+        for (String name : headers.names()) {
+            if (headersBlacklist.contains(name.toLowerCase())) {
+                continue;
+            }
+            appendSeparator(entry, first);
+            append(entry, "\"", false);
+            append(entry, name, true);
+            append(entry, "\":\"", false);
+            append(entry, String.join(", ", headers.getAll(name)), true);
+            append(entry, "\"", false);
+        }
+        append(entry, "}", false);
+    }
+
+    private static void appendStringMember(LogEntry entry, String name, String value, boolean[] first) {
+        if (value == null) {
+            return;
+        }
+        appendSeparator(entry, first);
+        append(entry, "\"", false);
+        append(entry, name, false);
+        append(entry, "\":\"", false);
+        append(entry, value, true);
+        append(entry, "\"", false);
+    }
+
+    private static void appendSeparator(LogEntry entry, boolean[] first) {
+        if (first[0]) {
+            first[0] = false;
+        } else {
+            append(entry, ",", false);
+        }
     }
 
     private static void append(LogEntry entry, Buffer buffer) {

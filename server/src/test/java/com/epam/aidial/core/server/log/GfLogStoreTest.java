@@ -3,11 +3,15 @@ package com.epam.aidial.core.server.log;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.LogEntry;
+import com.fasterxml.jackson.databind.JsonNode;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpServerRequest;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -291,5 +295,104 @@ public class GfLogStoreTest {
         String actual = buffer.toString();
         assertEquals(expected, actual);
         assertDoesNotThrow(() -> ProxyUtil.MAPPER.readValue("\"" + actual + "\"", String.class));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendClaims() {
+        ProxyContext context = mock(ProxyContext.class);
+        when(context.getUserId()).thenReturn("user-1");
+        when(context.getUserRoles()).thenReturn(List.of("admin", "reader"));
+        when(context.getProject()).thenReturn("proj");
+        when(context.getUserHash()).thenReturn("hash");
+        when(context.getUserDisplayName()).thenReturn("Jane \"Doe\"");
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        new GfLogStore(true, false, Set.of()).appendClaims(context, entry);
+
+        JsonNode claims = parseWrapped(buffer.toString());
+        assertEquals("user-1", claims.get("userId").asText());
+        assertEquals("admin", claims.get("roles").get(0).asText());
+        assertEquals("reader", claims.get("roles").get(1).asText());
+        assertEquals("proj", claims.get("project").asText());
+        assertEquals("hash", claims.get("userHash").asText());
+        assertEquals("Jane \"Doe\"", claims.get("userDisplayName").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendClaimsSkipsNullFields() {
+        ProxyContext context = mock(ProxyContext.class);
+        when(context.getUserId()).thenReturn("user-1");
+        when(context.getUserRoles()).thenReturn(null);
+        when(context.getProject()).thenReturn(null);
+        when(context.getUserHash()).thenReturn(null);
+        when(context.getUserDisplayName()).thenReturn(null);
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        new GfLogStore(true, false, Set.of()).appendClaims(context, entry);
+
+        JsonNode claims = parseWrapped(buffer.toString());
+        assertEquals("user-1", claims.get("userId").asText());
+        assertFalse(claims.has("roles"));
+        assertFalse(claims.has("project"));
+        assertFalse(claims.has("userHash"));
+        assertFalse(claims.has("userDisplayName"));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendHeadersAppliesBlacklistAndJoinsMultiValues() {
+        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+        headers.add("Authorization", "Bearer secret");
+        headers.add("API-KEY", "key-secret");
+        headers.add("X-Conversation-Id", "conv-1");
+        headers.add("Accept", "text/plain");
+        headers.add("Accept", "application/json");
+
+        HttpServerRequest request = mock(HttpServerRequest.class);
+        when(request.headers()).thenReturn(headers);
+        ProxyContext context = mock(ProxyContext.class);
+        when(context.getRequest()).thenReturn(request);
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        new GfLogStore(false, true, Set.of("authorization", "api-key")).appendHeaders(context, entry);
+
+        JsonNode headerNode = parseWrapped(buffer.toString());
+        assertFalse(headerNode.has("Authorization"));
+        assertFalse(headerNode.has("API-KEY"));
+        assertEquals("conv-1", headerNode.get("X-Conversation-Id").asText());
+        assertEquals("text/plain, application/json", headerNode.get("Accept").asText());
+    }
+
+    private static LogEntry capturingEntry(StringBuilder buffer) {
+        LogEntry entry = mock(LogEntry.class);
+        when(entry.append(anyChar())).thenAnswer(cb -> {
+            buffer.append((char) cb.getArgument(0));
+            return entry;
+        });
+        when(entry.append(anyString(), anyInt(), anyInt())).thenAnswer(cb -> {
+            buffer.append((String) cb.getArgument(0), cb.getArgument(1), cb.getArgument(2));
+            return entry;
+        });
+        when(entry.append(anyString())).thenAnswer(cb -> {
+            buffer.append((String) cb.getArgument(0));
+            return entry;
+        });
+        return entry;
+    }
+
+    @SneakyThrows
+    private static JsonNode parseWrapped(String member) {
+        // member looks like: ,"claims":{...} ; wrap into a valid object and return the value node
+        String json = "{" + member.substring(1) + "}";
+        JsonNode root = ProxyUtil.MAPPER.readTree(json);
+        return root.elements().next();
     }
 }
