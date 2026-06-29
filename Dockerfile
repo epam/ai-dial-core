@@ -28,7 +28,7 @@ COPY --chown=appuser:appuser docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # upgrade/install packages
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat binutils gpgv gnutls libpng zlib musl musl-utils p11-kit p11-kit-trust
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat binutils gpgv gnutls libpng zlib musl musl-utils
 RUN apk add --no-cache su-exec
 
 HEALTHCHECK --start-period=30s --interval=1m --timeout=3s \
