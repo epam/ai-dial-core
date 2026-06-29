@@ -52,8 +52,15 @@ public class ExternalServiceService {
     /**
      * On an application write: validate, drop computed statuses, preserve omitted client_secrets, encrypt
      * at rest. Returns ids removed by this write so the caller can purge their APP-level credentials.
+     *
+     * <p>When {@code presentInBody} is false (a partial write omitted {@code external_services}), stored
+     * services are carried forward untouched; an explicit map still removes + purges as before.
      */
-    public List<String> processOnWrite(ResourceDescriptor resource, Application application, Application existing) {
+    public List<String> processOnWrite(ResourceDescriptor resource, Application application, Application existing, boolean presentInBody) {
+        if (!presentInBody) {
+            application.setExternalServices(existing == null ? new LinkedHashMap<>() : existing.getExternalServices());
+            return List.of();
+        }
         validate(application, existing);
         clearAuthStatuses(application);
         if (existing != null) {

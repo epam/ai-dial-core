@@ -364,9 +364,12 @@ public class ResourceController extends AccessControlBaseController {
                 if (application == null) {
                     throw new HttpException(BAD_REQUEST, "Application can't be empty");
                 }
+                // An app write that omits external_services preserves stored ones; detect presence from the raw body.
+                boolean externalServicesPresent = ProxyUtil.hasTopLevelField(pair.getValue(), "external_services", "externalServices");
                 return taskExecutor.submit(() -> {
                     validateCustomApplication(application);
-                    return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite).getKey();
+                    return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite,
+                            externalServicesPresent).getKey();
                 });
             });
         } else if (descriptor.getType() == ResourceTypes.TOOL_SET) {

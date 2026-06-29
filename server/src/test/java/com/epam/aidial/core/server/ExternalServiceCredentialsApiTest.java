@@ -645,6 +645,76 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testExternalServicesPreservedWhenFieldOmittedOnAppUpdate() throws Exception {
+        String plaintextSecret = "preserved-on-omit-secret";
+        java.util.concurrent.atomic.AtomicReference<String> tokenBody = new java.util.concurrent.atomic.AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/token", request -> {
+                tokenBody.set(request.getBody().readUtf8());
+                return new MockResponse().setBody(OAUTH_TOKEN_RESPONSE).setHeader("Content-Type", "application/json");
+            });
+
+            String appUrl = createDynamicOauthApp("user", "dyn-omit-field-app", plaintextSecret);
+
+            // Update the app WITHOUT the external_services field at all (e.g. a config editor saving other
+            // properties). The stored services must be preserved, not wiped.
+            Response update = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                    {
+                        "endpoint": "http://localhost:7001/v1/x",
+                        "display_name": "Renamed Without External Services"
+                    }
+                    """, "authorization", "user");
+            assertEquals(200, update.status(), () -> update.body());
+
+            // The service still appears on the raw GET (secret stripped, definition intact).
+            Response rawApp = send(HttpMethod.GET, "/v1/" + appUrl, null, "", "authorization", "user");
+            assertEquals(200, rawApp.status(), () -> rawApp.body());
+            JsonNode es = ProxyUtil.MAPPER.readTree(rawApp.body()).get("external_services");
+            assertNotNull(es, () -> "omitted field must preserve stored services: " + rawApp.body());
+            assertNotNull(es.get("salesforce"), () -> "salesforce service must survive an omitted-field update: " + rawApp.body());
+            assertEquals("Renamed Without External Services",
+                    ProxyUtil.MAPPER.readTree(rawApp.body()).get("display_name").asText());
+
+            // The encrypted-at-rest client_secret survived too: a fresh sign-in still exchanges the original secret.
+            Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                    {
+                        "url": "%s/external_services/salesforce",
+                        "credentials_level": "USER",
+                        "authentication_type": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """.formatted(appUrl), "authorization", "user");
+            verify(signIn, 200, "true");
+            assertNotNull(tokenBody.get());
+            assertTrue(tokenBody.get().contains("client_secret=" + plaintextSecret),
+                    "preserved client_secret must still be usable after an omitted-field update, got: " + tokenBody.get());
+        }
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testExternalServicesRemovedWhenExplicitEmptyMapOnAppUpdate() throws Exception {
+        String appUrl = createDynamicOauthApp("user", "dyn-explicit-empty-app", "to-be-removed-secret");
+
+        // An explicit empty map is a deliberate change and must remove the service (unlike an omitted field).
+        Response update = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {
+                    "endpoint": "http://localhost:7001/v1/x",
+                    "display_name": "Cleared",
+                    "external_services": {}
+                }
+                """, "authorization", "user");
+        assertEquals(200, update.status(), () -> update.body());
+
+        Response rawApp = send(HttpMethod.GET, "/v1/" + appUrl, null, "", "authorization", "user");
+        assertEquals(200, rawApp.status(), () -> rawApp.body());
+        JsonNode es = ProxyUtil.MAPPER.readTree(rawApp.body()).get("external_services");
+        // NON_EMPTY serialization omits an empty map entirely.
+        assertNull(es, () -> "explicit empty map must remove services: " + rawApp.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
     void testGetApplicationExposesExternalServicesWithStatusAndNoSecret() throws Exception {
         // A regular user (not admin/owner) fetches the app deployment and must see its external
         // services plus their own sign-in status, so a UI can render connect/connected — without
@@ -1206,9 +1276,9 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation("dial-config/external-service-credentials.json")
     void testAppPutRemovingExternalServiceCascadesAppCredentials() throws Exception {
-        // Removing a service via the application PUT (dropping it from external_services) must purge its
-        // orphaned APP-level credentials, exactly like the dedicated DELETE endpoint — otherwise a service
-        // re-created with the same id silently inherits the prior owner's stored credentials.
+        // Removing a service via an explicit external_services map that drops it must purge its orphaned
+        // APP-level credentials, like the dedicated DELETE — otherwise a same-id re-create inherits stale
+        // creds. An OMITTED field preserves instead (testExternalServicesPreservedWhenFieldOmittedOnAppUpdate).
         String appUrl = createAppWithBillingService("user", "appput-del-app");
         String scope = appUrl + "/external_services/billing-api";
 
@@ -1222,11 +1292,12 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
                 """.formatted(scope), "authorization", "user");
         verify(appSignIn, 200, "true");
 
-        // Drop the service by PUTting the app WITHOUT external_services.
+        // Drop the service via an explicit (empty) external_services map — a deliberate removal.
         Response removed = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
                 {
                     "endpoint": "http://localhost:7001/v1/x",
-                    "display_name": "Appput Del App"
+                    "display_name": "Appput Del App",
+                    "external_services": {}
                 }
                 """, "authorization", "user");
         assertEquals(200, removed.status(), () -> removed.body());

@@ -165,8 +165,19 @@ public class ApplicationService {
         return application;
     }
 
+    public void putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
+                               Application application, boolean preserveForwardAuthToken) {
+        // In-memory callers (publication copy, admin apply) provide an authoritative application object.
+        putApplication(resource, etag, author, application, preserveForwardAuthToken, true);
+    }
+
+    /**
+     * @param externalServicesPresentInBody whether the write carried the {@code external_services} field;
+     *        when false the stored services are preserved — see {@link ExternalServiceService#processOnWrite}.
+     */
     public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
-                                                                   Application application, boolean preserveForwardAuthToken) {
+                                                                   Application application, boolean preserveForwardAuthToken,
+                                                                   boolean externalServicesPresentInBody) {
         prepareApplication(resource, application, preserveForwardAuthToken);
 
         MutableObject<List<String>> removedExternalServices = new MutableObject<>(List.of());
@@ -203,7 +214,7 @@ public class ApplicationService {
                 }
             }
 
-            removedExternalServices.setValue(externalServiceService.processOnWrite(resource, application, existing));
+            removedExternalServices.setValue(externalServiceService.processOnWrite(resource, application, existing, externalServicesPresentInBody));
 
             return ProxyUtil.convertToString(application);
         });
