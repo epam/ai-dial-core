@@ -28,6 +28,7 @@ An object containing parameters for each [application](#applications).
 * `applications.<application_name>.applicationTypeSchemaId`: The identifier of a JSON schema that application is based upon. The shema ID must exist in the DIAL Core config property `applicationTypeSchemas`. Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/apps#application-types) to learn more about schema-rich apps.
 * `applications.<application_name>.applicationProperties`: Properties of a schema-rich application. Specified properties must conform to the JSON schema referenced by `applicationTypeSchemaId`. Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/apps#application-types) to learn more about schema-rich apps.
 * `endpoint`: The application's API endpoint for chat completion requests.
+* `interfaces`: A typed alternative to the flat `endpoint` field for declaring the routing target. For applications, only the `openaiChatCompletions` interface is supported; the Responses API and other interfaces are not. Refer to [applications.<application_name>.interfaces](#applicationsapplication_nameinterfaces).
 * `iconUrl`: A string with URL of the icon to display for the app in the UI.
 * `description`: A string with a brief description of the application.
 * `displayName`: A string with the app's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs for identification purposes.
@@ -133,6 +134,34 @@ An object containing parameters for each [application](#applications).
             }
         }
     },
+```
+
+#### applications.<application_name>.interfaces
+
+An optional, typed alternative to the flat `endpoint` field. Both shapes are first-class — choose whichever you prefer per application; there is no migration between them.
+
+Unlike `endpoint`, which is forwarded **verbatim**, an `interfaces` entry declares a `base_url` and DIAL Core forwards each request to `base_url` + **the exact ingress path it was received on**. A trailing slash on `base_url` is normalized. If both `interfaces` and `endpoint` are declared for the chat completions interface, `interfaces` takes precedence.
+
+Applications support only one interface type:
+
+* `openaiChatCompletions`: the OpenAI chat completions interface. Peer of `endpoint`.
+
+> The Responses API (`openaiResponses`) and any other interface types are **not** supported for applications. If declared, they are dropped on config read with a warning.
+
+Each value is an object with a single field:
+
+* `base_url`: The application adapter root that the matching ingress path is appended to.
+
+**Example**
+
+```json
+"applications": {
+    "app-via-interfaces": {
+        "interfaces": {
+            "openaiChatCompletions": { "base_url": "http://localhost:7005" }
+        }
+    }
+}
 ```
 
 #### applications.<application_name>.features

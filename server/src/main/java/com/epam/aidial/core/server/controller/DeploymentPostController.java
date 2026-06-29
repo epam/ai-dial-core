@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
@@ -90,7 +91,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                         dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(app);
                     }
 
-                    if (dep.getEndpoint() == null) {
+                    if (!dep.supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS)) {
                         throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
                     }
 
@@ -203,7 +204,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
     @SneakyThrows
     private void sendRequest() {
         if (nextUpstream()) {
-            createProxyRequest(Deployment::getEndpoint)
+            createProxyRequest(InterfaceType.OPENAI_CHAT_COMPLETIONS)
                     .onSuccess(this::handleProxyRequest)
                     .onFailure(this::handleProxyConnectionError);
         }
@@ -238,7 +239,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
         UpstreamRoute upstreamRoute;
         try {
-            upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext(), upstreamId);
+            upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext(),
+                    dep -> dep.resolveEndpoint(InterfaceType.OPENAI_CHAT_COMPLETIONS), upstreamId);
         } catch (HttpException e) {
             respond(e.getStatus(), e.getMessage());
             return;

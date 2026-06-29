@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
@@ -14,6 +15,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -89,6 +91,51 @@ public class ConfigPostProcessorTest {
         assertEquals("shared", capturedKey.get());
         assertTrue(config.getModels().containsKey("shared"));
         assertFalse(config.getApplications().containsKey("shared"));
+    }
+
+    @Test
+    void testStripsUnsupportedInterfacesFromApplicationsAndInterceptors() {
+        Config config = newMutableConfig();
+
+        Application app = new Application();
+        Map<String, DeploymentInterface> appInterfaces = new LinkedHashMap<>();
+        appInterfaces.put("openaiChatCompletions", new DeploymentInterface("http://app"));
+        appInterfaces.put("openaiResponses", new DeploymentInterface("http://app-responses"));
+        app.setInterfaces(appInterfaces);
+        config.getApplications().put("app", app);
+
+        Interceptor interceptor = new Interceptor();
+        Map<String, DeploymentInterface> interceptorInterfaces = new LinkedHashMap<>();
+        interceptorInterfaces.put("openaiChatCompletions", new DeploymentInterface("http://interceptor"));
+        interceptorInterfaces.put("anthropicMessages", new DeploymentInterface("http://interceptor-anthropic"));
+        interceptor.setInterfaces(interceptorInterfaces);
+        config.getInterceptors().put("interceptor", interceptor);
+
+        ConfigPostProcessor.process(config, null);
+
+        // applications and interceptors keep only the chat completions interface
+        assertEquals(Set.of("openaiChatCompletions"),
+                config.getApplications().get("app").getInterfaces().keySet());
+        assertEquals(Set.of("openaiChatCompletions"),
+                config.getInterceptors().get("interceptor").getInterfaces().keySet());
+    }
+
+    @Test
+    void testKeepsAllInterfacesForModels() {
+        Config config = newMutableConfig();
+
+        Model model = new Model();
+        Map<String, DeploymentInterface> interfaces = new LinkedHashMap<>();
+        interfaces.put("openaiChatCompletions", new DeploymentInterface("http://model"));
+        interfaces.put("openaiResponses", new DeploymentInterface("http://model-responses"));
+        // forward-compatible unknown key is tolerated for models
+        interfaces.put("anthropicMessages", new DeploymentInterface("http://model-anthropic"));
+        model.setInterfaces(interfaces);
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.process(config, null);
+
+        assertEquals(3, config.getModels().get("model").getInterfaces().size());
     }
 
     private static Config newMutableConfig() {

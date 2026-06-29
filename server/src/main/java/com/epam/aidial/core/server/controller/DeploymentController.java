@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.ToolSet;
@@ -143,7 +144,7 @@ public class DeploymentController {
                 case CHAT_IFACE: {
                     plan.useModels = true;
                     plan.useApplications = true;
-                    plan.appFilters.add(app -> app.getEndpoint() != null);
+                    plan.appFilters.add(app -> app.supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS));
                     plan.modelFilters.add(model -> model.getType() == ModelType.CHAT);
                     break;
                 }
@@ -261,7 +262,7 @@ public class DeploymentController {
         if (app.getMcp() != null) {
             interfaces.add(MCP_IFACE);
         }
-        if (app.getEndpoint() != null) {
+        if (app.supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS)) {
             interfaces.add(CHAT_IFACE);
         }
         if (app.getViewerUrl() != null) {

@@ -15,6 +15,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Data
 @Accessors(chain = true)
@@ -147,6 +148,15 @@ public class Application extends Deployment {
         HEADER, META;
     }
 
+    /**
+     * Applications are routable only for the OpenAI chat completions interface; the Responses API
+     * (and other interfaces) are not supported through a config-declared {@code interfaces} entry.
+     */
+    @Override
+    public Set<String> supportedInterfaceKeys() {
+        return Set.of(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue());
+    }
+
     public Application() {
         super();
     }
@@ -156,6 +166,7 @@ public class Application extends Deployment {
         this.setInvalid(source.getInvalid());
         this.setName(source.getName());
         this.setEndpoint(source.getEndpoint());
+        this.setInterfaces(source.getInterfaces());
         this.setDisplayName(source.getDisplayName());
         this.setDisplayVersion(source.getDisplayVersion());
         this.setIconUrl(source.getIconUrl());

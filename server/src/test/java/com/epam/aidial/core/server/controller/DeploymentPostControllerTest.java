@@ -3,7 +3,9 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
@@ -34,11 +36,13 @@ import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.RequestOptions;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -365,6 +369,46 @@ public class DeploymentPostControllerTest {
         controller.handleRequestBody(requestBody);
 
         verify(proxy.getClient()).request(any());
+    }
+
+    @Test
+    public void testHandleRequestBody_InterfacesBaseUrl() {
+        when(context.getRequest()).thenReturn(request);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(upstreamRoute.next()).thenReturn(new Upstream());
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(context.getRequest()).thenReturn(request);
+        when(request.uri()).thenReturn("/openai/deployments/name/chat/completions");
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setInterceptorIndex(0);
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+
+        Model model = new Model();
+        model.setName("name");
+        model.setInterfaces(Map.of(
+                InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://host")));
+        when(context.getDeployment()).thenReturn(model);
+        String body = """
+                {
+                    "model": "name",
+                    "messages": [],
+                    "stream": false
+                }
+                """;
+        Buffer requestBody = Buffer.buffer(body);
+
+        controller.handleRequestBody(requestBody);
+
+        ArgumentCaptor<RequestOptions> captor = ArgumentCaptor.forClass(RequestOptions.class);
+        verify(httpClient).request(captor.capture());
+        // new flow: base_url + exact ingress path (request.uri())
+        assertEquals("/openai/deployments/name/chat/completions", captor.getValue().getURI());
+        assertEquals("host", captor.getValue().getHost());
     }
 
     @Test
