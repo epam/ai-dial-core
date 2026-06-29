@@ -270,6 +270,8 @@ public class ToolSetToolsController implements Controller {
         return proxyApiKeyData.getPerRequestKey();
     }
 
+    private static final String ADDITIONAL_PROPERTIES_FIELD = "additionalProperties";
+
     private static McpJsonMapper createLenientMcpJsonMapper() {
         ObjectMapper mapper = new ObjectMapper();
         // JSON Schema allows `additionalProperties` to be a boolean OR a schema object,
@@ -280,7 +282,8 @@ public class ToolSetToolsController implements Controller {
             public Object handleUnexpectedToken(DeserializationContext ctxt, JavaType targetType,
                     JsonToken t, JsonParser p, String failureMsg) throws IOException {
                 if (targetType.hasRawClass(Boolean.class)
-                        && (t == JsonToken.START_OBJECT || t == JsonToken.START_ARRAY)) {
+                        && (t == JsonToken.START_OBJECT || t == JsonToken.START_ARRAY)
+                        && ADDITIONAL_PROPERTIES_FIELD.equals(p.currentName())) {
                     p.skipChildren();
                     return null;
                 }
