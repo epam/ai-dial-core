@@ -2289,6 +2289,45 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testGetAllTools_ObjectAdditionalProperties() throws JsonProcessingException {
+        // JSON Schema allows `additionalProperties` to be a schema object (e.g. Notion MCP server);
+        // the MCP SDK models it as Boolean. Such tools must not fail the whole tools/list (#1561).
+        String mcpToolsListResponse = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 2,
+                   "result": {
+                     "tools": [
+                       {"name": "search", "description": "Search",
+                        "inputSchema": {"type": "object",
+                          "properties": {"q": {"type": "string"}},
+                          "additionalProperties": {"type": "string"}}},
+                       {"name": "lookup", "description": "Lookup",
+                        "inputSchema": {"type": "object",
+                          "properties": {"id": {"type": "string"}},
+                          "additionalProperties": true}}
+                     ]
+                   }
+                 }
+                """;
+        try (TestWebServer ignore = new TestWebServer(9876, mcpToolsHandler(mcpToolsListResponse))) {
+            Response resp = send(HttpMethod.GET, "/v1/toolset/git/tools",
+                    null, null, "authorization", "admin");
+
+            assertEquals(200, resp.status());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            assertEquals(2, tools.size());
+            assertEquals("search", tools.get(0).get("name").asText());
+            assertEquals("lookup", tools.get(1).get("name").asText());
+            // object-valued additionalProperties is coerced to null (omitted); boolean is preserved
+            assertTrue(tools.get(1).get("inputSchema").get("additionalProperties").asBoolean());
+        }
+    }
+
+    @Test
     void testGetAllTools_RegularUserForbidden() {
         try (TestWebServer ignore = new TestWebServer(9876, mcpToolsHandler("{}"))) {
             Response resp = send(HttpMethod.GET, "/v1/toolset/git/tools");
