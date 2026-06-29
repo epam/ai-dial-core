@@ -235,6 +235,55 @@ public class GfLogStore implements LogStore {
         append(entry, "\"}}", false);
     }
 
+    private static void append(LogEntry entry, Buffer buffer) {
+        if (buffer == null) {
+            return;
+        }
+        boolean largeBuffer = exceedLimit(buffer);
+        if (largeBuffer) {
+            buffer = buffer.slice(0, MAX_BODY_SIZE_BYTES);
+        }
+        byte[] bytes = buffer.getBytes();
+        String chars = new String(bytes, StandardCharsets.UTF_8); // not efficient, but ok for now
+        append(entry, chars, true);
+        if (largeBuffer) {
+            // append a special marker that entry is cut off due to its large size
+            append(entry, ">>", false);
+        }
+    }
+
+    @VisibleForTesting
+    static void append(LogEntry entry, String chars, boolean escape) {
+        if (chars == null) {
+            return;
+        }
+
+        if (!escape) {
+            entry.append(chars);
+            return;
+        }
+
+        int i;
+        int j;
+
+        for (i = 0, j = 0; i < chars.length(); i++) {
+            final char c = chars.charAt(i);
+            final char e = escape(c);
+
+            if (e != 0) {
+                entry.append(chars, j, i);
+                entry.append('\\');
+                entry.append(e);
+                if (e == 'u') {
+                    entry.append(CONTROL_SYMBOLS[c]);
+                }
+                j = i + 1;
+            }
+        }
+
+        entry.append(chars, j, i);
+    }
+
     @VisibleForTesting
     void appendClaims(ProxyContext context, LogEntry entry) throws JsonProcessingException {
         append(entry, ",\"claims\":{", false);
@@ -289,55 +338,6 @@ public class GfLogStore implements LogStore {
         } else {
             append(entry, ",", false);
         }
-    }
-
-    private static void append(LogEntry entry, Buffer buffer) {
-        if (buffer == null) {
-            return;
-        }
-        boolean largeBuffer = exceedLimit(buffer);
-        if (largeBuffer) {
-            buffer = buffer.slice(0, MAX_BODY_SIZE_BYTES);
-        }
-        byte[] bytes = buffer.getBytes();
-        String chars = new String(bytes, StandardCharsets.UTF_8); // not efficient, but ok for now
-        append(entry, chars, true);
-        if (largeBuffer) {
-            // append a special marker that entry is cut off due to its large size
-            append(entry, ">>", false);
-        }
-    }
-
-    @VisibleForTesting
-    static void append(LogEntry entry, String chars, boolean escape) {
-        if (chars == null) {
-            return;
-        }
-
-        if (!escape) {
-            entry.append(chars);
-            return;
-        }
-
-        int i;
-        int j;
-
-        for (i = 0, j = 0; i < chars.length(); i++) {
-            final char c = chars.charAt(i);
-            final char e = escape(c);
-
-            if (e != 0) {
-                entry.append(chars, j, i);
-                entry.append('\\');
-                entry.append(e);
-                if (e == 'u') {
-                    entry.append(CONTROL_SYMBOLS[c]);
-                }
-                j = i + 1;
-            }
-        }
-
-        entry.append(chars, j, i);
     }
 
     private static char escape(char c) {
