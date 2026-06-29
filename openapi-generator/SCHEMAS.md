@@ -442,8 +442,8 @@ Account:
         typeArguments = {DeploymentData.class}
     ),
     headers = {
-        @ApiHeader(name = "X-Total-Count", schema = "integer"),
-        @ApiHeader(name = "X-Page", schema = "integer")
+        @ApiHeader(name = "X-Total-Count", schema = Integer.class),
+        @ApiHeader(name = "X-Page", schema = Integer.class)
     }
 )
 ```

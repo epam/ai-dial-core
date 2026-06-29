@@ -102,7 +102,7 @@ ${targetSpec}
 Generated:
 ${mergedFile}
 
-Run publishOpenApiSpec or review changes manually.
+Run replaceSpec or review changes manually.
 ============================================================
 """)
         }

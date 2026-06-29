@@ -15,7 +15,7 @@ Declares an API endpoint on a controller method.
     operationId = "updateResource",     // Unique identifier (used by client generators)
     tags = {"Resources"},               // Documentation category
     responses = {...},                  // Response definitions (at least one required)
-    responseProfile = ResponseProfile.AUTHENTICATED_WRITE  // Standard error preset
+    responseProfile = ResponseProfile.AUTHORIZED_OPERATION  // Standard error preset
 )
 ```
 
@@ -47,7 +47,7 @@ Use `@ApiOperation` on every controller method that should appear in the OpenAPI
     responses = {
         @ApiResponse(code = 201, body = @ApiSchema(implementation = User.class))
     },
-    responseProfile = ResponseProfile.AUTHENTICATED_WRITE
+    responseProfile = ResponseProfile.AUTHORIZED_OPERATION
 )
 public Future<?> createUser() { }
 ```
@@ -58,16 +58,24 @@ Pre-defined error response sets to avoid repetition:
 
 | Profile | Status Codes | Use For |
 |---|---|---|
-| `AUTHENTICATED_READ` | 401, 403 | Protected read endpoints |
-| `AUTHENTICATED_READ_EXTENDED` | 401, 403, 404 | Protected read with not-found |
-| `AUTHENTICATED_WRITE` | 400, 401, 403, 409, 413, 422, 500 | Protected write operations |
-| `CONDITIONAL_WRITE` | 400, 401, 403, 404, 409, 412, 413, 422, 500 | Write with preconditions |
-| `PUBLIC_WRITE` | 400, 404, 409, 422, 429, 500, 503 | Public-facing write operations |
-| `OPS_WITH_BAD_REQUEST` | 400, 401, 403, 500 | Admin operations |
-| `APPLICATION_OPS` | 400, 401, 403, 404, 409, 422, 500, 503 | Application management |
-| `ADMIN_READ_ONLY` | 401, 403, 405, 500 | Admin read-only endpoints |
+| `AUTHENTICATED_READ_EXTENDED` | 400, 401, 404, 500 | Protected read with not-found |
+| `AUTHENTICATED_OPERATION` | 400, 401, 500 | Protected operations with validation |
+| `AUTHORIZED_OPERATION` | 400, 401, 403, 404, 500 | Protected operations requiring authorization |
+| `CONDITIONAL_WRITE` | 401, 412 | Write with ETag/If-Match headers |
+| `CONDITIONAL_WRITE_EXTENDED` | 400, 401, 404, 412, 413, 500 | Conditional writes with validation |
+| `OPS_WITH_BAD_REQUEST` | 400, 401, 404, 422, 429, 500, 502 | MCP proxy operations |
+| `APPLICATION_OPS` | 400, 401, 403, 404, 409, 500 | Application lifecycle operations |
+| `CODE_INTERPRETER` | 400, 401, 403, 404, 500 | Code interpreter operations |
+| `LIMIT_WITH_NOT_FOUND` | 401, 404 | Limit retrieval operations |
+| `TOOLSET_TOOLS` | 401, 403, 404, 500, 502 | Toolset tool operations |
+| `CONFIG_RESOURCE_FULL` | 304, 400, 401, 403, 404, 405, 412, 422, 500 | Config resource CRUD with ETag |
+| `ADMIN_BATCH` | 400, 401, 403, 422, 500 | Admin batch operations |
+| `RESPONSES_API` | 400, 401, 403, 404, 415, 500, 502, 503 | Responses API endpoints |
+| `ADMIN_READ_ONLY` | 403, 404, 405, 500 | Admin read-only endpoints |
+| `METADATA_LISTING` | 400, 403, 404, 405, 500 | Metadata listing endpoints |
+| `RESPONSE_ITEM_PROXY` | 403, 404, 500, 503 | Response item proxy operations |
 
-See `ResponseProfile.java` for all available profiles.
+See `ResponseProfile.java` for complete profile definitions.
 
 ---
 
@@ -141,7 +149,7 @@ Defines a response for a specific HTTP status code.
     body = @ApiSchema(...),             // Response schema
     contentTypes = {"application/json", "text/event-stream"},  // Media types
     headers = {                         // Response headers
-        @ApiHeader(name = "X-Total-Count", schema = "integer")
+        @ApiHeader(name = "X-Total-Count", schema = Integer.class)
     }
 )
 ```
@@ -194,7 +202,6 @@ Documents query, path, or header parameters.
     required = true,                    // Is parameter required (default: false)
     description = "User identifier",    // Parameter description
     schema = String.class,              // Java type (String, Integer, List, etc.)
-    format = "uuid",                    // Format hint (uuid, int32, int64, date-time)
     example = "usr_123",                // Example value
     allowableValues = {"active", "inactive"}  // Enum values
 )
@@ -253,7 +260,7 @@ Documents response headers.
     name = "X-Total-Count",             // Required: Header name
     description = "Total item count",   // Header description
     required = false,                   // Is header required (default: false)
-    schema = "integer"                  // Type: string, integer, boolean
+    schema = Integer.class              // Java type (String.class, Integer.class, Boolean.class, etc.)
 )
 ```
 
@@ -271,12 +278,12 @@ Document custom response headers that clients should be aware of.
         @ApiHeader(
             name = "X-Total-Count",
             description = "Total number of users",
-            schema = "integer"
+            schema = Integer.class
         ),
         @ApiHeader(
             name = "X-Page",
             description = "Current page number",
-            schema = "integer"
+            schema = Integer.class
         )
     }
 )
