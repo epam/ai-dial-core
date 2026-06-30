@@ -189,8 +189,8 @@ public class AiDial {
             JsonObject logSettings = settings("log");
             boolean collectClaims = logSettings.getBoolean("collectClaims", false);
             boolean collectHeaders = logSettings.getBoolean("collectHeaders", false);
-            Set<String> headersBlacklist = parseHeadersBlacklist(
-                    logSettings.getString("headersBlacklist", "authorization,api-key,cookie,proxy-authorization"));
+            // default is defined in the bundled aidial.settings.json and always merged in
+            Set<String> headersBlacklist = parseHeadersBlacklist(logSettings.getString("headersBlacklist"));
             LogStore logStore = new GfLogStore(collectClaims, collectHeaders, headersBlacklist);
 
             if (accessTokenValidator == null) {

@@ -313,12 +313,12 @@ public class GfLogStoreTest {
         new GfLogStore(true, false, Set.of()).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
-        assertEquals("user-1", claims.get("userId").asText());
+        assertEquals("user-1", claims.get("user_id").asText());
         assertEquals("admin", claims.get("roles").get(0).asText());
         assertEquals("reader", claims.get("roles").get(1).asText());
         assertEquals("proj", claims.get("project").asText());
-        assertEquals("hash", claims.get("userHash").asText());
-        assertEquals("Jane \"Doe\"", claims.get("userDisplayName").asText());
+        assertEquals("hash", claims.get("user_hash").asText());
+        assertEquals("Jane \"Doe\"", claims.get("user_display_name").asText());
     }
 
     @SneakyThrows
@@ -337,11 +337,11 @@ public class GfLogStoreTest {
         new GfLogStore(true, false, Set.of()).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
-        assertEquals("user-1", claims.get("userId").asText());
+        assertEquals("user-1", claims.get("user_id").asText());
         assertFalse(claims.has("roles"));
         assertFalse(claims.has("project"));
-        assertFalse(claims.has("userHash"));
-        assertFalse(claims.has("userDisplayName"));
+        assertFalse(claims.has("user_hash"));
+        assertFalse(claims.has("user_display_name"));
     }
 
     @SneakyThrows
@@ -395,7 +395,7 @@ public class GfLogStoreTest {
         store.appendHeaders(context, entry);
 
         JsonNode root = ProxyUtil.MAPPER.readTree("{\"user\":{}" + buffer + "}");
-        assertEquals("user-1", root.get("claims").get("userId").asText());
+        assertEquals("user-1", root.get("claims").get("user_id").asText());
         assertEquals("proj", root.get("claims").get("project").asText());
         assertFalse(root.get("headers").has("Authorization"));
         assertEquals("conv-1", root.get("headers").get("X-Conversation-Id").asText());

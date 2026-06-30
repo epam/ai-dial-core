@@ -46,6 +46,8 @@ public class GfLogStore implements LogStore {
     private static final Log LOGGER = LogFactory.getLog("aidial.log");
     // Max allowed size is 4 mb for request/response body
     private static final int MAX_BODY_SIZE_BYTES = 4 * 1024 * 1024;
+    // Max allowed size for a single collected request header value
+    private static final int MAX_HEADER_VALUE_LENGTH = 4 * 1024;
 
     private static final String[] CONTROL_SYMBOLS = new String[0x1F + 1];
 
@@ -288,7 +290,7 @@ public class GfLogStore implements LogStore {
     void appendClaims(ProxyContext context, LogEntry entry) throws JsonProcessingException {
         append(entry, ",\"claims\":{", false);
         boolean[] first = {true};
-        appendStringMember(entry, "userId", context.getUserId(), first);
+        appendStringMember(entry, "user_id", context.getUserId(), first);
         List<String> roles = context.getUserRoles();
         if (roles != null) {
             appendSeparator(entry, first);
@@ -296,8 +298,8 @@ public class GfLogStore implements LogStore {
             append(entry, ProxyUtil.MAPPER.writeValueAsString(roles), false);
         }
         appendStringMember(entry, "project", context.getProject(), first);
-        appendStringMember(entry, "userHash", context.getUserHash(), first);
-        appendStringMember(entry, "userDisplayName", context.getUserDisplayName(), first);
+        appendStringMember(entry, "user_hash", context.getUserHash(), first);
+        appendStringMember(entry, "user_display_name", context.getUserDisplayName(), first);
         append(entry, "}", false);
     }
 
@@ -314,7 +316,16 @@ public class GfLogStore implements LogStore {
             append(entry, "\"", false);
             append(entry, name, true);
             append(entry, "\":\"", false);
-            append(entry, String.join(", ", headers.getAll(name)), true);
+            String value = String.join(", ", headers.getAll(name));
+            boolean truncated = value.length() > MAX_HEADER_VALUE_LENGTH;
+            if (truncated) {
+                value = value.substring(0, MAX_HEADER_VALUE_LENGTH);
+            }
+            append(entry, value, true);
+            if (truncated) {
+                // append a special marker that the value is cut off due to its large size
+                append(entry, ">>", false);
+            }
             append(entry, "\"", false);
         }
         append(entry, "}", false);
