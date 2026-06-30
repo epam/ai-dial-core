@@ -84,10 +84,10 @@ public abstract class Deployment extends RoleBasedEntity {
      */
     public String getInterfaceBaseUrl(InterfaceType type) {
         DeploymentInterface deploymentInterface = interfaces == null ? null : interfaces.get(type.getValue());
-        String url = deploymentInterface == null ? null : deploymentInterface.getBaseUrl();
-        if (url == null || url.isBlank()) {
+        if (deploymentInterface == null) {
             return null;
         }
+        String url = deploymentInterface.getBaseUrl();
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
