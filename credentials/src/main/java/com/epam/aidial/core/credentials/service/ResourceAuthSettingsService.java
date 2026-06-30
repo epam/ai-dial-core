@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Slf4j
@@ -227,8 +228,9 @@ public class ResourceAuthSettingsService {
      *
      * <p>Client registration is required in the following cases:
      * <ul>
-     *     <li>If the authentication type is `OAUTH` and no SecuredResource exists</li>
+     *     <li>If the authentication type is {@code OAUTH} and no SecuredResource exists</li>
      *     <li>If the authentication type changes from non-OAUTH to OAUTH</li>
+     *     <li>If the endpoint URL changes while the authentication type remains OAUTH</li>
      * </ul>
      *
      * @param securedResource The new `SecuredResource` configuration being saved
@@ -236,10 +238,8 @@ public class ResourceAuthSettingsService {
      * @return true if client registration is required, false otherwise
      */
     private boolean requiresClientRegistration(SecuredResource securedResource, SecuredResource existing) {
-        ResourceAuthSettings newResourceAuthSettings = securedResource.getAuthSettings();
-
         // Do not register client for non-OAUTH auth types
-        if (!AuthenticationType.OAUTH.equals(newResourceAuthSettings.getAuthenticationType())) {
+        if (!AuthenticationType.OAUTH.equals(securedResource.getAuthSettings().getAuthenticationType())) {
             return false;
         }
 
@@ -248,10 +248,13 @@ public class ResourceAuthSettingsService {
             return true;
         }
 
-        ResourceAuthSettings existingResourceAuthSettings = existing.getAuthSettings();
+        // Auth type changed to OAUTH
+        if (!AuthenticationType.OAUTH.equals(existing.getAuthSettings().getAuthenticationType())) {
+            return true;
+        }
 
-        // Ensure client registration applies only if the auth type was changed to OAUTH
-        return !AuthenticationType.OAUTH.equals(existingResourceAuthSettings.getAuthenticationType());
+        // Endpoint changed — re-discover OAuth metadata for the new server
+        return !Objects.equals(securedResource.getEndpoint(), existing.getEndpoint());
     }
 
     /**

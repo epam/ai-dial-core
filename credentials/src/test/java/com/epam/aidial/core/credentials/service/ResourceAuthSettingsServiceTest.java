@@ -498,11 +498,67 @@ class ResourceAuthSettingsServiceTest {
         assertEquals(expectedNullCodeVerifier, updatedToolSet.getAuthSettings().getCodeVerifier() == null);
     }
 
+    @Test
+    void testProcessResourceAuthSettings_OauthEndpointChanged_DynamicReRegistration() {
+        // Given
+        String newEndpoint = "https://new-example.com";
+        ToolSet updatedToolSet = createOauthToolSetWithEndpoint(newEndpoint, null, null);
+        ToolSet existingToolSet = createOauthToolSet("oldClientId", "oldClientSecret");
+        ClientRegistration mockRegistration = createClientRegistration();
+
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+        when(resourceRegistrationService.register(eq(RESOURCE_NAME), eq(newEndpoint), any(), eq(true)))
+                .thenReturn(mockRegistration);
+
+        // When
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+
+        // Then
+        verify(oauthAuthSettingsValidator, times(1)).validate(
+                any(ResourceAuthSettings.class), eq(ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT));
+        verify(resourceRegistrationService, times(1)).register(
+                eq(RESOURCE_NAME), eq(newEndpoint), any(ResourceAuthSettings.class), eq(true));
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_OauthEndpointChanged_StaticReRegistration() {
+        // Given
+        String newEndpoint = "https://new-example.com";
+        ToolSet updatedToolSet = createOauthToolSetWithEndpoint(newEndpoint, "clientId", "clientSecret");
+        ToolSet existingToolSet = createOauthToolSet("clientId", "clientSecret");
+        ClientRegistration mockRegistration = createClientRegistration();
+
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+        when(resourceRegistrationService.register(eq(RESOURCE_NAME), eq(newEndpoint), any(), eq(false)))
+                .thenReturn(mockRegistration);
+
+        // When
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+
+        // Then
+        verify(oauthAuthSettingsValidator, times(1)).validate(
+                any(ResourceAuthSettings.class), eq(ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT));
+        verify(resourceRegistrationService, times(1)).register(
+                eq(RESOURCE_NAME), eq(newEndpoint), any(ResourceAuthSettings.class), eq(false));
+    }
+
     // Helper methods
 
     private static ToolSet createOauthToolSet(String clientId,
                                               String clientSecret) {
         return createOauthToolSet(clientId, clientSecret, null);
+    }
+
+    private static ToolSet createOauthToolSetWithEndpoint(String endpoint, String clientId, String clientSecret) {
+        ResourceAuthSettings authSettings = new ResourceAuthSettings();
+        authSettings.setAuthenticationType(AuthenticationType.OAUTH);
+        authSettings.setClientId(clientId);
+        authSettings.setClientSecret(clientSecret);
+        ToolSet toolSet = new ToolSet();
+        toolSet.setName(RESOURCE_NAME);
+        toolSet.setEndpoint(endpoint);
+        toolSet.setAuthSettings(authSettings);
+        return toolSet;
     }
 
     private ToolSet createOauthToolSet() {
