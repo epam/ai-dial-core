@@ -165,57 +165,24 @@ public class ApplicationService {
         return application;
     }
 
-    public void putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
-                               Application application, boolean preserveForwardAuthToken) {
+    public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
+                                                                   Application application, boolean preserveForwardAuthToken) {
         // In-memory callers (publication copy, admin apply) provide an authoritative application object.
-        putApplication(resource, etag, author, application, preserveForwardAuthToken, true);
+        return putApplication(resource, etag, author, application, preserveForwardAuthToken, ExternalServicesWriteMode.OVERRIDE);
     }
 
-    /**
-     * @param externalServicesPresentInBody whether the write carried the {@code external_services} field;
-     *        when false the stored services are preserved — see {@link ExternalServiceService#processOnWrite}.
-     */
     public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
                                                                    Application application, boolean preserveForwardAuthToken,
-                                                                   boolean externalServicesPresentInBody) {
+                                                                   ExternalServicesWriteMode externalServicesWriteMode) {
         prepareApplication(resource, application, preserveForwardAuthToken);
 
         MutableObject<List<String>> removedExternalServices = new MutableObject<>(List.of());
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
-            Application.Function function = application.getFunction();
-
             verifySchemaRichApp(application, existing);
-
-            if (function != null) {
-                if (existing == null || existing.getFunction() == null) {
-                    if (isPublicOrReview(resource)) {
-                        throw new HttpException(HttpStatus.CONFLICT, "The application function cannot be created in public/review bucket");
-                    }
-
-                    function.setId(UrlUtil.encodePathSegment(idGenerator.get()));
-                    function.setAuthorBucket(resource.getBucketName());
-                    function.setStatus(Application.Function.Status.UNDEPLOYED);
-                    function.setTargetFolder(encodeTargetFolder(resource, function.getId()));
-                } else {
-                    if (isPublicOrReview(resource) && !function.getSourceFolder().equals(existing.getFunction().getSourceFolder())) {
-                        throw new HttpException(HttpStatus.CONFLICT, "The application function source folder cannot be updated in public/review bucket");
-                    }
-                    application.setEndpoint(existing.getEndpoint());
-                    application.getFeatures().setRateEndpoint(existing.getFeatures().getRateEndpoint());
-                    application.getFeatures().setTokenizeEndpoint(existing.getFeatures().getTokenizeEndpoint());
-                    application.getFeatures().setTruncatePromptEndpoint(existing.getFeatures().getTruncatePromptEndpoint());
-                    application.getFeatures().setConfigurationEndpoint(existing.getFeatures().getConfigurationEndpoint());
-                    function.setId(existing.getFunction().getId());
-                    function.setAuthorBucket(existing.getFunction().getAuthorBucket());
-                    function.setStatus(existing.getFunction().getStatus());
-                    function.setTargetFolder(existing.getFunction().getTargetFolder());
-                    function.setError(existing.getFunction().getError());
-                }
-            }
-
-            removedExternalServices.setValue(externalServiceService.processOnWrite(resource, application, existing, externalServicesPresentInBody));
-
+            prepareApplicationFunction(resource, application, existing);
+            List<String> externalServices = externalServiceService.processOnWrite(resource, application, existing, externalServicesWriteMode);
+            removedExternalServices.setValue(externalServices);
             return ProxyUtil.convertToString(application);
         });
 
@@ -223,6 +190,36 @@ public class ApplicationService {
         externalServiceService.purgeApplicationCredentials(resource, removedExternalServices.get());
 
         return Pair.of(meta, application);
+    }
+
+    private void prepareApplicationFunction(ResourceDescriptor resource, Application application, Application existing) {
+        Application.Function function = application.getFunction();
+        if (function == null) {
+            return;
+        }
+        if (existing == null || existing.getFunction() == null) {
+            if (isPublicOrReview(resource)) {
+                throw new HttpException(HttpStatus.CONFLICT, "The application function cannot be created in public/review bucket");
+            }
+            function.setId(UrlUtil.encodePathSegment(idGenerator.get()));
+            function.setAuthorBucket(resource.getBucketName());
+            function.setStatus(Application.Function.Status.UNDEPLOYED);
+            function.setTargetFolder(encodeTargetFolder(resource, function.getId()));
+        } else {
+            if (isPublicOrReview(resource) && !function.getSourceFolder().equals(existing.getFunction().getSourceFolder())) {
+                throw new HttpException(HttpStatus.CONFLICT, "The application function source folder cannot be updated in public/review bucket");
+            }
+            application.setEndpoint(existing.getEndpoint());
+            application.getFeatures().setRateEndpoint(existing.getFeatures().getRateEndpoint());
+            application.getFeatures().setTokenizeEndpoint(existing.getFeatures().getTokenizeEndpoint());
+            application.getFeatures().setTruncatePromptEndpoint(existing.getFeatures().getTruncatePromptEndpoint());
+            application.getFeatures().setConfigurationEndpoint(existing.getFeatures().getConfigurationEndpoint());
+            function.setId(existing.getFunction().getId());
+            function.setAuthorBucket(existing.getFunction().getAuthorBucket());
+            function.setStatus(existing.getFunction().getStatus());
+            function.setTargetFolder(existing.getFunction().getTargetFolder());
+            function.setError(existing.getFunction().getError());
+        }
     }
 
     public Pair<ResourceItemMetadata, Application> getApplicationWithDecryptedSecrets(ResourceDescriptor resource) {
@@ -259,7 +256,6 @@ public class ApplicationService {
 
         Application application = reference.get();
 
-        // Deleting the app drops every service, so purge their credentials too.
         if (application.getExternalServices() != null) {
             externalServiceService.purgeApplicationCredentials(resource, application.getExternalServices().keySet());
         }
@@ -296,7 +292,7 @@ public class ApplicationService {
 
         Pair<ResourceItemMetadata, Application> result = getApplication(source);
         Application application = result.getValue();
-        // Decrypt source secrets so they can be re-encrypted under the destination bucket/path below.
+
         externalServiceService.decryptSecrets(source, application);
         if (author == null) {
             author = result.getKey().getAuthor();
@@ -363,8 +359,6 @@ public class ApplicationService {
                 replaceLinksInAppProperties(application, fileReplacementLinks);
             }
 
-            // Re-encrypt external-service secrets for the destination bucket/path (§11.4 publication,
-            // §11 copy/move). AAD includes the destination url, so the binding follows the new location.
             externalServiceService.encryptSecrets(destination, application);
 
             return ProxyUtil.convertToString(application);

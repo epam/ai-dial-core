@@ -15,6 +15,7 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
+import com.epam.aidial.core.server.service.ExternalServicesWriteMode;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
@@ -364,12 +365,14 @@ public class ResourceController extends AccessControlBaseController {
                 if (application == null) {
                     throw new HttpException(BAD_REQUEST, "Application can't be empty");
                 }
-                // An app write that omits external_services preserves stored ones; detect presence from the raw body.
-                boolean externalServicesPresent = ProxyUtil.hasTopLevelField(pair.getValue(), "external_services", "externalServices");
+                ExternalServicesWriteMode externalServicesWriteMode =
+                        ProxyUtil.hasTopLevelField(pair.getValue(), "external_services", "externalServices")
+                                ? ExternalServicesWriteMode.OVERRIDE
+                                : ExternalServicesWriteMode.PRESERVE_IF_OMITTED;
                 return taskExecutor.submit(() -> {
                     validateCustomApplication(application);
                     return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite,
-                            externalServicesPresent).getKey();
+                            externalServicesWriteMode).getKey();
                 });
             });
         } else if (descriptor.getType() == ResourceTypes.TOOL_SET) {

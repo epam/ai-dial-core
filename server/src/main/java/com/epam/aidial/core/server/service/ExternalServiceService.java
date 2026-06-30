@@ -53,11 +53,14 @@ public class ExternalServiceService {
      * On an application write: validate, drop computed statuses, preserve omitted client_secrets, encrypt
      * at rest. Returns ids removed by this write so the caller can purge their APP-level credentials.
      *
-     * <p>When {@code presentInBody} is false (a partial write omitted {@code external_services}), stored
-     * services are carried forward untouched; an explicit map still removes + purges as before.
+     * <p>With {@link ExternalServicesWriteMode#PRESERVE_IF_OMITTED} (the request omitted {@code external_services},
+     * e.g. a partial update saving other properties) the stored services are carried forward untouched.
+     * {@link ExternalServicesWriteMode#OVERRIDE} treats the map as the desired state and removes + purges any
+     * service it drops.
      */
-    public List<String> processOnWrite(ResourceDescriptor resource, Application application, Application existing, boolean presentInBody) {
-        if (!presentInBody) {
+    public List<String> processOnWrite(ResourceDescriptor resource, Application application, Application existing,
+                                       ExternalServicesWriteMode mode) {
+        if (mode == ExternalServicesWriteMode.PRESERVE_IF_OMITTED) {
             application.setExternalServices(existing == null ? new LinkedHashMap<>() : existing.getExternalServices());
             return List.of();
         }
