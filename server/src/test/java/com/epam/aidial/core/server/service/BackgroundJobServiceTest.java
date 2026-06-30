@@ -431,6 +431,7 @@ class BackgroundJobServiceTest {
         return BackgroundJobRecord.builder()
                 .perRequestKey(proxyContext.getProxyApiKeyData().getPerRequestKey())
                 .isRootSpan(proxyContext.getApiKeyData().getPerRequestKey() == null)
+                .requestBody("{}")
                 .build();
     }
 
