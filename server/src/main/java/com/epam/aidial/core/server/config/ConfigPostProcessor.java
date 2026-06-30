@@ -2,8 +2,6 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
@@ -147,7 +145,6 @@ public final class ConfigPostProcessor {
         Interceptor interceptor = config.getInterceptors().get(canonicalId);
         if (interceptor != null) {
             interceptor.setName(canonicalId);
-            stripUnsupportedInterfaces(interceptor, canonicalId, ResourceTypes.INTERCEPTOR);
         }
     }
 
@@ -274,36 +271,7 @@ public final class ConfigPostProcessor {
             Application application = entry.getValue();
             application.setName(name);
             validateExternalServices(application);
-            stripUnsupportedInterfaces(application, name, ResourceTypes.APPLICATION);
             log.debug("Loading {}", application);
-        }
-    }
-
-    /**
-     * Drops {@code interfaces} entries whose key is not supported by the deployment kind
-     * (see {@link Deployment#supportedInterfaceKeys()}). Applications and interceptors only
-     * accept {@code openaiChatCompletions}; any other key (e.g. {@code openaiResponses}) is
-     * removed with a warning so the deployment still serves the interfaces it does support.
-     */
-    private static void stripUnsupportedInterfaces(Deployment deployment, String name, ResourceTypes type) {
-        Set<String> allowed = deployment.supportedInterfaceKeys();
-        Map<String, DeploymentInterface> interfaces = deployment.getInterfaces();
-        if (allowed == null || interfaces == null || interfaces.isEmpty()) {
-            return;
-        }
-        Map<String, DeploymentInterface> filtered = new LinkedHashMap<>(interfaces);
-        boolean changed = false;
-        Iterator<Map.Entry<String, DeploymentInterface>> iter = filtered.entrySet().iterator();
-        while (iter.hasNext()) {
-            String key = iter.next().getKey();
-            if (!allowed.contains(key)) {
-                log.warn("{} '{}' does not support interface type '{}'; ignoring it", type, name, key);
-                iter.remove();
-                changed = true;
-            }
-        }
-        if (changed) {
-            deployment.setInterfaces(filtered);
         }
     }
 
@@ -375,7 +343,6 @@ public final class ConfigPostProcessor {
             }
             Interceptor interceptor = entry.getValue();
             interceptor.setName(name);
-            stripUnsupportedInterfaces(interceptor, name, ResourceTypes.INTERCEPTOR);
             log.debug("Loading {}", interceptor);
         }
     }

@@ -10,6 +10,7 @@ import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class DeploymentTest {
@@ -78,6 +79,12 @@ public class DeploymentTest {
     }
 
     @Test
+    void baseUrlIsRequired() {
+        assertThrows(IllegalArgumentException.class, () -> new DeploymentInterface(null));
+        assertThrows(IllegalArgumentException.class, () -> new DeploymentInterface(""));
+    }
+
+    @Test
     void unknownInterfaceKeysAreTolerated() throws Exception {
         String json = """
                 {
@@ -108,18 +115,6 @@ public class DeploymentTest {
 
         assertEquals(source.getInterfaces(), copy.getInterfaces());
         assertEquals("http://adapter", copy.resolveEndpoint(OPENAI_RESPONSES));
-    }
-
-    @Test
-    void supportedInterfaceKeysByDeploymentKind() {
-        // models: chat completions and responses interfaces
-        assertEquals(java.util.Set.of(OPENAI_CHAT_COMPLETIONS.getValue(), OPENAI_RESPONSES.getValue()),
-                new Model().supportedInterfaceKeys());
-        // applications and interceptors: only the chat completions interface
-        assertEquals(java.util.Set.of(OPENAI_CHAT_COMPLETIONS.getValue()),
-                new Application().supportedInterfaceKeys());
-        assertEquals(java.util.Set.of(OPENAI_CHAT_COMPLETIONS.getValue()),
-                new Interceptor().supportedInterfaceKeys());
     }
 
     @Test

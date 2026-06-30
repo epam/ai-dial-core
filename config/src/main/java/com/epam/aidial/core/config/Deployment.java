@@ -1,14 +1,12 @@
 package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -119,15 +117,5 @@ public abstract class Deployment extends RoleBasedEntity {
      */
     public boolean supportsInterface(InterfaceType type) {
         return getInterfaceBaseUrl(type) != null || getLegacyEndpoint(type) != null;
-    }
-
-    /**
-     * Interface-type keys accepted in this deployment's {@link #interfaces} map at config read time.
-     * {@code null} means no restriction — any key is tolerated, including forward-compatible unknown
-     * types (used by {@link Model}). Subclasses narrow this so unsupported keys are dropped on load.
-     */
-    @JsonIgnore
-    public Set<String> supportedInterfaceKeys() {
-        return null;
     }
 }
