@@ -79,8 +79,12 @@ public class ResponseItemController implements Controller {
             return context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API")
                     .mapEmpty();
         }
-        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, null,
-                dep -> dep.resolveEndpoint(InterfaceType.OPENAI_RESPONSES), mapping.getUpstreamKey());
+        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
+                .get(deployment,
+                        null,
+                        dep -> dep.resolveEndpoint(InterfaceType.OPENAI_RESPONSES),
+                        mapping.getUpstreamKey()
+                );
         Upstream upstream = upstreamRoute.next();
 
         String query = context.getRequest().query();

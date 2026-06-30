@@ -148,13 +148,15 @@ public class Application extends Deployment {
         HEADER, META;
     }
 
+    private static final Set<String> SUPPORTED_INTERFACE_KEYS = Set.of(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue());
+
     /**
      * Applications are routable only for the OpenAI chat completions interface; the Responses API
      * (and other interfaces) are not supported through a config-declared {@code interfaces} entry.
      */
     @Override
     public Set<String> supportedInterfaceKeys() {
-        return Set.of(InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue());
+        return SUPPORTED_INTERFACE_KEYS;
     }
 
     public Application() {

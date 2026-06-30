@@ -1,5 +1,6 @@
 package com.epam.aidial.core.config;
 
+import com.fasterxml.jackson.databind.DatabindException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
@@ -10,6 +11,7 @@ import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class DeploymentTest {
@@ -119,6 +121,25 @@ public class DeploymentTest {
                 new Application().supportedInterfaceKeys());
         assertEquals(java.util.Set.of(OPENAI_CHAT_COMPLETIONS.getValue()),
                 new Interceptor().supportedInterfaceKeys());
+    }
+
+    @Test
+    void interfaceCannotBeCreatedWithoutBaseUrl() {
+        assertThrows(IllegalArgumentException.class, () -> new DeploymentInterface(null));
+        assertThrows(IllegalArgumentException.class, () -> new DeploymentInterface("   "));
+    }
+
+    @Test
+    void interfaceWithoutBaseUrlIsRejectedOnDeserialization() {
+        String json = """
+                {
+                    "endpoint": "http://host/chat/completions",
+                    "interfaces": {
+                        "openaiResponses": {}
+                    }
+                }
+                """;
+        assertThrows(DatabindException.class, () -> MAPPER.readValue(json, Model.class));
     }
 
     @Test

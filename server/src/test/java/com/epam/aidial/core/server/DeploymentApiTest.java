@@ -6,7 +6,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class DeploymentApiTest extends ResourceBaseTest {
 
@@ -67,5 +71,23 @@ public class DeploymentApiTest extends ResourceBaseTest {
         verify(response, 200);
         body = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(1, body.size());
+    }
+
+    @DialConfigLocation("dial-config/deployment-interfaces-typed.json")
+    @Test
+    public void testListDeploymentsExposesTypedInterfaces() throws JsonProcessingException {
+        Response response = send(HttpMethod.GET, "/v1/deployments", null, null);
+        verify(response, 200);
+        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, body.size());
+
+        JsonNode interfaces = body.get(0).get("interfaces");
+        List<String> values = new ArrayList<>();
+        interfaces.forEach(node -> values.add(node.asText()));
+
+        // legacy UI category plus the configured typed interface keys
+        assertTrue(values.contains("chat"));
+        assertTrue(values.contains("openaiChatCompletions"));
+        assertTrue(values.contains("openaiResponses"));
     }
 }

@@ -1,26 +1,40 @@
 package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.ToString;
 
 /**
  * Per-interface routing configuration for a {@link Deployment}. Intentionally minimal;
  * future per-interface options (auth mode, defaults, ...) go here.
  */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
+@Getter
+@ToString
+@EqualsAndHashCode
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class DeploymentInterface {
 
     /**
-     * Source (adapter) root the matching ingress path is appended to at request time.
+     * Required, non-null. Source (adapter) root the matching ingress path is appended to at request time.
+     * A deployment interface cannot be created without a {@code base_url}; config that declares one without it
+     * is rejected at load time.
      */
     @JsonProperty("base_url")
-    @JsonAlias({"baseUrl", "base_url"})
-    private String baseUrl;
+    private final String baseUrl;
+
+    @JsonCreator
+    public DeploymentInterface(
+            @JsonProperty(value = "base_url", required = true)
+            @JsonAlias({"baseUrl", "base_url"})
+            String baseUrl
+    ) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            throw new IllegalArgumentException("'base_url' is required and cannot be blank for a deployment interface");
+        }
+        this.baseUrl = baseUrl;
+    }
 }
