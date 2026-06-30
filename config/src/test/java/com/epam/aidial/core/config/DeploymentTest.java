@@ -112,8 +112,9 @@ public class DeploymentTest {
 
     @Test
     void supportedInterfaceKeysByDeploymentKind() {
-        // models: no restriction (forward-compatible, tolerate unknown keys)
-        assertNull(new Model().supportedInterfaceKeys());
+        // models: chat completions and responses interfaces
+        assertEquals(java.util.Set.of(OPENAI_CHAT_COMPLETIONS.getValue(), OPENAI_RESPONSES.getValue()),
+                new Model().supportedInterfaceKeys());
         // applications and interceptors: only the chat completions interface
         assertEquals(java.util.Set.of(OPENAI_CHAT_COMPLETIONS.getValue()),
                 new Application().supportedInterfaceKeys());
