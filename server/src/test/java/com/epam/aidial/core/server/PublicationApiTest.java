@@ -8,6 +8,7 @@ import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
+import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -21,12 +22,147 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PublicationApiTest extends ResourceBaseTest {
+
+    @Test
+    void testPublishApplicationWithOauthExternalServiceReencryptsSecret() {
+        String plaintextSecret = "pub-plaintext-secret";
+        AtomicReference<String> tokenBody = new AtomicReference<>();
+        TestWebServer.Handler handler = request -> {
+            tokenBody.set(request.getBody().readUtf8());
+            return new MockResponse()
+                    .setBody("{\"access_token\":\"a\",\"refresh_token\":\"r\",\"expires_in\":3600}")
+                    .setHeader("Content-Type", "application/json");
+        };
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response r = send(HttpMethod.PUT, "/v1/applications/%s/pub-ext-app".formatted(bucket), null, """
+                    {
+                        "endpoint": "http://localhost:7001/v1/x",
+                        "display_name": "Pub Ext App",
+                        "external_services": {
+                            "sf": {
+                                "auth_settings": {
+                                    "authentication_type": "OAUTH",
+                                    "client_id": "cid",
+                                    "client_secret": "%s",
+                                    "authorization_endpoint": "http://localhost:9876/authorize",
+                                    "token_endpoint": "http://localhost:9876/token",
+                                    "token_endpoint_auth_method": "client_secret_post"
+                                }
+                            }
+                        }
+                    }
+                    """.formatted(plaintextSecret));
+            assertEquals(200, r.status(), r.body());
+
+            r = send(HttpMethod.POST, "/v1/ops/publication/create", null, """
+                    {
+                        "name": "Pub ext app",
+                        "targetFolder": "public/folder/",
+                        "resources": [
+                            {"action":"ADD","sourceUrl":"applications/%s/pub-ext-app","targetUrl":"applications/public/folder/pub-ext-app"}
+                        ],
+                        "rules": [{"source":"roles","function":"TRUE"}]
+                    }
+                    """.formatted(bucket));
+            assertEquals(200, r.status(), r.body());
+
+            r = send(HttpMethod.POST, "/v1/ops/publication/approve", null,
+                    "{\"url\":\"publications/" + bucket + "/0123\"}", "authorization", "admin");
+            assertEquals(200, r.status(), r.body());
+
+            // OAUTH sign-in against the PUBLISHED app: the secret must re-encrypt once and decrypt
+            // back to plaintext at runtime (guards against double-encryption on publish).
+            Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                    {
+                        "url": "applications/public/folder/pub-ext-app/external_services/sf",
+                        "credentials_level": "USER",
+                        "authentication_type": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, signIn.status(), signIn.body());
+            assertNotNull(tokenBody.get(), "token endpoint should have been called on sign-in");
+            assertTrue(tokenBody.get().contains("client_secret=" + plaintextSecret),
+                    "published app's external-service secret must decrypt to plaintext, got: " + tokenBody.get());
+        }
+    }
+
+    @Test
+    void testUpdatePublicationWithOauthExternalServiceKeepsSecretSingleEncrypted() {
+        // updatePublication re-puts the review app to rewrite links via getApplication()+putApplication();
+        // without decrypting on read it double-encrypts the external-service secret. Guards that path.
+        String plaintextSecret = "upd-plaintext-secret";
+        AtomicReference<String> tokenBody = new AtomicReference<>();
+        TestWebServer.Handler handler = request -> {
+            tokenBody.set(request.getBody().readUtf8());
+            return new MockResponse()
+                    .setBody("{\"access_token\":\"a\",\"refresh_token\":\"r\",\"expires_in\":3600}")
+                    .setHeader("Content-Type", "application/json");
+        };
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response r = send(HttpMethod.PUT, "/v1/applications/%s/upd-ext-app".formatted(bucket), null, """
+                    {
+                        "endpoint": "http://localhost:7001/v1/x",
+                        "display_name": "Upd Ext App",
+                        "external_services": {
+                            "sf": {
+                                "auth_settings": {
+                                    "authentication_type": "OAUTH",
+                                    "client_id": "cid",
+                                    "client_secret": "%s",
+                                    "authorization_endpoint": "http://localhost:9876/authorize",
+                                    "token_endpoint": "http://localhost:9876/token",
+                                    "token_endpoint_auth_method": "client_secret_post"
+                                }
+                            }
+                        }
+                    }
+                    """.formatted(plaintextSecret));
+            assertEquals(200, r.status(), r.body());
+
+            String resources = """
+                    "resources": [
+                        {"action":"ADD","sourceUrl":"applications/%s/upd-ext-app","targetUrl":"applications/public/folder/upd-ext-app"}
+                    ],
+                    "rules": [{"source":"roles","function":"TRUE"}]
+                    """.formatted(bucket);
+
+            r = send(HttpMethod.POST, "/v1/ops/publication/create", null,
+                    "{\"name\":\"Upd\",\"targetFolder\":\"public/folder/\"," + resources + "}");
+            assertEquals(200, r.status(), r.body());
+
+            // Re-submit the pending publication — this routes through updatePublication's link re-put.
+            r = send(HttpMethod.POST, "/v1/ops/publication/update", null,
+                    "{\"url\":\"publications/" + bucket + "/0123\",\"targetFolder\":\"public/folder/\"," + resources + "}",
+                    "authorization", "admin");
+            assertEquals(200, r.status(), r.body());
+
+            r = send(HttpMethod.POST, "/v1/ops/publication/approve", null,
+                    "{\"url\":\"publications/" + bucket + "/0123\"}", "authorization", "admin");
+            assertEquals(200, r.status(), r.body());
+
+            Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                    {
+                        "url": "applications/public/folder/upd-ext-app/external_services/sf",
+                        "credentials_level": "USER",
+                        "authentication_type": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, signIn.status(), signIn.body());
+            assertNotNull(tokenBody.get(), "token endpoint should have been called on sign-in");
+            assertTrue(tokenBody.get().contains("client_secret=" + plaintextSecret),
+                    "secret must stay single-encrypted through publication update, got: " + tokenBody.get());
+        }
+    }
 
     private static final String PUBLICATION_REQUEST = """
             {

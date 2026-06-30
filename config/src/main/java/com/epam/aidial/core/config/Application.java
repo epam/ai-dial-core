@@ -40,6 +40,10 @@ public class Application extends Deployment {
 
     private Mcp mcp;
 
+    @JsonAlias({"externalServices", "external_services"})
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map<String, ExternalService> externalServices = new LinkedHashMap<>();
+
     // maintain the order of routes defined in the app config
     private LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
 
@@ -191,5 +195,6 @@ public class Application extends Deployment {
         this.setUpdatedAt(source.getUpdatedAt());
         this.setRoutes(source.getRoutes());
         this.setMcp(source.getMcp());
+        this.setExternalServices(source.getExternalServices());
     }
 }
