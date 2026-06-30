@@ -249,6 +249,7 @@ public class DeploymentController {
                 } else {
                     interfaces.add(EMBEDDING_IFACE);
                 }
+                interfaces.addAll(supportedInterfaces(model));
                 deployment.setInterfaces(interfaces);
                 deployments.add(deployment);
             }
@@ -268,6 +269,7 @@ public class DeploymentController {
         if (app.getViewerUrl() != null) {
             interfaces.add(CUSTOM_UI_IFACE);
         }
+        interfaces.addAll(supportedInterfaces(app));
         applicationData.setInterfaces(interfaces);
         return applicationData;
     }
@@ -278,6 +280,21 @@ public class DeploymentController {
         toolSetData.setAuthSettings(null);
         toolSetData.setInterfaces(List.of(MCP_IFACE));
         return toolSetData;
+    }
+
+    /**
+     * Typed interface types ({@link InterfaceType}) the deployment exposes, via either the new
+     * {@code interfaces} map or a legacy endpoint. Embedding models also expose
+     * {@code openaiChatCompletions} since their endpoint is registered under that interface key.
+     */
+    private static List<String> supportedInterfaces(Deployment deployment) {
+        List<String> result = new ArrayList<>();
+        for (InterfaceType type : InterfaceType.values()) {
+            if (deployment.supportsInterface(type)) {
+                result.add(type.getValue());
+            }
+        }
+        return result;
     }
 
     private static class ExecutionPlan {

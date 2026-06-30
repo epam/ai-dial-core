@@ -6,6 +6,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class DeploymentApiTest extends ResourceBaseTest {
@@ -17,6 +22,12 @@ public class DeploymentApiTest extends ResourceBaseTest {
         verify(response, 200);
         JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(4, body.size());
+
+        // typed interface types are surfaced in the `interfaces` array next to the UI categories;
+        // embedding models expose openaiChatCompletions since their endpoint lives under that key
+        Map<String, Set<String>> interfacesById = collectInterfaces(body);
+        assertEquals(Set.of("embedding", "openaiChatCompletions"), interfacesById.get("embedding-ada"));
+        assertEquals(Set.of("chat", "openaiChatCompletions"), interfacesById.get("gpt-4"));
 
         response = send(HttpMethod.GET, "/v1/deployments", "interface_type=all,mcp", null);
         verify(response, 200);
@@ -67,5 +78,17 @@ public class DeploymentApiTest extends ResourceBaseTest {
         verify(response, 200);
         body = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(1, body.size());
+    }
+
+    private static Map<String, Set<String>> collectInterfaces(JsonNode body) {
+        Map<String, Set<String>> result = new HashMap<>();
+        for (JsonNode deployment : body) {
+            Set<String> interfaces = new HashSet<>();
+            for (JsonNode iface : deployment.get("interfaces")) {
+                interfaces.add(iface.asText());
+            }
+            result.put(deployment.get("id").asText(), interfaces);
+        }
+        return result;
     }
 }
