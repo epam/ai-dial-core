@@ -1,6 +1,8 @@
 package com.epam.aidial.core.server.service.folder;
 
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
+import com.epam.aidial.core.server.service.InvitationService;
+import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.MetadataBase;
@@ -16,6 +18,7 @@ import io.vertx.core.buffer.Buffer;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.mutable.MutableObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -30,6 +33,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import javax.annotation.Nullable;
 
 /**
  * Generic engine for whole-resource (folder-as-resource) operations. A resource is materialized as a
@@ -51,14 +55,22 @@ public class FolderResourceService {
     private static final String VERSION_PREFIX = "v";
     private static final int SCHEMA_VERSION = 1;
     private static final String STATE_ACTIVE = "active";
+    private static final String STATE_DELETING = "deleting";
     private static final int PAGE_SIZE = 1000;
     // A folder or a file must not be named after a structural token.
     private static final Set<String> RESERVED_SEGMENTS = Set.of(VERSION_PREFIX, MARKER_NAME);
 
     private final ResourceService resourceService;
+    private final LockService lockService;
+    private final ShareService shareService;
+    private final InvitationService invitationService;
 
-    public FolderResourceService(ResourceService resourceService) {
+    public FolderResourceService(ResourceService resourceService, LockService lockService,
+                                 ShareService shareService, InvitationService invitationService) {
         this.resourceService = resourceService;
+        this.lockService = lockService;
+        this.shareService = shareService;
+        this.invitationService = invitationService;
     }
 
     /**
@@ -132,10 +144,61 @@ public class FolderResourceService {
     }
 
     /**
-     * Returns the {@code .dial-resource} marker of the resource, or {@code null} if it does not exist.
+     * Returns the {@code .dial-resource} marker of the resource, or {@code null} if it does not exist
+     * or is in the {@code deleting} state (treated as absent).
      */
     public FolderResourceMarker getMarker(ResourceDescriptor resource) {
-        return readMarker(markerDescriptor(resource), true);
+        FolderResourceMarker marker = readMarker(markerDescriptor(resource), true);
+        if (!isActive(marker)) {
+            return null;
+        }
+        return marker;
+    }
+
+    /**
+     * Tombstones the resource by flipping the {@code .dial-resource} marker to {@code state: deleting},
+     * then best-effort removes the version tree and marker. If the marker does not exist the method
+     * returns without doing anything (idempotent).
+     *
+     * <p>The tombstone write (via {@link ResourceService#computeResource}) is the linearization point:
+     * once committed, all read paths return 404 even if the version tree still physically exists.
+     *
+     * @throws HttpException PRECONDITION_FAILED if the {@code If-Match} header does not match
+     */
+    public void deleteFolder(ResourceDescriptor resource, EtagHeader etag) {
+        ResourceDescriptor marker = markerDescriptor(resource);
+
+        MutableObject<String> capturedVersion = new MutableObject<>();
+        resourceService.computeResource(marker, json -> {
+            if (json == null) {
+                throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
+            }
+            FolderResourceMarker current = ProxyUtil.convertToObject(json, FolderResourceMarker.class);
+            if (!isActive(current)) {
+                throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
+            }
+            etag.validate(current.getEtag());
+            capturedVersion.setValue(current.getCurrentVersion());
+            current.setState(STATE_DELETING);
+            current.setDeletedAt(System.currentTimeMillis());
+            return Objects.requireNonNull(ProxyUtil.convertToString(current));
+        });
+
+        if (resource.isPrivate()) {
+            String bucketName = resource.getBucketName();
+            String bucketLocation = resource.getBucketLocation();
+            lockService.underBucketLock(bucketLocation, () -> {
+                invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
+                shareService.revokeSharedResource(bucketName, bucketLocation, resource);
+                return null;
+            });
+        }
+
+        if (capturedVersion.get() != null) {
+            ResourceDescriptor folderVersion = versionFolder(resource, capturedVersion.get());
+            deleteVersion(folderVersion);
+            resourceService.deleteResource(marker, EtagHeader.ANY);
+        }
     }
 
     @SneakyThrows
@@ -243,5 +306,9 @@ public class FolderResourceService {
             throw new HttpException(HttpStatus.BAD_REQUEST, "Reserved path segment: " + segments[0]);
         }
         return filename;
+    }
+
+    private static boolean isActive(@Nullable FolderResourceMarker marker) {
+        return marker != null && STATE_ACTIVE.equals(marker.getState());
     }
 }

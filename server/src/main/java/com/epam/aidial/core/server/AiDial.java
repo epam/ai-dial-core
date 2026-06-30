@@ -286,7 +286,8 @@ public class AiDial {
             ResponseMappingService responseMappingService = new ResponseMappingService(generator, resourceService);
             responseMappingService.init(vertx, taskExecutor);
 
-            FolderResourceService folderResourceService = new FolderResourceService(resourceService);
+            FolderResourceService folderResourceService = new FolderResourceService(
+                    resourceService, lockService, shareService, invitationService);
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
