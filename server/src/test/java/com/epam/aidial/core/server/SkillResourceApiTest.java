@@ -142,6 +142,37 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testDelete() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+
+        verify(uploadSkill("/to-delete", files), 200);
+        verify(deleteSkill("/to-delete"), 200);
+        assertEquals(404, downloadSkill("/to-delete").status());
+    }
+
+    @Test
+    void testDeleteIfMatch() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+
+        Response put = uploadSkill("/delete-etag", files);
+        verify(put, 200);
+        String etag = put.headers().get("etag");
+
+        // wrong If-Match -> 412, resource still live
+        verify(deleteSkill("/delete-etag", "if-match", "\"wrong\""), 412);
+        assertEquals(200, downloadSkill("/delete-etag").status());
+
+        // correct If-Match -> 200, resource gone
+        verify(deleteSkill("/delete-etag", "if-match", etag), 200);
+        assertEquals(404, downloadSkill("/delete-etag").status());
+    }
+
+    @Test
+    void testDeleteNonExistent() {
+        verify(deleteSkill("/never-existed"), 404);
+    }
+
+    @Test
     void testInvisibleToV1FilesApi() {
         Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
         verify(uploadSkill("/hidden", files), 200);
@@ -170,6 +201,21 @@ public class SkillResourceApiTest extends ResourceBaseTest {
             builder.addBinaryBody(entry.getKey(), entry.getValue(), ContentType.DEFAULT_BINARY, entry.getKey());
         }
         request.setEntity(builder.build());
+
+        return client.execute(request, ResourceBaseTest::toResponse);
+    }
+
+    @SneakyThrows
+    private Response deleteSkill(String skillPath, String... headers) {
+        String uri = "http://127.0.0.1:" + serverPort + "/v2/skills/" + bucket + skillPath;
+        HttpUriRequest request = new HttpUriRequestBase(HttpMethod.DELETE.name(), URI.create(uri));
+
+        for (int i = 0; i < headers.length; i += 2) {
+            request.setHeader(headers[i], headers[i + 1]);
+        }
+        if (!request.containsHeader("authorization") && !request.containsHeader("api-key")) {
+            request.setHeader("api-key", "proxyKey1");
+        }
 
         return client.execute(request, ResourceBaseTest::toResponse);
     }

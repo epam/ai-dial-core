@@ -434,6 +434,11 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePathV2(path));
         });
+        delete(RouteTemplate.SKILL_FOLDER, (proxy, context, pathMatcher) -> {
+            FolderResourceController controller = new FolderResourceController(proxy, context, true);
+            String path = context.getRequest().path();
+            return () -> controller.handle(resourcePathV2(path));
+        });
 
         // add deployment routes
         ControllerRoute.Initializer applicationRouteTemplate = ((proxy, context, pathMatcher) -> {
