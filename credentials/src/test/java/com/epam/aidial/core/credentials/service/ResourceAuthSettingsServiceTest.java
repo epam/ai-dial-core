@@ -549,18 +549,6 @@ class ResourceAuthSettingsServiceTest {
         return createOauthToolSet(clientId, clientSecret, null);
     }
 
-    private static ToolSet createOauthToolSetWithEndpoint(String endpoint, String clientId, String clientSecret) {
-        ResourceAuthSettings authSettings = new ResourceAuthSettings();
-        authSettings.setAuthenticationType(AuthenticationType.OAUTH);
-        authSettings.setClientId(clientId);
-        authSettings.setClientSecret(clientSecret);
-        ToolSet toolSet = new ToolSet();
-        toolSet.setName(RESOURCE_NAME);
-        toolSet.setEndpoint(endpoint);
-        toolSet.setAuthSettings(authSettings);
-        return toolSet;
-    }
-
     private ToolSet createOauthToolSet() {
         ResourceAuthSettings authSettings = new ResourceAuthSettings();
         ToolSet toolSet = Mockito.mock(ToolSet.class);
@@ -577,6 +565,18 @@ class ResourceAuthSettingsServiceTest {
         authSettings.setClientSecret(clientSecret);
         authSettings.setCodeVerifier(codeVerifier);
         return createToolSet(authSettings);
+    }
+
+    private static ToolSet createOauthToolSetWithEndpoint(String endpoint, String clientId, String clientSecret) {
+        ResourceAuthSettings authSettings = new ResourceAuthSettings();
+        authSettings.setAuthenticationType(AuthenticationType.OAUTH);
+        authSettings.setClientId(clientId);
+        authSettings.setClientSecret(clientSecret);
+        ToolSet toolSet = new ToolSet();
+        toolSet.setName(RESOURCE_NAME);
+        toolSet.setEndpoint(endpoint);
+        toolSet.setAuthSettings(authSettings);
+        return toolSet;
     }
 
     private static ToolSet createOauthToolSetWithTokenEndpointAuthMethod(String clientId,
