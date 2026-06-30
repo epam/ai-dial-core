@@ -124,12 +124,6 @@ public class DeploymentTest {
     }
 
     @Test
-    void interfaceCannotBeCreatedWithoutBaseUrl() {
-        assertThrows(IllegalArgumentException.class, () -> new DeploymentInterface(null));
-        assertThrows(IllegalArgumentException.class, () -> new DeploymentInterface("   "));
-    }
-
-    @Test
     void interfaceWithoutBaseUrlIsRejectedOnDeserialization() {
         String json = """
                 {

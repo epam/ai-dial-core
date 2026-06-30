@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.NotBlank;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
@@ -28,13 +29,11 @@ public class DeploymentInterface {
 
     @JsonCreator
     public DeploymentInterface(
+            @NotBlank
             @JsonProperty(value = "base_url", required = true)
             @JsonAlias({"baseUrl", "base_url"})
             String baseUrl
     ) {
-        if (baseUrl == null || baseUrl.isBlank()) {
-            throw new IllegalArgumentException("'base_url' is required and cannot be blank for a deployment interface");
-        }
         this.baseUrl = baseUrl;
     }
 }

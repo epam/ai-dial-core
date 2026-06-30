@@ -60,7 +60,7 @@ Interceptors support only one interface type:
 
 Each value is an object with a single field:
 
-* `base_url`: The interceptor service root that the matching ingress path is appended to.
+* `base_url`: **Required.** The interceptor service root that the matching ingress path is appended to. An interface entry declared without a `base_url` is rejected when the configuration is loaded.
 
 **Example**
 
