@@ -197,7 +197,7 @@ public enum RouteTemplate {
     ),
 
     EXTERNAL_SERVICE_CREDENTIALS(
-        "^/v1/ops/external-service/(signin|signout|credentials)$",
+        "^/v1/ops/external-service/(signin|signout|credentials|obo-credentials)$",
         "/v1/ops/external-service/{operation}"
     ),
 

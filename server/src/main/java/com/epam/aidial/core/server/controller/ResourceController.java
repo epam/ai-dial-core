@@ -198,6 +198,12 @@ public class ResourceController extends AccessControlBaseController {
         }
     }
 
+    // app_identity and allow_user_external_services are admin config only (config file / admin-apply).
+    private static void clearAdminManagedFields(Application application) {
+        application.setAppIdentity(null);
+        application.setAllowUserExternalServices(false);
+    }
+
     private static void clearExternalServiceSecrets(Application application) {
         Map<String, ExternalService> services = application.getExternalServices();
         if (services == null) {
@@ -213,6 +219,7 @@ public class ResourceController extends AccessControlBaseController {
 
     private Application clearApplicationProperties(Application application) {
         application.setEndpoint(null);
+        application.setAppIdentity(null);
         Features features = application.getFeatures();
         if (features != null) {
             features.setConfigurationEndpoint(null);
@@ -365,6 +372,7 @@ public class ResourceController extends AccessControlBaseController {
                 if (application == null) {
                     throw new HttpException(BAD_REQUEST, "Application can't be empty");
                 }
+                clearAdminManagedFields(application);
                 ExternalServicesWriteMode externalServicesWriteMode =
                         ProxyUtil.hasTopLevelField(pair.getValue(), "external_services", "externalServices")
                                 ? ExternalServicesWriteMode.OVERRIDE

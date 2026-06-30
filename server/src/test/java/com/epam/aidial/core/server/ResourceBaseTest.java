@@ -205,6 +205,10 @@ public class ResourceBaseTest {
                             return Future.succeededFuture(createClaims(authorization));
                         }
 
+                        if (authorization.startsWith("azp:")) {
+                            return Future.succeededFuture(createWorkloadClaims(authorization.substring("azp:".length())));
+                        }
+
                         return Future.failedFuture("Not authorized");
                     });
 
@@ -233,6 +237,13 @@ public class ResourceBaseTest {
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
         claims.put("title", "Manager");
         return new ExtractedClaims(role, List.of(role), role, claims, null, null);
+    }
+
+    // A workload (service-principal) JWT carrying an azp claim and no user roles.
+    static ExtractedClaims createWorkloadClaims(String azp) {
+        ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
+        claims.put("azp", azp);
+        return new ExtractedClaims(azp, List.of(), azp, claims, null, null);
     }
 
     static ApiKeyData createAdminAppKey() {

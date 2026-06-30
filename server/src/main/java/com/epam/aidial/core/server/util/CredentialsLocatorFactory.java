@@ -87,6 +87,36 @@ public class CredentialsLocatorFactory {
     }
 
     /**
+     * Builds a USER-only {@link CredentialsLocator} for an external-service scope, resolving the USER
+     * bucket from the given {@code ownerSub} rather than the caller. Used by the on-behalf-of (OBO)
+     * retrieval path, where the actor (caller) differs from the credential owner. The resource id is
+     * normalized identically to {@link #fromExternalServiceScope} so it reads exactly where sign-in wrote.
+     * Carries only the USER level, so no APPLICATION/GLOBAL fallback is structurally possible (fail-closed).
+     */
+    public static CredentialsLocator fromExternalServiceScopeForOwner(String scopeId, String ownerSub, ProxyContext proxyContext) {
+        String[] parts = parseExternalServiceScope(scopeId);
+        String appPart = parts[0];
+        String externalServiceId = parts[1];
+
+        String resourceId;
+        if (proxyContext.getConfig().isDeploymentExists(appPart)) {
+            resourceId = APPLICATIONS_PREFIX + CONFIG_SEGMENT
+                    + UrlUtil.encodePath(appPart)
+                    + EXTERNAL_SERVICES_SEPARATOR
+                    + UrlUtil.encodePath(externalServiceId);
+        } else {
+            resourceId = APPLICATIONS_PREFIX
+                    + UrlUtil.encodePath(appPart)
+                    + EXTERNAL_SERVICES_SEPARATOR
+                    + UrlUtil.encodePath(externalServiceId);
+        }
+
+        Map<CredentialsLevel, BucketInfo> bucketInfo = new EnumMap<>(CredentialsLevel.class);
+        bucketInfo.put(CredentialsLevel.USER, CredentialsDescriptorFactory.getUserBucketInfoForUser(proxyContext, ownerSub));
+        return new CredentialsLocator(resourceId, bucketInfo);
+    }
+
+    /**
      * Parses an external-service scope id and returns the (decoded app prefix, external-service id) pair.
      * The app prefix is what comes after the leading {@code applications/} segment, e.g. {@code my-app}
      * for static apps or {@code bucket/path} for dynamic apps.

@@ -55,6 +55,8 @@ public class ResourceCredentialsService {
 
         if (resourceSignInRequest.getCredentialsLevel().equals(CredentialsLevel.USER)) {
             resourceCredentials.setUserId(userId);
+            // Offline-usage consent is per-user; record it so the on-behalf-of retrieval path can gate on it.
+            resourceCredentials.setOfflineUsageConsent(resourceSignInRequest.isOfflineUsageConsent());
         }
 
         byte[] encryptedBody = encrypt(credentialsDescriptor, resourceCredentials);
@@ -218,6 +220,36 @@ public class ResourceCredentialsService {
             if (credentials != null && level.equals(credentials.getCredentialsLevel())) {
                 return credentials;
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolves the owner's USER-level credential only, with auto-refresh — and <b>no fallback</b> to
+     * GLOBAL/APPLICATION levels. Used by the on-behalf-of (OBO) retrieval path, which must fail closed
+     * rather than silently serve a shared/app-level identity. Returns {@code null} when the owner has no
+     * USER-level credential for the scope (the locator must carry only a USER bucket, but the userSub
+     * match is enforced defensively here too).
+     */
+    @Nullable
+    public ResourceCredentials getRefreshedUserCredentials(CredentialsLocator credentialsLocator,
+                                                           ResourceAuthSettings authSettings,
+                                                           String ownerSub) {
+        if (authSettings.getAuthenticationType() == AuthenticationType.NONE) {
+            return null;
+        }
+
+        CredentialsDescriptor userDescriptor = credentialsLocator.getCredentialsDescriptors().get(CredentialsLevel.USER);
+        if (userDescriptor == null) {
+            return null;
+        }
+
+        ResourceCredentials userCredentials = getAndRefreshCredentials(userDescriptor, authSettings);
+        if (userCredentials != null
+                && userCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
+                && Objects.equals(ownerSub, userCredentials.getUserId())) {
+            return userCredentials;
         }
 
         return null;

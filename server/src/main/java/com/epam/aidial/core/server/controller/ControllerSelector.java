@@ -326,6 +326,7 @@ public class ControllerSelector {
                 case "signin" -> controller::signIn;
                 case "signout" -> controller::signOut;
                 case "credentials" -> controller::getCredentials;
+                case "obo-credentials" -> controller::getOboCredentials;
                 default -> null;
             };
         });
