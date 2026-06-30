@@ -63,6 +63,7 @@ public class ApplicationService {
     private final AsyncTaskExecutor taskExecutor;
     private final ApiKeyStore apiKeyStore;
     private final EncryptionService encryptionService;
+    private final ExternalServiceService externalServiceService;
     private final ResourceService resourceService;
     private final LockService lockService;
     private final Supplier<String> idGenerator;
@@ -80,6 +81,7 @@ public class ApplicationService {
                               RedissonClient redis,
                               ApiKeyStore apiKeyStore,
                               EncryptionService encryptionService,
+                              ExternalServiceService externalServiceService,
                               ResourceService resourceService,
                               LockService lockService,
                               ApplicationOperatorService operatorService,
@@ -92,6 +94,7 @@ public class ApplicationService {
         this.taskExecutor = taskExecutor;
         this.apiKeyStore = apiKeyStore;
         this.encryptionService = encryptionService;
+        this.externalServiceService = externalServiceService;
         this.resourceService = resourceService;
         this.applicationSchemaService = applicationSchemaService;
         this.configStore = configStore;
@@ -164,38 +167,59 @@ public class ApplicationService {
 
     public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
                                                                    Application application, boolean preserveForwardAuthToken) {
+        // In-memory callers (publication copy, admin apply) provide an authoritative application object.
+        return putApplication(resource, etag, author, application, preserveForwardAuthToken, ExternalServicesWriteMode.OVERRIDE);
+    }
+
+    public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
+                                                                   Application application, boolean preserveForwardAuthToken,
+                                                                   ExternalServicesWriteMode externalServicesWriteMode) {
         prepareApplication(resource, application, preserveForwardAuthToken);
 
+        MutableObject<List<String>> removedExternalServices = new MutableObject<>(List.of());
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
-            Application.Function function = application.getFunction();
-
             verifySchemaRichApp(application, existing);
-
-            if (function != null) {
-                if (existing == null || existing.getFunction() == null) {
-                    function.setId(UrlUtil.encodePathSegment(idGenerator.get()));
-                    function.setAuthorBucket(resource.getBucketName());
-                    function.setStatus(Application.Function.Status.UNDEPLOYED);
-                    function.setTargetFolder(encodeTargetFolder(resource, function.getId()));
-                } else {
-                    application.setEndpoint(existing.getEndpoint());
-                    application.getFeatures().setRateEndpoint(existing.getFeatures().getRateEndpoint());
-                    application.getFeatures().setTokenizeEndpoint(existing.getFeatures().getTokenizeEndpoint());
-                    application.getFeatures().setTruncatePromptEndpoint(existing.getFeatures().getTruncatePromptEndpoint());
-                    application.getFeatures().setConfigurationEndpoint(existing.getFeatures().getConfigurationEndpoint());
-                    function.setId(existing.getFunction().getId());
-                    function.setAuthorBucket(existing.getFunction().getAuthorBucket());
-                    function.setStatus(existing.getFunction().getStatus());
-                    function.setTargetFolder(existing.getFunction().getTargetFolder());
-                    function.setError(existing.getFunction().getError());
-                }
-            }
-
+            prepareApplicationFunction(resource, application, existing);
+            List<String> externalServices = externalServiceService.processOnWrite(resource, application, existing, externalServicesWriteMode);
+            removedExternalServices.setValue(externalServices);
             return ProxyUtil.convertToString(application);
         });
 
+        // Purge credentials of services dropped by this write (after commit), like the dedicated DELETE.
+        externalServiceService.purgeApplicationCredentials(resource, removedExternalServices.get());
+
         return Pair.of(meta, application);
+    }
+
+    private void prepareApplicationFunction(ResourceDescriptor resource, Application application, Application existing) {
+        Application.Function function = application.getFunction();
+        if (function == null) {
+            return;
+        }
+        if (existing == null || existing.getFunction() == null) {
+            function.setId(UrlUtil.encodePathSegment(idGenerator.get()));
+            function.setAuthorBucket(resource.getBucketName());
+            function.setStatus(Application.Function.Status.UNDEPLOYED);
+            function.setTargetFolder(encodeTargetFolder(resource, function.getId()));
+        } else {
+            application.setEndpoint(existing.getEndpoint());
+            application.getFeatures().setRateEndpoint(existing.getFeatures().getRateEndpoint());
+            application.getFeatures().setTokenizeEndpoint(existing.getFeatures().getTokenizeEndpoint());
+            application.getFeatures().setTruncatePromptEndpoint(existing.getFeatures().getTruncatePromptEndpoint());
+            application.getFeatures().setConfigurationEndpoint(existing.getFeatures().getConfigurationEndpoint());
+            function.setId(existing.getFunction().getId());
+            function.setAuthorBucket(existing.getFunction().getAuthorBucket());
+            function.setStatus(existing.getFunction().getStatus());
+            function.setTargetFolder(existing.getFunction().getTargetFolder());
+            function.setError(existing.getFunction().getError());
+        }
+    }
+
+    public Pair<ResourceItemMetadata, Application> getApplicationWithDecryptedSecrets(ResourceDescriptor resource) {
+        Pair<ResourceItemMetadata, Application> result = getApplication(resource);
+        externalServiceService.decryptSecrets(resource, result.getValue());
+        return result;
     }
 
     private static void verifySchemaRichApp(Application application, Application existing) {
@@ -225,6 +249,10 @@ public class ApplicationService {
         });
 
         Application application = reference.get();
+
+        if (application.getExternalServices() != null) {
+            externalServiceService.purgeApplicationCredentials(resource, application.getExternalServices().keySet());
+        }
 
         if (isPublicOrReview(resource)) {
             if (application.getFunction() != null) {
@@ -258,6 +286,8 @@ public class ApplicationService {
 
         Pair<ResourceItemMetadata, Application> result = getApplication(source);
         Application application = result.getValue();
+
+        externalServiceService.decryptSecrets(source, application);
         if (author == null) {
             author = result.getKey().getAuthor();
         }
@@ -322,6 +352,8 @@ public class ApplicationService {
             if (isPublicOrReview) {
                 replaceLinksInAppProperties(application, fileReplacementLinks);
             }
+
+            externalServiceService.encryptSecrets(destination, application);
 
             return ProxyUtil.convertToString(application);
         });
