@@ -124,7 +124,7 @@ public class ResponseItemControllerTest {
         verify(context).respond(
                 argThat((Throwable e) -> e instanceof HttpException
                         && ((HttpException) e).getStatus() == HttpStatus.NOT_FOUND
-                        && e.getMessage().contains("Response with id 'resp_123' not found.")),
+                        && e.getMessage().contains("Response with id 'dial_test-deployment_unknown' not found.")),
                 anyString());
     }
 

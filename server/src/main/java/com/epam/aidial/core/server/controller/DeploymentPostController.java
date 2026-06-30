@@ -438,10 +438,10 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         HttpServerResponse response = context.getResponse();
         responseStream.end(response);
 
-        String assembledStreamingResponse = isEventStreamResponse(context.getProxyResponse())
-                ? assembleStreamingResponse(context.getResponseBody())
-                : null;
-        proxy.getLogStore().save(LogContext.from(context, assembledStreamingResponse));
+        if (isEventStreamResponse(context.getProxyResponse())) {
+            context.setAssembledStreamingResponse(assembleStreamingResponse(context.getResponseBody()));
+        }
+        proxy.getLogStore().save(LogContext.from(context));
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",

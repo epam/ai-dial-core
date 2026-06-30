@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -35,8 +36,10 @@ import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
+import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.HttpVersion;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import io.vertx.core.json.JsonObject;
 import io.vertx.junit5.VertxExtension;
@@ -61,6 +64,7 @@ import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_
 import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -292,6 +296,8 @@ public class ResponsesControllerTest {
         when(request.body()).thenReturn(Future.succeededFuture(requestBody));
         when(request.headers()).thenReturn(new HeadersMultiMap());
         when(request.query()).thenReturn("arg=value");
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
         when(upstreamRoute.next()).thenReturn(upstream);
         when(upstreamRoute.get()).thenReturn(upstream);
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
@@ -409,6 +415,8 @@ public class ResponsesControllerTest {
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         when(request.body()).thenReturn(Future.succeededFuture(requestBody));
         when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
         when(upstreamRoute.next()).thenReturn(upstream);
         when(upstreamRoute.get()).thenReturn(upstream);
         when(context.getRequest()).thenReturn(request);
@@ -522,6 +530,8 @@ public class ResponsesControllerTest {
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         when(request.body()).thenReturn(Future.succeededFuture(requestBody));
         when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
         when(upstreamRoute.next()).thenReturn(upstream);
         when(upstreamRoute.get()).thenReturn(upstream);
         when(context.getRequest()).thenReturn(request);
@@ -610,6 +620,8 @@ public class ResponsesControllerTest {
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         when(request.body()).thenReturn(Future.succeededFuture(Buffer.buffer("{\"model\":\"test\",\"stream\":true}")));
         when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
         when(upstreamRoute.next()).thenReturn(upstream);
         when(upstreamRoute.get()).thenReturn(upstream);
         when(context.getRequest()).thenReturn(request);
@@ -746,6 +758,83 @@ public class ResponsesControllerTest {
         await(textContext);
 
         verify(context).respond(HttpStatus.SERVICE_UNAVAILABLE, "Upstream is missing required id");
+    }
+
+    @Test
+    public void testBackgroundJobRecordSaved(Vertx vertx, VertxTestContext textContext) throws Throwable {
+        Application deployment = new Application();
+        deployment.setName("test");
+        deployment.setResponsesEndpoint("http://adapter/responses");
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
+        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
+        Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint");
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setPerRequestKey(PER_REQUEST_KEY);
+        Buffer requestBody = Buffer.buffer("{\"model\":\"test\",\"background\":true}");
+        Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-resp-id\",\"status\":\"completed\"}");
+        String expectedDialId = "dial_test_fixed-uuid-1234";
+
+        when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        when(request.body()).thenReturn(Future.succeededFuture(requestBody));
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(upstreamRoute.next()).thenReturn(upstream);
+        when(upstreamRoute.get()).thenReturn(upstream);
+        when(context.getRequest()).thenReturn(request);
+        when(context.getResponse()).thenReturn(response);
+        when(context.getConfig()).thenReturn(new Config());
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+        when(proxyRequest.headers()).thenReturn(new HeadersMultiMap());
+        when(proxyRequest.send(any(Buffer.class))).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxyResponse.statusCode()).thenReturn(200);
+        when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
+        when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
+        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
+        when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
+        when(proxy.getRateLimiter().limit(context, deployment))
+                .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
+        when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
+        when(proxy.getUpstreamRouteProvider().get(deployment, null, (String) null)).thenReturn(upstreamRoute);
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
+        when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
+                .thenReturn(deployment);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
+        when(proxy.getResponseMappingService().saveMapping(any(), any())).thenReturn(expectedDialId);
+        when(context.getUserId()).thenReturn("test-user");
+        when(proxy.getBackgroundJobService().saveJob(any(), any())).thenAnswer(invocation -> {
+            textContext.completeNow();
+            return Future.<Void>succeededFuture();
+        });
+        doCallRealMethod().when(context).setDeployment(any());
+        doCallRealMethod().when(context).getDeployment();
+        doCallRealMethod().when(context).setRequestBody(any());
+        doCallRealMethod().when(context).getRequestBody();
+        doCallRealMethod().when(context).setResponseBody(any());
+        doCallRealMethod().when(context).setUpstreamRoute(any());
+        doCallRealMethod().when(context).getUpstreamRoute();
+        doCallRealMethod().when(context).setProxyResponse(any());
+        doCallRealMethod().when(context).setStoreResponse(anyBoolean());
+        doCallRealMethod().when(context).isStoreResponse();
+        doCallRealMethod().when(context).setBackgroundJob(anyBoolean());
+        doCallRealMethod().when(context).isBackgroundJob();
+        doCallRealMethod().when(context).setDialResponseId(anyString());
+        doCallRealMethod().when(context).getDialResponseId();
+
+        controller.handle();
+
+        await(textContext);
+
+        ArgumentCaptor<BackgroundJobRecord> recordCaptor = ArgumentCaptor.forClass(BackgroundJobRecord.class);
+        verify(proxy.getBackgroundJobService()).saveJob(eq(expectedDialId), recordCaptor.capture());
+        assertNotNull(recordCaptor.getValue().requestBody());
     }
 
     private static Future<?> complete(VertxTestContext textContext) {

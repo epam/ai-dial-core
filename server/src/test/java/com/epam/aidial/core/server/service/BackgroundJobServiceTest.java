@@ -20,6 +20,7 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
@@ -195,7 +196,7 @@ class BackgroundJobServiceTest {
 
     @Test
     void saveJobStartsPollingAndCompletesJob(VertxTestContext ctx) throws Throwable {
-        when(poller.poll(any())).thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(200, "{}", new TokenUsage())));
+        when(poller.poll(any())).thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())));
         Config config = mock(Config.class);
         when(configStore.get()).thenReturn(config);
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
@@ -218,7 +219,7 @@ class BackgroundJobServiceTest {
         when(poller.poll(any()))
                 .thenReturn(Future.succeededFuture(null))
                 .thenReturn(Future.succeededFuture(null))
-                .thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(200, "{}", new TokenUsage())));
+                .thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())));
         when(configStore.get()).thenReturn(mock(Config.class));
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
         when(apiKeyStore.invalidatePerRequestApiKey(any()))
@@ -264,7 +265,7 @@ class BackgroundJobServiceTest {
                 .thenReturn(Future.succeededFuture(null))
                 .thenReturn(Future.failedFuture("upstream error"))
                 .thenReturn(Future.failedFuture("upstream error"))
-                .thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(200, "{}", new TokenUsage())));
+                .thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())));
         when(configStore.get()).thenReturn(mock(Config.class));
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
         when(apiKeyStore.invalidatePerRequestApiKey(any()))
@@ -293,7 +294,7 @@ class BackgroundJobServiceTest {
 
         service.saveJob(proxyContext.getDialResponseId(), buildRecord())
                 .compose(ignored -> service.tryCompleteOnGet(
-                        JOB_ID, mapping, new ResponsesApiClient.TerminalResult(200, "{}", new TokenUsage())))
+                        JOB_ID, mapping, new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())))
                 .onFailure(ctx::failNow);
 
         await(ctx);
@@ -321,7 +322,7 @@ class BackgroundJobServiceTest {
     void tryCompleteOnGetIsNoOpWhenNoRecord(VertxTestContext ctx) throws Throwable {
         ResponseMapping mapping = buildMapping();
 
-        service.tryCompleteOnGet(JOB_ID, mapping, new ResponsesApiClient.TerminalResult(200, "{}", null))
+        service.tryCompleteOnGet(JOB_ID, mapping, new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), null))
                 .onSuccess(ignored -> ctx.completeNow())
                 .onFailure(ctx::failNow);
 
@@ -332,7 +333,7 @@ class BackgroundJobServiceTest {
     @Test
     void startupScanPicksUpJobsFromResourceService(Vertx vertx, VertxTestContext ctx) throws Throwable {
         when(poller.poll(any()))
-                .thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(200, "{}", new TokenUsage())));
+                .thenReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())));
         when(configStore.get()).thenReturn(mock(Config.class));
         when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
         when(apiKeyStore.invalidatePerRequestApiKey(any()))

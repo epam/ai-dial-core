@@ -12,6 +12,7 @@ import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
@@ -32,6 +33,7 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
@@ -144,7 +146,7 @@ public class ResponseItemController implements Controller {
     private ResponseMapping loadMapping() {
         ResponseMapping mapping = proxy.getResponseMappingService().getMapping(context.getDialResponseId());
         if (mapping == null) {
-            throw notFoundException();
+            throw notFoundException(context.getDialResponseId());
         }
         String currentBucket = BucketBuilder.buildInitiatorBucket(context);
         if (!currentBucket.equals(mapping.getInitiatorBucket())) {
@@ -266,18 +268,14 @@ public class ResponseItemController implements Controller {
                 .mapEmpty();
     }
 
-    private static HttpException notFoundException() {
-        return new HttpException(
-                HttpStatus.NOT_FOUND,
-                """
-                        {
-                            "error": {
-                                "message": "Response with id 'resp_123' not found.",
-                                "type": "invalid_request_error",
-                                "param": null,
-                                "code": null
-                            }
-                        }""");
+    @SneakyThrows
+    private static HttpException notFoundException(String dialResponseId) {
+        ErrorData response = new ErrorData();
+        String errorMessage = "Response with id '%s' not found.".formatted(dialResponseId);
+        response.getError().setMessage(errorMessage);
+        response.getError().setDisplayMessage(errorMessage);
+        response.getError().setType("invalid_request_error");
+        return new HttpException(HttpStatus.NOT_FOUND, ProxyUtil.MAPPER.writeValueAsString(response));
     }
 
     @RequiredArgsConstructor
@@ -288,8 +286,5 @@ public class ResponseItemController implements Controller {
 
         private final HttpMethod method;
         private final String suffix;
-    }
-
-    private record ParsedBody(Buffer buffer, ObjectNode object) {
     }
 }

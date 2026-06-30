@@ -52,8 +52,7 @@ public record BackgroundJobRecord(
                 .requestMethod(context.getRequest().method().name())
                 .requestUri(context.getRequest().uri())
                 .requestTimestamp(context.getRequestTimestamp())
-                .requestBody(context.getRequestBody() != null
-                        ? context.getRequestBody().toString(StandardCharsets.UTF_8) : null)
+                .requestBody(context.getRequestBody().toString(StandardCharsets.UTF_8))
                 .upstreamEndpoint(Optional.ofNullable(context.getUpstreamRoute())
                         .map(UpstreamRoute::get)
                         .map(Upstream::getEndpoint)

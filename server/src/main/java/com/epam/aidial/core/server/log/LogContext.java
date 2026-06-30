@@ -49,10 +49,6 @@ public class LogContext {
     private final TokenUsage tokenUsage;
 
     public static LogContext from(ProxyContext context) {
-        return from(context, null);
-    }
-
-    public static LogContext from(ProxyContext context, String assembledStreamingResponse) {
         Buffer responseBody = context.getResponseBody();
         return LogContext.builder()
                 .traceId(context.getTraceId())
@@ -78,7 +74,7 @@ public class LogContext {
                         .orElse(null))
                 .responseStatusCode(context.getResponse().getStatusCode())
                 .responseBody(responseBody)
-                .assembledStreamingResponse(assembledStreamingResponse)
+                .assembledStreamingResponse(context.getAssembledStreamingResponse())
                 .tokenUsage(context.getTokenUsage())
                 .build();
     }

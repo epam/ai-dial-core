@@ -386,9 +386,8 @@ public class BackgroundJobService {
                     Future<Void> future = Future.succeededFuture();
                     if (deployment instanceof Model && result != null && result.usage() != null) {
                         Buffer requestBody = Buffer.buffer(jobRecord.requestBody());
-                        Buffer responseBody = Buffer.buffer(result.body());
                         future = rateLimiter.increase(
-                                deployment, responseMapping.getInitiatorBucket(), result.usage(), requestBody, responseBody)
+                                deployment, responseMapping.getInitiatorBucket(), result.usage(), requestBody, result.body())
                                 .transform(limitResult -> {
                                     if (limitResult.failed()) {
                                         log.warn("Failed to increase limit", limitResult.cause());
