@@ -154,7 +154,7 @@ Supported interface types for models:
 
 Each value is an object with a single field:
 
-* `base_url`: **Required.** The model adapter root that the matching ingress path is appended to. An interface entry declared without a `base_url` is rejected when the configuration is loaded.
+* `base_url`: The model adapter root that the matching ingress path is appended to.
 
 **Example**
 

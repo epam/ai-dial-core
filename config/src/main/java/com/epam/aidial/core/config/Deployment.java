@@ -84,12 +84,10 @@ public abstract class Deployment extends RoleBasedEntity {
      */
     public String getInterfaceBaseUrl(InterfaceType type) {
         DeploymentInterface deploymentInterface = interfaces == null ? null : interfaces.get(type.getValue());
-        if (deploymentInterface == null) {
+        String url = deploymentInterface == null ? null : deploymentInterface.getBaseUrl();
+        if (url == null || url.isBlank()) {
             return null;
         }
-        // base_url is required and non-null (enforced by DeploymentInterface's constructor),
-        // so a declared interface always carries one.
-        String url = deploymentInterface.getBaseUrl();
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 

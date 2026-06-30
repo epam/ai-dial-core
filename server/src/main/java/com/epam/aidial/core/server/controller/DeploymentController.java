@@ -249,7 +249,6 @@ public class DeploymentController {
                 } else {
                     interfaces.add(EMBEDDING_IFACE);
                 }
-                interfaces.addAll(model.getInterfaces().keySet());
                 deployment.setInterfaces(interfaces);
                 deployments.add(deployment);
             }
@@ -269,7 +268,6 @@ public class DeploymentController {
         if (app.getViewerUrl() != null) {
             interfaces.add(CUSTOM_UI_IFACE);
         }
-        interfaces.addAll(app.getInterfaces().keySet());
         applicationData.setInterfaces(interfaces);
         return applicationData;
     }

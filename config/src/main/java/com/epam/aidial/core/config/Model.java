@@ -6,6 +6,7 @@ import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
 import java.util.List;
+import java.util.Set;
 
 @Data
 @Accessors(chain = true)
@@ -23,7 +24,17 @@ public class Model extends Deployment {
     @JsonAlias({"embeddingDimensions", "embedding_dimensions"})
     private Integer embeddingDimensions;
 
+    private static final Set<String> SUPPORTED_INTERFACE_KEYS = Set.of(
+            InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(),
+            InterfaceType.OPENAI_RESPONSES.getValue()
+    );
+
     public Model() {
         setMaxRetryAttempts(5);
+    }
+
+    @Override
+    public Set<String> supportedInterfaceKeys() {
+        return SUPPORTED_INTERFACE_KEYS;
     }
 }
