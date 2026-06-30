@@ -57,6 +57,9 @@ public class FolderResourceController extends AccessControlBaseController {
         if (HttpMethod.GET.equals(method)) {
             return get(resource);
         }
+        if (HttpMethod.DELETE.equals(method)) {
+            return delete(resource);
+        }
         return context.respond(HttpStatus.METHOD_NOT_ALLOWED);
     }
 
@@ -109,6 +112,20 @@ public class FolderResourceController extends AccessControlBaseController {
                 .recover(error -> {
                     log.warn("Failed to download resource: {}", resource.getUrl(), error);
                     return context.respond(error, "Failed to download resource: " + resource.getUrl()).mapEmpty();
+                });
+        return Future.succeededFuture();
+    }
+
+    private Future<?> delete(ResourceDescriptor resource) {
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
+        proxy.getTaskExecutor().submit(() -> {
+            folderResourceService.deleteFolder(resource, etag);
+            return null;
+        })
+                .compose(v -> context.respond(HttpStatus.OK).mapEmpty())
+                .recover(error -> {
+                    log.warn("Failed to delete resource: {}", resource.getUrl(), error);
+                    return context.respond(error, "Failed to delete resource: " + resource.getUrl()).mapEmpty();
                 });
         return Future.succeededFuture();
     }

@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.Route;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -48,6 +49,11 @@ public class ApplicationData extends DeploymentData {
     private String viewerUrl;
 
     private String editorUrl;
+
+    /** Per-user view of the app's external services with sign-in status; never any credential material. */
+    @Nullable
+    @JsonAlias({"externalServices", "external_services"})
+    private Map<String, ExternalService> externalServices;
 
     @JsonIgnore
     public static ApplicationData mapApplication(Application application) {

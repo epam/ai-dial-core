@@ -33,6 +33,32 @@ public class ControllerSelector {
             "/{path}", GlobalRouteController::new);
 
     static {
+        // External-service definition management. Registered before the generic RESOURCE route so
+        // /v1/applications/{appId}/external-services[/{id}] is not swallowed by it (first match wins).
+        get(RouteTemplate.EXTERNAL_SERVICES_MANAGEMENT, (proxy, context, pathMatcher) -> {
+            String appId = UrlUtil.decodePath(pathMatcher.group("appId"));
+            ExternalServiceManagementController controller = new ExternalServiceManagementController(proxy, context);
+            return () -> controller.listExternalServices(appId);
+        });
+        get(RouteTemplate.EXTERNAL_SERVICE_MANAGEMENT, (proxy, context, pathMatcher) -> {
+            String appId = UrlUtil.decodePath(pathMatcher.group("appId"));
+            String serviceId = UrlUtil.decodePath(pathMatcher.group("id"));
+            ExternalServiceManagementController controller = new ExternalServiceManagementController(proxy, context);
+            return () -> controller.getExternalService(appId, serviceId);
+        });
+        put(RouteTemplate.EXTERNAL_SERVICE_MANAGEMENT, (proxy, context, pathMatcher) -> {
+            String appId = UrlUtil.decodePath(pathMatcher.group("appId"));
+            String serviceId = UrlUtil.decodePath(pathMatcher.group("id"));
+            ExternalServiceManagementController controller = new ExternalServiceManagementController(proxy, context);
+            return () -> controller.putExternalService(appId, serviceId);
+        });
+        delete(RouteTemplate.EXTERNAL_SERVICE_MANAGEMENT, (proxy, context, pathMatcher) -> {
+            String appId = UrlUtil.decodePath(pathMatcher.group("appId"));
+            String serviceId = UrlUtil.decodePath(pathMatcher.group("id"));
+            ExternalServiceManagementController controller = new ExternalServiceManagementController(proxy, context);
+            return () -> controller.deleteExternalService(appId, serviceId);
+        });
+
         // GET routes
         get(RouteTemplate.DEPLOYMENT, (proxy, context, pathMatcher) -> {
             DeploymentController controller = new DeploymentController(proxy, context);
@@ -292,6 +318,17 @@ public class ControllerSelector {
                 default -> null;
             };
         });
+        post(RouteTemplate.EXTERNAL_SERVICE_CREDENTIALS, (proxy, context, pathMatcher) -> {
+            String operation = pathMatcher.group(1);
+            ExternalServiceCredentialsController controller = new ExternalServiceCredentialsController(proxy, context);
+
+            return switch (operation) {
+                case "signin" -> controller::signIn;
+                case "signout" -> controller::signOut;
+                case "credentials" -> controller::getCredentials;
+                default -> null;
+            };
+        });
         post(RouteTemplate.PUBLISHED_RESOURCES, (proxy, context, pathMatcher) -> {
             PublicationController controller = new PublicationController(proxy, context);
             return controller::listPublishedResources;
@@ -430,6 +467,11 @@ public class ControllerSelector {
         });
         put(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
         put(RouteTemplate.SKILL_FOLDER, (proxy, context, pathMatcher) -> {
+            FolderResourceController controller = new FolderResourceController(proxy, context, true);
+            String path = context.getRequest().path();
+            return () -> controller.handle(resourcePathV2(path));
+        });
+        delete(RouteTemplate.SKILL_FOLDER, (proxy, context, pathMatcher) -> {
             FolderResourceController controller = new FolderResourceController(proxy, context, true);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePathV2(path));

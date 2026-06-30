@@ -57,6 +57,7 @@ public class ResourceAuthSettings {
     @JsonAlias({"apiKeyHeader", "api_key_header"})
     private String apiKeyHeader;
 
+    // Statuses are computed per-user on read and stripped on write; never client-settable.
     @JsonAlias({"globalAuthStatus", "global_auth_status"})
     private ResourceAuthStatus globalAuthStatus;
 

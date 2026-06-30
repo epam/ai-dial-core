@@ -145,6 +145,40 @@ public class ResourceAuthSettingsService {
         setGlobalAuthStatus(resourceAuthSettings, allResourceCredentials);
     }
 
+    /**
+     * Enriches external-service auth settings with USER- and APPLICATION-level statuses
+     * (external services use USER/APPLICATION levels, unlike toolsets which use USER/GLOBAL).
+     */
+    public void setExternalServiceAuthStatuses(CredentialsLocator credentialsLocator,
+                                               ResourceAuthSettings resourceAuthSettings,
+                                               String userId) {
+        List<ResourceCredentials> all = resourceCredentialsService.getAllResourceCredentials(credentialsLocator);
+
+        boolean userSignedIn = hasUnexpiredUserCredentials(all, userId);
+        resourceAuthSettings.setUserLevelAuthStatus(userSignedIn ? ResourceAuthStatus.SIGNED_IN : ResourceAuthStatus.SIGNED_OUT);
+
+        boolean appSignedIn = hasUnexpiredApplicationCredentials(all);
+        resourceAuthSettings.setAppLevelAuthStatus(appSignedIn ? ResourceAuthStatus.SIGNED_IN : ResourceAuthStatus.SIGNED_OUT);
+    }
+
+    // USER-level credentials are scoped to a single signed-in user, so they are filtered by userId.
+    private boolean hasUnexpiredUserCredentials(List<ResourceCredentials> all, String userId) {
+        return all.stream().anyMatch(c -> c.getCredentialsLevel() == CredentialsLevel.USER
+                && userId.equals(c.getUserId())
+                && hasUnexpiredToken(c));
+    }
+
+    // APPLICATION-level credentials are shared by the app and not bound to any user, so no userId filter applies.
+    private boolean hasUnexpiredApplicationCredentials(List<ResourceCredentials> all) {
+        return all.stream().anyMatch(c -> c.getCredentialsLevel() == CredentialsLevel.APPLICATION
+                && hasUnexpiredToken(c));
+    }
+
+    private boolean hasUnexpiredToken(ResourceCredentials credentials) {
+        return tokenRefreshStrategyFactory.getTokenValidatorStrategy(credentials.getAuthenticationType())
+                .hasUnexpiredToken(credentials);
+    }
+
     private void setUserAuthStatus(ResourceAuthSettings resourceAuthSettings,
                                    List<ResourceCredentials> resourceCredentialsList,
                                    String userId) {
