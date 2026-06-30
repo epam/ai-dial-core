@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.log;
 
-import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.LogEntry;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -16,10 +15,8 @@ import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyChar;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -28,61 +25,6 @@ import static org.mockito.Mockito.when;
 
 @SuppressWarnings("checkstyle:LineLength")
 public class GfLogStoreTest {
-
-    @Test
-    public void testIsStreamingResponse() {
-        String batchResponse = """
-                {
-                  "id": "chatcmpl-7VfMTgj3ljKdGKS2BEIwloII3IoO0",
-                  "object": "chat.completion",
-                  "created": 1687781517,
-                  "model": "gpt-35-turbo",
-                  "choices": [
-                    {
-                      "index": 0,
-                      "finish_reason": "stop",
-                      "message": {
-                        "role": "assistant",
-                        "content": "As an AI language model, I do not have emotions like humans. However, I am functioning well and ready to assist you. How can I help you today?"
-                      }
-                    }
-                  ],
-                  "usage" \t\r : \t\r {
-                    "junk_string": "junk",
-                    "junk_integer" : 1,
-                    "junk_float" : 1.0,
-                    "junk_null" : null,
-                    "junk_true" : true,
-                    "junk_false" : false,
-                    "completion_tokens": 33,
-                    "prompt_tokens": 19,
-                    "total_tokens": 52
-                  }
-                }
-                """;
-        assertFalse(GfLogStore.isStreamingResponse(Buffer.buffer(batchResponse)));
-        String streamingResponse = """
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"As"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":"stop","delta":{}}],
-                         "usage" \n\t\r : \n\t\r {
-                             "junk_string": "junk",
-                             "junk_integer" : 1,
-                             "junk_float" : 1.0,
-                             "junk_null" : null,
-                             "junk_true" : true,
-                             "junk_false" : false,
-                             "completion_tokens": 10,
-                             "prompt_tokens": 20,
-                             "total_tokens": 30
-                           }
-                       }
-                data: [DONE]
-                """;
-        assertTrue(GfLogStore.isStreamingResponse(Buffer.buffer(streamingResponse)));
-    }
 
     @Test
     public void testAssembleStreamingResponse() {
@@ -179,7 +121,7 @@ public class GfLogStoreTest {
                 data: [DONE]
                                 
                 """;
-        String res = GfLogStore.assembleStreamingResponse(Buffer.buffer(streamingResponse));
+        String res = ResponseBodyUtil.assembleStreamingResponse(Buffer.buffer(streamingResponse));
         assertNotNull(res);
         String expected = """
                 {"id":"1d84aa54-e476-405d-9713-386bdfc85993","object":"chat.completion","created":"1687222196","model":"gpt-35-turbo","usage":{"junk_string":"junk","junk_integer":1,"junk_float":1.0,"junk_null":null,"junk_true":true,"junk_false":false,"completion_tokens":10,"prompt_tokens":20,"total_tokens":30},"statistics":{"usage_per_model":[{"name":"text-embedding-ada-002","prompt_tokens":23,"total_tokens":23},{"name":"gpt-4","prompt_tokens":123,"completion_tokens":17,"total_tokens":140}]},"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"As an AI language model, I don't have emotions, but I'm functioning perfectly well. How can I assist you today?","custom_content":{"attachments":[{"url":"url2"},{"url":"url1"}],"stages":[{"name":"stage1","status":"completed"},{"name":"stage2","status":"completed"}],"controls":[{"label":"label1"},{"label":"label2"}],"state":{"p1":1,"p2":1}}}}]}""";
@@ -205,7 +147,7 @@ public class GfLogStoreTest {
                 data: [DONE]
                 """;
 
-        String res = GfLogStore.assembleStreamingResponse(Buffer.buffer(streamingResponse));
+        String res = ResponseBodyUtil.assembleStreamingResponse(Buffer.buffer(streamingResponse));
         assertNotNull(res);
         String expected = """
                 {"id":"3c9c699a-d1ef-4ec2-82ff-47a07206fa99","object":"chat.completion","created":1724242846,"model":null,"choices":[{"index":0,"finish_reason":null,"message":{"role":"assistant","custom_content":{"attachments":[{"type":"text/markdown","title":"[0] 'Architecture'","data":"data","reference_url":"url1"},{"type":"text/markdown","title":"[1] 'User Guide'","data":"data","reference_url":"url2"},{"type":"text/markdown","title":"[2] 'Knowledge Base'","data":"data","reference_url":"url3"},{"type":"text/markdown","title":"[3] 'Documentation'","data":"you can pick one of three formats to copy its data: CSV, Markdown or Text.\\n\\n","reference_url":"url4"}]},"content":"A B C"}}]}""";
@@ -213,55 +155,84 @@ public class GfLogStoreTest {
     }
 
     @Test
-    public void testGetParentDeployment_NoInterceptors() {
-        ProxyContext context = mock(ProxyContext.class);
-        // app calls model without interceptors
-        when(context.getInterceptors()).thenReturn(null);
-        when(context.getSourceDeployment()).thenReturn("app");
+    public void testAssembleResponsesApiResponse_Completed() {
+        String streamingResponse = """
+                data: {"type":"response.created","response":{"id":"resp_123","status":"in_progress"}}
 
-        String result = GfLogStore.getParentDeployment(context);
+                data: {"type":"response.in_progress","response":{"id":"resp_123","status":"in_progress"}}
+
+                data: {"type":"response.completed","response":{"id":"resp_123","status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"hi"}]}]}}
+
+                data: [DONE]
+                """;
+        String res = ResponseBodyUtil.assembleResponsesApiResponse(Buffer.buffer(streamingResponse));
+        assertNotNull(res);
+        String expected = "{\"id\":\"resp_123\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"hi\"}]}]}";
+        assertEquals(expected, res);
+    }
+
+    @Test
+    public void testAssembleResponsesApiResponse_Incomplete() {
+        String streamingResponse = """
+                data: {"type":"response.created","response":{"id":"resp_456","status":"in_progress"}}
+
+                data: {"type":"response.incomplete","response":{"id":"resp_456","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"}}}
+
+                data: [DONE]
+                """;
+        String res = ResponseBodyUtil.assembleResponsesApiResponse(Buffer.buffer(streamingResponse));
+        assertNotNull(res);
+        String expected = "{\"id\":\"resp_456\",\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"}}";
+        assertEquals(expected, res);
+    }
+
+    @Test
+    public void testAssembleResponsesApiResponse_NoTerminalEvent() {
+        String streamingResponse = """
+                data: {"type":"response.created","response":{"id":"resp_x","status":"in_progress"}}
+
+                data: [DONE]
+                """;
+        String res = ResponseBodyUtil.assembleResponsesApiResponse(Buffer.buffer(streamingResponse));
+        assertEquals("{}", res);
+    }
+
+    @Test
+    public void testGetParentDeployment_NoInterceptors() {
+        String result = LogContext.getParentDeployment("app", null, null);
 
         assertEquals("app", result);
     }
 
     @Test
     public void testGetParentDeployment_DeploymentWithInterceptors1() {
-        ProxyContext context = mock(ProxyContext.class);
         // app calls model with interceptors
         List<String> interceptors = List.of("interceptor1", "interceptor2");
-        when(context.getInterceptors()).thenReturn(interceptors);
         List<String> executionPath = List.of("app", "interceptor1", "interceptor2", "model");
-        when(context.getExecutionPath()).thenReturn(executionPath);
 
-        String result = GfLogStore.getParentDeployment(context);
+        String result = LogContext.getParentDeployment(null, interceptors, executionPath);
 
         assertEquals("app", result);
     }
 
     @Test
     public void testGetParentDeployment_DeploymentWithInterceptors2() {
-        ProxyContext context = mock(ProxyContext.class);
         // chat calls model with interceptors
         List<String> interceptors = List.of("interceptor1", "interceptor2");
-        when(context.getInterceptors()).thenReturn(interceptors);
         List<String> executionPath = List.of("interceptor1", "interceptor2", "model");
-        when(context.getExecutionPath()).thenReturn(executionPath);
 
-        String result = GfLogStore.getParentDeployment(context);
+        String result = LogContext.getParentDeployment(null, interceptors, executionPath);
 
         assertNull(result);
     }
 
     @Test
     public void testGetParentDeployment_InterceptorPathMismatch() {
-        ProxyContext context = mock(ProxyContext.class);
         // app calls model with interceptors but interceptor1 calls some dep1 in the middle using the same per request key
         List<String> interceptors = List.of("interceptor1", "interceptor2");
-        when(context.getInterceptors()).thenReturn(interceptors);
         List<String> executionPath = List.of("app", "interceptor1", "dep1", "interceptor2", "model");
-        when(context.getExecutionPath()).thenReturn(executionPath);
 
-        String result = GfLogStore.getParentDeployment(context);
+        String result = LogContext.getParentDeployment(null, interceptors, executionPath);
 
         assertNull(result);
     }

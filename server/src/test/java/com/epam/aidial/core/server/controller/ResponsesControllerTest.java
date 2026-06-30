@@ -683,8 +683,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).isStreamingRequest();
         doCallRealMethod().when(context).setStoreResponse(anyBoolean());
         doCallRealMethod().when(context).isStoreResponse();
-        doCallRealMethod().when(context).setResponseId(anyString());
-        doCallRealMethod().when(context).getResponseId();
+        doCallRealMethod().when(context).setDialResponseId(anyString());
+        doCallRealMethod().when(context).getDialResponseId();
 
         controller.handle();
 

@@ -95,9 +95,9 @@ public class ProxyContext {
     private String userDisplayName;
     private CacheBreakpointContext cacheBreakpointContext;
     private ServerWebSocket serverWebSocket;
-    private boolean storeResponse;
-    private String responseId;
-    private boolean backgroundJob;
+    private boolean isStoreResponse;
+    private boolean isBackgroundJob;
+    private String dialResponseId;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {

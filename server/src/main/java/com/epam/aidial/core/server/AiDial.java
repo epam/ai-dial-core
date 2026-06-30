@@ -325,7 +325,7 @@ public class AiDial {
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(), resourceService, taskExecutor,
                     configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
-                    responseMappingService, backgroundJobPoller, backgroundJobSettings);
+                    responseMappingService, backgroundJobPoller, backgroundJobSettings, logStore);
             backgroundJobService.init();
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,

@@ -44,7 +44,7 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
         }
 
         if (upstreamId.equals(currentId)) {
-            response.put("id", context.getResponseId());
+            response.put("id", context.getDialResponseId());
         }
 
         return Future.succeededFuture(tree);
@@ -53,7 +53,7 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
     private Future<JsonNode> saveIdMapping(ObjectNode response, JsonNode tree) {
         if (!context.isStoreResponse()) {
             String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
-            context.setResponseId(dialId);
+            context.setDialResponseId(dialId);
             response.put("id", dialId);
             return Future.succeededFuture(tree);
         }
@@ -67,16 +67,14 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
         return proxy.getTaskExecutor()
                 .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
                 .compose(dialId -> {
-                    context.setResponseId(dialId);
+                    context.setDialResponseId(dialId);
                     response.put("id", dialId);
 
                     if (!context.isBackgroundJob()) {
                         return Future.succeededFuture();
                     }
-                    BackgroundJobRecord record = new BackgroundJobRecord(
-                            context.getProxyApiKeyData().getPerRequestKey(),
-                            context.isOriginalRequest());
-                    return proxy.getBackgroundJobService().saveJob(context.getResponseId(), record);
+                    BackgroundJobRecord record = BackgroundJobRecord.from(context);
+                    return proxy.getBackgroundJobService().saveJob(context.getDialResponseId(), record);
                 })
                 .map(tree);
     }

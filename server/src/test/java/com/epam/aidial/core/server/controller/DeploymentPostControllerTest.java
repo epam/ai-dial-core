@@ -11,6 +11,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.log.LogContext;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
@@ -34,8 +35,10 @@ import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpHeaders;
+import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.HttpVersion;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import org.junit.jupiter.api.Disabled;
@@ -460,13 +463,17 @@ public class DeploymentPostControllerTest {
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(rateLimiter.increase(any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
 
         verify(rateLimiter).increase(eq(model), any(), any(), any(), any());
         verify(context).setTokenUsage(any(TokenUsage.class));
-        verify(logStore).save(eq(context));
+        verify(logStore).save(any(LogContext.class));
         verify(tokenStatsTracker).endSpan(eq(context));
         verify(bufferingReadStream).end(response);
     }
@@ -481,9 +488,14 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerResponse response = mock(HttpServerResponse.class);
         when(context.getResponse()).thenReturn(response);
+        when(response.getStatusCode()).thenReturn(HttpStatus.OK.getCode());
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
         when(tokenStatsTracker.getTokenStats(eq(context))).thenReturn(Future.succeededFuture(new TokenUsage()));
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
@@ -491,7 +503,7 @@ public class DeploymentPostControllerTest {
         verify(rateLimiter, never()).increase(any(), any(), any(), any(), any());
         verify(tokenStatsTracker).getTokenStats(eq(context));
         verify(context).setTokenUsage(any(TokenUsage.class));
-        verify(logStore).save(eq(context));
+        verify(logStore).save(any(LogContext.class));
         verify(tokenStatsTracker).endSpan(eq(context));
         verify(bufferingReadStream).end(response);
     }

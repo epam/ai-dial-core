@@ -8,9 +8,10 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.limiter.RateLimiter;
+import com.epam.aidial.core.server.log.LogContext;
+import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
-import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -26,6 +27,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RFuture;
@@ -58,6 +60,7 @@ public class BackgroundJobService {
     private final TokenStatsTracker tokenStatsTracker;
     private final ResponseMappingService responseMappingService;
     private final BackgroundJobPoller poller;
+    private final LogStore logStore;
     private final RScript script;
     private final RScoredSortedSet<String> schedule;
     private final String scheduleKey;
@@ -75,7 +78,8 @@ public class BackgroundJobService {
             TokenStatsTracker tokenStatsTracker,
             ResponseMappingService responseMappingService,
             BackgroundJobPoller poller,
-            Settings settings) {
+            Settings settings,
+            LogStore logStore) {
         this.prefix = prefix;
         this.settings = settings;
         this.vertx = vertx;
@@ -88,6 +92,7 @@ public class BackgroundJobService {
         this.tokenStatsTracker = tokenStatsTracker;
         this.responseMappingService = responseMappingService;
         this.poller = poller;
+        this.logStore = logStore;
         this.script = redis.getScript(StringCodec.INSTANCE);
         this.scheduleKey = "background_job_schedule:" + BlobStorageUtil.toStoragePath(prefix, "queue");
         this.schedule = redis.getScoredSortedSet(scheduleKey, StringCodec.INSTANCE);
@@ -95,7 +100,7 @@ public class BackgroundJobService {
 
     public void init() {
         schedulePoll();
-        vertx.setPeriodic(0, settings.getScanIntervalMs(), id -> taskExecutor.submit(this::scan));
+        taskExecutor.submit(this::scan);
     }
 
     private void schedulePoll() {
@@ -139,7 +144,6 @@ public class BackgroundJobService {
         if (result == null) {
             return Future.succeededFuture();
         }
-        TokenUsage usage = result.usage();
         return taskExecutor.submit(() -> {
             BackgroundJobRecord record = loadBackgroundJobRecord(dialId);
             if (record == null) {
@@ -153,7 +157,7 @@ public class BackgroundJobService {
                 return Future.succeededFuture();
             }
             return forceRemoveFromRedis(dialId)
-                    .compose(ignored -> processResult(dialId, record, mapping, usage));
+                    .compose(ignored -> processResult(dialId, record, mapping, result));
         });
     }
 
@@ -242,7 +246,7 @@ public class BackgroundJobService {
                                             long nextPollTime = System.currentTimeMillis() + backoff;
                                             return executeReschedule(dialId, stateKey, owner, nextPollTime, attempts + 1, 0);
                                         }
-                                        return completeAndProcess(dialId, stateKey, owner, record, mapping, result.usage());
+                                        return completeAndProcess(dialId, stateKey, owner, record, mapping, result);
                                     },
                                     error -> {
                                         int newErrors = errors + 1;
@@ -269,7 +273,7 @@ public class BackgroundJobService {
             long owner,
             BackgroundJobRecord record,
             ResponseMapping mapping,
-            TokenUsage usage) {
+            ResponsesApiClient.TerminalResult result) {
         return taskExecutor.submit(() -> resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId), EtagHeader.ANY))
                 .compose(deleted -> {
                     Future<Void> redisCleanup = executeComplete(dialId, stateKey, owner);
@@ -277,7 +281,7 @@ public class BackgroundJobService {
                         log.info("Background job {} already completed by another handler, skipping processing", dialId);
                         return redisCleanup;
                     }
-                    return redisCleanup.eventually(() -> processResult(dialId, record, mapping, usage));
+                    return redisCleanup.eventually(() -> processResult(dialId, record, mapping, result));
                 });
     }
 
@@ -369,7 +373,7 @@ public class BackgroundJobService {
     }
 
     private Future<Void> processResult(
-            String responseId, BackgroundJobRecord jobRecord, ResponseMapping responseMapping, TokenUsage usage) {
+            String responseId, BackgroundJobRecord jobRecord, ResponseMapping responseMapping, ResponsesApiClient.TerminalResult result) {
         Config config = configStore.get();
         Deployment deployment = config.selectDeployment(responseMapping.getDeploymentName());
 
@@ -380,14 +384,17 @@ public class BackgroundJobService {
                     String spanId = apiKeyData != null ? apiKeyData.getSpanId() : null;
 
                     Future<Void> future = Future.succeededFuture();
-                    if (deployment instanceof Model && usage != null) {
-                        future = rateLimiter.increase(deployment, responseMapping.getInitiatorBucket(), usage, null, null)
-                                .transform(result -> {
-                                    if (result.failed()) {
-                                        log.warn("Failed to increase limit", result.cause());
+                    if (deployment instanceof Model && result != null && result.usage() != null) {
+                        Buffer requestBody = Buffer.buffer(jobRecord.requestBody());
+                        Buffer responseBody = Buffer.buffer(result.body());
+                        future = rateLimiter.increase(
+                                deployment, responseMapping.getInitiatorBucket(), result.usage(), requestBody, responseBody)
+                                .transform(limitResult -> {
+                                    if (limitResult.failed()) {
+                                        log.warn("Failed to increase limit", limitResult.cause());
                                     }
                                     if (traceId != null && spanId != null) {
-                                        return tokenStatsTracker.updateModelStats(traceId, spanId, usage);
+                                        return tokenStatsTracker.updateModelStats(traceId, spanId, result.usage());
                                     }
                                     return Future.succeededFuture();
                                 });
@@ -396,6 +403,7 @@ public class BackgroundJobService {
                         future = future.compose(ignored -> tokenStatsTracker.endSpan(traceId));
                     }
                     future.eventually(() -> invalidatePerRequestKey(jobRecord.perRequestKey()))
+                            .onComplete(ignored -> logStore.save(LogContext.from(jobRecord, result)))
                             .onFailure(error -> log.error("Failed to finalize background job {}", responseId, error));
                 });
         return Future.succeededFuture();
@@ -478,6 +486,5 @@ public class BackgroundJobService {
         long jobTtlMs = TimeUnit.DAYS.toMillis(1);
         long leaseTimeoutMs = TimeUnit.MINUTES.toMillis(5);
         int maxParallelJobs = 100;
-        long scanIntervalMs = TimeUnit.MINUTES.toMillis(10);
     }
 }

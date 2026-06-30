@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientResponse;
@@ -41,8 +42,12 @@ public class ResponsesApiClient {
     }
 
     @Nullable
-    public static TerminalResult parseTerminalBody(ObjectNode tree) {
+    public static TerminalResult parseTerminalBody(Buffer body) {
         try {
+            JsonNode node = ProxyUtil.MAPPER.readTree(body.getBytes());
+            if (!(node instanceof ObjectNode tree)) {
+                throw new IllegalStateException("Response body is not a JSON object.");
+            }
             JsonNode statusNode = tree.path("status");
             if (!statusNode.isTextual() || !isTerminal(statusNode.asText())) {
                 return null;
@@ -50,11 +55,12 @@ public class ResponsesApiClient {
             JsonNode usageNode = tree.path("usage");
             TokenUsage usage = usageNode.isObject()
                     ? ProxyUtil.MAPPER.treeToValue(usageNode, TokenUsage.class) : null;
-            return new TerminalResult(usage);
+            return new TerminalResult(body, usage);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-    public record TerminalResult(TokenUsage usage) {}
+    public record TerminalResult(Buffer body, TokenUsage usage) {
+    }
 }

@@ -134,7 +134,7 @@ public class ResponseItemController implements Controller {
         if (operation != Operation.DELETE) {
             return Future.succeededFuture(mapping);
         }
-        return proxy.getBackgroundJobService().isJobActive(context.getResponseId())
+        return proxy.getBackgroundJobService().isJobActive(context.getDialResponseId())
                 .compose(active -> active
                         ? Future.failedFuture(new HttpException(HttpStatus.CONFLICT,
                                 "Cannot delete response while background job is in progress"))
@@ -142,7 +142,7 @@ public class ResponseItemController implements Controller {
     }
 
     private ResponseMapping loadMapping() {
-        ResponseMapping mapping = proxy.getResponseMappingService().getMapping(context.getResponseId());
+        ResponseMapping mapping = proxy.getResponseMappingService().getMapping(context.getDialResponseId());
         if (mapping == null) {
             throw notFoundException();
         }
@@ -193,17 +193,17 @@ public class ResponseItemController implements Controller {
                             .compose(rewritten -> {
                                 if (operation == Operation.DELETE) {
                                     return proxy.getTaskExecutor().submit(() -> {
-                                        proxy.getResponseMappingService().deleteMapping(context.getResponseId());
+                                        proxy.getResponseMappingService().deleteMapping(context.getDialResponseId());
                                         return null;
-                                    }).compose(ignored -> sendResponse(proxyResponse, rewritten.buffer()));
+                                    }).compose(ignored -> sendResponse(proxyResponse, rewritten));
                                 }
                                 if (operation == Operation.GET) {
-                                    ResponsesApiClient.TerminalResult terminalResult = tryParseTerminalResult(rewritten.object());
+                                    ResponsesApiClient.TerminalResult terminalResult = tryParseTerminalResult(rewritten);
                                     proxy.getBackgroundJobService()
-                                            .tryCompleteOnGet(context.getResponseId(), mapping, terminalResult)
-                                            .onFailure(e -> log.warn("Failed to complete background job on GET {}", context.getResponseId(), e));
+                                            .tryCompleteOnGet(context.getDialResponseId(), mapping, terminalResult)
+                                            .onFailure(e -> log.warn("Failed to complete background job on GET {}", context.getDialResponseId(), e));
                                 }
-                                return sendResponse(proxyResponse, rewritten.buffer());
+                                return sendResponse(proxyResponse, rewritten);
                             });
                 });
     }
@@ -219,29 +219,26 @@ public class ResponseItemController implements Controller {
         return serverResponse.end(body).mapEmpty();
     }
 
-    private ParsedBody rewriteId(Buffer body, String upstreamResponseId) {
+    private Buffer rewriteId(Buffer body, String upstreamResponseId) {
         if (body.length() == 0) {
-            return new ParsedBody(body, null);
+            return body;
         }
         JsonNode tree = JsonUtil.tryParse(body.getBytes());
         if (!(tree instanceof ObjectNode object)) {
-            return new ParsedBody(body, null);
+            return body;
         }
         JsonNode idNode = object.path("id");
         if (idNode.isTextual() && upstreamResponseId.equals(idNode.asText())) {
-            object.put("id", context.getResponseId());
+            object.put("id", context.getDialResponseId());
         }
-        return new ParsedBody(Buffer.buffer(JsonUtil.serialize(object)), object);
+        return Buffer.buffer(JsonUtil.serialize(object));
     }
 
-    private ResponsesApiClient.TerminalResult tryParseTerminalResult(ObjectNode object) {
-        if (object == null) {
-            return null;
-        }
+    private ResponsesApiClient.TerminalResult tryParseTerminalResult(Buffer body) {
         try {
-            return ResponsesApiClient.parseTerminalBody(object);
+            return ResponsesApiClient.parseTerminalBody(body);
         } catch (Exception e) {
-            log.warn("Failed to extract terminal result for background job {} on GET", context.getResponseId(), e);
+            log.warn("Failed to extract terminal result for background job {} on GET", context.getDialResponseId(), e);
             return null;
         }
     }

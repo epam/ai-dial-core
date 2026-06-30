@@ -26,6 +26,7 @@ import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSe
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
+import com.epam.aidial.core.server.log.LogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
@@ -38,6 +39,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -48,9 +50,11 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
+import javax.annotation.Nullable;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
+import java.util.Scanner;
 
 @Slf4j
 public class ResponsesController extends BaseDeploymentPostController {
@@ -300,14 +304,12 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    private Future<Void> finishNonStreamingResponse(HttpServerResponse response) {
+    private void finishNonStreamingResponse(HttpServerResponse response) {
         Buffer responseBody = context.getResponseBody();
-        if (context.isBackgroundJob() && context.getResponseId() != null) {
-            BackgroundJobRecord record = new BackgroundJobRecord(
-                    context.getProxyApiKeyData().getPerRequestKey(),
-                    context.isOriginalRequest());
-            proxy.getBackgroundJobService().saveJob(context.getResponseId(), record)
-                    .onSuccess(ignored -> proxy.getBackgroundJobService().startPolling(context.getResponseId()));
+        if (context.isBackgroundJob() && context.getDialResponseId() != null) {
+            BackgroundJobRecord record = BackgroundJobRecord.from(context);
+            proxy.getBackgroundJobService().saveJob(context.getDialResponseId(), record)
+                    .onSuccess(ignored -> proxy.getBackgroundJobService().startPolling(context.getDialResponseId()));
             response.end(responseBody);
         } else {
             collectTokenUsage(responseBody)
@@ -337,7 +339,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 String upstreamId = idNode.asText();
                 if (!context.isStoreResponse()) {
                     String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
-                    context.setResponseId(dialId);
+                    context.setDialResponseId(dialId);
                     object.put("id", dialId);
                     return Future.succeededFuture(Buffer.buffer(JsonUtil.serialize(object)));
                 }
@@ -351,7 +353,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 return proxy.getTaskExecutor()
                         .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
                         .map(dialId -> {
-                            context.setResponseId(dialId);
+                            context.setDialResponseId(dialId);
                             object.put("id", dialId);
                             return Buffer.buffer(JsonUtil.serialize(object));
                         });
@@ -367,10 +369,10 @@ public class ResponsesController extends BaseDeploymentPostController {
         context.setResponseBodyTimestamp(System.currentTimeMillis());
 
         Future<Void> completionFuture;
-        if (context.isBackgroundJob() && context.getResponseId() == null) {
+        if (context.isBackgroundJob() && context.getDialResponseId() == null) {
             completionFuture = collectTokenUsage(responseBody);
         } else {
-            completionFuture = proxy.getBackgroundJobService().finishStreamingJob(context.getResponseId())
+            completionFuture = proxy.getBackgroundJobService().finishStreamingJob(context.getDialResponseId())
                     .compose(deleted -> deleted ? collectTokenUsage(responseBody) : Future.succeededFuture());
         }
 
@@ -384,7 +386,10 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     private void completeProxyResponse(Runnable endResponse) {
         endResponse.run();
-        proxy.getLogStore().save(context);
+        String assembledStreamingResponse = isEventStreamResponse(context.getProxyResponse())
+                ? assembleResponsesApiResponse(context.getResponseBody())
+                : null;
+        proxy.getLogStore().save(LogContext.from(context, assembledStreamingResponse));
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
@@ -413,6 +418,44 @@ public class ResponsesController extends BaseDeploymentPostController {
                 error);
 
         sendRequest(); // try next
+    }
+
+    /**
+     * Assembles a Responses API SSE stream into a single JSON object by extracting the {@code response}
+     * payload from the last {@code response.completed} or {@code response.incomplete} event.
+     */
+    @Nullable
+    static String assembleResponsesApiResponse(@Nullable Buffer response) {
+        if (response == null) {
+            return null;
+        }
+        try (Scanner scanner = new Scanner(new ByteBufInputStream(response.getByteBuf()))) {
+            JsonNode terminalResponse = null;
+            scanner.useDelimiter("(^data: *|\n+data: *)");
+            while (scanner.hasNext()) {
+                String chunk = scanner.next();
+                JsonNode tree = ProxyUtil.MAPPER.readTree(chunk);
+                JsonNode typeNode = tree.path("type");
+                if (typeNode.isTextual()) {
+                    String type = typeNode.asText();
+                    if ("response.completed".equals(type) || "response.incomplete".equals(type)) {
+                        JsonNode responseNode = tree.get("response");
+                        if (responseNode != null) {
+                            terminalResponse = responseNode;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (terminalResponse == null) {
+                log.warn("no terminal event found in Responses API streaming response");
+                return "{}";
+            }
+            return ProxyUtil.convertToString(terminalResponse);
+        } catch (Throwable e) {
+            log.warn("Can't assemble Responses API streaming response", e);
+            return "{}";
+        }
     }
 
 }
