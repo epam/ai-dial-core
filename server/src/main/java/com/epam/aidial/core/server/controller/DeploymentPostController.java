@@ -53,10 +53,10 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
-import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Scanner;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_CACHE_POLICY;
 import static com.epam.aidial.core.server.Proxy.HEADER_UPSTREAM_ID;

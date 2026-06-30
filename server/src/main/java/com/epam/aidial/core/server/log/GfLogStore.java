@@ -213,23 +213,6 @@ public class GfLogStore implements LogStore {
         append(entry, "\"}}", false);
     }
 
-    private static void appendBody(LogEntry entry, Buffer buffer) {
-        if (buffer == null) {
-            return;
-        }
-        boolean largeBuffer = exceedLimit(buffer);
-        if (largeBuffer) {
-            buffer = buffer.slice(0, MAX_BODY_SIZE_BYTES);
-        }
-        byte[] bytes = buffer.getBytes();
-        String chars = new String(bytes, StandardCharsets.UTF_8); // not efficient, but ok for now
-        append(entry, chars, true);
-        if (largeBuffer) {
-            // append a special marker that entry is cut off due to its large size
-            append(entry, ">>", false);
-        }
-    }
-
     @VisibleForTesting
     static void append(LogEntry entry, String chars, boolean escape) {
         if (chars == null) {
@@ -338,6 +321,23 @@ public class GfLogStore implements LogStore {
             firstMember.setFalse();
         } else {
             append(entry, ",", false);
+        }
+    }
+
+    private static void appendBody(LogEntry entry, Buffer buffer) {
+        if (buffer == null) {
+            return;
+        }
+        boolean largeBuffer = exceedLimit(buffer);
+        if (largeBuffer) {
+            buffer = buffer.slice(0, MAX_BODY_SIZE_BYTES);
+        }
+        byte[] bytes = buffer.getBytes();
+        String chars = new String(bytes, StandardCharsets.UTF_8); // not efficient, but ok for now
+        append(entry, chars, true);
+        if (largeBuffer) {
+            // append a special marker that entry is cut off due to its large size
+            append(entry, ">>", false);
         }
     }
 
