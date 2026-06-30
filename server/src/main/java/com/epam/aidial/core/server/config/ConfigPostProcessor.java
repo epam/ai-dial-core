@@ -2,13 +2,18 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
+import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
+import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import lombok.extern.slf4j.Slf4j;
@@ -49,6 +54,7 @@ import javax.annotation.Nullable;
 public final class ConfigPostProcessor {
 
     private static final Pattern RESOURCE_KEY_PATTERN = Pattern.compile("^[A-Za-z0-9-_]+$");
+    private static final AuthSettingsValidatorFactory AUTH_SETTINGS_VALIDATOR_FACTORY = new AuthSettingsValidatorFactory();
 
     private ConfigPostProcessor() {
     }
@@ -264,7 +270,52 @@ public final class ConfigPostProcessor {
             }
             Application application = entry.getValue();
             application.setName(name);
+            validateExternalServices(application);
             log.debug("Loading {}", application);
+        }
+    }
+
+    /**
+     * Drops external-service definitions with missing/invalid {@code auth_settings} from a config-loaded
+     * application (config is admin-edited, so we drop-and-log rather than fail the whole load).
+     */
+    private static void validateExternalServices(Application application) {
+        Map<String, ExternalService> services = application.getExternalServices();
+        if (services == null || services.isEmpty()) {
+            return;
+        }
+        Iterator<Map.Entry<String, ExternalService>> iterator = services.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, ExternalService> entry = iterator.next();
+            String serviceId = entry.getKey();
+            ExternalService service = entry.getValue();
+            if (!isValidResourceKey(serviceId)) {
+                log.error("Dropping external service '{}' on application '{}': id must contain only letters, digits, '-' or '_'",
+                        serviceId, application.getName());
+                iterator.remove();
+                continue;
+            }
+            ResourceAuthSettings authSettings = service == null ? null : service.getAuthSettings();
+            if (authSettings == null || authSettings.getAuthenticationType() == null) {
+                log.error("Dropping external service '{}' on application '{}': auth_settings or authentication_type missing",
+                        serviceId, application.getName());
+                iterator.remove();
+                continue;
+            }
+            AuthSettingsValidator validator = AUTH_SETTINGS_VALIDATOR_FACTORY.getValidator(authSettings.getAuthenticationType());
+            if (validator == null) {
+                log.error("Dropping external service '{}' on application '{}': unknown authentication_type {}",
+                        serviceId, application.getName(), authSettings.getAuthenticationType());
+                iterator.remove();
+                continue;
+            }
+            try {
+                validator.validate(authSettings, ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES);
+            } catch (RuntimeException e) {
+                log.error("Dropping external service '{}' on application '{}': invalid auth_settings: {}",
+                        serviceId, application.getName(), e.getMessage());
+                iterator.remove();
+            }
         }
     }
 

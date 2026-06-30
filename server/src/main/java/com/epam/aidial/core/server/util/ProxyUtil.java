@@ -184,6 +184,31 @@ public class ProxyUtil {
         }
     }
 
+    /**
+     * Returns true if the JSON payload is an object containing any of the given top-level field names.
+     * Lets a write path tell "field omitted" apart from "field sent (even empty)", which a deserialized
+     * POJO cannot. Returns false for blank or non-object payloads.
+     */
+    public static boolean hasTopLevelField(String payload, String... fieldNames) {
+        if (payload == null || payload.isEmpty()) {
+            return false;
+        }
+        try {
+            JsonNode node = MAPPER.readTree(payload);
+            if (node == null || !node.isObject()) {
+                return false;
+            }
+            for (String fieldName : fieldNames) {
+                if (node.has(fieldName)) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (JsonProcessingException e) {
+            return false;
+        }
+    }
+
     public static <T> boolean processChain(T item, List<BaseRequestFunction<T>> chain) {
         boolean result = false;
         for (BaseRequestFunction<T> fn : chain) {
