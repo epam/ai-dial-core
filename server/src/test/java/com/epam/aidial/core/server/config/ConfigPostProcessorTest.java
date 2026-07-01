@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
@@ -89,6 +90,25 @@ public class ConfigPostProcessorTest {
         assertEquals("shared", capturedKey.get());
         assertTrue(config.getModels().containsKey("shared"));
         assertFalse(config.getApplications().containsKey("shared"));
+    }
+
+    @Test
+    void testPreservesAllInterfacesIncludingUnknownKeys() {
+        Config config = newMutableConfig();
+
+        // Models, applications and interceptors all keep their declared interfaces verbatim — config
+        // processing never strips keys (unknown/forward-compatible keys simply never resolve to a route).
+        Model model = new Model();
+        Map<String, DeploymentInterface> interfaces = new LinkedHashMap<>();
+        interfaces.put("openaiChatCompletions", new DeploymentInterface("http://model"));
+        interfaces.put("openaiResponses", new DeploymentInterface("http://model-responses"));
+        interfaces.put("anthropicMessages", new DeploymentInterface("http://model-anthropic"));
+        model.setInterfaces(interfaces);
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.process(config, null);
+
+        assertEquals(3, config.getModels().get("model").getInterfaces().size());
     }
 
     private static Config newMutableConfig() {

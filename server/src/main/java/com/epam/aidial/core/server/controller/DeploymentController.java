@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.ToolSet;
@@ -143,7 +144,7 @@ public class DeploymentController {
                 case CHAT_IFACE: {
                     plan.useModels = true;
                     plan.useApplications = true;
-                    plan.appFilters.add(app -> app.getEndpoint() != null);
+                    plan.appFilters.add(app -> app.supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS));
                     plan.modelFilters.add(model -> model.getType() == ModelType.CHAT);
                     break;
                 }
@@ -248,6 +249,7 @@ public class DeploymentController {
                 } else {
                     interfaces.add(EMBEDDING_IFACE);
                 }
+                interfaces.addAll(supportedInterfaces(model));
                 deployment.setInterfaces(interfaces);
                 deployments.add(deployment);
             }
@@ -261,12 +263,13 @@ public class DeploymentController {
         if (app.getMcp() != null) {
             interfaces.add(MCP_IFACE);
         }
-        if (app.getEndpoint() != null) {
+        if (app.supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS)) {
             interfaces.add(CHAT_IFACE);
         }
         if (app.getViewerUrl() != null) {
             interfaces.add(CUSTOM_UI_IFACE);
         }
+        interfaces.addAll(supportedInterfaces(app));
         applicationData.setInterfaces(interfaces);
         return applicationData;
     }
@@ -277,6 +280,21 @@ public class DeploymentController {
         toolSetData.setAuthSettings(null);
         toolSetData.setInterfaces(List.of(MCP_IFACE));
         return toolSetData;
+    }
+
+    /**
+     * Typed interface types ({@link InterfaceType}) the deployment exposes, via either the new
+     * {@code interfaces} map or a legacy endpoint. Embedding models also expose
+     * {@code openaiChatCompletions} since their endpoint is registered under that interface key.
+     */
+    private static List<String> supportedInterfaces(Deployment deployment) {
+        List<String> result = new ArrayList<>();
+        for (InterfaceType type : InterfaceType.values()) {
+            if (deployment.supportsInterface(type)) {
+                result.add(type.getValue());
+            }
+        }
+        return result;
     }
 
     private static class ExecutionPlan {

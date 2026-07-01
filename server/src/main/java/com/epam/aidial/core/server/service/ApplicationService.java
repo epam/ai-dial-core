@@ -198,17 +198,11 @@ public class ApplicationService {
             return;
         }
         if (existing == null || existing.getFunction() == null) {
-            if (isPublicOrReview(resource)) {
-                throw new HttpException(HttpStatus.CONFLICT, "The application function cannot be created in public/review bucket");
-            }
             function.setId(UrlUtil.encodePathSegment(idGenerator.get()));
             function.setAuthorBucket(resource.getBucketName());
             function.setStatus(Application.Function.Status.UNDEPLOYED);
             function.setTargetFolder(encodeTargetFolder(resource, function.getId()));
         } else {
-            if (isPublicOrReview(resource) && !function.getSourceFolder().equals(existing.getFunction().getSourceFolder())) {
-                throw new HttpException(HttpStatus.CONFLICT, "The application function source folder cannot be updated in public/review bucket");
-            }
             application.setEndpoint(existing.getEndpoint());
             application.getFeatures().setRateEndpoint(existing.getFeatures().getRateEndpoint());
             application.getFeatures().setTokenizeEndpoint(existing.getFeatures().getTokenizeEndpoint());

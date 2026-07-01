@@ -48,6 +48,7 @@ An object containing parameters for each [model](#models).
 
   DIAL Core rewrites upstream response IDs to stable `resp_dial_*` identifiers and uses sticky routing to ensure follow-up requests are forwarded to the same upstream instance that handled the original request. `previous_response_id`, conversations, prompts, and files are not supported.
 * `responsesDefaults`: Default parameters applied if a request doesn't contain them in an OpenAI Responses API call. Works the same way as `defaults` for the chat completions API.
+* `interfaces`: An alternative to the flat `endpoint`/`responsesEndpoint` fields for declaring routing targets, keyed by interface type. Both shapes are first-class — pick whichever you prefer per model. Refer to [models.<model_name>.interfaces](#modelsmodel_nameinterfaces).
 * `interceptors`: A list of interceptors to be triggered for the given model. Refer to [Interceptors](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/6.interceptors.md) to learn more.
 * `fieldsHashingOrder`: A list of chat completion request components that defines an order in which they are used to compute a hash of the request. The components of the request are identified by strings `prefix.body.tools` and `prefix.body.messages`. The default value of the parameter is ["prefix.body.tools", "prefix.body.messages"], meaning the hash is first computed for the tools definitions, then extended with the hash of the messages. It reflects the relative order of tools and messages components when they are converted to tokens and fed into a typical LLM. The hash is used uniquely identify prefixes of the request that are marked by [cache breakpoints](https://docs.dialx.ai/tutorials/developers/prompt-caching). It enables DIAL Core to redirect independent requests that are sharing the same prefix to the same upstream endpoint. This is essential to enable context caching feature of LLM since their caching scope is limited to a simple upstream endpoint.
 * `features`: An object with the model features that define optional capabilities of the model. Refer to [models.<model_name>.features](#modelsmodel_namefeatures).
@@ -133,6 +134,40 @@ An object containing parameters for each [model](#models).
             "userRoles": ["role3"]
         }
     },
+```
+
+#### models.<model_name>.interfaces
+
+An optional, typed alternative to the flat `endpoint`/`responsesEndpoint` fields. Both shapes are first-class and fully supported — choose whichever you prefer per model. There is no migration between them in either direction, and declaring `interfaces` never rewrites or removes the legacy fields.
+
+The two shapes route differently:
+
+* `endpoint`/`responsesEndpoint` are forwarded **verbatim** — the configured URL is used as-is and the ingress path is not appended.
+* An `interfaces` entry declares a `base_url`, and DIAL Core forwards each request to `base_url` + **the exact ingress path it was received on** (e.g. `POST /openai/v1/responses` is routed to `<base_url>/openai/v1/responses`). A trailing slash on `base_url` is normalized.
+
+If both `interfaces` and a legacy field are declared for the same interface type, `interfaces` takes precedence; the legacy field is left untouched in config and ignored for routing.
+
+Supported interface types for models:
+
+* `openaiChatCompletions`: the OpenAI deployments POST family (`chat/completions`, `completions`, `embeddings`). Peer of `endpoint`.
+* `openaiResponses`: the OpenAI Responses API. Peer of `responsesEndpoint`.
+
+Each value is an object with a single field:
+
+* `base_url`: The model adapter root that the matching ingress path is appended to.
+
+**Example**
+
+```json
+"models": {
+    "gpt-4-via-interfaces": {
+        "type": "chat",
+        "interfaces": {
+            "openaiChatCompletions": { "base_url": "http://localhost:7005" },
+            "openaiResponses": { "base_url": "http://localhost:7005" }
+        }
+    }
+}
 ```
 
 #### models.<model_name>.limits
