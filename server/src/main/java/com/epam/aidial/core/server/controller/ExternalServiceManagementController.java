@@ -63,9 +63,11 @@ public class ExternalServiceManagementController {
 
     public Future<?> listExternalServices(String appId) {
         taskExecutor.submit(() -> {
-            ResolvedApp resolved = resolveAndAuthorize(appId);
+            ResolvedApp resolved = resolveApp(appId);
+            Map<String, ExternalService> services = canManageInline(resolved)
+                    ? resolved.application.getExternalServices()
+                    : listUserAuthored(resolved, appId);
             List<ExternalServiceData> result = new ArrayList<>();
-            Map<String, ExternalService> services = resolved.application.getExternalServices();
             if (services != null) {
                 services.forEach((id, service) -> result.add(toData(appId, id, service, true)));
             }
@@ -77,12 +79,26 @@ public class ExternalServiceManagementController {
 
     public Future<?> getExternalService(String appId, String serviceId) {
         taskExecutor.submit(() -> {
-            ResolvedApp resolved = resolveAndAuthorize(appId);
-            ExternalService service = getService(resolved.application, serviceId);
+            ResolvedApp resolved = resolveApp(appId);
+            ExternalService service;
+            if (canManageInline(resolved)) {
+                service = getService(resolved.application, serviceId);
+            } else {
+                requireUserAuthoringAllowed(resolved);
+                service = userExternalServiceService.get(context.getUserId(), appId, serviceId);
+                if (service == null) {
+                    throw new ResourceNotFoundException("External service '%s' not found".formatted(serviceId));
+                }
+            }
             return toData(appId, serviceId, service, true);
         }).onSuccess(data -> context.respond(HttpStatus.OK, data))
                 .onFailure(error -> respondError("Can't get external service", error));
         return Future.succeededFuture();
+    }
+
+    private Map<String, ExternalService> listUserAuthored(ResolvedApp resolved, String appId) {
+        requireUserAuthoringAllowed(resolved);
+        return userExternalServiceService.list(context.getUserId(), appId);
     }
 
     public Future<?> putExternalService(String appId, String serviceId) {
@@ -132,12 +148,6 @@ public class ExternalServiceManagementController {
         return Future.succeededFuture();
     }
 
-    private ResolvedApp resolveAndAuthorize(String appId) {
-        ResolvedApp resolved = resolveApp(appId);
-        requireManageAccess(resolved);
-        return resolved;
-    }
-
     private ResolvedApp resolveApp(String appId) {
         Deployment deployment = context.getConfig().selectDeployment(appId);
         if (deployment instanceof Application configApp) {
@@ -164,15 +174,6 @@ public class ExternalServiceManagementController {
             return accessService.hasAdminAccess(context);
         }
         return accessService.hasAdminAccess(context) || accessService.hasWriteAccess(resolved.descriptor, context);
-    }
-
-    private void requireManageAccess(ResolvedApp resolved) {
-        if (canManageInline(resolved)) {
-            return;
-        }
-        throw new PermissionDeniedException(resolved.staticApp
-                ? "Only administrators can manage external services of config applications"
-                : "Admin access or write permission on the application is required");
     }
 
     private void requireUserAuthoringAllowed(ResolvedApp resolved) {

@@ -44,6 +44,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import java.net.ConnectException;
 import java.net.http.HttpConnectTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -166,7 +167,9 @@ public class ResourceController extends AccessControlBaseController {
             ResourceItemMetadata meta = result.getKey();
 
             Application application = result.getValue();
-            // Mirror the toolset raw GET (getToolsetData): enrich status, then strip secrets.
+            // Mirror the toolset raw GET (getToolsetData): overlay the caller's own user-authored
+            // services, enrich status, then strip secrets.
+            overlayUserAuthoredServices(descriptor, application);
             enrichExternalServiceStatuses(descriptor, application);
             clearExternalServiceSecrets(application);
             String body = hasWriteAccess
@@ -176,6 +179,26 @@ public class ResourceController extends AccessControlBaseController {
             return Pair.of(meta, body);
 
         });
+    }
+
+    // Inline (admin-authored) definitions take precedence, mirroring the credential resolver. Secrets are
+    // stripped downstream by clearExternalServiceSecrets, so the decrypted user-authored secret never leaks.
+    private void overlayUserAuthoredServices(ResourceDescriptor descriptor, Application application) {
+        if (!application.isAllowUserExternalServices() || context.getUserId() == null) {
+            return;
+        }
+        String appPart = descriptor.getDecodedUrl().substring("applications/".length());
+        Map<String, ExternalService> userServices =
+                proxy.getUserExternalServiceService().list(context.getUserId(), appPart);
+        if (userServices.isEmpty()) {
+            return;
+        }
+        Map<String, ExternalService> merged = new LinkedHashMap<>();
+        if (application.getExternalServices() != null) {
+            merged.putAll(application.getExternalServices());
+        }
+        userServices.forEach(merged::putIfAbsent);
+        application.setExternalServices(merged);
     }
 
     private void enrichExternalServiceStatuses(ResourceDescriptor descriptor, Application application) {

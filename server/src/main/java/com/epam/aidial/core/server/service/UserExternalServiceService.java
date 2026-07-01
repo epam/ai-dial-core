@@ -7,6 +7,9 @@ import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionSe
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.data.NodeType;
+import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -19,7 +22,9 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * User-authored external-service definitions (design §9/§10): each is its own resource in the author's
@@ -28,6 +33,8 @@ import java.util.List;
  */
 @RequiredArgsConstructor
 public class UserExternalServiceService {
+
+    private static final int LIST_PAGE_SIZE = 1000;
 
     private final ResourceService resourceService;
     private final ResourceAuthSettingsEncryptionService secretEncryptionService;
@@ -40,6 +47,16 @@ public class UserExternalServiceService {
         parentFolders.add("applications");
         parentFolders.addAll(Arrays.asList(appPart.split(ResourceDescriptor.PATH_SEPARATOR)));
         return new ResourceDescriptor(ResourceTypes.EXTERNAL_SERVICE, serviceId, parentFolders, bucketName, bucketLocation, false);
+    }
+
+    private ResourceDescriptor folderDescriptor(String ownerSub, String appPart) {
+        String bucketLocation = BucketBuilder.USER_BUCKET_PATTERN.formatted(ownerSub);
+        String bucketName = bucketEncryptionService.encrypt(bucketLocation);
+        List<String> segments = new ArrayList<>();
+        segments.add("applications");
+        segments.addAll(Arrays.asList(appPart.split(ResourceDescriptor.PATH_SEPARATOR)));
+        String name = segments.remove(segments.size() - 1);
+        return new ResourceDescriptor(ResourceTypes.EXTERNAL_SERVICE, name, segments, bucketName, bucketLocation, true);
     }
 
     public ExternalService put(String ownerSub, String appPart, String serviceId, ExternalService service, String author) {
@@ -70,6 +87,32 @@ public class UserExternalServiceService {
         ExternalService service = ProxyUtil.convertToObject(stored.getValue(), ExternalService.class);
         decryptSecret(resource.getAbsoluteFilePath(), new BucketInfo(resource.getBucketName(), resource.getBucketLocation()), service);
         return service;
+    }
+
+    /** Lists and decrypts all user-authored definitions the owner has for this application (id → definition). */
+    public Map<String, ExternalService> list(String ownerSub, String appPart) {
+        ResourceDescriptor folder = folderDescriptor(ownerSub, appPart);
+        Map<String, ExternalService> result = new LinkedHashMap<>();
+        String token = null;
+        do {
+            ResourceFolderMetadata metadata = resourceService.getFolderMetadata(folder, token, LIST_PAGE_SIZE, false);
+            if (metadata == null) {
+                break;
+            }
+            List<? extends MetadataBase> items = metadata.getItems();
+            if (items != null) {
+                for (MetadataBase item : items) {
+                    if (item.getNodeType() == NodeType.ITEM) {
+                        ExternalService service = get(ownerSub, appPart, item.getName());
+                        if (service != null) {
+                            result.put(item.getName(), service);
+                        }
+                    }
+                }
+            }
+            token = metadata.getNextToken();
+        } while (token != null);
+        return result;
     }
 
     public void delete(String ownerSub, String appPart, String serviceId) {

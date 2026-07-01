@@ -382,6 +382,103 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         assertEquals(404, signIn.status(), () -> signIn.body());
     }
 
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testUserAuthoredServiceReadableViaManagementGet() throws Exception {
+        assertEquals(200, send(HttpMethod.PUT, USER_SVC_PUT, null, USER_SVC_BODY, "authorization", "user").status());
+
+        // Before Phase 2 the author got 403 here; now they can read back their own definition.
+        Response get = send(HttpMethod.GET, USER_SVC_PUT, null, "", "authorization", "user");
+        assertEquals(200, get.status(), () -> get.body());
+        JsonNode body = ProxyUtil.MAPPER.readTree(get.body());
+        assertEquals("myapi", body.get("id").asText());
+        assertEquals("My API", body.get("display_name").asText());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testUserAuthoredServiceListedViaManagement() throws Exception {
+        assertEquals(200, send(HttpMethod.PUT, USER_SVC_PUT, null, USER_SVC_BODY, "authorization", "user").status());
+
+        Response list = send(HttpMethod.GET, "/v1/applications/user-services-app/external-services",
+                null, "", "authorization", "user");
+        assertEquals(200, list.status(), () -> list.body());
+        JsonNode arr = ProxyUtil.MAPPER.readTree(list.body());
+        assertTrue(arr.isArray(), () -> list.body());
+        assertEquals(1, arr.size(), () -> list.body());
+        assertEquals("myapi", arr.get(0).get("id").asText());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testManagementReadIsolatedFromInlineAdmin() throws Exception {
+        assertEquals(200, send(HttpMethod.PUT, USER_SVC_PUT, null, USER_SVC_BODY, "authorization", "user").status());
+
+        // Admin manages the app's inline definitions (none here); the author's private overlay is invisible.
+        Response adminList = send(HttpMethod.GET, "/v1/applications/user-services-app/external-services",
+                null, "", "authorization", "admin");
+        assertEquals(200, adminList.status(), () -> adminList.body());
+        assertEquals(0, ProxyUtil.MAPPER.readTree(adminList.body()).size(), () -> adminList.body());
+
+        Response adminGet = send(HttpMethod.GET, USER_SVC_PUT, null, "", "authorization", "admin");
+        assertEquals(404, adminGet.status(), () -> adminGet.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testManagementGetDeniedWhenFlagOff() {
+        // app-with-services does not enable allow_user_external_services → non-privileged read is refused.
+        Response get = send(HttpMethod.GET, "/v1/applications/app-with-services/external-services/salesforce",
+                null, "", "authorization", "user");
+        assertEquals(403, get.status(), () -> get.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testUserAuthoredServiceInDeploymentView() throws Exception {
+        assertEquals(200, send(HttpMethod.PUT, USER_SVC_PUT, null, USER_SVC_BODY, "authorization", "user").status());
+
+        Response deployment = send(HttpMethod.GET, "/openai/applications/user-services-app", null, "", "authorization", "user");
+        assertEquals(200, deployment.status(), () -> deployment.body());
+        JsonNode services = ProxyUtil.MAPPER.readTree(deployment.body()).get("external_services");
+        assertNotNull(services, () -> deployment.body());
+        assertNotNull(services.get("myapi"), () -> deployment.body());
+        assertEquals("My API", services.get("myapi").get("display_name").asText());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testUserAuthoredServiceInRawResourceGet() throws Exception {
+        // Admin publishes a public app that opts into user-authored services.
+        Response apply = send(HttpMethod.POST, "/v1/admin/apply", null, """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Application",
+                      "name": "raw-user-svc-app",
+                      "spec": {
+                        "endpoint": "http://localhost:7001/v1/x",
+                        "display_name": "Raw User Svc App",
+                        "allow_user_external_services": true
+                      }
+                    }
+                  ]
+                }
+                """, "authorization", "admin");
+        assertEquals(200, apply.status(), () -> apply.body());
+
+        String appId = "public/raw-user-svc-app";
+        assertEquals(200, send(HttpMethod.PUT, "/v1/applications/" + appId + "/external-services/myapi",
+                null, USER_SVC_BODY, "authorization", "user").status());
+
+        Response raw = send(HttpMethod.GET, "/v1/applications/" + appId, null, "", "authorization", "user");
+        assertEquals(200, raw.status(), () -> raw.body());
+        JsonNode services = ProxyUtil.MAPPER.readTree(raw.body()).get("external_services");
+        assertNotNull(services, () -> raw.body());
+        assertNotNull(services.get("myapi"), () -> raw.body());
+        assertEquals("My API", services.get("myapi").get("display_name").asText());
+    }
+
     private Response obo(String url, String ownerSub, String apiKeyValue) {
         return send(HttpMethod.POST, "/v1/ops/external-service/obo-credentials", null,
                 "{\"url\":\"" + url + "\",\"owner_sub\":\"" + ownerSub + "\"}",

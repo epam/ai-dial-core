@@ -21,6 +21,7 @@ import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.service.UserExternalServiceService;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -51,6 +52,7 @@ public class ApplicationController {
 
     private final DeploymentService deploymentService;
     private final ApplicationSchemaService applicationSchemaService;
+    private final UserExternalServiceService userExternalServiceService;
 
     private final DeploymentService.DeploymentExtractor deploymentExtractor;
 
@@ -64,6 +66,7 @@ public class ApplicationController {
         this.resourceAuthSettingsService = context.getProxy().getResourceAuthSettingsService();
         this.deploymentService = context.getProxy().getDeploymentService();
         this.applicationSchemaService = context.getProxy().getApplicationSchemaService();
+        this.userExternalServiceService = context.getProxy().getUserExternalServiceService();
         this.deploymentExtractor = new ApplicationDeploymentExtractor(accessService, applicationService, applicationSchemaService);
         this.taskExecutor = context.getProxy().getTaskExecutor();
     }
@@ -80,8 +83,10 @@ public class ApplicationController {
             }
             Application modified = applicationSchemaService.modifySchemaRichApplication(application, !applicationRequestInfoAboutItSelf);
             ApplicationData data = mapApplication(modified);
-            // Single-app GET enriches per-user sign-in status (one credential lookup per service).
-            // The listing skips this to avoid N×M lookups — it returns the definitions only.
+            // Single-app GET overlays the caller's own user-authored services and enriches per-user
+            // sign-in status (one credential lookup per service). The listing skips both to avoid
+            // N×M lookups — it returns the inline definitions only.
+            overlayUserAuthoredServices(data, application);
             enrichExternalServiceStatuses(data);
             return data;
         })
@@ -314,17 +319,45 @@ public class ApplicationController {
         }
         Map<String, ExternalService> views = new LinkedHashMap<>();
         source.forEach((id, service) -> {
-            if (service == null) {
-                return;
+            if (service != null) {
+                views.put(id, toSafeView(service));
             }
-            ResourceAuthSettings safe = service.getAuthSettings() == null ? null
-                    : service.getAuthSettings().toBuilder().clientSecret(null).codeVerifier(null).build();
-            views.put(id, new ExternalService()
-                    .setDisplayName(service.getDisplayName())
-                    .setDescription(service.getDescription())
-                    .setAuthSettings(safe));
         });
         return views;
+    }
+
+    private static ExternalService toSafeView(ExternalService service) {
+        ResourceAuthSettings safe = service.getAuthSettings() == null ? null
+                : service.getAuthSettings().toBuilder().clientSecret(null).codeVerifier(null).build();
+        return new ExternalService()
+                .setDisplayName(service.getDisplayName())
+                .setDescription(service.getDescription())
+                .setAuthSettings(safe);
+    }
+
+    // Overlays the caller's own user-authored services (secret-stripped) for apps that permit them.
+    // Inline (admin-authored) definitions take precedence, mirroring the credential resolver.
+    private void overlayUserAuthoredServices(ApplicationData data, Application application) {
+        if (!application.isAllowUserExternalServices() || context.getUserId() == null) {
+            return;
+        }
+        String appPart = data.getId();
+        if (appPart == null) {
+            return;
+        }
+        if (appPart.startsWith("applications/")) {
+            appPart = appPart.substring("applications/".length());
+        }
+        Map<String, ExternalService> userServices = userExternalServiceService.list(context.getUserId(), appPart);
+        if (userServices.isEmpty()) {
+            return;
+        }
+        Map<String, ExternalService> merged = new LinkedHashMap<>();
+        if (data.getExternalServices() != null) {
+            merged.putAll(data.getExternalServices());
+        }
+        userServices.forEach((id, service) -> merged.putIfAbsent(id, toSafeView(service)));
+        data.setExternalServices(merged);
     }
 
     private void enrichExternalServiceStatuses(ApplicationData data) {
