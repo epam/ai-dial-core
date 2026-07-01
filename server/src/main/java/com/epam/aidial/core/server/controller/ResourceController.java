@@ -167,8 +167,6 @@ public class ResourceController extends AccessControlBaseController {
             ResourceItemMetadata meta = result.getKey();
 
             Application application = result.getValue();
-            // Mirror the toolset raw GET (getToolsetData): overlay the caller's own user-authored
-            // services, enrich status, then strip secrets.
             overlayUserAuthoredServices(descriptor, application);
             enrichExternalServiceStatuses(descriptor, application);
             clearExternalServiceSecrets(application);

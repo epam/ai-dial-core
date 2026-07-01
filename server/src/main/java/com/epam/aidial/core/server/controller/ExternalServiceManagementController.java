@@ -174,7 +174,6 @@ public class ExternalServiceManagementController {
         return new ResolvedApp(application, descriptor, result.getKey().getAuthor(), false);
     }
 
-    // Admin/app-owner manages the app's inline (admin-authored) external services.
     private boolean canManageInline(ResolvedApp resolved) {
         if (resolved.staticApp) {
             return accessService.hasAdminAccess(context);

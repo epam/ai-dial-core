@@ -335,7 +335,6 @@ public class ApplicationController {
                 .setAuthSettings(safe);
     }
 
-    // Overlays the caller's own user-authored services (secret-stripped) for apps that permit them.
     // Inline (admin-authored) definitions take precedence, mirroring the credential resolver.
     private void overlayUserAuthoredServices(ApplicationData data, Application application) {
         if (!application.isAllowUserExternalServices() || context.getUserId() == null) {

@@ -230,7 +230,6 @@ public class ExternalServiceCredentialsController {
                     try {
                         ResolvedExternalService resolved = resolveExternalService(request.getUrl(), request.getOwnerSub());
 
-                        // Actor gate: the caller's identity must match the owning app's app_identity.
                         if (!callerMatchesAppIdentity(resolved.application.getAppIdentity())) {
                             throw new PermissionDeniedException("Caller identity does not match the application's app_identity");
                         }
@@ -245,7 +244,6 @@ public class ExternalServiceCredentialsController {
                         if (credentials == null) {
                             throw new ResourceNotFoundException("Credentials for %s not found".formatted(request.getUrl()));
                         }
-                        // On-behalf-of issuance requires the owner's recorded offline-usage consent.
                         if (!credentials.isOfflineUsageConsent()) {
                             throw new PermissionDeniedException("Offline usage consent required for on-behalf-of retrieval");
                         }
@@ -338,7 +336,6 @@ public class ExternalServiceCredentialsController {
             } catch (IllegalArgumentException e) {
                 throw new ResourceNotFoundException("Application not found: " + appPart);
             }
-            // Decrypt external-service secrets (client_secret) for runtime OAuth token exchange/refresh.
             application = applicationService.getApplicationWithDecryptedSecrets(appDescriptor).getValue();
             if (application == null) {
                 throw new ResourceNotFoundException("Application not found: " + appPart);
