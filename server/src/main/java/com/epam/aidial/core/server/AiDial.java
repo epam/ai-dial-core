@@ -48,7 +48,6 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
-import com.epam.aidial.core.server.service.BackgroundJobPoller;
 import com.epam.aidial.core.server.service.BackgroundJobService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -319,13 +318,12 @@ public class AiDial {
                     complexResourceService, encryptionService, complexResourceSweepSettings);
 
             ResponsesApiClient responsesApiClient = new ResponsesApiClient(client, clientOptions);
-            BackgroundJobPoller backgroundJobPoller = new BackgroundJobPoller(configStore, upstreamRouteProvider, responsesApiClient);
             BackgroundJobService.Settings backgroundJobSettings =
                     Json.decodeValue(settings("backgroundJob").toBuffer(), BackgroundJobService.Settings.class);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(), resourceService, taskExecutor,
                     configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
-                    responseMappingService, backgroundJobPoller, backgroundJobSettings, logStore);
+                    responseMappingService, upstreamRouteProvider, responsesApiClient, backgroundJobSettings, logStore);
             backgroundJobService.init();
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,

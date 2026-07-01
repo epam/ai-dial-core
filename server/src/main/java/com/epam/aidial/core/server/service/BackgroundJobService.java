@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
@@ -12,6 +13,7 @@ import com.epam.aidial.core.server.log.LogContext;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
+import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -28,6 +30,7 @@ import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpMethod;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RFuture;
@@ -59,7 +62,8 @@ public class BackgroundJobService {
     private final RateLimiter rateLimiter;
     private final TokenStatsTracker tokenStatsTracker;
     private final ResponseMappingService responseMappingService;
-    private final BackgroundJobPoller poller;
+    private final UpstreamRouteProvider upstreamRouteProvider;
+    private final ResponsesApiClient client;
     private final LogStore logStore;
     private final RScript script;
     private final RScoredSortedSet<String> schedule;
@@ -77,7 +81,8 @@ public class BackgroundJobService {
             RateLimiter rateLimiter,
             TokenStatsTracker tokenStatsTracker,
             ResponseMappingService responseMappingService,
-            BackgroundJobPoller poller,
+            UpstreamRouteProvider upstreamRouteProvider,
+            ResponsesApiClient client,
             Settings settings,
             LogStore logStore) {
         this.prefix = prefix;
@@ -91,7 +96,8 @@ public class BackgroundJobService {
         this.rateLimiter = rateLimiter;
         this.tokenStatsTracker = tokenStatsTracker;
         this.responseMappingService = responseMappingService;
-        this.poller = poller;
+        this.upstreamRouteProvider = upstreamRouteProvider;
+        this.client = client;
         this.logStore = logStore;
         this.script = redis.getScript(StringCodec.INSTANCE);
         this.scheduleKey = "background_job_schedule:" + BlobStorageUtil.toStoragePath(prefix, "queue");
@@ -226,6 +232,34 @@ public class BackgroundJobService {
         return Map.entry(record, mapping);
     }
 
+    @VisibleForTesting
+    Future<ResponsesApiClient.TerminalResult> pollMapping(ResponseMapping mapping) {
+        Config config = configStore.get();
+        Deployment deployment = config.selectDeployment(mapping.getDeploymentName());
+        if (deployment == null) {
+            return Future.failedFuture("Deployment {} not found");
+        }
+        if (deployment.getResponsesEndpoint() == null) {
+            return Future.failedFuture("Deployment " + deployment.getName() + " does not have a responses endpoint");
+        }
+        Upstream upstream;
+        try {
+            upstream = upstreamRouteProvider.get(deployment, null, mapping.getUpstreamKey()).next();
+        } catch (Exception e) {
+            return Future.failedFuture("Failed to get upstream for deployment " + deployment.getName()
+                    + " and upstream key " + mapping.getUpstreamKey() + ": " + e.getMessage());
+        }
+        String targetUrl = deployment.getResponsesEndpoint() + "/" + mapping.getUpstreamResponseId();
+        return client.send(targetUrl, HttpMethod.GET, upstream)
+                .compose(response -> {
+                    int statusCode = response.statusCode();
+                    if (statusCode != 200) {
+                        return Future.failedFuture("Unexpected status " + statusCode + " from upstream for background job " + mapping.getUpstreamResponseId());
+                    }
+                    return response.body().map(ResponsesApiClient::parseTerminalBody);
+                });
+    }
+
     private Future<Void> poll(String dialId, long owner, int attempts, int errors) {
         return taskExecutor.submit(() -> loadJobData(dialId))
                 .compose(pair -> {
@@ -236,7 +270,7 @@ public class BackgroundJobService {
                     }
                     BackgroundJobRecord record = pair.getKey();
                     ResponseMapping mapping = pair.getValue();
-                    return poller.poll(mapping)
+                    return pollMapping(mapping)
                             .compose(
                                     result -> {
                                         if (result == null) {

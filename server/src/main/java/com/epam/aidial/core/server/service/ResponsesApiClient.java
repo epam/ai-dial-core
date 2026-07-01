@@ -15,6 +15,7 @@ import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 
 import javax.annotation.Nullable;
 
@@ -41,24 +42,20 @@ public class ResponsesApiClient {
         return !("queued".equals(status) || "in_progress".equals(status));
     }
 
-    @Nullable
+    @SneakyThrows
     public static TerminalResult parseTerminalBody(Buffer body) {
-        try {
-            JsonNode node = ProxyUtil.MAPPER.readTree(body.getBytes());
-            if (!(node instanceof ObjectNode tree)) {
-                throw new IllegalStateException("Response body is not a JSON object.");
-            }
-            JsonNode statusNode = tree.path("status");
-            if (!statusNode.isTextual() || !isTerminal(statusNode.asText())) {
-                return null;
-            }
-            JsonNode usageNode = tree.path("usage");
-            TokenUsage usage = usageNode.isObject()
-                    ? ProxyUtil.MAPPER.treeToValue(usageNode, TokenUsage.class) : null;
-            return new TerminalResult(body, usage);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+        JsonNode node = ProxyUtil.MAPPER.readTree(body.getBytes());
+        if (!(node instanceof ObjectNode tree)) {
+            throw new IllegalStateException("Response body is not a JSON object.");
         }
+        JsonNode statusNode = tree.path("status");
+        if (!statusNode.isTextual() || !isTerminal(statusNode.asText())) {
+            return null;
+        }
+        JsonNode usageNode = tree.path("usage");
+        TokenUsage usage = usageNode.isObject()
+                ? ProxyUtil.MAPPER.treeToValue(usageNode, TokenUsage.class) : null;
+        return new TerminalResult(body, usage);
     }
 
     public record TerminalResult(Buffer body, TokenUsage usage) {
