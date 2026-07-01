@@ -160,6 +160,7 @@ public class Application extends Deployment {
         this.setInvalid(source.getInvalid());
         this.setName(source.getName());
         this.setEndpoint(source.getEndpoint());
+        this.setInterfaces(source.getInterfaces());
         this.setDisplayName(source.getDisplayName());
         this.setDisplayVersion(source.getDisplayVersion());
         this.setIconUrl(source.getIconUrl());

@@ -33,7 +33,8 @@ An object containing deployed DIAL Interceptors and their [parameters](#intercep
 
 An object containing parameters for each [interceptor](#interceptors).
 
-* `endpoint`: The URL of the interceptor service. This URL is used to handle requests and responses for the interceptor. **Required**.
+* `endpoint`: The URL of the interceptor service. This URL is used to handle requests and responses for the interceptor. **Required** unless `interfaces` is used instead.
+* `interfaces`: A typed alternative to the flat `endpoint` field for declaring the interceptor service target. For interceptors, only the `openaiChatCompletions` interface is supported; the Responses API and other interfaces are not. Refer to [interceptors.<interceptor_name>.interfaces](#interceptorsinterceptor_nameinterfaces).
 * `iconUrl`: A string with the URL with the icon location to display for the interceptor on UI.
 * `description`: A brief summary of what this interceptor does and any parameters it uses (e.g. BLACKLIST=bar or Logs request/response payloads).
 * `displayName`: A string with the interceptor's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs so operators can quickly identify the interceptor.
@@ -44,6 +45,34 @@ An object containing parameters for each [interceptor](#interceptors).
 * `features`: Features supported by the interceptors.
 *  `configurationEndpoint`: The URL that exposes the configuration of the interceptor.
 *  `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.
+
+### interceptors.<interceptor_name>.interfaces
+
+An optional, typed alternative to the flat `endpoint` field. Both shapes are first-class — choose whichever you prefer per interceptor; there is no migration between them.
+
+Unlike `endpoint`, which is forwarded **verbatim**, an `interfaces` entry declares a `base_url` and DIAL Core forwards each request to `base_url` + **the ingress path**, with the `{deployment-id}` segment rewritten to the interceptor's own name (e.g. `/openai/deployments/<model>/chat/completions` is routed to `<base_url>/openai/deployments/<interceptor-name>/chat/completions`). A trailing slash on `base_url` is normalized. If both `interfaces` and `endpoint` are declared, `interfaces` takes precedence.
+
+Interceptors support only one interface type:
+
+* `openaiChatCompletions`: the OpenAI chat completions interface. Peer of `endpoint`.
+
+> The Responses API (`openaiResponses`) and any other interface types are **not** supported for interceptors. If declared, they are dropped on config read with a warning.
+
+Each value is an object with a single field:
+
+* `base_url`: The interceptor service root that the matching ingress path is appended to.
+
+**Example**
+
+```json
+"interceptors": {
+    "interceptor-via-interfaces": {
+        "interfaces": {
+            "openaiChatCompletions": { "base_url": "http://localhost:4088" }
+        }
+    }
+}
+```
 
 ## Categories of Interceptors
 

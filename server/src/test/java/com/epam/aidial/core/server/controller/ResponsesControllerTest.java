@@ -69,6 +69,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -432,7 +433,7 @@ public class ResponsesControllerTest {
         when(proxy.getTokenStatsTracker().updateModelStats(context))
                 .thenReturn(Future.succeededFuture());
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getUpstreamRouteProvider().get(deployment, null, (String) null)).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
@@ -545,7 +546,7 @@ public class ResponsesControllerTest {
         when(proxy.getRateLimiter().limit(context, deployment))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getUpstreamRouteProvider().get(deployment, null, (String) null)).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
@@ -656,7 +657,7 @@ public class ResponsesControllerTest {
         when(proxy.getRateLimiter().limit(context, deployment))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getUpstreamRouteProvider().get(deployment, null, (String) null)).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
         when(httpClient.request(any())).thenReturn(Future.succeededFuture(proxyRequest));
@@ -732,7 +733,7 @@ public class ResponsesControllerTest {
         when(proxy.getRateLimiter().limit(context, deployment))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
-        when(proxy.getUpstreamRouteProvider().get(deployment, null, (String) null)).thenReturn(upstreamRoute);
+        when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
         when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);

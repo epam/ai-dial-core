@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -15,6 +16,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -22,14 +24,17 @@ import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
-import io.vertx.core.http.RequestOptions;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 public class InterceptorController extends BaseDeploymentPostController {
+
+    private static final Pattern DEPLOYMENT_PATH = Pattern.compile("(/openai/deployments/)([^/]+)(/.*)");
 
     private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
 
@@ -84,26 +89,30 @@ public class InterceptorController extends BaseDeploymentPostController {
     }
 
 
-    private static String buildUri(ProxyContext context) {
-        HttpServerRequest request = context.getRequest();
-        Deployment deployment = context.getDeployment();
-        String endpoint = deployment.getEndpoint();
-        String query = request.query();
-        return endpoint + (query == null ? "" : "?" + query);
-    }
-
     private void sendRequest() {
-        String uri = buildUri(context);
-        RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(uri)
-                .setMethod(context.getRequest().method())
-                .setTraceOperation(context.getTraceOperation())
-                .setConnectTimeout(context.getProxy().getClientOptions().getConnectTimeout())
-                .setIdleTimeout(context.getProxy().getClientOptions().getIdleTimeout());
-
-        proxy.getClient().request(options)
+        createProxyRequest(interceptorUri())
                 .onSuccess(this::handleProxyRequest)
                 .onFailure(this::handleProxyConnectionError);
+    }
+
+    private String interceptorUri() {
+        Deployment deployment = context.getDeployment();
+        HttpServerRequest request = context.getRequest();
+        String query = request.query();
+        String baseUrl = deployment.getInterfaceBaseUrl(InterfaceType.OPENAI_CHAT_COMPLETIONS);
+        if (baseUrl != null) {
+            // New flow: rewrite the {id} segment to the interceptor's own name, then base_url + path.
+            String name = UrlUtil.encodePathSegment(deployment.getName());
+            String path = rewriteDeploymentSegment(request.path(), name);
+            return query == null ? baseUrl + path : baseUrl + path + "?" + query;
+        }
+        // Legacy flow: verbatim endpoint + query — identical to today's buildUri.
+        return query == null ? deployment.getEndpoint() : deployment.getEndpoint() + "?" + query;
+    }
+
+    static String rewriteDeploymentSegment(String path, String name) {
+        Matcher m = DEPLOYMENT_PATH.matcher(path);
+        return m.matches() ? m.group(1) + name + m.group(3) : path;
     }
 
 
