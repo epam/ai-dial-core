@@ -7,10 +7,13 @@ import com.epam.aidial.core.server.service.folder.FolderResourceHandler;
 import com.epam.aidial.core.server.service.folder.FolderResourceService;
 import com.epam.aidial.core.server.service.folder.SkillHandler;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.stream.InputStreamReader;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.vertx.core.Future;
@@ -19,8 +22,10 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.impl.HttpUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.mutable.MutableObject;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -37,10 +42,17 @@ public class FolderResourceController extends AccessControlBaseController {
             ResourceTypes.SKILL, new SkillHandler());
 
     private final FolderResourceService folderResourceService;
+    // Relative path of a single file inside the resource; null for whole-resource operations.
+    private final String filePath;
 
     public FolderResourceController(Proxy proxy, ProxyContext context, boolean isWriteAccess) {
+        this(proxy, context, isWriteAccess, null);
+    }
+
+    public FolderResourceController(Proxy proxy, ProxyContext context, boolean isWriteAccess, String filePath) {
         super(proxy, context, isWriteAccess);
         this.folderResourceService = proxy.getFolderResourceService();
+        this.filePath = filePath;
     }
 
     @Override
@@ -51,6 +63,18 @@ public class FolderResourceController extends AccessControlBaseController {
         }
 
         HttpMethod method = context.getRequest().method();
+        if (filePath != null) {
+            if (HttpMethod.PUT.equals(method)) {
+                return putFile(resource, handler);
+            }
+            if (HttpMethod.GET.equals(method)) {
+                return getFile(resource);
+            }
+            if (HttpMethod.DELETE.equals(method)) {
+                return deleteFile(resource, handler);
+            }
+            return context.respond(HttpStatus.METHOD_NOT_ALLOWED);
+        }
         if (HttpMethod.PUT.equals(method)) {
             return put(resource, handler);
         }
@@ -128,6 +152,102 @@ public class FolderResourceController extends AccessControlBaseController {
                     return context.respond(error, "Failed to delete resource: " + resource.getUrl()).mapEmpty();
                 });
         return Future.succeededFuture();
+    }
+
+    private Future<?> putFile(ResourceDescriptor resource, FolderResourceHandler handler) {
+        HttpServerRequest request = context.getRequest();
+        String contentType = request.getHeader(HttpHeaderNames.CONTENT_TYPE);
+        if (contentType == null || !HttpUtils.isValidMultipartContentType(contentType)) {
+            return context.respond(HttpStatus.BAD_REQUEST, "Request must have a valid multipart/form-data content-type");
+        }
+
+        String author = context.getUserDisplayName();
+        EtagHeader etag = ProxyUtil.etag(request);
+
+        MutableObject<Buffer> bufferRef = new MutableObject<>();
+        Promise<Void> received = Promise.promise();
+        request.setExpectMultipart(true)
+                .uploadHandler(upload -> {
+                    Buffer buffer = Buffer.buffer();
+                    upload.handler(buffer::appendBuffer);
+                    upload.endHandler(v -> {
+                        if (bufferRef.get() != null) {
+                            throw new HttpException(HttpStatus.BAD_REQUEST, "Exactly one file part is required");
+                        }
+                        bufferRef.setValue(buffer);
+                    });
+                    upload.exceptionHandler(received::tryFail);
+                })
+                .endHandler(v -> received.tryComplete())
+                .exceptionHandler(received::tryFail);
+
+        received.future()
+                .compose(v -> {
+                    Buffer buffer = bufferRef.get();
+                    if (buffer == null) {
+                        throw new HttpException(HttpStatus.BAD_REQUEST, "Exactly one file part is required");
+                    }
+                    byte[] content = buffer.getBytes();
+                    return proxy.getTaskExecutor().submit(() ->
+                            folderResourceService.putFile(resource, handler, filePath, content, etag, author));
+                })
+                .compose(aggregateEtag -> context.putHeader(HttpHeaders.ETAG, aggregateEtag)
+                        .exposeHeaders()
+                        .respond(HttpStatus.OK)
+                        .mapEmpty())
+                .recover(error -> {
+                    log.warn("Failed to upload file to resource: {}", resource.getUrl(), error);
+                    return context.respond(error, "Failed to upload file to resource: " + resource.getUrl()).mapEmpty();
+                });
+        return Future.succeededFuture();
+    }
+
+    private Future<?> getFile(ResourceDescriptor resource) {
+        proxy.getTaskExecutor().submit(() -> folderResourceService.getFileStream(resource, filePath))
+                .compose(stream -> {
+                    if (stream == null) {
+                        return context.respond(HttpStatus.NOT_FOUND).mapEmpty();
+                    }
+                    streamFile(stream);
+                    return Future.succeededFuture();
+                })
+                .recover(error -> {
+                    log.warn("Failed to download file from resource: {}", resource.getUrl(), error);
+                    return context.respond(error, "Failed to download file from resource: " + resource.getUrl()).mapEmpty();
+                });
+        return Future.succeededFuture();
+    }
+
+    private Future<?> deleteFile(ResourceDescriptor resource, FolderResourceHandler handler) {
+        String author = context.getUserDisplayName();
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
+        proxy.getTaskExecutor().submit(() -> folderResourceService.deleteFile(resource, handler, filePath, etag, author))
+                .compose(aggregateEtag -> context.putHeader(HttpHeaders.ETAG, aggregateEtag)
+                        .exposeHeaders()
+                        .respond(HttpStatus.OK)
+                        .mapEmpty())
+                .recover(error -> {
+                    log.warn("Failed to delete file from resource: {}", resource.getUrl(), error);
+                    return context.respond(error, "Failed to delete file from resource: " + resource.getUrl()).mapEmpty();
+                });
+        return Future.succeededFuture();
+    }
+
+    private void streamFile(ResourceService.ResourceStream stream) {
+        HttpServerResponse response = context.putHeader(HttpHeaders.CONTENT_TYPE, stream.contentType())
+                .putHeader(HttpHeaders.CONTENT_LENGTH, Long.toString(stream.contentLength()))
+                .putHeader(HttpHeaders.ETAG, stream.etag())
+                .exposeHeaders()
+                .getResponse();
+
+        InputStreamReader reader = new InputStreamReader(proxy.getVertx(), proxy.getTaskExecutor(), stream.inputStream());
+        reader.pipe()
+                .endOnFailure(false)
+                .to(response)
+                .onFailure(error -> {
+                    reader.close();
+                    response.reset();
+                });
     }
 
     private void downloadArchive(ResourceDescriptor resource, FolderResourceMarker document) {

@@ -73,6 +73,12 @@ public enum RouteTemplate {
             "^/v2/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>[^/]+)$",
             "/v2/skills/{bucket}/{path}"
     ),
+    // Single-file operations inside a skill. The {path} segment is the skill name (single segment);
+    // {filePath} is the relative file path inside the resource and may contain slashes.
+    SKILL_FILE(
+            "^/v2/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>[^/]+)/files/(?<filePath>.+)$",
+            "/v2/skills/{bucket}/{path}/files/{filePath}"
+    ),
     RESOURCE_METADATA(
             "^/v1/metadata/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
             "/v1/metadata/{resourceType}/{bucket}/{path}"
