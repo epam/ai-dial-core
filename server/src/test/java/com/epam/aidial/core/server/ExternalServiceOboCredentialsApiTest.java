@@ -26,6 +26,14 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
     private static final String OTHER_BILLING_SCOPE = "applications/other-app/external_services/billing-api";
     private static final String WORKLOAD_BILLING_SCOPE = "applications/workload-app/external_services/billing-api";
     private static final String WORKLOAD_CLIENT_ID = "scheduler-client-id";   // workload-app's app_identity (azp form)
+    private static final String USER_SVC_SCOPE = "applications/user-services-app/external_services/myapi";
+    private static final String USER_SVC_PUT = "/v1/applications/user-services-app/external-services/myapi";
+    private static final String USER_SVC_BODY = """
+            {
+                "display_name": "My API",
+                "auth_settings": { "authentication_type": "API_KEY", "api_key_header": "X-My-Key" }
+            }
+            """;
 
     private static final String SCHEDULER_KEY = "scheduler-key";   // trusted (its SHA-256 is the app_identity)
     private static final String UNTRUSTED_KEY = "untrusted-key";   // not trusted
@@ -300,6 +308,78 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         assertEquals(200, userGet.status(), () -> userGet.body());
         assertFalse(userGet.body().contains(SCHEDULER_KEY_HASH),
                 () -> "non-admin must not see app_identity value: " + userGet.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testUserAuthoredServiceEndToEnd() throws Exception {
+        assertEquals(200, send(HttpMethod.PUT, USER_SVC_PUT, null, USER_SVC_BODY, "authorization", "user").status());
+
+        verify(send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "USER",
+                    "authentication_type": "API_KEY",
+                    "api_key": "my-secret-key",
+                    "offline_usage_consent": true
+                }
+                """.formatted(USER_SVC_SCOPE), "authorization", "user"), 200, "true");
+
+        ApiKeyData appKey = newAppKey("user-services-app", "user");
+        apiKeyStore.assignPerRequestApiKey(appKey);
+        Response cred = send(HttpMethod.POST, "/v1/ops/external-service/credentials", null,
+                "{\"url\":\"" + USER_SVC_SCOPE + "\"}", "api-key", appKey.getPerRequestKey());
+        assertEquals(200, cred.status(), () -> cred.body());
+        JsonNode body = ProxyUtil.MAPPER.readTree(cred.body());
+        assertEquals("X-My-Key", body.get("header_name").asText());
+        assertEquals("my-secret-key", body.get("header_value").asText());
+
+        Response obo = obo(USER_SVC_SCOPE, "user", SCHEDULER_KEY);
+        assertEquals(200, obo.status(), () -> obo.body());
+        assertEquals("my-secret-key", ProxyUtil.MAPPER.readTree(obo.body()).get("header_value").asText());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testUserAuthoredServiceIsolatedPerUser() {
+        assertEquals(200, send(HttpMethod.PUT, USER_SVC_PUT, null, USER_SVC_BODY, "authorization", "user").status());
+
+        // A different identity (admin) has no such service in its own bucket → resolves to 404.
+        Response otherSignIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "USER",
+                    "authentication_type": "API_KEY",
+                    "api_key": "x"
+                }
+                """.formatted(USER_SVC_SCOPE), "authorization", "admin");
+        assertEquals(404, otherSignIn.status(), () -> otherSignIn.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testUserAuthoringDeniedWhenFlagOff() {
+        // app-with-services does not set allow_user_external_services.
+        Response put = send(HttpMethod.PUT, "/v1/applications/app-with-services/external-services/myapi",
+                null, USER_SVC_BODY, "authorization", "user");
+        assertEquals(403, put.status(), () -> put.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testUserAuthoredServiceDelete() {
+        assertEquals(200, send(HttpMethod.PUT, USER_SVC_PUT, null, USER_SVC_BODY, "authorization", "user").status());
+        assertEquals(200, send(HttpMethod.DELETE, USER_SVC_PUT, null, "", "authorization", "user").status());
+
+        Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "USER",
+                    "authentication_type": "API_KEY",
+                    "api_key": "x"
+                }
+                """.formatted(USER_SVC_SCOPE), "authorization", "user");
+        assertEquals(404, signIn.status(), () -> signIn.body());
     }
 
     private Response obo(String url, String ownerSub, String apiKeyValue) {

@@ -1,17 +1,13 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
-import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
-import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
-import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
-import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -31,7 +27,6 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 /**
  * Manages an application's inline {@code external_services}: validation, encryption-at-rest of
@@ -41,13 +36,9 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class ExternalServiceService {
 
-    // Ids flow into URI-parsed credential scopes and storage paths, so restrict them like toolset names.
-    private static final Pattern SERVICE_ID_PATTERN = Pattern.compile("^[A-Za-z0-9-_]+$");
-
     private final ResourceService resourceService;
     private final ResourceAuthSettingsEncryptionService encryptionService;
     private final ResourceCredentialsService resourceCredentialsService;
-    private final AuthSettingsValidatorFactory validatorFactory = new AuthSettingsValidatorFactory();
 
     /**
      * On an application write: validate, drop computed statuses, preserve omitted client_secrets, encrypt
@@ -175,32 +166,8 @@ public class ExternalServiceService {
         }
     }
 
-    // Static OAuth clients only (no PKCE/DCR). A first-time OAUTH create requires client_secret
-    // (CREATE_STATIC_CLIENT); updates use NO_CLIENT_CHANGES so an omitted secret is preserved from storage.
     private void validateOne(String serviceId, ExternalService service, boolean isCreate) {
-        if (serviceId == null || !SERVICE_ID_PATTERN.matcher(serviceId).matches()) {
-            throw new HttpException(HttpStatus.BAD_REQUEST,
-                    "External service id '%s' must contain only letters, digits, '-' or '_'".formatted(serviceId));
-        }
-        ResourceAuthSettings authSettings = service == null ? null : service.getAuthSettings();
-        if (authSettings == null || authSettings.getAuthenticationType() == null) {
-            throw new HttpException(HttpStatus.BAD_REQUEST,
-                    "External service '%s': auth_settings.authentication_type is required".formatted(serviceId));
-        }
-        AuthSettingsValidator validator = validatorFactory.getValidator(authSettings.getAuthenticationType());
-        if (validator == null) {
-            throw new HttpException(HttpStatus.BAD_REQUEST,
-                    "External service '%s': unknown authentication_type %s".formatted(serviceId, authSettings.getAuthenticationType()));
-        }
-        ResourceAuthSettingsChangeMode mode = isCreate && authSettings.getAuthenticationType() == AuthenticationType.OAUTH
-                ? ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT
-                : ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES;
-        try {
-            validator.validate(authSettings, mode);
-        } catch (RuntimeException e) {
-            throw new HttpException(HttpStatus.BAD_REQUEST,
-                    "External service '%s': invalid auth_settings: %s".formatted(serviceId, e.getMessage()));
-        }
+        ExternalServiceValidation.validate(serviceId, service, isCreate);
     }
 
     private void processSecrets(ResourceDescriptor resource, Application application, boolean encrypt) {

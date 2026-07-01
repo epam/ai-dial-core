@@ -27,6 +27,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.service.UserExternalServiceService;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -61,6 +62,7 @@ public class ExternalServiceCredentialsController {
     private final AccessService accessService;
     private final EncryptionService encryptionService;
     private final ApplicationService applicationService;
+    private final UserExternalServiceService userExternalServiceService;
 
     public ExternalServiceCredentialsController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -70,6 +72,7 @@ public class ExternalServiceCredentialsController {
         this.applicationService = proxy.getApplicationService();
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.authorizationHeaderProvider = proxy.getAuthorizationHeaderProvider();
+        this.userExternalServiceService = proxy.getUserExternalServiceService();
     }
 
     public Future<?> signIn() {
@@ -301,10 +304,10 @@ public class ExternalServiceCredentialsController {
     }
 
     /**
-     * Canonical external-service definition resolver. {@code ownerSub} is the credential owner on the
-     * OBO path ({@code null} for caller-scoped paths). Today it resolves only admin/inline definitions
-     * and {@code ownerSub} is unused; it is the single seam where per-user (user-authored) external-service
-     * definitions (design §9/§10) will later be read from the owner's bucket.
+     * Canonical external-service definition resolver. Resolves the admin/inline definition first; when the
+     * app permits it ({@code allow_user_external_services}) and no inline definition exists, falls back to a
+     * user-authored definition in the owner's bucket (design §9/§10). {@code ownerSub} is the credential
+     * owner on the OBO path; {@code null} on caller-scoped paths, where the caller is the owner.
      */
     private ResolvedExternalService resolveExternalService(String scopeId, @Nullable String ownerSub) {
         String[] parts = CredentialsLocatorFactory.parseExternalServiceScope(scopeId);
@@ -336,6 +339,12 @@ public class ExternalServiceCredentialsController {
 
         ExternalService externalService = application.getExternalServices() == null
                 ? null : application.getExternalServices().get(externalServiceId);
+        if (externalService == null && application.isAllowUserExternalServices()) {
+            String owner = ownerSub != null ? ownerSub : context.getUserId();
+            if (owner != null) {
+                externalService = userExternalServiceService.get(owner, appPart, externalServiceId);
+            }
+        }
         if (externalService == null) {
             throw new ResourceNotFoundException(
                     "External service '%s' is not defined for application '%s'".formatted(externalServiceId, appPart));

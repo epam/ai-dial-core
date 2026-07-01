@@ -63,6 +63,7 @@ import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
+import com.epam.aidial.core.server.service.UserExternalServiceService;
 import com.epam.aidial.core.server.service.VertxTimerService;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.clientchannel.ClientChannelService;
@@ -242,6 +243,8 @@ public class AiDial {
 
             ExternalServiceService externalServiceService = new ExternalServiceService(
                     resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService);
+            UserExternalServiceService userExternalServiceService = new UserExternalServiceService(
+                    resourceService, resourceAuthSettingsEncryptionService, encryptionService);
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
                     externalServiceService, resourceService, lockService, operatorService, applicationSchemaService,
                     configStore, generator, settings("applications"));
@@ -293,7 +296,7 @@ public class AiDial {
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
-                    notificationService, applicationService, externalServiceService, codeInterpreterService, heartbeatService, upstreamCacheService,
+                    notificationService, applicationService, externalServiceService, userExternalServiceService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
                     toolSetService, applicationSchemaService, authorizationHeaderProvider, resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),

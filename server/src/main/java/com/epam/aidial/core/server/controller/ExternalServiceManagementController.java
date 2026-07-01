@@ -16,6 +16,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.service.UserExternalServiceService;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -42,6 +43,7 @@ public class ExternalServiceManagementController {
     private final AsyncTaskExecutor taskExecutor;
     private final ApplicationService applicationService;
     private final ExternalServiceService externalServiceService;
+    private final UserExternalServiceService userExternalServiceService;
     private final AccessService accessService;
     private final EncryptionService encryptionService;
     private final ResourceCredentialsService resourceCredentialsService;
@@ -52,6 +54,7 @@ public class ExternalServiceManagementController {
         this.taskExecutor = proxy.getTaskExecutor();
         this.applicationService = proxy.getApplicationService();
         this.externalServiceService = proxy.getExternalServiceService();
+        this.userExternalServiceService = proxy.getUserExternalServiceService();
         this.accessService = proxy.getAccessService();
         this.encryptionService = proxy.getEncryptionService();
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
@@ -90,10 +93,16 @@ public class ExternalServiceManagementController {
                     if (service == null) {
                         throw new IllegalArgumentException("Request body is required");
                     }
-                    ResolvedApp resolved = resolveAndAuthorize(appId);
-                    requireDynamic(resolved);
-                    ExternalService stored = externalServiceService.putExternalService(
-                            resolved.descriptor, serviceId, service, resolved.author);
+                    ResolvedApp resolved = resolveApp(appId);
+                    if (canManageInline(resolved)) {
+                        requireDynamic(resolved);
+                        ExternalService stored = externalServiceService.putExternalService(
+                                resolved.descriptor, serviceId, service, resolved.author);
+                        return toData(appId, serviceId, stored, false);
+                    }
+                    requireUserAuthoringAllowed(resolved);
+                    ExternalService stored = userExternalServiceService.put(
+                            context.getUserId(), appId, serviceId, service, context.getUserDisplayName());
                     return toData(appId, serviceId, stored, false);
                 }))
                 .onSuccess(data -> context.respond(HttpStatus.OK, data))
@@ -103,15 +112,20 @@ public class ExternalServiceManagementController {
 
     public Future<?> deleteExternalService(String appId, String serviceId) {
         taskExecutor.submit(() -> {
-            ResolvedApp resolved = resolveAndAuthorize(appId);
-            requireDynamic(resolved);
-            externalServiceService.deleteExternalService(resolved.descriptor, serviceId, resolved.author);
+            ResolvedApp resolved = resolveApp(appId);
+            if (canManageInline(resolved)) {
+                requireDynamic(resolved);
+                externalServiceService.deleteExternalService(resolved.descriptor, serviceId, resolved.author);
 
-            // Cascade: purge APP-level credentials for the removed scope. USER-level credentials live in
-            // individual user buckets and are not swept (known limitation shared with toolsets, §11.6).
-            String scopeId = "applications/" + appId + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId;
-            CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
-            resourceCredentialsService.deleteResourceCredentialsAtLevel(locator, CredentialsLevel.APPLICATION);
+                // Cascade: purge APP-level credentials for the removed scope. USER-level credentials live in
+                // individual user buckets and are not swept (known limitation shared with toolsets, §11.6).
+                String scopeId = "applications/" + appId + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId;
+                CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
+                resourceCredentialsService.deleteResourceCredentialsAtLevel(locator, CredentialsLevel.APPLICATION);
+                return true;
+            }
+            requireUserAuthoringAllowed(resolved);
+            userExternalServiceService.delete(context.getUserId(), appId, serviceId);
             return true;
         }).onSuccess(removed -> context.respond(HttpStatus.OK, removed))
                 .onFailure(error -> respondError("Can't delete external service", error));
@@ -119,15 +133,16 @@ public class ExternalServiceManagementController {
     }
 
     private ResolvedApp resolveAndAuthorize(String appId) {
+        ResolvedApp resolved = resolveApp(appId);
+        requireManageAccess(resolved);
+        return resolved;
+    }
+
+    private ResolvedApp resolveApp(String appId) {
         Deployment deployment = context.getConfig().selectDeployment(appId);
         if (deployment instanceof Application configApp) {
-            // Static-config app: no per-app owner, management is admin-only.
-            if (!accessService.hasAdminAccess(context)) {
-                throw new PermissionDeniedException("Only administrators can manage external services of config applications");
-            }
             return new ResolvedApp(configApp, null, null, true);
         }
-
         ResourceDescriptor descriptor;
         try {
             descriptor = ResourceDescriptorFactory.fromAnyUrl(
@@ -135,15 +150,35 @@ public class ExternalServiceManagementController {
         } catch (IllegalArgumentException e) {
             throw new ResourceNotFoundException("Application not found: " + appId);
         }
-        if (!accessService.hasAdminAccess(context) && !accessService.hasWriteAccess(descriptor, context)) {
-            throw new PermissionDeniedException("Admin access or write permission on the application is required");
-        }
         Pair<ResourceItemMetadata, Application> result = applicationService.getApplication(descriptor);
         Application application = result.getValue();
         if (application == null) {
             throw new ResourceNotFoundException("Application not found: " + appId);
         }
         return new ResolvedApp(application, descriptor, result.getKey().getAuthor(), false);
+    }
+
+    // Admin/app-owner manages the app's inline (admin-authored) external services.
+    private boolean canManageInline(ResolvedApp resolved) {
+        if (resolved.staticApp) {
+            return accessService.hasAdminAccess(context);
+        }
+        return accessService.hasAdminAccess(context) || accessService.hasWriteAccess(resolved.descriptor, context);
+    }
+
+    private void requireManageAccess(ResolvedApp resolved) {
+        if (canManageInline(resolved)) {
+            return;
+        }
+        throw new PermissionDeniedException(resolved.staticApp
+                ? "Only administrators can manage external services of config applications"
+                : "Admin access or write permission on the application is required");
+    }
+
+    private void requireUserAuthoringAllowed(ResolvedApp resolved) {
+        if (!resolved.application.isAllowUserExternalServices()) {
+            throw new PermissionDeniedException("This application does not allow user-authored external services");
+        }
     }
 
     private static void requireDynamic(ResolvedApp resolved) {
