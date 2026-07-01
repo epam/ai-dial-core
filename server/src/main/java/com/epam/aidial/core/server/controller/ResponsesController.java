@@ -332,34 +332,42 @@ public class ResponsesController extends BaseDeploymentPostController {
             return Future.succeededFuture(body);
         }
         JsonNode tree = JsonUtil.tryParse(body.getBytes());
-        if (tree.isObject() && tree instanceof ObjectNode object) {
-            JsonNode idNode = object.path("id");
-            if (idNode.isTextual()) {
-                String upstreamId = idNode.asText();
-                if (!context.isStoreResponse()) {
-                    String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
-                    context.setDialResponseId(dialId);
-                    object.put("id", dialId);
-                    return Future.succeededFuture(Buffer.buffer(JsonUtil.serialize(object)));
-                }
-                Upstream upstream = context.getUpstreamRoute().get();
-                ResponseMapping mapping = ResponseMapping.builder()
-                        .upstreamResponseId(upstreamId)
-                        .upstreamKey(upstream.getId())
-                        .deploymentName(context.getDeployment().getName())
-                        .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
-                        .build();
-                return proxy.getTaskExecutor()
-                        .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
-                        .map(dialId -> {
-                            context.setDialResponseId(dialId);
-                            object.put("id", dialId);
-                            return Buffer.buffer(JsonUtil.serialize(object));
-                        });
-            }
+        if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
+            log.warn("Response body is not a JSON object, skipping rewrite. Deployment: {}. Endpoint: {}",
+                    context.getDeployment().getName(),
+                    context.getDeployment().getResponsesEndpoint());
+            return Future.succeededFuture(body);
+        }
+        JsonNode idNode = object.path("id");
+        if (!idNode.isTextual()) {
+            log.info("Response body doesn't contain 'id' field, skipping rewrite. Deployment: {}. Endpoint: {}",
+                    context.getDeployment().getName(),
+                    context.getDeployment().getResponsesEndpoint());
+            return Future.succeededFuture(body);
         }
 
-        return Future.succeededFuture(body);
+        String upstreamId = idNode.asText();
+        if (!context.isStoreResponse()) {
+            String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
+            context.setDialResponseId(dialId);
+            object.put("id", dialId);
+            return Future.succeededFuture(Buffer.buffer(JsonUtil.serialize(object)));
+        }
+        Upstream upstream = context.getUpstreamRoute().get();
+        ResponseMapping mapping = ResponseMapping.builder()
+                .upstreamResponseId(upstreamId)
+                .upstreamKey(upstream.getId())
+                .deploymentName(context.getDeployment().getName())
+                .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
+                .build();
+        return proxy.getTaskExecutor()
+                .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
+                .map(dialId -> {
+                    context.setDialResponseId(dialId);
+                    object.put("id", dialId);
+                    return Buffer.buffer(JsonUtil.serialize(object));
+                });
+
     }
 
     private void handleStreamingResponse(BufferingReadStream responseStream) {
