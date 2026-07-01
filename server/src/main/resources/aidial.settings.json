@@ -112,6 +112,7 @@
     "maxSequentialPollFailures": 10,
     "jobTtlMs": 86400000,
     "leaseTimeoutMs": 300000,
-    "maxParallelJobs": 100
+    "maxParallelJobs": 100,
+    "scanIntervalMs": 600000
   }
 }

@@ -38,13 +38,16 @@ import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
+import org.redisson.client.protocol.ScoredEntry;
 
+import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 public class BackgroundJobService {
@@ -69,6 +72,7 @@ public class BackgroundJobService {
     private final RScoredSortedSet<String> schedule;
     private final String scheduleKey;
     private final Set<String> inFlightJobIds = ConcurrentHashMap.newKeySet();
+    private final AtomicBoolean polling = new AtomicBoolean(false);
 
     public BackgroundJobService(
             Vertx vertx,
@@ -106,11 +110,14 @@ public class BackgroundJobService {
 
     public void init() {
         schedulePoll();
-        taskExecutor.submit(this::scan);
+        // Set up periodic scans in case of a Redis restart
+        vertx.setPeriodic(0, settings.getScanIntervalMs(), id -> taskExecutor.submit(this::scan));
     }
 
     private void schedulePoll() {
-        vertx.setTimer(settings.getPollIntervalMs(), id -> tryClaimAndPoll().onComplete(ignored -> schedulePoll()));
+        vertx.setTimer(settings.getPollIntervalMs(), id -> taskExecutor.submit(this::tryClaimAndPoll)
+                .onComplete(ignored -> schedulePoll())
+                .onFailure(e -> log.warn("Failed to poll background jobs", e)));
     }
 
     public Future<Void> saveJob(String dialId, BackgroundJobRecord record) {
@@ -173,50 +180,63 @@ public class BackgroundJobService {
                 .onFailure(e -> log.warn("Failed to schedule background job {}", dialId, e));
     }
 
-    private Future<Void> tryClaimAndPoll() {
-        if (inFlightJobIds.size() >= settings.getMaxParallelJobs()) {
-            return Future.succeededFuture();
+    private Void tryClaimAndPoll() {
+        if (polling.compareAndSet(false, true)) {
+            return null;
         }
-        long now = System.currentTimeMillis();
-        long owner = ThreadLocalRandom.current().nextLong();
 
-        return nextJob(now)
-                .compose(dialId -> {
-                    if (dialId == null) {
-                        return Future.succeededFuture();
+        try {
+            if (inFlightJobIds.size() >= settings.getMaxParallelJobs()) {
+                return null;
+            }
+
+            long now = System.currentTimeMillis();
+            ScoredEntry<String> scoredEntry;
+            while ((scoredEntry = nextJob(now)) != null) {
+                String dialId = scoredEntry.getValue();
+                if (inFlightJobIds.size() >= settings.getMaxParallelJobs()) {
+                    break;
+                }
+                if (!inFlightJobIds.add(dialId)) {
+                    continue;
+                }
+
+                try {
+                    ClaimResult claimResult = executeClaim(scoredEntry);
+                    if (claimResult != null) {
+                        poll(dialId, claimResult)
+                                .eventually(() -> {
+                                    inFlightJobIds.remove(dialId);
+                                    return polling.get()
+                                            ? Future.succeededFuture()
+                                            : taskExecutor.submit(this::tryClaimAndPoll);
+                                })
+                                .onFailure(e -> log.warn("Failed to process background job {}", dialId, e));
                     }
-                    long leaseUntil = System.currentTimeMillis() + settings.getLeaseTimeoutMs();
-                    return executeClaim(stateKey(dialId), now, leaseUntil, dialId, owner)
-                            .compose(claimResult -> {
-                                if (claimResult == null || claimResult.isEmpty()) {
-                                    return tryClaimAndPoll();
-                                }
-                                int attempts = Integer.parseInt((String) claimResult.get(0));
-                                int errors = Integer.parseInt((String) claimResult.get(1));
-                                if (inFlightJobIds.add(dialId)) {
-                                    poll(dialId, owner, attempts, errors)
-                                            .onComplete(ignored -> inFlightJobIds.remove(dialId))
-                                            .onFailure(e -> log.warn("Failed to process background job {}", dialId, e));
-                                    return tryClaimAndPoll();
-                                }
-                                return Future.succeededFuture();
-                            });
-                })
-                .onFailure(e -> log.warn("Failed to claim background job", e));
+                } catch (Throwable e) {
+                    log.warn("Failed to process background job {}", dialId, e);
+                    inFlightJobIds.remove(dialId);
+                }
+            }
+        } finally {
+            polling.set(false);
+        }
+
+        return null;
     }
 
-    private Future<String> nextJob(long now) {
-        return toFuture(schedule.valueRangeAsync(
-                Double.NEGATIVE_INFINITY, true, (double) now, true, 0, 1))
-                .flatMap(candidates -> {
-                    if (candidates == null || candidates.isEmpty()) {
-                        return Future.succeededFuture(null);
-                    }
-                    if (candidates.size() != 1) {
-                        return Future.failedFuture("Multiple candidates returned from schedule: " + candidates);
-                    }
-                    return Future.succeededFuture(candidates.iterator().next());
-                });
+    @Nullable
+    private ScoredEntry<String> nextJob(long now) {
+        var candidates = schedule.entryRange(
+                Double.NEGATIVE_INFINITY, true, (double) now, true, 0, 1);
+
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+        if (candidates.size() != 1) {
+            throw new RuntimeException("Multiple candidates returned from schedule: " + candidates);
+        }
+        return candidates.iterator().next();
     }
 
     private Map.Entry<BackgroundJobRecord, ResponseMapping> loadJobData(String dialId) {
@@ -260,13 +280,12 @@ public class BackgroundJobService {
                 });
     }
 
-    private Future<Void> poll(String dialId, long owner, int attempts, int errors) {
+    private Future<Void> poll(String dialId, ClaimResult claimResult) {
         return taskExecutor.submit(() -> loadJobData(dialId))
                 .compose(pair -> {
-                    String stateKey = stateKey(dialId);
                     if (pair == null) {
                         log.info("Background job {} record or mapping not found, stopping polling", dialId);
-                        return executeComplete(dialId, stateKey, owner);
+                        return executeComplete(dialId, claimResult.owner);
                     }
                     BackgroundJobRecord record = pair.getKey();
                     ResponseMapping mapping = pair.getValue();
@@ -275,23 +294,23 @@ public class BackgroundJobService {
                                     result -> {
                                         if (result == null) {
                                             long backoff = (long) Math.min(
-                                                    settings.getPollIntervalMs() * Math.pow(settings.getPollBackoffFactor(), attempts),
+                                                    settings.getPollIntervalMs() * Math.pow(settings.getPollBackoffFactor(), claimResult.attempts),
                                                     settings.getMaxPollIntervalMs());
                                             long nextPollTime = System.currentTimeMillis() + backoff;
-                                            return executeReschedule(dialId, stateKey, owner, nextPollTime, attempts + 1, 0);
+                                            return executeReschedule(dialId, claimResult, true, nextPollTime);
                                         }
-                                        return completeAndProcess(dialId, stateKey, owner, record, mapping, result);
+                                        return completeAndProcess(dialId, claimResult.owner, record, mapping, result);
                                     },
                                     error -> {
-                                        int newErrors = errors + 1;
+                                        int newErrors = claimResult.errors + 1;
                                         if (newErrors >= settings.getMaxSequentialPollFailures()) {
                                             log.error("Background job {} exceeded max poll failures, giving up", dialId, error);
-                                            return completeAndProcess(dialId, stateKey, owner, record, mapping, null);
+                                            return completeAndProcess(dialId, claimResult.owner, record, mapping, null);
                                         }
                                         log.warn("Poll failed for background job {} ({}/{})", dialId, newErrors,
                                                 settings.getMaxSequentialPollFailures(), error);
                                         long nextPollTime = System.currentTimeMillis() + settings.getPollIntervalMs();
-                                        return executeReschedule(dialId, stateKey, owner, nextPollTime, attempts, newErrors);
+                                        return executeReschedule(dialId, claimResult, false, nextPollTime);
                                     });
                 });
     }
@@ -303,14 +322,13 @@ public class BackgroundJobService {
 
     private Future<Void> completeAndProcess(
             String dialId,
-            String stateKey,
             long owner,
             BackgroundJobRecord record,
             ResponseMapping mapping,
             ResponsesApiClient.TerminalResult result) {
         return taskExecutor.submit(() -> resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId), EtagHeader.ANY))
                 .compose(deleted -> {
-                    Future<Void> redisCleanup = executeComplete(dialId, stateKey, owner);
+                    Future<Void> redisCleanup = executeComplete(dialId, owner);
                     if (!deleted) {
                         log.info("Background job {} already completed by another handler, skipping processing", dialId);
                         return redisCleanup;
@@ -319,8 +337,11 @@ public class BackgroundJobService {
                 });
     }
 
-    private Future<List<Object>> executeClaim(String stateKey, long now, long leaseUntil, String dialId, long owner) {
-        return toFuture(script.evalAsync(
+    @Nullable
+    private ClaimResult executeClaim(ScoredEntry<String> entry) {
+        long leaseUntil = System.currentTimeMillis() + settings.getLeaseTimeoutMs();
+        long owner = ThreadLocalRandom.current().nextLong();
+        List<Object> result = script.eval(
                 RScript.Mode.READ_WRITE,
                 """
                         local score = redis.call('ZSCORE', KEYS[1], ARGV[3])
@@ -334,15 +355,22 @@ public class BackgroundJobService {
                         return {attempts or '0', errors or '0'}
                         """,
                 RScript.ReturnType.MULTI,
-                List.of(scheduleKey, stateKey),
-                String.valueOf(now),
+                List.of(scheduleKey, stateKey(entry.getValue())),
+                String.valueOf(entry.getScore()),
                 String.valueOf(leaseUntil),
-                dialId,
-                String.valueOf(owner)));
+                entry.getValue(),
+                String.valueOf(owner));
+
+        if (result.isEmpty()) {
+            return null;
+        }
+        int attempts = Integer.parseInt((String) result.get(0));
+        int errors = Integer.parseInt((String) result.get(1));
+
+        return new ClaimResult(owner, attempts, errors);
     }
 
-    private Future<Void> executeReschedule(
-            String dialId, String stateKey, long owner, long nextPollTime, int attempts, int errors) {
+    private Future<Void> executeReschedule(String dialId, ClaimResult claimResult, boolean success, long nextPollTime) {
         return toFuture(script.<Long>evalAsync(
                 RScript.Mode.READ_WRITE,
                 """
@@ -356,15 +384,15 @@ public class BackgroundJobService {
                         return 1
                         """,
                 RScript.ReturnType.INTEGER,
-                List.of(scheduleKey, stateKey),
+                List.of(scheduleKey, stateKey(dialId)),
                 dialId,
-                String.valueOf(owner),
+                String.valueOf(claimResult.owner),
                 String.valueOf(nextPollTime),
-                String.valueOf(attempts),
-                String.valueOf(errors)))
+                String.valueOf(success ? claimResult.attempts + 1 : claimResult.attempts),
+                String.valueOf(success ? 0 : claimResult.errors + 1)))
                 .map(result -> {
                     if (result == 1L) {
-                        log.debug("Background job {} rescheduled, attempts={}, errors={}", dialId, attempts, errors);
+                        log.debug("Background job {} rescheduled", dialId);
                     } else {
                         log.warn("Background job {} reschedule skipped (owner mismatch)", dialId);
                     }
@@ -373,7 +401,7 @@ public class BackgroundJobService {
                 });
     }
 
-    private Future<Void> executeComplete(String dialId, String stateKey, long owner) {
+    private Future<Void> executeComplete(String dialId, long owner) {
         return toFuture(script.<Long>evalAsync(
                 RScript.Mode.READ_WRITE,
                 """
@@ -386,7 +414,7 @@ public class BackgroundJobService {
                         return 1
                         """,
                 RScript.ReturnType.INTEGER,
-                List.of(scheduleKey, stateKey),
+                List.of(scheduleKey, stateKey(dialId)),
                 dialId,
                 String.valueOf(owner)))
                 .map(result -> {
@@ -519,5 +547,9 @@ public class BackgroundJobService {
         long jobTtlMs = TimeUnit.DAYS.toMillis(1);
         long leaseTimeoutMs = TimeUnit.MINUTES.toMillis(5);
         int maxParallelJobs = 100;
+        long scanIntervalMs = TimeUnit.MINUTES.toMillis(10);
+    }
+
+    private record ClaimResult(long owner, int attempts, int errors) {
     }
 }
