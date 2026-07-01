@@ -18,15 +18,11 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClient;
-import io.vertx.core.http.HttpClientOptions;
-import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
-import io.vertx.core.http.RequestOptions;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import io.vertx.core.json.JsonObject;
 import io.vertx.junit5.VertxExtension;
@@ -197,8 +193,6 @@ public class ResponseItemControllerTest {
                 InterfaceType.OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://adapter")));
         Upstream upstream = new Upstream(null, "endpoint", "api-key", null, null, 0, 0, null);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         Buffer responseBody = Buffer.buffer("{\"id\":\"upstream-id-123\",\"status\":\"completed\"}");
 
@@ -206,10 +200,8 @@ public class ResponseItemControllerTest {
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
-        when(proxy.getClient()).thenReturn(httpClient);
-        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
-        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(proxyRequest));
-        when(proxyRequest.send()).thenReturn(Future.succeededFuture(proxyResponse));
+        when(proxy.getResponsesApiClient().send(anyString(), any(HttpMethod.class), any(Upstream.class)))
+                .thenReturn(Future.succeededFuture(proxyResponse));
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn("application/json");
@@ -225,12 +217,11 @@ public class ResponseItemControllerTest {
 
         await(testContext);
 
-        ArgumentCaptor<RequestOptions> optsCaptor = ArgumentCaptor.forClass(RequestOptions.class);
-        verify(httpClient).request(optsCaptor.capture());
-        // new flow: base_url + /openai/v1/responses/{upstreamId}
-        assertEquals("/openai/v1/responses/upstream-id-123", optsCaptor.getValue().getURI());
-        assertEquals("adapter", optsCaptor.getValue().getHost());
-        assertEquals(HttpMethod.GET, optsCaptor.getValue().getMethod());
+        ArgumentCaptor<String> urlCaptor = ArgumentCaptor.captor();
+        ArgumentCaptor<HttpMethod> methodCaptor = ArgumentCaptor.captor();
+        verify(proxy.getResponsesApiClient()).send(urlCaptor.capture(), methodCaptor.capture(), any(Upstream.class));
+        assertEquals("http://adapter/openai/v1/responses/upstream-id-123", urlCaptor.getValue());
+        assertEquals(HttpMethod.GET, methodCaptor.getValue());
     }
 
     @Test
