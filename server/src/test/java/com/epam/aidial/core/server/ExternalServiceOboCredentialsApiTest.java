@@ -1,12 +1,18 @@
 package com.epam.aidial.core.server;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -509,6 +515,46 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         Response after = send(HttpMethod.POST, "/v1/ops/external-service/credentials", null,
                 "{\"url\":\"" + USER_SVC_SCOPE + "\"}", "api-key", appKey2.getPerRequestKey());
         assertEquals(404, after.status(), () -> after.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testOboEmitsDistinctAuditEvents() throws Exception {
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_OBO_AUDIT");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        auditLogger.addAppender(appender);
+        Level previous = auditLogger.getLevel();
+        auditLogger.setLevel(Level.INFO);
+        try {
+            verify(signInUserBilling("user-billing-key", true), 200, "true");
+            assertEquals(200, obo(BILLING_SCOPE, "user", SCHEDULER_KEY).status());   // -> SUCCESS
+            assertEquals(403, obo(BILLING_SCOPE, "user", UNTRUSTED_KEY).status());   // -> DENIED
+
+            List<String> events = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .filter(m -> m.startsWith("event=obo_credential_retrieval"))
+                    .toList();
+            assertEquals(2, events.size(), events::toString);
+
+            String success = events.get(0);
+            assertTrue(success.contains("outcome=SUCCESS"), () -> success);
+            assertTrue(success.contains("actor=project:EPM-SCHEDULER"), () -> success);
+            assertTrue(success.contains("owner_sub=user"), () -> success);
+            assertTrue(success.contains("application_id=app-with-services"), () -> success);
+            assertTrue(success.contains("external_service_id=billing-api"), () -> success);
+            assertTrue(success.contains("trace_id="), () -> success);
+            // The credential value must never appear in the audit stream.
+            assertFalse(success.contains("user-billing-key"), () -> "audit leaked credential: " + success);
+
+            String denied = events.get(1);
+            assertTrue(denied.contains("outcome=DENIED"), () -> denied);
+            assertTrue(denied.contains("actor=project:EPM-OTHER"), () -> denied);
+            assertTrue(denied.contains("reason="), () -> denied);
+        } finally {
+            auditLogger.setLevel(previous);
+            auditLogger.detachAppender(appender);
+        }
     }
 
     private Response obo(String url, String ownerSub, String apiKeyValue) {
