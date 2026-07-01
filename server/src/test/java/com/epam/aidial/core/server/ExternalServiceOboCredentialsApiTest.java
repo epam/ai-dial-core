@@ -479,6 +479,38 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         assertEquals("My API", services.get("myapi").get("display_name").asText());
     }
 
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testUserAuthoredServiceDeletePurgesUserCredentials() throws Exception {
+        assertEquals(200, send(HttpMethod.PUT, USER_SVC_PUT, null, USER_SVC_BODY, "authorization", "user").status());
+        verify(send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "USER",
+                    "authentication_type": "API_KEY",
+                    "api_key": "my-secret-key",
+                    "offline_usage_consent": true
+                }
+                """.formatted(USER_SVC_SCOPE), "authorization", "user"), 200, "true");
+
+        ApiKeyData appKey = newAppKey("user-services-app", "user");
+        apiKeyStore.assignPerRequestApiKey(appKey);
+        Response before = send(HttpMethod.POST, "/v1/ops/external-service/credentials", null,
+                "{\"url\":\"" + USER_SVC_SCOPE + "\"}", "api-key", appKey.getPerRequestKey());
+        assertEquals(200, before.status(), () -> before.body());
+
+        // Deleting the definition must purge the author's own USER-level credential with it.
+        assertEquals(200, send(HttpMethod.DELETE, USER_SVC_PUT, null, "", "authorization", "user").status());
+
+        // Re-create the same definition; with the credential purged, retrieval 404s (a stale one would 200).
+        assertEquals(200, send(HttpMethod.PUT, USER_SVC_PUT, null, USER_SVC_BODY, "authorization", "user").status());
+        ApiKeyData appKey2 = newAppKey("user-services-app", "user");
+        apiKeyStore.assignPerRequestApiKey(appKey2);
+        Response after = send(HttpMethod.POST, "/v1/ops/external-service/credentials", null,
+                "{\"url\":\"" + USER_SVC_SCOPE + "\"}", "api-key", appKey2.getPerRequestKey());
+        assertEquals(404, after.status(), () -> after.body());
+    }
+
     private Response obo(String url, String ownerSub, String apiKeyValue) {
         return send(HttpMethod.POST, "/v1/ops/external-service/obo-credentials", null,
                 "{\"url\":\"" + url + "\",\"owner_sub\":\"" + ownerSub + "\"}",

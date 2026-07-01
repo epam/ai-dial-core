@@ -135,17 +135,23 @@ public class ExternalServiceManagementController {
 
                 // Cascade: purge APP-level credentials for the removed scope. USER-level credentials live in
                 // individual user buckets and are not swept (known limitation shared with toolsets, §11.6).
-                String scopeId = "applications/" + appId + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId;
-                CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
-                resourceCredentialsService.deleteResourceCredentialsAtLevel(locator, CredentialsLevel.APPLICATION);
+                purgeCredentials(appId, serviceId, CredentialsLevel.APPLICATION);
                 return true;
             }
             requireUserAuthoringAllowed(resolved);
             userExternalServiceService.delete(context.getUserId(), appId, serviceId);
+            // Cascade: the author owns both the definition and its USER-level credentials, so purge them too.
+            purgeCredentials(appId, serviceId, CredentialsLevel.USER);
             return true;
         }).onSuccess(removed -> context.respond(HttpStatus.OK, removed))
                 .onFailure(error -> respondError("Can't delete external service", error));
         return Future.succeededFuture();
+    }
+
+    private void purgeCredentials(String appId, String serviceId, CredentialsLevel level) {
+        String scopeId = "applications/" + appId + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId;
+        CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
+        resourceCredentialsService.deleteResourceCredentialsAtLevel(locator, level);
     }
 
     private ResolvedApp resolveApp(String appId) {
