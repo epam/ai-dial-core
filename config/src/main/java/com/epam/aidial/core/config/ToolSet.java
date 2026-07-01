@@ -26,6 +26,8 @@ public class ToolSet extends SecuredResource {
     @JsonAlias({"allowedTools", "allowed_tools"})
     private List<String> allowedTools = List.of();
 
+    private String provider;
+
     public enum Transport {
         HTTP, SSE;
     }
