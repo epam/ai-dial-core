@@ -22,6 +22,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ExternalServiceCredentialsRequest;
 import com.epam.aidial.core.server.data.ExternalServiceCredentialsResponse;
 import com.epam.aidial.core.server.data.OboCredentialsRequest;
+import com.epam.aidial.core.server.log.ExternalServiceAuditLog;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
@@ -225,42 +226,49 @@ public class ExternalServiceCredentialsController {
                     OboCredentialsRequest request = ProxyUtil.convertToObject(body, OboCredentialsRequest.class);
                     ValidationUtil.validate(request);
 
-                    ResolvedExternalService resolved = resolveExternalService(request.getUrl(), request.getOwnerSub());
+                    String[] scope = CredentialsLocatorFactory.parseExternalServiceScope(request.getUrl());
+                    try {
+                        ResolvedExternalService resolved = resolveExternalService(request.getUrl(), request.getOwnerSub());
 
-                    // Actor gate: the caller's identity must match the owning app's app_identity.
-                    if (!callerMatchesAppIdentity(resolved.application.getAppIdentity())) {
-                        throw new PermissionDeniedException("Caller identity does not match the application's app_identity");
+                        // Actor gate: the caller's identity must match the owning app's app_identity.
+                        if (!callerMatchesAppIdentity(resolved.application.getAppIdentity())) {
+                            throw new PermissionDeniedException("Caller identity does not match the application's app_identity");
+                        }
+
+                        ResourceAuthSettings authSettings = resolved.externalService.getAuthSettings();
+                        CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScopeForOwner(
+                                request.getUrl(), request.getOwnerSub(), context);
+                        ResourceCredentials credentials = resourceCredentialsService.getRefreshedUserCredentials(
+                                locator, authSettings, request.getOwnerSub());
+
+                        // Fail closed: no fallback to APP/GLOBAL. Missing owner credential ⇒ 404.
+                        if (credentials == null) {
+                            throw new ResourceNotFoundException("Credentials for %s not found".formatted(request.getUrl()));
+                        }
+                        // On-behalf-of issuance requires the owner's recorded offline-usage consent.
+                        if (!credentials.isOfflineUsageConsent()) {
+                            throw new PermissionDeniedException("Offline usage consent required for on-behalf-of retrieval");
+                        }
+
+                        AuthorizationHeader header = authorizationHeaderProvider.createAuthorizationHeader(credentials);
+                        if (header == null) {
+                            throw new ResourceNotFoundException("Credentials for %s not found".formatted(request.getUrl()));
+                        }
+
+                        ExternalServiceCredentialsResponse response = new ExternalServiceCredentialsResponse()
+                                .setHeaderName(header.getHeaderName())
+                                .setHeaderValue(header.getHeaderValue());
+
+                        if (AuthenticationType.OAUTH.equals(credentials.getAuthenticationType())
+                                && credentials.getExpiresInSeconds() != null) {
+                            response.setExpiresAt(credentials.getUpdatedAt() / 1000L + credentials.getExpiresInSeconds());
+                        }
+                        ExternalServiceAuditLog.oboRetrieval(context, scope[0], scope[1], request.getOwnerSub(), null);
+                        return response;
+                    } catch (RuntimeException e) {
+                        ExternalServiceAuditLog.oboRetrieval(context, scope[0], scope[1], request.getOwnerSub(), e);
+                        throw e;
                     }
-
-                    ResourceAuthSettings authSettings = resolved.externalService.getAuthSettings();
-                    CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScopeForOwner(
-                            request.getUrl(), request.getOwnerSub(), context);
-                    ResourceCredentials credentials = resourceCredentialsService.getRefreshedUserCredentials(
-                            locator, authSettings, request.getOwnerSub());
-
-                    // Fail closed: no fallback to APP/GLOBAL. Missing owner credential ⇒ 404.
-                    if (credentials == null) {
-                        throw new ResourceNotFoundException("Credentials for %s not found".formatted(request.getUrl()));
-                    }
-                    // On-behalf-of issuance requires the owner's recorded offline-usage consent.
-                    if (!credentials.isOfflineUsageConsent()) {
-                        throw new PermissionDeniedException("Offline usage consent required for on-behalf-of retrieval");
-                    }
-
-                    AuthorizationHeader header = authorizationHeaderProvider.createAuthorizationHeader(credentials);
-                    if (header == null) {
-                        throw new ResourceNotFoundException("Credentials for %s not found".formatted(request.getUrl()));
-                    }
-
-                    ExternalServiceCredentialsResponse response = new ExternalServiceCredentialsResponse()
-                            .setHeaderName(header.getHeaderName())
-                            .setHeaderValue(header.getHeaderValue());
-
-                    if (AuthenticationType.OAUTH.equals(credentials.getAuthenticationType())
-                            && credentials.getExpiresInSeconds() != null) {
-                        response.setExpiresAt(credentials.getUpdatedAt() / 1000L + credentials.getExpiresInSeconds());
-                    }
-                    return response;
                 }))
                 .onSuccess(response -> context.respond(HttpStatus.OK, response))
                 .onFailure(error -> respondError("Can't get on-behalf-of external service credentials", error));
