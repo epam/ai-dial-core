@@ -18,6 +18,7 @@ public class ToolSetData extends SecuredResourceData {
 
     private String transport;
     private List<String> allowedTools;
+    private String provider;
 
     {
         setObject("toolset");
@@ -60,6 +61,7 @@ public class ToolSetData extends SecuredResourceData {
         data.setAllowedTools(toolSet.getAllowedTools());
         data.setTransport(toolSet.getTransport().toString());
         data.setAuthSettings(ResourceAuthSettingsData.toData(toolSet.getAuthSettings()));
+        data.setProvider(toolSet.getProvider());
 
         return data;
     }
