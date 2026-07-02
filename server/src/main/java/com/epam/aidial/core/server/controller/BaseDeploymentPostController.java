@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
@@ -164,18 +165,37 @@ public class BaseDeploymentPostController {
         return tokenUsageFuture;
     }
 
-    protected Future<HttpClientRequest> createProxyRequest(Function<Deployment, String> endpointSelector) {
+    /**
+     * Low-level: build and issue the proxy request to an already-resolved absolute URI.
+     */
+    protected Future<HttpClientRequest> createProxyRequest(String absoluteUri) {
         HttpServerRequest request = context.getRequest();
-        String uri = endpointSelector.apply(context.getDeployment())
-                + (request.query() == null ? "" : "?" + request.query());
         RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(uri)
+                .setAbsoluteURI(absoluteUri)
                 .setMethod(request.method())
                 .setTraceOperation(context.getTraceOperation())
                 .setConnectTimeout(proxy.getClientOptions().getConnectTimeout())
                 .setIdleTimeout(proxy.getClientOptions().getIdleTimeout());
 
         return proxy.getClient().request(options);
+    }
+
+    /**
+     * Dual-mode: route by interface type. When the deployment declares an {@code interfaces} base URL
+     * for the type, forward to {@code base_url + <exact ingress path>}; otherwise forward the verbatim
+     * legacy endpoint (plus the original query), byte-identical to the legacy flow.
+     */
+    protected Future<HttpClientRequest> createProxyRequest(InterfaceType type) {
+        HttpServerRequest request = context.getRequest();
+        Deployment deployment = context.getDeployment();
+        String baseUrl = deployment.getInterfaceBaseUrl(type);
+        String uri = baseUrl != null
+                // New flow: base_url + exact ingress path. request.uri() already includes path + query.
+                ? baseUrl + request.uri()
+                // Legacy flow: verbatim endpoint + original query — byte-identical to today.
+                : deployment.getLegacyEndpoint(type)
+                        + (request.query() == null ? "" : "?" + request.query());
+        return createProxyRequest(uri);
     }
 
     protected Future<HttpClientResponse> sendProxyRequest(
