@@ -106,7 +106,7 @@
     "headersBlacklist": ["authorization", "api-key", "cookie", "proxy-authorization"]
   },
   "backgroundJob": {
-    "pollIntervalMs": 10000,
+    "initialPollIntervalMs": 10000,
     "maxPollIntervalMs": 300000,
     "pollBackoffFactor": 2.0,
     "maxSequentialPollFailures": 10,

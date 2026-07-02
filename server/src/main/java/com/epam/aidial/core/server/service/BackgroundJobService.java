@@ -40,7 +40,6 @@ import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 import org.redisson.client.protocol.ScoredEntry;
 
-import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -49,6 +48,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import javax.annotation.Nullable;
 
 @Slf4j
 public class BackgroundJobService {
@@ -126,9 +126,8 @@ public class BackgroundJobService {
     public Future<Void> saveJob(String dialId, BackgroundJobRecord record) {
         String json = ProxyUtil.convertToString(record);
         ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(dialId);
-        long now = System.currentTimeMillis();
         return taskExecutor.submit(() -> resourceService.putResource(descriptor, json, EtagHeader.NEW_ONLY))
-                .onSuccess(ignore -> schedule(dialId, now + settings.getPollIntervalMs()))
+                .onSuccess(ignore -> schedule(dialId, System.currentTimeMillis() + settings.getInitialPollIntervalMs()))
                 .mapEmpty();
     }
 
@@ -287,7 +286,7 @@ public class BackgroundJobService {
                                     result -> {
                                         if (result == null) {
                                             long backoff = (long) Math.min(
-                                                    settings.getPollIntervalMs() * Math.pow(settings.getPollBackoffFactor(), claimResult.attempts),
+                                                    settings.getInitialPollIntervalMs() * Math.pow(settings.getPollBackoffFactor(), claimResult.attempts),
                                                     settings.getMaxPollIntervalMs());
                                             long nextPollTime = System.currentTimeMillis() + backoff;
                                             return executeReschedule(dialId, claimResult, true, nextPollTime);
@@ -302,7 +301,7 @@ public class BackgroundJobService {
                                         }
                                         log.warn("Poll failed for background job {} ({}/{})", dialId, newErrors,
                                                 settings.getMaxSequentialPollFailures(), error);
-                                        long nextPollTime = System.currentTimeMillis() + settings.getPollIntervalMs();
+                                        long nextPollTime = System.currentTimeMillis() + settings.getInitialPollIntervalMs();
                                         return executeReschedule(dialId, claimResult, false, nextPollTime);
                                     });
                 });
@@ -551,7 +550,7 @@ public class BackgroundJobService {
     @JsonIgnoreProperties(ignoreUnknown = true)
     @Data
     public static class Settings {
-        long pollIntervalMs = TimeUnit.SECONDS.toMillis(10);
+        long initialPollIntervalMs = TimeUnit.SECONDS.toMillis(10);
         long maxPollIntervalMs = TimeUnit.MINUTES.toMillis(5);
         double pollBackoffFactor = 2.0;
         int maxSequentialPollFailures = 10;
