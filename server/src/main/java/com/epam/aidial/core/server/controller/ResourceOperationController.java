@@ -257,7 +257,7 @@ public class ResourceOperationController {
         }
     }
 
-    private void sendHeartbeat(HttpServerResponse response) {
+    private static void sendHeartbeat(HttpServerResponse response) {
         try {
             response.write(": heartbeat\n\n");
         } catch (Throwable e) {

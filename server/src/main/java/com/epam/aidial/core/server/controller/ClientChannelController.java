@@ -187,12 +187,13 @@ public class ClientChannelController {
             log.info("Deployment {} sends request to channel {}. User {}. Project {}", prefix,
                     channelId, context.getUserId(), context.getProject());
             HttpServerResponse response = context.getResponse();
+            String sourceDeployment = context.getSourceDeployment();
             if (root.isArray()) {
                 List<RpcRequest> requests = ProxyUtil.MAPPER.treeToValue(root, REQ_BATCH_REF);
-                return new RpcResponseSubscriber(response, requests, true, prefix);
+                return new RpcResponseSubscriber(response, sourceDeployment, requests, true, prefix);
             } else {
                 RpcRequest request = ProxyUtil.MAPPER.treeToValue(root, RpcRequest.class);
-                return new RpcResponseSubscriber(response, List.of(request), false, prefix);
+                return new RpcResponseSubscriber(response, sourceDeployment, List.of(request), false, prefix);
             }
         } catch (Exception e) {
             log.warn("Unable to parse RPC request", e);
@@ -217,15 +218,18 @@ public class ClientChannelController {
      * The subscriber is shared for multiple Redis topic listeners. The listeners handle messages from Redis topic RPC Responses.
      * The subscriber waits for all requests receive responses in a batch request.
      */
-    private class RpcResponseSubscriber implements Consumer<RpcResponse> {
+    private static class RpcResponseSubscriber implements Consumer<RpcResponse> {
         final Map<String, ValueNode> compositeToOriginalRequestId = new HashMap<>();
         final List<RpcResponse> responses = new ArrayList<>();
         final List<RpcRequest> requestsToBeSent = new ArrayList<>();
         final boolean isBatch;
         private final HttpServerResponse response;
+        private final String sourceDeployment;
 
-        RpcResponseSubscriber(HttpServerResponse response, List<RpcRequest> requests, boolean isBatch, String prefix) {
+        RpcResponseSubscriber(HttpServerResponse response, String sourceDeployment, List<RpcRequest> requests,
+                              boolean isBatch, String prefix) {
             this.response = response;
+            this.sourceDeployment = sourceDeployment;
             for (RpcRequest request : requests) {
                 ErrorMessage error = request.validate();
                 if (error != null) {
@@ -245,7 +249,7 @@ public class ClientChannelController {
         }
 
         public void accept(RpcResponse response) {
-            log.debug("Deployment subscriber {} received response ID {}", context.getSourceDeployment(), response.getId());
+            log.debug("Deployment subscriber {} received response ID {}", sourceDeployment, response.getId());
             boolean isReadyToSentResponse;
             synchronized (this) {
                 ValueNode originalId = compositeToOriginalRequestId.remove(response.getId().asText());
@@ -270,7 +274,7 @@ public class ClientChannelController {
                 }
             }
             sendMessage(response, message);
-            log.debug("Response was sent to deployment subscriber {}", context.getSourceDeployment());
+            log.debug("Response was sent to deployment subscriber {}", sourceDeployment);
         }
 
         /**
@@ -307,7 +311,7 @@ public class ClientChannelController {
         sendMessage(httpServerResponse, message);
     }
 
-    private void sendMessage(HttpServerResponse response, Object message) {
+    private static void sendMessage(HttpServerResponse response, Object message) {
         try {
             String json = ProxyUtil.convertToString(message);
             response.write("data: " + json + "\n\n");
@@ -317,7 +321,7 @@ public class ClientChannelController {
         }
     }
 
-    private void sendHeartbeat(HttpServerResponse response) {
+    private static void sendHeartbeat(HttpServerResponse response) {
         try {
             response.write(": heartbeat\n\n");
         } catch (Throwable e) {
