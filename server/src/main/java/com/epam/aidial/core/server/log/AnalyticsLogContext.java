@@ -18,7 +18,7 @@ import java.util.Optional;
 @Slf4j
 @Getter
 @Builder
-public class LogContext {
+public class AnalyticsLogContext {
 
     private final String traceId;
     private final String spanId;
@@ -48,9 +48,9 @@ public class LogContext {
 
     private final TokenUsage tokenUsage;
 
-    public static LogContext from(ProxyContext context) {
+    public static AnalyticsLogContext from(ProxyContext context) {
         Buffer responseBody = context.getResponseBody();
-        return LogContext.builder()
+        return AnalyticsLogContext.builder()
                 .traceId(context.getTraceId())
                 .spanId(context.getSpanId())
                 .parentSpanId(context.getParentSpanId())
@@ -79,8 +79,8 @@ public class LogContext {
                 .build();
     }
 
-    public static LogContext from(BackgroundJobRecord record, ResponsesApiClient.TerminalResult result) {
-        return LogContext.builder()
+    public static AnalyticsLogContext from(BackgroundJobRecord record, ResponsesApiClient.TerminalResult result) {
+        return AnalyticsLogContext.builder()
                 .traceId(record.traceId())
                 .spanId(record.spanId())
                 .parentSpanId(record.parentSpanId())

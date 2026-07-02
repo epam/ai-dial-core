@@ -25,7 +25,7 @@ public class GfLogStoreTest {
 
     @Test
     public void testGetParentDeployment_NoInterceptors() {
-        String result = LogContext.getParentDeployment("app", null, null);
+        String result = AnalyticsLogContext.getParentDeployment("app", null, null);
 
         assertEquals("app", result);
     }
@@ -36,7 +36,7 @@ public class GfLogStoreTest {
         List<String> interceptors = List.of("interceptor1", "interceptor2");
         List<String> executionPath = List.of("app", "interceptor1", "interceptor2", "model");
 
-        String result = LogContext.getParentDeployment(null, interceptors, executionPath);
+        String result = AnalyticsLogContext.getParentDeployment(null, interceptors, executionPath);
 
         assertEquals("app", result);
     }
@@ -47,7 +47,7 @@ public class GfLogStoreTest {
         List<String> interceptors = List.of("interceptor1", "interceptor2");
         List<String> executionPath = List.of("interceptor1", "interceptor2", "model");
 
-        String result = LogContext.getParentDeployment(null, interceptors, executionPath);
+        String result = AnalyticsLogContext.getParentDeployment(null, interceptors, executionPath);
 
         assertNull(result);
     }
@@ -58,7 +58,7 @@ public class GfLogStoreTest {
         List<String> interceptors = List.of("interceptor1", "interceptor2");
         List<String> executionPath = List.of("app", "interceptor1", "dep1", "interceptor2", "model");
 
-        String result = LogContext.getParentDeployment(null, interceptors, executionPath);
+        String result = AnalyticsLogContext.getParentDeployment(null, interceptors, executionPath);
 
         assertNull(result);
     }

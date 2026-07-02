@@ -11,7 +11,7 @@ import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
-import com.epam.aidial.core.server.log.LogContext;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -121,7 +121,7 @@ abstract class BaseRouteController implements Controller {
                     });
         } else {
             context.getResponse().send(context.getResponseBody());
-            proxy.getLogStore().save(LogContext.from(context));
+            proxy.getLogStore().save(AnalyticsLogContext.from(context));
             return Future.succeededFuture();
         }
     }

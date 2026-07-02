@@ -13,7 +13,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.limiter.RateLimiter;
-import com.epam.aidial.core.server.log.LogContext;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -605,7 +605,7 @@ public class DeploymentPostControllerTest {
 
         verify(rateLimiter).increase(eq(model), any(), any(), any(), any());
         verify(context).setTokenUsage(any(TokenUsage.class));
-        verify(logStore).save(any(LogContext.class));
+        verify(logStore).save(any(AnalyticsLogContext.class));
         verify(tokenStatsTracker).endSpan(eq(context));
         verify(bufferingReadStream).end(response);
     }
@@ -636,7 +636,7 @@ public class DeploymentPostControllerTest {
         verify(rateLimiter, never()).increase(any(), any(), any(), any(), any());
         verify(tokenStatsTracker).getTokenStats(eq(context));
         verify(context).setTokenUsage(any(TokenUsage.class));
-        verify(logStore).save(any(LogContext.class));
+        verify(logStore).save(any(AnalyticsLogContext.class));
         verify(tokenStatsTracker).endSpan(eq(context));
         verify(bufferingReadStream).end(response);
     }

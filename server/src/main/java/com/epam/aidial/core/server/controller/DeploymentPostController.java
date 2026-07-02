@@ -29,7 +29,7 @@ import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
-import com.epam.aidial.core.server.log.LogContext;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -441,7 +441,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         if (isEventStreamResponse(context.getProxyResponse())) {
             context.setAssembledStreamingResponse(assembleStreamingResponse(context.getResponseBody()));
         }
-        proxy.getLogStore().save(LogContext.from(context));
+        proxy.getLogStore().save(AnalyticsLogContext.from(context));
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",

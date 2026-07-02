@@ -9,7 +9,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.limiter.RateLimiter;
-import com.epam.aidial.core.server.log.LogContext;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -456,7 +456,7 @@ public class BackgroundJobService {
                         future = future.compose(ignored -> tokenStatsTracker.endSpan(traceId));
                     }
                     future.eventually(() -> invalidatePerRequestKey(jobRecord.perRequestKey()))
-                            .onComplete(ignored -> logStore.save(LogContext.from(jobRecord, result)))
+                            .onComplete(ignored -> logStore.save(AnalyticsLogContext.from(jobRecord, result)))
                             .onFailure(error -> log.error("Failed to finalize background job {}", responseId, error));
                 });
         return Future.succeededFuture();

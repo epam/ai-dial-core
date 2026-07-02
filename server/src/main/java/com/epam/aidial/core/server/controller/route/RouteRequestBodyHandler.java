@@ -6,7 +6,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
-import com.epam.aidial.core.server.log.LogContext;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -210,7 +210,7 @@ class RouteRequestBodyHandler {
             }
             HttpServerResponse response = context.getResponse();
             responseStream.end(response);
-            proxy.getLogStore().save(LogContext.from(context));
+            proxy.getLogStore().save(AnalyticsLogContext.from(context));
             controller.finalizeRequest();
         });
     }

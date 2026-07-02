@@ -67,7 +67,7 @@ public class GfLogStore implements LogStore {
     }
 
     @Override
-    public void save(LogContext logContext) {
+    public void save(AnalyticsLogContext logContext) {
         if (!LOGGER.isInfoEnabled() || !"POST".equals(logContext.getRequestMethod())) {
             return;
         }
@@ -76,7 +76,7 @@ public class GfLogStore implements LogStore {
         executor.submit(() -> doSave(logContext));
     }
 
-    private Void doSave(LogContext logContext) {
+    private Void doSave(AnalyticsLogContext logContext) {
         // Note. Any logs must be written by slf4j logger:
         // 1. before the prompt logger starts writing any message OR
         // 2. after the prompt logger ends writing messages
@@ -92,7 +92,7 @@ public class GfLogStore implements LogStore {
         return null;
     }
 
-    private void append(LogContext logContext, LogEntry entry) throws JsonProcessingException {
+    private void append(AnalyticsLogContext logContext, LogEntry entry) throws JsonProcessingException {
         append(entry, "{\"apiType\":\"DialOpenAI\",\"chat\":{\"id\":\"", false);
         append(entry, logContext.getConversationId(), true);
 

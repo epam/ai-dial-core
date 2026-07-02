@@ -3,7 +3,7 @@ package com.epam.aidial.core.server.data;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.log.LogContext;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Builder;
@@ -46,7 +46,7 @@ public record BackgroundJobRecord(
                 .jobTitle(context.getRequestHeader(Proxy.HEADER_JOB_TITLE))
                 .securedApiKey(context.isSecuredApiKey())
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
-                .parentDeployment(LogContext.getParentDeployment(
+                .parentDeployment(AnalyticsLogContext.getParentDeployment(
                         context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
                 .requestProtocol(context.getRequest().version().alpnName().toUpperCase())
                 .requestMethod(context.getRequest().method().name())
