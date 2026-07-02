@@ -245,6 +245,18 @@ public class ResourceCredentialsService {
             return null;
         }
 
+        ResourceCredentials stored = getResourceCredentials(userDescriptor);
+        if (stored == null
+                || !stored.getCredentialsLevel().equals(CredentialsLevel.USER)
+                || !Objects.equals(ownerSub, stored.getUserId())) {
+            return null;
+        }
+        // Gate consent BEFORE refreshing: an OBO probe against a non-consented credential must not rotate the
+        // owner's refresh token. Return the stored (un-refreshed) credential so the caller can reject on consent.
+        if (!stored.isOfflineUsageConsent()) {
+            return stored;
+        }
+
         ResourceCredentials userCredentials = getAndRefreshCredentials(userDescriptor, authSettings);
         if (userCredentials != null
                 && userCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)

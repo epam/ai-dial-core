@@ -44,6 +44,8 @@ import java.util.Objects;
 @Slf4j
 public class ApplicationController {
 
+    private static final String APPLICATIONS_PREFIX = "applications/";
+
     private final ProxyContext context;
     private final EncryptionService encryptionService;
     private final AccessService accessService;
@@ -335,28 +337,27 @@ public class ApplicationController {
                 .setAuthSettings(safe);
     }
 
-    // Inline (admin-authored) definitions take precedence, mirroring the credential resolver.
     private void overlayUserAuthoredServices(ApplicationData data, Application application) {
         if (!application.isAllowUserExternalServices() || context.getUserId() == null) {
             return;
         }
-        String appPart = data.getId();
+        String appPart = appPart(data.getId());
         if (appPart == null) {
             return;
         }
-        if (appPart.startsWith("applications/")) {
-            appPart = appPart.substring("applications/".length());
-        }
-        Map<String, ExternalService> userServices = userExternalServiceService.list(context.getUserId(), appPart);
-        if (userServices.isEmpty()) {
-            return;
-        }
-        Map<String, ExternalService> merged = new LinkedHashMap<>();
-        if (data.getExternalServices() != null) {
-            merged.putAll(data.getExternalServices());
-        }
-        userServices.forEach((id, service) -> merged.putIfAbsent(id, toSafeView(service)));
+        // Secrets are stripped here (toSafeView); inline definitions take precedence — see overlay().
+        Map<String, ExternalService> merged = userExternalServiceService.overlay(
+                data.getExternalServices(), context.getUserId(), appPart, ApplicationController::toSafeView);
         data.setExternalServices(merged);
+    }
+
+    // Static-config apps expose getId() as the bare app name; dynamic apps as the full
+    // "applications/{bucket}/{path}" url. Normalize to the scope's {app_id} segment.
+    private static String appPart(String id) {
+        if (id == null) {
+            return null;
+        }
+        return id.startsWith(APPLICATIONS_PREFIX) ? id.substring(APPLICATIONS_PREFIX.length()) : id;
     }
 
     private void enrichExternalServiceStatuses(ApplicationData data) {
@@ -364,19 +365,14 @@ public class ApplicationController {
         if (services == null || services.isEmpty()) {
             return;
         }
-        // Static-config apps expose getId() as the bare app name; dynamic apps as the full
-        // "applications/{bucket}/{path}" url. Normalize to the scope's {app_id} segment.
-        String appId = data.getId();
-        if (appId != null && appId.startsWith("applications/")) {
-            appId = appId.substring("applications/".length());
-        }
+        String appId = appPart(data.getId());
         for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
             ResourceAuthSettings authSettings = entry.getValue().getAuthSettings();
             if (authSettings == null) {
                 continue;
             }
             try {
-                String scopeId = "applications/" + appId + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + entry.getKey();
+                String scopeId = APPLICATIONS_PREFIX + appId + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + entry.getKey();
                 CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
                 resourceAuthSettingsService.setExternalServiceAuthStatuses(locator, authSettings, context.getUserId());
             } catch (RuntimeException e) {

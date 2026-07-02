@@ -25,6 +25,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * User-authored external-service definitions (design §9/§10): each is its own resource in the author's
@@ -43,20 +44,24 @@ public class UserExternalServiceService {
     public ResourceDescriptor descriptor(String ownerSub, String appPart, String serviceId) {
         String bucketLocation = BucketBuilder.USER_BUCKET_PATTERN.formatted(ownerSub);
         String bucketName = bucketEncryptionService.encrypt(bucketLocation);
-        List<String> parentFolders = new ArrayList<>();
-        parentFolders.add("applications");
-        parentFolders.addAll(Arrays.asList(appPart.split(ResourceDescriptor.PATH_SEPARATOR)));
+        List<String> parentFolders = applicationSegments(appPart);
         return new ResourceDescriptor(ResourceTypes.EXTERNAL_SERVICE, serviceId, parentFolders, bucketName, bucketLocation, false);
     }
 
     private ResourceDescriptor folderDescriptor(String ownerSub, String appPart) {
         String bucketLocation = BucketBuilder.USER_BUCKET_PATTERN.formatted(ownerSub);
         String bucketName = bucketEncryptionService.encrypt(bucketLocation);
+        List<String> segments = applicationSegments(appPart);
+        String name = segments.remove(segments.size() - 1);
+        return new ResourceDescriptor(ResourceTypes.EXTERNAL_SERVICE, name, segments, bucketName, bucketLocation, true);
+    }
+
+    // Storage path segments for an app's user-authored services: "applications" + the app path parts.
+    private static List<String> applicationSegments(String appPart) {
         List<String> segments = new ArrayList<>();
         segments.add("applications");
         segments.addAll(Arrays.asList(appPart.split(ResourceDescriptor.PATH_SEPARATOR)));
-        String name = segments.remove(segments.size() - 1);
-        return new ResourceDescriptor(ResourceTypes.EXTERNAL_SERVICE, name, segments, bucketName, bucketLocation, true);
+        return segments;
     }
 
     public ExternalService put(String ownerSub, String appPart, String serviceId, ExternalService service, String author) {
@@ -113,6 +118,26 @@ public class UserExternalServiceService {
             token = metadata.getNextToken();
         } while (token != null);
         return result;
+    }
+
+    /**
+     * Overlays the owner's user-authored definitions onto {@code inline}, with inline (admin) definitions winning
+     * on an id clash — the single source of the "inline takes precedence" rule shared by the read surfaces. Each
+     * user-authored definition is passed through {@code shaper} before being added (e.g. to strip secrets). Returns
+     * {@code inline} unchanged when the owner has none for this application.
+     */
+    public Map<String, ExternalService> overlay(Map<String, ExternalService> inline, String ownerSub, String appPart,
+                                                Function<ExternalService, ExternalService> shaper) {
+        Map<String, ExternalService> userServices = list(ownerSub, appPart);
+        if (userServices.isEmpty()) {
+            return inline;
+        }
+        Map<String, ExternalService> merged = new LinkedHashMap<>();
+        if (inline != null) {
+            merged.putAll(inline);
+        }
+        userServices.forEach((id, service) -> merged.putIfAbsent(id, shaper.apply(service)));
+        return merged;
     }
 
     public void delete(String ownerSub, String appPart, String serviceId) {

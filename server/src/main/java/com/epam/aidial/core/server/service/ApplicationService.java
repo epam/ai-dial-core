@@ -181,6 +181,7 @@ public class ApplicationService {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
             verifySchemaRichApp(application, existing);
             prepareApplicationFunction(resource, application, existing);
+            prepareAdminManagedFields(application, existing, preserveForwardAuthToken);
             List<String> externalServices = externalServiceService.processOnWrite(resource, application, existing, externalServicesWriteMode);
             removedExternalServices.setValue(externalServices);
             return ProxyUtil.convertToString(application);
@@ -190,6 +191,20 @@ public class ApplicationService {
         externalServiceService.purgeApplicationCredentials(resource, removedExternalServices.get());
 
         return Pair.of(meta, application);
+    }
+
+    // app_identity and allow_user_external_services are admin-managed (config file / admin-apply only). Once
+    // stored they are immutable: every update inherits them from the stored resource, so no write — self-service
+    // or admin, including a read-modify-write that omits the read-hidden fields — can change or silently wipe
+    // them. Only an authoritative admin write (admin apply) may set them at creation.
+    private static void prepareAdminManagedFields(Application application, Application existing, boolean authoritativeAdminWrite) {
+        if (existing != null) {
+            application.setAppIdentity(existing.getAppIdentity());
+            application.setAllowUserExternalServices(existing.isAllowUserExternalServices());
+        } else if (!authoritativeAdminWrite) {
+            application.setAppIdentity(null);
+            application.setAllowUserExternalServices(false);
+        }
     }
 
     private void prepareApplicationFunction(ResourceDescriptor resource, Application application, Application existing) {

@@ -5,7 +5,6 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
-import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,15 +42,7 @@ public final class ExternalServiceAuditLog {
             return "project:" + key.getProject();
         }
         ExtractedClaims claims = context.getExtractedClaims();
-        if (claims != null && claims.userClaims() != null) {
-            JsonNode azp = claims.userClaims().get("azp");
-            if (azp == null || azp.isNull()) {
-                azp = claims.userClaims().get("appid");
-            }
-            if (azp != null && !azp.isNull()) {
-                return "azp:" + azp.asText();
-            }
-        }
-        return "unknown";
+        String azp = claims == null ? null : claims.authorizedParty();
+        return azp == null ? "unknown" : "azp:" + azp;
     }
 }

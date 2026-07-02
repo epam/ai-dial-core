@@ -5,7 +5,6 @@ import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ExternalService;
-import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.credentials.AuthorizationHeader;
@@ -24,8 +23,8 @@ import com.epam.aidial.core.server.data.ExternalServiceCredentialsResponse;
 import com.epam.aidial.core.server.data.OboCredentialsRequest;
 import com.epam.aidial.core.server.log.ExternalServiceAuditLog;
 import com.epam.aidial.core.server.security.AccessService;
+import com.epam.aidial.core.server.security.AppIdentityMatcher;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.UserExternalServiceService;
@@ -39,15 +38,10 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.UrlUtil;
-import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -184,22 +178,7 @@ public class ExternalServiceCredentialsController {
                     ResourceCredentials credentials = resourceCredentialsService.getRefreshedResourceCredentials(
                             locator, authSettings, context.getUserId());
 
-                    AuthorizationHeader header = authorizationHeaderProvider.createAuthorizationHeader(credentials);
-                    if (header == null) {
-                        throw new ResourceNotFoundException("Credentials for %s not found".formatted(request.getUrl()));
-                    }
-
-                    ExternalServiceCredentialsResponse response = new ExternalServiceCredentialsResponse()
-                            .setHeaderName(header.getHeaderName())
-                            .setHeaderValue(header.getHeaderValue());
-
-                    if (AuthenticationType.OAUTH.equals(credentials.getAuthenticationType())
-                            && credentials.getExpiresInSeconds() != null) {
-                        // updatedAt is stored as Unix epoch milliseconds (TimeProvider#getCurrentTime()),
-                        // expiresInSeconds is seconds. Spec mandates Unix epoch seconds.
-                        response.setExpiresAt(credentials.getUpdatedAt() / 1000L + credentials.getExpiresInSeconds());
-                    }
-                    return response;
+                    return toCredentialsResponse(credentials, request.getUrl());
                 }))
                 .onSuccess(response -> context.respond(HttpStatus.OK, response))
                 .onFailure(error -> respondError("Can't get external service credentials", error));
@@ -226,11 +205,11 @@ public class ExternalServiceCredentialsController {
                     OboCredentialsRequest request = ProxyUtil.convertToObject(body, OboCredentialsRequest.class);
                     ValidationUtil.validate(request);
 
-                    String[] scope = CredentialsLocatorFactory.parseExternalServiceScope(request.getUrl());
                     try {
+                        String[] scope = CredentialsLocatorFactory.parseExternalServiceScope(request.getUrl());
                         ResolvedExternalService resolved = resolveExternalService(request.getUrl(), request.getOwnerSub());
 
-                        if (!callerMatchesAppIdentity(resolved.application.getAppIdentity())) {
+                        if (!AppIdentityMatcher.matches(context, resolved.application.getAppIdentity())) {
                             throw new PermissionDeniedException("Caller identity does not match the application's app_identity");
                         }
 
@@ -248,22 +227,12 @@ public class ExternalServiceCredentialsController {
                             throw new PermissionDeniedException("Offline usage consent required for on-behalf-of retrieval");
                         }
 
-                        AuthorizationHeader header = authorizationHeaderProvider.createAuthorizationHeader(credentials);
-                        if (header == null) {
-                            throw new ResourceNotFoundException("Credentials for %s not found".formatted(request.getUrl()));
-                        }
-
-                        ExternalServiceCredentialsResponse response = new ExternalServiceCredentialsResponse()
-                                .setHeaderName(header.getHeaderName())
-                                .setHeaderValue(header.getHeaderValue());
-
-                        if (AuthenticationType.OAUTH.equals(credentials.getAuthenticationType())
-                                && credentials.getExpiresInSeconds() != null) {
-                            response.setExpiresAt(credentials.getUpdatedAt() / 1000L + credentials.getExpiresInSeconds());
-                        }
+                        ExternalServiceCredentialsResponse response = toCredentialsResponse(credentials, request.getUrl());
                         ExternalServiceAuditLog.oboRetrieval(context, scope[0], scope[1], request.getOwnerSub(), null);
                         return response;
                     } catch (RuntimeException e) {
+                        // Audit failures too — including a malformed url that fails scope parsing (best-effort ids).
+                        String[] scope = safeParseScope(request.getUrl());
                         ExternalServiceAuditLog.oboRetrieval(context, scope[0], scope[1], request.getOwnerSub(), e);
                         throw e;
                     }
@@ -274,38 +243,29 @@ public class ExternalServiceCredentialsController {
         return Future.succeededFuture();
     }
 
-    // Derive the caller's identity by how it authenticated and compare to the app's app_identity:
-    // DIAL-key form = SHA-256 of the presented key; workload form = the JWT's azp (Azure v1: appid).
-    private boolean callerMatchesAppIdentity(String appIdentity) {
-        if (appIdentity == null) {
-            return false;
+    private ExternalServiceCredentialsResponse toCredentialsResponse(ResourceCredentials credentials, String url) {
+        AuthorizationHeader header = authorizationHeaderProvider.createAuthorizationHeader(credentials);
+        if (header == null) {
+            throw new ResourceNotFoundException("Credentials for %s not found".formatted(url));
         }
-        Key key = context.getKey();
-        if (key != null && key.getKey() != null && appIdentity.equals(sha256Hex(key.getKey()))) {
-            return true;
+        ExternalServiceCredentialsResponse response = new ExternalServiceCredentialsResponse()
+                .setHeaderName(header.getHeaderName())
+                .setHeaderValue(header.getHeaderValue());
+        if (AuthenticationType.OAUTH.equals(credentials.getAuthenticationType())
+                && credentials.getExpiresInSeconds() != null) {
+            // updatedAt is stored as Unix epoch milliseconds (TimeProvider#getCurrentTime()), expiresInSeconds is
+            // seconds; the spec mandates Unix epoch seconds.
+            response.setExpiresAt(credentials.getUpdatedAt() / 1000L + credentials.getExpiresInSeconds());
         }
-        String azp = callerAuthorizedParty();
-        return azp != null && appIdentity.equals(azp);
+        return response;
     }
 
-    private String callerAuthorizedParty() {
-        ExtractedClaims claims = context.getExtractedClaims();
-        if (claims == null || claims.userClaims() == null) {
-            return null;
-        }
-        JsonNode azp = claims.userClaims().get("azp");
-        if (azp == null || azp.isNull()) {
-            azp = claims.userClaims().get("appid");
-        }
-        return azp == null || azp.isNull() ? null : azp.asText();
-    }
-
-    private static String sha256Hex(String value) {
+    // Never throws: yields {null, null} when the url can't be parsed, so a malformed request is still audited.
+    private static String[] safeParseScope(String url) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
+            return CredentialsLocatorFactory.parseExternalServiceScope(url);
+        } catch (RuntimeException e) {
+            return new String[]{null, null};
         }
     }
 

@@ -47,6 +47,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_GATEWAY;
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
@@ -170,6 +171,9 @@ public class ResourceController extends AccessControlBaseController {
             overlayUserAuthoredServices(descriptor, application);
             enrichExternalServiceStatuses(descriptor, application);
             clearExternalServiceSecrets(application);
+            // app_identity is admin-managed and immutable once set — it never needs to be read back, so strip it
+            // on every read (the write-access branch would otherwise return the raw app, leaking it).
+            application.setAppIdentity(null);
             String body = hasWriteAccess
                     ? ProxyUtil.convertToString(application)
                     : ProxyUtil.convertToString(clearApplicationProperties(application));
@@ -179,23 +183,15 @@ public class ResourceController extends AccessControlBaseController {
         });
     }
 
-    // Inline (admin-authored) definitions take precedence, mirroring the credential resolver. Secrets are
-    // stripped downstream by clearExternalServiceSecrets, so the decrypted user-authored secret never leaks.
+    // Inline (admin-authored) definitions take precedence — see overlay(). Secrets are stripped downstream by
+    // clearExternalServiceSecrets, so the decrypted user-authored secret never leaks (identity shaper here).
     private void overlayUserAuthoredServices(ResourceDescriptor descriptor, Application application) {
         if (!application.isAllowUserExternalServices() || context.getUserId() == null) {
             return;
         }
         String appPart = descriptor.getDecodedUrl().substring("applications/".length());
-        Map<String, ExternalService> userServices =
-                proxy.getUserExternalServiceService().list(context.getUserId(), appPart);
-        if (userServices.isEmpty()) {
-            return;
-        }
-        Map<String, ExternalService> merged = new LinkedHashMap<>();
-        if (application.getExternalServices() != null) {
-            merged.putAll(application.getExternalServices());
-        }
-        userServices.forEach(merged::putIfAbsent);
+        Map<String, ExternalService> merged = proxy.getUserExternalServiceService()
+                .overlay(application.getExternalServices(), context.getUserId(), appPart, Function.identity());
         application.setExternalServices(merged);
     }
 
@@ -217,12 +213,6 @@ public class ResourceController extends AccessControlBaseController {
                 log.warn("Failed to compute external-service status for '{}' on '{}'", entry.getKey(), descriptor.getUrl(), e);
             }
         }
-    }
-
-    // app_identity and allow_user_external_services are admin config only (config file / admin-apply).
-    private static void clearAdminManagedFields(Application application) {
-        application.setAppIdentity(null);
-        application.setAllowUserExternalServices(false);
     }
 
     private static void clearExternalServiceSecrets(Application application) {
@@ -393,7 +383,6 @@ public class ResourceController extends AccessControlBaseController {
                 if (application == null) {
                     throw new HttpException(BAD_REQUEST, "Application can't be empty");
                 }
-                clearAdminManagedFields(application);
                 ExternalServicesWriteMode externalServicesWriteMode =
                         ProxyUtil.hasTopLevelField(pair.getValue(), "external_services", "externalServices")
                                 ? ExternalServicesWriteMode.OVERRIDE

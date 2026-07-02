@@ -306,14 +306,121 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         assertEquals(200, applyResp.status(), () -> applyResp.body());
 
         String appUrl = "/v1/applications/public/gov-applied-app";
-        JsonNode adminApp = ProxyUtil.MAPPER.readTree(send(HttpMethod.GET, appUrl, null, "", "authorization", "admin").body());
-        assertEquals(SCHEDULER_KEY_HASH, adminApp.get("app_identity").asText());
-        assertTrue(adminApp.get("allow_user_external_services").asBoolean());
+        Response adminGet = send(HttpMethod.GET, appUrl, null, "", "authorization", "admin");
+        JsonNode adminApp = ProxyUtil.MAPPER.readTree(adminGet.body());
+        // allow_user_external_services is readable governance; app_identity is admin-managed and never exposed.
+        assertTrue(adminApp.get("allow_user_external_services").asBoolean(), adminGet::body);
+        assertFalse(adminGet.body().contains("app_identity"), () -> "app_identity must not be readable: " + adminGet.body());
+        assertFalse(adminGet.body().contains(SCHEDULER_KEY_HASH), () -> "app_identity value must not leak: " + adminGet.body());
 
         Response userGet = send(HttpMethod.GET, appUrl, null, "", "api-key", "proxyKey1");
         assertEquals(200, userGet.status(), () -> userGet.body());
         assertFalse(userGet.body().contains(SCHEDULER_KEY_HASH),
                 () -> "non-admin must not see app_identity value: " + userGet.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testAdminManagedFieldsSurviveResourceEdit() throws Exception {
+        // Admin-apply an app that enables OBO (app_identity) and user authoring.
+        Response apply = send(HttpMethod.POST, "/v1/admin/apply", null, """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Application",
+                      "name": "gov-edit-app",
+                      "spec": {
+                        "endpoint": "http://localhost:7001/v1/x",
+                        "display_name": "Gov Edit App",
+                        "app_identity": "%s",
+                        "allow_user_external_services": true
+                      }
+                    }
+                  ]
+                }
+                """.formatted(SCHEDULER_KEY_HASH), "authorization", "admin");
+        assertEquals(200, apply.status(), () -> apply.body());
+
+        String appUrl = "/v1/applications/public/gov-edit-app";
+        // A benign edit that omits the (read-hidden) admin-managed fields must NOT wipe them.
+        Response edit = send(HttpMethod.PUT, appUrl, null, """
+                {
+                    "endpoint": "http://localhost:7001/v1/x",
+                    "display_name": "Gov Edit App RENAMED"
+                }
+                """, "authorization", "admin");
+        assertEquals(200, edit.status(), () -> edit.body());
+
+        JsonNode afterEdit = ProxyUtil.MAPPER.readTree(send(HttpMethod.GET, appUrl, null, "", "authorization", "admin").body());
+        assertTrue(afterEdit.get("allow_user_external_services").asBoolean(), afterEdit::toString);
+
+        // Functionally prove app_identity also survived: author a user service, sign in, retrieve via OBO.
+        // (allow_user_external_services must have survived too, else authoring/resolution would 403/404.)
+        String scope = "applications/public/gov-edit-app/external_services/myapi";
+        assertEquals(200, send(HttpMethod.PUT, appUrl + "/external-services/myapi", null, USER_SVC_BODY, "authorization", "user").status());
+        verify(send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "USER",
+                    "authentication_type": "API_KEY",
+                    "api_key": "edit-secret",
+                    "offline_usage_consent": true
+                }
+                """.formatted(scope), "authorization", "user"), 200, "true");
+
+        Response obo = obo(scope, "user", SCHEDULER_KEY);
+        assertEquals(200, obo.status(), () -> "app_identity must survive the edit: " + obo.body());
+        assertEquals("edit-secret", ProxyUtil.MAPPER.readTree(obo.body()).get("header_value").asText());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testOboWithoutConsentDoesNotRefreshToken() throws Exception {
+        AtomicInteger counter = new AtomicInteger(0);
+        // Every token-endpoint call increments the counter; sign-in stores an already-expired token.
+        TestWebServer.Handler handler = request -> {
+            counter.getAndIncrement();
+            return new MockResponse()
+                    .setBody("{\"access_token\":\"access-token-1\",\"refresh_token\":\"refresh-token-1\",\"expires_in\":0}")
+                    .setHeader("Content-Type", "application/json");
+        };
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            verify(signInUserOauth(false), 200, "true");   // signed in WITHOUT offline consent
+            int afterSignIn = counter.get();
+
+            Response obo = obo(SALESFORCE_SCOPE, "user", SCHEDULER_KEY);
+            assertEquals(403, obo.status(), () -> obo.body());
+            // Consent is gated BEFORE the refresh, so the expired token must not have been rotated.
+            assertEquals(afterSignIn, counter.get(), "OBO without consent must not call the token endpoint");
+        }
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testOboMalformedUrlIsAudited() {
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_OBO_AUDIT");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        auditLogger.addAppender(appender);
+        Level previous = auditLogger.getLevel();
+        auditLogger.setLevel(Level.INFO);
+        try {
+            // A well-formed request whose url fails scope parsing (no /external_services/ segment) → 400.
+            Response resp = send(HttpMethod.POST, "/v1/ops/external-service/obo-credentials", null,
+                    "{\"url\":\"applications/app-with-services/salesforce\",\"owner_sub\":\"user\"}", "api-key", SCHEDULER_KEY);
+            assertEquals(400, resp.status(), () -> resp.body());
+
+            List<String> events = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .filter(m -> m.startsWith("event=obo_credential_retrieval"))
+                    .toList();
+            assertEquals(1, events.size(), events::toString);
+            assertTrue(events.get(0).contains("outcome=ERROR"), events::toString);
+            assertTrue(events.get(0).contains("owner_sub=user"), events::toString);
+        } finally {
+            auditLogger.setLevel(previous);
+            auditLogger.detachAppender(appender);
+        }
     }
 
     @Test

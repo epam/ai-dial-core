@@ -32,12 +32,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /** Admin/app-owner CRUD for an application's external-service definitions; static-config apps are read-only. */
 @Slf4j
 public class ExternalServiceManagementController {
+
+    private static final String APPLICATIONS_PREFIX = "applications/";
 
     private final ProxyContext context;
     private final AsyncTaskExecutor taskExecutor;
@@ -64,13 +67,9 @@ public class ExternalServiceManagementController {
     public Future<?> listExternalServices(String appId) {
         taskExecutor.submit(() -> {
             ResolvedApp resolved = resolveApp(appId);
-            Map<String, ExternalService> services = canManageInline(resolved)
-                    ? resolved.application.getExternalServices()
-                    : listUserAuthored(resolved, appId);
+            Map<String, ExternalService> services = manageableServices(resolved, appId);
             List<ExternalServiceData> result = new ArrayList<>();
-            if (services != null) {
-                services.forEach((id, service) -> result.add(toData(appId, id, service, true)));
-            }
+            services.forEach((id, service) -> result.add(toData(appId, id, service, true)));
             return result;
         }).onSuccess(result -> context.respond(HttpStatus.OK, result))
                 .onFailure(error -> respondError("Can't list external services", error));
@@ -80,25 +79,47 @@ public class ExternalServiceManagementController {
     public Future<?> getExternalService(String appId, String serviceId) {
         taskExecutor.submit(() -> {
             ResolvedApp resolved = resolveApp(appId);
-            ExternalService service;
-            if (canManageInline(resolved)) {
-                service = getService(resolved.application, serviceId);
-            } else {
-                requireUserAuthoringAllowed(resolved);
-                service = userExternalServiceService.get(context.getUserId(), appId, serviceId);
-                if (service == null) {
-                    throw new ResourceNotFoundException("External service '%s' not found".formatted(serviceId));
-                }
-            }
+            ExternalService service = manageableService(resolved, appId, serviceId);
             return toData(appId, serviceId, service, true);
         }).onSuccess(data -> context.respond(HttpStatus.OK, data))
                 .onFailure(error -> respondError("Can't get external service", error));
         return Future.succeededFuture();
     }
 
-    private Map<String, ExternalService> listUserAuthored(ResolvedApp resolved, String appId) {
-        requireUserAuthoringAllowed(resolved);
-        return userExternalServiceService.list(context.getUserId(), appId);
+    // Callers see inline (admin) definitions when they can manage them, unioned with their own user-authored
+    // ones (inline wins on id clash) — so a service authored before gaining write access stays visible.
+    private Map<String, ExternalService> manageableServices(ResolvedApp resolved, String appId) {
+        Map<String, ExternalService> services = new LinkedHashMap<>();
+        boolean inline = canManageInline(resolved);
+        if (inline && resolved.application.getExternalServices() != null) {
+            services.putAll(resolved.application.getExternalServices());
+        }
+        if (resolved.application.isAllowUserExternalServices()) {
+            Map<String, ExternalService> userAuthored = userExternalServiceService.list(context.getUserId(), appId);
+            userAuthored.forEach(services::putIfAbsent);
+        } else if (!inline) {
+            throw new PermissionDeniedException("This application does not allow user-authored external services");
+        }
+        return services;
+    }
+
+    private ExternalService manageableService(ResolvedApp resolved, String appId, String serviceId) {
+        if (canManageInline(resolved)) {
+            ExternalService inline = resolved.application.getExternalServices() == null
+                    ? null : resolved.application.getExternalServices().get(serviceId);
+            if (inline != null) {
+                return inline;
+            }
+        } else {
+            requireUserAuthoringAllowed(resolved);
+        }
+        if (resolved.application.isAllowUserExternalServices()) {
+            ExternalService service = userExternalServiceService.get(context.getUserId(), appId, serviceId);
+            if (service != null) {
+                return service;
+            }
+        }
+        throw new ResourceNotFoundException("External service '%s' not found".formatted(serviceId));
     }
 
     public Future<?> putExternalService(String appId, String serviceId) {
@@ -149,7 +170,7 @@ public class ExternalServiceManagementController {
     }
 
     private void purgeCredentials(String appId, String serviceId, CredentialsLevel level) {
-        String scopeId = "applications/" + appId + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId;
+        String scopeId = APPLICATIONS_PREFIX + appId + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId;
         CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
         resourceCredentialsService.deleteResourceCredentialsAtLevel(locator, level);
     }
@@ -162,7 +183,7 @@ public class ExternalServiceManagementController {
         ResourceDescriptor descriptor;
         try {
             descriptor = ResourceDescriptorFactory.fromAnyUrl(
-                    "applications/" + UrlUtil.encodePath(appId), encryptionService);
+                    APPLICATIONS_PREFIX + UrlUtil.encodePath(appId), encryptionService);
         } catch (IllegalArgumentException e) {
             throw new ResourceNotFoundException("Application not found: " + appId);
         }
@@ -194,22 +215,13 @@ public class ExternalServiceManagementController {
         }
     }
 
-    private static ExternalService getService(Application application, String serviceId) {
-        ExternalService service = application.getExternalServices() == null
-                ? null : application.getExternalServices().get(serviceId);
-        if (service == null) {
-            throw new ResourceNotFoundException("External service '%s' not found".formatted(serviceId));
-        }
-        return service;
-    }
-
     private ExternalServiceData toData(String appId, String serviceId, ExternalService service, boolean withStatus) {
         ResourceAuthSettings authSettings = service.getAuthSettings();
         // Copy and strip secrets — responses must never expose client_secret/code_verifier (encrypted or not).
         ResourceAuthSettings safe = authSettings == null ? null
                 : authSettings.toBuilder().clientSecret(null).codeVerifier(null).build();
         if (withStatus && safe != null) {
-            String scopeId = "applications/" + appId + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId;
+            String scopeId = APPLICATIONS_PREFIX + appId + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId;
             CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
             resourceAuthSettingsService.setExternalServiceAuthStatuses(locator, safe, context.getUserId());
         }
