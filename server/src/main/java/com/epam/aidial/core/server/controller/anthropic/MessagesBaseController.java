@@ -1,0 +1,201 @@
+package com.epam.aidial.core.server.controller.anthropic;
+
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.controller.BaseDeploymentPostController;
+import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.function.CollectDeploymentsFn;
+import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
+import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
+import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
+import com.epam.aidial.core.server.function.request.MessagesApiRequest;
+import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpClientRequest;
+import io.vertx.core.http.HttpClientResponse;
+import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
+
+import java.io.IOException;
+import java.util.List;
+
+/**
+ * Shared plumbing for the Anthropic Messages API controllers ({@link MessagesController} and
+ * {@link MessagesCountTokensController}): body parsing, deployment resolution + the
+ * {@code anthropicMessages} 503 gate, the enhancement chain, upstream-route preparation, and the
+ * send/retry loop. Subclasses only implement {@link #processResponse(HttpClientResponse)}.
+ */
+@Slf4j
+abstract class MessagesBaseController extends BaseDeploymentPostController {
+
+    protected final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
+
+    protected MessagesBaseController(Proxy proxy, ProxyContext context) {
+        super(proxy, context);
+        this.enhancementFunctions = List.of(
+                new CollectRequestChatCompletionAttachmentsFn(proxy, context),
+                new ApplyDefaultDeploymentSettingsFn(proxy, context),
+                new EnhanceModelRequestFn(proxy, context),
+                new CollectRequestApplicationFilesFn(proxy, context),
+                new CollectDeploymentsFn(proxy, context));
+    }
+
+    protected static MessagesApiRequest parseBody(Buffer body) {
+        log.info("Received body from client. Length: {}", body.length());
+        try {
+            ObjectNode tree = ProxyUtil.parseObject(body);
+            return new MessagesApiRequest(tree);
+        } catch (IOException e) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    protected Void setupDeployment(String model) {
+        Deployment deployment = proxy.getDeploymentService().findDeployment(context, model);
+        proxy.getConsentService().verifyUserConsent(context, deployment);
+
+        Features features = deployment.getFeatures();
+        boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
+        if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
+            throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", model, context.getApiKeyData().getSourceDeployment()));
+        }
+
+        if (deployment instanceof Application application) {
+            deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
+        }
+
+        if (!deployment.supportsInterface(InterfaceType.ANTHROPIC_MESSAGES)) {
+            throw new HttpException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "Anthropic messages not supported for this deployment type"
+            );
+        }
+
+        context.setTraceOperation("Send request to %s deployment".formatted(deployment.getName()));
+        context.setDeployment(deployment);
+
+        return null;
+    }
+
+    /**
+     * Runs the enhancement chain, assigns a per-request key, serializes the (possibly model-overridden)
+     * body and resolves the upstream route via the {@code anthropicMessages} base_url.
+     */
+    @SneakyThrows
+    protected void prepareUpstreamRoute(RequestObject request) {
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        context.setProxyApiKeyData(proxyApiKeyData);
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
+
+        ProxyUtil.processChain(request, enhancementFunctions);
+        // Enhancement functions update the api key, and it should be saved after that
+        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+
+        context.setRequestBody(Buffer.buffer(request.serialize()));
+
+        Deployment deployment = context.getDeployment();
+        String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
+        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
+                .get(deployment, context.getCacheBreakpointContext(),
+                        dep -> dep.resolveEndpoint(InterfaceType.ANTHROPIC_MESSAGES), upstreamId);
+
+        context.setRequestBodyTimestamp(System.currentTimeMillis());
+        context.setUpstreamRoute(upstreamRoute);
+    }
+
+    protected void sendRequest() {
+        if (nextUpstream()) {
+            Upstream upstream = context.getUpstreamRoute().get();
+            if (upstream.getId() == null || upstream.getId().isBlank()) {
+                respond(HttpStatus.SERVICE_UNAVAILABLE, "Upstream is missing required id");
+                return;
+            }
+            createProxyRequest(InterfaceType.ANTHROPIC_MESSAGES)
+                    .onSuccess(this::handleProxyRequest)
+                    .onFailure(this::handleProxyConnectionError);
+        }
+    }
+
+    private void handleProxyRequest(HttpClientRequest proxyRequest) {
+        context.setProxyRequest(proxyRequest);
+        context.setProxyConnectTimestamp(System.currentTimeMillis());
+
+        // TODO: no per-upstream endpoint for the Messages API yet. A single endpoint can't cover
+        //  /v1/messages, /v1/messages/count_tokens and /v1/messages/batches, and the only adapter
+        //  serving this interface (bedrock) routes by interfaces.base_url + ingress path on its own.
+        //  Investigate a proper way to provide Messages API URLs to adapters before adding one.
+        sendProxyRequest(proxyRequest, upstream -> null)
+                .onSuccess(this::handleProxyResponse)
+                .onFailure(this::handleProxyResponseError);
+    }
+
+    private void handleProxyResponse(HttpClientResponse proxyResponse) {
+        UpstreamRoute upstreamRoute = context.getUpstreamRoute();
+        int responseStatusCode = proxyResponse.statusCode();
+        if (isRetriableError(responseStatusCode)) {
+            upstreamRoute.fail(proxyResponse);
+            sendRequest(); // try next
+            return;
+        }
+
+        if (responseStatusCode == 200) {
+            upstreamRoute.succeed(proxyResponse, context.getDeployment());
+        } else if (!HttpStatus.fromStatusCode(responseStatusCode).is4xx()) {
+            // mark the upstream as failed, so the next time we select another one
+            upstreamRoute.fail(proxyResponse);
+        }
+
+        context.setProxyResponse(proxyResponse);
+        context.setProxyResponseTimestamp(System.currentTimeMillis());
+
+        processResponse(proxyResponse);
+    }
+
+    private void handleProxyResponseError(Throwable error) {
+        // for 5xx errors we use exponential backoff strategy, so passing retryAfterSeconds parameter makes no sense
+        context.getUpstreamRoute().fail(HttpStatus.BAD_GATEWAY);
+        log.warn("Proxy failed to receive response header from origin. Deployment: {}. Address: {}. Error:",
+                context.getDeployment().getName(),
+                context.getProxyRequest().connection().remoteAddress(),
+                error);
+
+        sendRequest(); // try next
+    }
+
+    /**
+     * Route-specific response handling, invoked after the shared retry/succeed/fail bookkeeping.
+     */
+    protected abstract void processResponse(HttpClientResponse proxyResponse);
+
+    protected Void handleRequestError(String deploymentId, Throwable error) {
+        if (error instanceof PermissionDeniedException) {
+            respond(HttpStatus.FORBIDDEN, error.getMessage());
+            log.warn("Forbidden deployment {}", deploymentId);
+        } else if (error instanceof ResourceNotFoundException) {
+            respond(HttpStatus.NOT_FOUND, error.getMessage());
+            log.warn("Deployment not found {}", deploymentId, error);
+        } else if (error instanceof HttpException httpException) {
+            respond(httpException);
+            log.warn("Deployment error {}", deploymentId, error);
+        } else {
+            respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to process deployment: " + deploymentId);
+            log.error("Failed to handle deployment {}", deploymentId, error);
+        }
+
+        return null;
+    }
+}

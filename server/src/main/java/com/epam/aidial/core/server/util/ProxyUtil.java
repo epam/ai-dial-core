@@ -67,7 +67,8 @@ public class ProxyUtil {
             .add(HttpHeaders.TRANSFER_ENCODING, "whatever")
             .add(HttpHeaders.UPGRADE, "whatever")
             .add(HttpHeaders.CONTENT_LENGTH, "whatever")
-            .add(Proxy.HEADER_API_KEY, "whatever");
+            .add(Proxy.HEADER_API_KEY, "whatever")
+            .add(Proxy.HEADER_X_API_KEY, "whatever");
     public static final String METADATA_PREFIX = "metadata/";
 
     public static void copyHeaders(MultiMap from, MultiMap to) {

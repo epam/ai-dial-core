@@ -136,7 +136,7 @@ public class BaseDeploymentPostController {
         Future<TokenUsage> tokenUsageFuture = Future.succeededFuture();
         if (context.getDeployment() instanceof Model model) {
             if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
-                TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
+                TokenUsage tokenUsage = parseTokenUsage(responseBody);
                 if (tokenUsage == null) {
                     Pricing pricing = model.getPricing();
                     if (pricing == null || "token".equals(pricing.getUnit())) {
@@ -163,6 +163,14 @@ public class BaseDeploymentPostController {
             tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context).andThen(result -> context.setTokenUsage(result.result()));
         }
         return tokenUsageFuture;
+    }
+
+    /**
+     * Parses token usage from the fully buffered response body. Overridable so provider-specific
+     * controllers can supply their own accounting (e.g. the Anthropic Messages API).
+     */
+    protected TokenUsage parseTokenUsage(Buffer responseBody) {
+        return TokenUsageParser.parse(responseBody);
     }
 
     /**

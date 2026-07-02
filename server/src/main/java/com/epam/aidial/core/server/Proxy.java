@@ -93,6 +93,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     // All new headers should start with X-DIAL- while existing may stay untouched
 
     public static final String HEADER_API_KEY = "API-KEY";
+    public static final String HEADER_X_API_KEY = "x-api-key";
     public static final String HEADER_JOB_TITLE = "X-JOB-TITLE";
     public static final String HEADER_CONVERSATION_ID = "X-CONVERSATION-ID";
     public static final String HEADER_UPSTREAM_ID = "X-UPSTREAM-ID";
@@ -292,8 +293,11 @@ public class Proxy implements Handler<HttpServerRequest> {
      * @return the future of {@link AuthorizationResult}
      */
     private Future<AuthorizationResult> authorizeRequest(HttpServerRequest request) {
-        String apiKey = request.headers().get(HEADER_API_KEY);
+        String apiKeyHeader = request.headers().get(HEADER_API_KEY);
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+        String apiKey = apiKeyHeader == null && authorization == null
+                ? request.headers().get(HEADER_X_API_KEY)
+                : apiKeyHeader;
         log.debug("Authorization header: {}", authorization);
 
         String clientIpAddress = ProxyUtil.getClientIpAddress(request, apiKeyValidation.getProxyCount());

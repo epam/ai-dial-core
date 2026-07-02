@@ -5,6 +5,8 @@ import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.controller.anthropic.MessagesController;
+import com.epam.aidial.core.server.controller.anthropic.MessagesCountTokensController;
 import com.epam.aidial.core.server.controller.route.ApplicationRouteController;
 import com.epam.aidial.core.server.controller.route.GlobalRouteController;
 import com.epam.aidial.core.server.data.RouteTemplate;
@@ -231,6 +233,16 @@ public class ControllerSelector {
         });
         post(RouteTemplate.LLM_RESPONSES_API, (proxy, context, pathMatcher) -> {
             ResponsesController controller = new ResponsesController(proxy, context);
+            return controller::handle;
+        });
+        // count_tokens first: matching is first-registered-wins, so the more specific path must not
+        // be swallowed if a greedy /messages/(?<id>...) route is ever added.
+        post(RouteTemplate.LLM_MESSAGES_API_COUNT_TOKENS, (proxy, context, pathMatcher) -> {
+            MessagesCountTokensController controller = new MessagesCountTokensController(proxy, context);
+            return controller::handle;
+        });
+        post(RouteTemplate.LLM_MESSAGES_API, (proxy, context, pathMatcher) -> {
+            MessagesController controller = new MessagesController(proxy, context);
             return controller::handle;
         });
         post(RouteTemplate.LLM_RESPONSES_API_CANCEL, (proxy, context, pathMatcher) -> {
