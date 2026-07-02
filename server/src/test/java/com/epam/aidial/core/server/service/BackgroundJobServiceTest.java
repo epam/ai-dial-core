@@ -427,6 +427,7 @@ class BackgroundJobServiceTest {
                                 ResourceItemMetadata meta = new ResourceItemMetadata();
                                 meta.setName(name);
                                 meta.setNodeType(NodeType.ITEM);
+                                meta.setCreatedAt(System.currentTimeMillis());
                                 return (MetadataBase) meta;
                             })
                             .toList();

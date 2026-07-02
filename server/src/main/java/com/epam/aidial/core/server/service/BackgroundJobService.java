@@ -48,6 +48,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
 public class BackgroundJobService {
@@ -72,7 +73,7 @@ public class BackgroundJobService {
     private final RScoredSortedSet<String> schedule;
     private final String scheduleKey;
     private final Set<String> inFlightJobIds = ConcurrentHashMap.newKeySet();
-    private final AtomicBoolean polling = new AtomicBoolean(false);
+    private final AtomicLong nextJobTime = new AtomicLong(Long.MAX_VALUE);
 
     public BackgroundJobService(
             Vertx vertx,
@@ -109,32 +110,41 @@ public class BackgroundJobService {
     }
 
     public void init() {
-        schedulePoll();
+        AtomicBoolean polling = new AtomicBoolean(false);
+        vertx.setPeriodic(0, 1, id -> {
+            if (nextJobTime.get() <= System.currentTimeMillis()
+                    && polling.compareAndSet(false, true)) {
+                taskExecutor.submit(this::tryClaimAndPoll)
+                        .onComplete(ignore -> polling.set(false))
+                        .onFailure(e -> log.warn("Failed to poll background jobs", e));
+            }
+        });
         // Set up periodic scans in case of a Redis restart
         vertx.setPeriodic(0, settings.getScanIntervalMs(), id -> taskExecutor.submit(this::scan));
-    }
-
-    private void schedulePoll() {
-        vertx.setTimer(settings.getPollIntervalMs(), id -> taskExecutor.submit(this::tryClaimAndPoll)
-                .onComplete(ignored -> schedulePoll())
-                .onFailure(e -> log.warn("Failed to poll background jobs", e)));
     }
 
     public Future<Void> saveJob(String dialId, BackgroundJobRecord record) {
         String json = ProxyUtil.convertToString(record);
         ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(dialId);
         long now = System.currentTimeMillis();
-        return taskExecutor.submit(() -> {
-            resourceService.putResource(descriptor, json, EtagHeader.NEW_ONLY);
-            return null;
-        })
-        .compose(ignored -> toFuture(schedule.addAsync(now, dialId)))
-        .mapEmpty();
+        return taskExecutor.submit(() -> resourceService.putResource(descriptor, json, EtagHeader.NEW_ONLY))
+                .onSuccess(ignore -> schedule(dialId, now + settings.getPollIntervalMs()))
+                .mapEmpty();
+    }
+
+    private void schedule(String dialId, long nextPollTime) {
+        toFuture(schedule.addIfAbsentAsync(nextPollTime, dialId))
+                .onSuccess(added -> {
+                    if (added) {
+                        nextJobTime.accumulateAndGet(nextPollTime, Math::min);
+                    }
+                })
+                .onFailure(e -> log.warn("Failed to schedule background job {}", dialId, e));
     }
 
     public Future<Boolean> isJobActive(String dialId) {
         return taskExecutor.submit(() ->
-                resourceService.getResourceMetadata(ResponseIdUtil.getBackgroundJobDescriptor(dialId)) != null);
+                resourceService.hasResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId)));
     }
 
     public Future<Boolean> finishStreamingJob(String dialId) {
@@ -174,69 +184,52 @@ public class BackgroundJobService {
         });
     }
 
-    public void startPolling(String dialId) {
-        long nextPollTime = System.currentTimeMillis() + settings.getPollIntervalMs();
-        toFuture(schedule.addIfAbsentAsync(nextPollTime, dialId))
-                .onFailure(e -> log.warn("Failed to schedule background job {}", dialId, e));
-    }
-
     private Void tryClaimAndPoll() {
-        if (polling.compareAndSet(false, true)) {
+        if (inFlightJobIds.size() >= settings.getMaxParallelJobs()) {
             return null;
         }
 
-        try {
-            if (inFlightJobIds.size() >= settings.getMaxParallelJobs()) {
-                return null;
+        while (true) {
+            long previous = nextJobTime.get();
+            ScoredEntry<String> scoredEntry = schedule.firstEntry();
+            if (scoredEntry == null) {
+                nextJobTime.compareAndSet(previous, Long.MAX_VALUE);
+                break;
             }
 
             long now = System.currentTimeMillis();
-            ScoredEntry<String> scoredEntry;
-            while ((scoredEntry = nextJob(now)) != null) {
-                String dialId = scoredEntry.getValue();
-                if (inFlightJobIds.size() >= settings.getMaxParallelJobs()) {
-                    break;
-                }
-                if (!inFlightJobIds.add(dialId)) {
-                    continue;
-                }
+            long score = scoredEntry.getScore() == null ? now : scoredEntry.getScore().longValue();
+            if (score > now) {
+                nextJobTime.compareAndSet(previous, score);
+                break;
+            }
 
-                try {
-                    ClaimResult claimResult = executeClaim(scoredEntry);
-                    if (claimResult != null) {
-                        poll(dialId, claimResult)
-                                .eventually(() -> {
-                                    inFlightJobIds.remove(dialId);
-                                    return polling.get()
-                                            ? Future.succeededFuture()
-                                            : taskExecutor.submit(this::tryClaimAndPoll);
-                                })
-                                .onFailure(e -> log.warn("Failed to process background job {}", dialId, e));
-                    }
-                } catch (Throwable e) {
-                    log.warn("Failed to process background job {}", dialId, e);
+            if (inFlightJobIds.size() >= settings.getMaxParallelJobs()) {
+                break;
+            }
+
+            String dialId = scoredEntry.getValue();
+            if (!inFlightJobIds.add(dialId)) {
+                // Already polling
+                continue;
+            }
+
+            try {
+                ClaimResult claimResult = executeClaim(scoredEntry);
+                if (claimResult != null) {
+                    poll(dialId, claimResult)
+                            .onComplete(ignore -> inFlightJobIds.remove(dialId))
+                            .onFailure(e -> log.warn("Failed to process background job {}", dialId, e));
+                } else {
                     inFlightJobIds.remove(dialId);
                 }
+            } catch (Throwable e) {
+                log.warn("Failed to process background job {}", dialId, e);
+                inFlightJobIds.remove(dialId);
             }
-        } finally {
-            polling.set(false);
         }
 
         return null;
-    }
-
-    @Nullable
-    private ScoredEntry<String> nextJob(long now) {
-        var candidates = schedule.entryRange(
-                Double.NEGATIVE_INFINITY, true, (double) now, true, 0, 1);
-
-        if (candidates == null || candidates.isEmpty()) {
-            return null;
-        }
-        if (candidates.size() != 1) {
-            throw new RuntimeException("Multiple candidates returned from schedule: " + candidates);
-        }
-        return candidates.iterator().next();
     }
 
     private Map.Entry<BackgroundJobRecord, ResponseMapping> loadJobData(String dialId) {
@@ -498,7 +491,7 @@ public class BackgroundJobService {
 
     @VisibleForTesting
     Void scan() {
-        log.info("BackgroundJobService: scanning for unscheduled jobs");
+        log.info("Scanning for unscheduled jobs");
         try {
             ResourceDescriptor root = ResponseIdUtil.getBackgroundJobDescriptor(null);
             String token = null;
@@ -512,14 +505,32 @@ public class BackgroundJobService {
                     long now = System.currentTimeMillis();
                     for (MetadataBase item : items) {
                         if (item.getNodeType() == NodeType.ITEM) {
+                            if (!(item instanceof ResourceItemMetadata meta)) {
+                                log.warn("Unexpected item type {}", item.getClass());
+                                continue;
+                            }
+
+                            if (meta.getCreatedAt() == null) {
+                                log.debug("Missing createdAt for job {}, fetching metadata", meta.getDescriptor());
+                                meta = resourceService.getResourceMetadata(meta.getDescriptor());
+                            }
+
+                            if (meta == null) {
+                                log.info("Job {} metadata not found, skipping", item.getDescriptor());
+                                continue;
+                            }
+
+                            if (meta.getCreatedAt() == null) {
+                                log.warn("Missing createdAt for job {}, skipping", meta.getDescriptor());
+                                continue;
+                            }
+
                             String dialId = item.getName();
-                            if (item instanceof ResourceItemMetadata meta
-                                    && meta.getCreatedAt() != null
-                                    && now - meta.getCreatedAt() >= settings.getJobTtlMs()) {
-                                log.warn("BackgroundJobService: expiring job {}, age={}ms", dialId, now - meta.getCreatedAt());
+                            if (now - meta.getCreatedAt() >= settings.getJobTtlMs()) {
+                                log.warn("Expiring job {}, age={}ms", dialId, now - meta.getCreatedAt());
                                 expireJob(dialId);
                             } else {
-                                schedule.addIfAbsent(now, dialId);
+                                schedule(dialId, now);
                             }
                         }
                     }
@@ -527,7 +538,7 @@ public class BackgroundJobService {
                 token = folder.getNextToken();
             } while (token != null);
         } catch (Throwable e) {
-            log.warn("BackgroundJobService: scan failed", e);
+            log.warn("Scan failed", e);
         }
 
         return null;
