@@ -11,6 +11,8 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.NodeType;
@@ -25,7 +27,6 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
-import org.apache.commons.lang3.mutable.MutableObject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -349,24 +350,19 @@ class BackgroundJobServiceTest {
                     return Future.succeededFuture(true);
                 });
 
-        MutableObject<BackgroundJobService> newServiceHolder = new MutableObject<>();
-        // Save a job via the first service instance (adds record to ResourceService + ZSET)
-        service.saveJob(proxyContext.getDialResponseId(), buildRecord())
-                .onSuccess(ignored -> {
-                    // Flush the ZSET entry to simulate a crash (record in ResourceService but not ZSET)
-                    redissonClient.getKeys().flushall();
-                    // New service instance: scan should re-add the job
-                    BackgroundJobService newService = buildService(vertx, 10);
-                    doReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())))
-                            .when(newService).pollMapping(any());
-                    newServiceHolder.setValue(newService);
-                    newService.scan();
-                    newService.init();
-                })
-                .onFailure(ctx::failNow);
+        // Directly populate resourceStore to simulate a job that survived a crash
+        // (record exists in ResourceService but not in Redis ZSET)
+        ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(JOB_ID);
+        resourceStore.put(descriptor.getAbsoluteFilePath(), ProxyUtil.convertToString(buildRecord()));
+
+        BackgroundJobService newService = buildService(vertx, 10);
+        doReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())))
+                .when(newService).pollMapping(any());
+        newService.scan();
+        newService.init();
 
         await(ctx);
-        verify(newServiceHolder.get(), atLeastOnce()).pollMapping(any());
+        verify(newService, atLeastOnce()).pollMapping(any());
     }
 
     @Test
@@ -409,6 +405,11 @@ class BackgroundJobServiceTest {
                 .thenAnswer(inv -> {
                     ResourceDescriptor desc = inv.getArgument(0);
                     return resourceStore.remove(desc.getAbsoluteFilePath()) != null;
+                });
+        lenient().when(mock.hasResource(any(ResourceDescriptor.class)))
+                .thenAnswer(inv -> {
+                    ResourceDescriptor desc = inv.getArgument(0);
+                    return resourceStore.containsKey(desc.getAbsoluteFilePath());
                 });
         lenient().when(mock.getResourceMetadata(any(ResourceDescriptor.class)))
                 .thenAnswer(inv -> {
