@@ -256,7 +256,7 @@ public class ApplicationService {
 
         if (isPublicOrReview(resource)) {
             if (application.getFunction() != null) {
-                deleteFolder(application.getFunction().getSourceFolder());
+                deleteFolder(application.getFunction().getTargetFolder());
             }
             List<ResourceDescriptor> appFiles;
             try {
@@ -648,7 +648,7 @@ public class ApplicationService {
 
             // for public/review application source folder is equal to target folder
             // source files are copied to read-only deployment bucket for such applications
-            if (!isPublicOrReview(resource)) {
+            if (!Objects.equals(function.getSourceFolder(), function.getTargetFolder())) {
                 copyFolder(function.getSourceFolder(), function.getTargetFolder());
             }
 
@@ -710,7 +710,7 @@ public class ApplicationService {
 
                 // for public/review application source folder is equal to target folder
                 // source files are copied to read-only deployment bucket for such applications
-                if (!isPublicOrReview(resource)) {
+                if (!Objects.equals(function.getSourceFolder(), function.getTargetFolder())) {
                     deleteFolder(function.getTargetFolder());
                 }
 
