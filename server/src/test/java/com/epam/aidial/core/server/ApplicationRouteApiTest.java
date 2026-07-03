@@ -282,7 +282,8 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
                 "resourceType":"APPLICATION",
                 "createdAt": "@ignore",
                 "updatedAt":"@ignore",
-                "etag":"@ignore"
+                "etag":"@ignore",
+                "author" : "admin user"
                 }
                 """);
         String responseBody = """
