@@ -112,6 +112,75 @@ class ResourceEndpointUtilTest {
         }
     }
 
+    static Stream<TestCaseBuildAppendedMetadataEndpoint> provideTestCasesForAppendedMetadataEndpoint() {
+        return Stream.of(
+                new TestCaseBuildAppendedMetadataEndpoint(
+                        "https://keycloak.example.com/realms/dial",
+                        "openid-configuration",
+                        "https://keycloak.example.com/realms/dial/.well-known/openid-configuration",
+                        null
+                ),
+                new TestCaseBuildAppendedMetadataEndpoint(
+                        "https://keycloak.example.com/realms/dial/",
+                        "openid-configuration",
+                        "https://keycloak.example.com/realms/dial/.well-known/openid-configuration",
+                        null
+                ),
+                new TestCaseBuildAppendedMetadataEndpoint(
+                        "http://localhost:8080/realms/dial",
+                        "openid-configuration",
+                        "http://localhost:8080/realms/dial/.well-known/openid-configuration",
+                        null
+                ),
+                new TestCaseBuildAppendedMetadataEndpoint(
+                        "https://example.com",
+                        "openid-configuration",
+                        "https://example.com/.well-known/openid-configuration",
+                        null
+                ),
+
+                new TestCaseBuildAppendedMetadataEndpoint(
+                        "invalid-url",
+                        "openid-configuration",
+                        null,
+                        "Invalid URL: Missing scheme or host."
+                ),
+                new TestCaseBuildAppendedMetadataEndpoint(
+                        null,
+                        "openid-configuration",
+                        null,
+                        "URL cannot be null or empty."
+                ),
+                new TestCaseBuildAppendedMetadataEndpoint(
+                        "",
+                        "openid-configuration",
+                        null,
+                        "URL cannot be null or empty."
+                )
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideTestCasesForAppendedMetadataEndpoint")
+    void testBuildAppendedMetadataEndpoint(TestCaseBuildAppendedMetadataEndpoint testCase) {
+        if (testCase.expectedExceptionMessage != null) {
+            IllegalArgumentException exception = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> ResourceEndpointUtil.buildAppendedMetadataEndpoint(
+                            testCase.resourceEndpoint,
+                            testCase.wellKnownSuffix
+                    )
+            );
+            assertEquals(testCase.expectedExceptionMessage, exception.getMessage());
+        } else {
+            String result = ResourceEndpointUtil.buildAppendedMetadataEndpoint(
+                    testCase.resourceEndpoint,
+                    testCase.wellKnownSuffix
+            );
+            assertEquals(testCase.expectedOutput, result);
+        }
+    }
+
     private static class TestCaseBuildBaseResourceEndpoint {
         String inputUrl;
         String expectedOutput;
@@ -135,6 +204,20 @@ class ResourceEndpointUtilTest {
             this.resourceEndpoint = resourceEndpoint;
             this.wellKnownSuffix = wellKnownSuffix;
             this.ignorePathSuffix = ignorePathSuffix;
+            this.expectedOutput = expectedOutput;
+            this.expectedExceptionMessage = expectedExceptionMessage;
+        }
+    }
+
+    private static class TestCaseBuildAppendedMetadataEndpoint {
+        String resourceEndpoint;
+        String wellKnownSuffix;
+        String expectedOutput;
+        String expectedExceptionMessage;
+
+        TestCaseBuildAppendedMetadataEndpoint(String resourceEndpoint, String wellKnownSuffix, String expectedOutput, String expectedExceptionMessage) {
+            this.resourceEndpoint = resourceEndpoint;
+            this.wellKnownSuffix = wellKnownSuffix;
             this.expectedOutput = expectedOutput;
             this.expectedExceptionMessage = expectedExceptionMessage;
         }
