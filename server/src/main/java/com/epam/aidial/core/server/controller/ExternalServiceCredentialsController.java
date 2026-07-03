@@ -81,7 +81,7 @@ public class ExternalServiceCredentialsController {
                     ResourceSignInRequest request = ProxyUtil.convertToObject(body, ResourceSignInRequest.class);
                     ValidationUtil.validate(request);
                     return taskExecutor.submit(() -> {
-                        ResolvedExternalService resolved = resolveExternalService(request.getUrl(), null);
+                        ResolvedExternalService resolved = resolveExternalService(request.getUrl());
                         ResourceAuthSettings authSettings = resolved.externalService.getAuthSettings();
                         validateAuthType(authSettings.getAuthenticationType(), request.getAuthenticationType());
 
@@ -125,7 +125,7 @@ public class ExternalServiceCredentialsController {
                     ResourceSignOutRequest request = ProxyUtil.convertToObject(body, ResourceSignOutRequest.class);
                     ValidationUtil.validate(request);
 
-                    ResolvedExternalService resolved = resolveExternalService(request.getUrl(), null);
+                    ResolvedExternalService resolved = resolveExternalService(request.getUrl());
                     ResourceAuthSettings authSettings = resolved.externalService.getAuthSettings();
                     validateAuthType(authSettings.getAuthenticationType(), request.getAuthenticationType());
                     verifyAccess(resolved, request.getCredentialsLevel());
@@ -164,14 +164,14 @@ public class ExternalServiceCredentialsController {
                     // application deployments expose getName() as the full "applications/{...}" URL.
                     // Normalize so both shapes compare against the parsed appPart.
                     String normalizedCaller = callerApp;
-                    if (normalizedCaller != null && normalizedCaller.startsWith("applications/")) {
-                        normalizedCaller = normalizedCaller.substring("applications/".length());
+                    if (normalizedCaller != null && normalizedCaller.startsWith(CredentialsLocatorFactory.APPLICATIONS_PREFIX)) {
+                        normalizedCaller = normalizedCaller.substring(CredentialsLocatorFactory.APPLICATIONS_PREFIX.length());
                     }
                     if (normalizedCaller == null || !normalizedCaller.equals(appPart)) {
                         throw new PermissionDeniedException("Per-request key is not bound to application: " + appPart);
                     }
 
-                    ResolvedExternalService resolved = resolveExternalService(request.getUrl(), null);
+                    ResolvedExternalService resolved = resolveExternalService(request.getUrl());
                     ResourceAuthSettings authSettings = resolved.externalService.getAuthSettings();
 
                     CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(request.getUrl(), context);
@@ -269,6 +269,11 @@ public class ExternalServiceCredentialsController {
         }
     }
 
+    // Caller-scoped resolution: the caller is the credential owner.
+    private ResolvedExternalService resolveExternalService(String scopeId) {
+        return resolveExternalService(scopeId, null);
+    }
+
     /**
      * Canonical external-service definition resolver. Resolves the admin/inline definition first; when the
      * app permits it ({@code allow_user_external_services}) and no inline definition exists, falls back to a
@@ -292,7 +297,7 @@ public class ExternalServiceCredentialsController {
             staticApp = false;
             try {
                 appDescriptor = ResourceDescriptorFactory.fromAnyUrl(
-                        "applications/" + UrlUtil.encodePath(appPart), encryptionService);
+                        CredentialsLocatorFactory.APPLICATIONS_PREFIX + UrlUtil.encodePath(appPart), encryptionService);
             } catch (IllegalArgumentException e) {
                 throw new ResourceNotFoundException("Application not found: " + appPart);
             }

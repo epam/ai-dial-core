@@ -18,7 +18,7 @@ import java.util.Map;
 public class CredentialsLocatorFactory {
 
     public static final String EXTERNAL_SERVICES_SEPARATOR = "/external_services/";
-    private static final String APPLICATIONS_PREFIX = "applications/";
+    public static final String APPLICATIONS_PREFIX = "applications/";
     private static final String CONFIG_SEGMENT = "config/";
 
     /**

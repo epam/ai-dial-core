@@ -40,8 +40,6 @@ import java.util.Map;
 @Slf4j
 public class ExternalServiceManagementController {
 
-    private static final String APPLICATIONS_PREFIX = "applications/";
-
     private final ProxyContext context;
     private final AsyncTaskExecutor taskExecutor;
     private final ApplicationService applicationService;
@@ -170,7 +168,8 @@ public class ExternalServiceManagementController {
     }
 
     private void purgeCredentials(String appId, String serviceId, CredentialsLevel level) {
-        String scopeId = APPLICATIONS_PREFIX + appId + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId;
+        String scopeId = CredentialsLocatorFactory.APPLICATIONS_PREFIX + appId
+                + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId;
         CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
         resourceCredentialsService.deleteResourceCredentialsAtLevel(locator, level);
     }
@@ -183,7 +182,7 @@ public class ExternalServiceManagementController {
         ResourceDescriptor descriptor;
         try {
             descriptor = ResourceDescriptorFactory.fromAnyUrl(
-                    APPLICATIONS_PREFIX + UrlUtil.encodePath(appId), encryptionService);
+                    CredentialsLocatorFactory.APPLICATIONS_PREFIX + UrlUtil.encodePath(appId), encryptionService);
         } catch (IllegalArgumentException e) {
             throw new ResourceNotFoundException("Application not found: " + appId);
         }
@@ -217,11 +216,11 @@ public class ExternalServiceManagementController {
 
     private ExternalServiceData toData(String appId, String serviceId, ExternalService service, boolean withStatus) {
         ResourceAuthSettings authSettings = service.getAuthSettings();
-        // Copy and strip secrets — responses must never expose client_secret/code_verifier (encrypted or not).
-        ResourceAuthSettings safe = authSettings == null ? null
-                : authSettings.toBuilder().clientSecret(null).codeVerifier(null).build();
+        // Responses must never expose client_secret/code_verifier (encrypted or not).
+        ResourceAuthSettings safe = authSettings == null ? null : authSettings.withoutSecrets();
         if (withStatus && safe != null) {
-            String scopeId = APPLICATIONS_PREFIX + appId + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId;
+            String scopeId = CredentialsLocatorFactory.APPLICATIONS_PREFIX + appId
+                    + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId;
             CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
             resourceAuthSettingsService.setExternalServiceAuthStatuses(locator, safe, context.getUserId());
         }

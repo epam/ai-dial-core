@@ -44,8 +44,6 @@ import java.util.Objects;
 @Slf4j
 public class ApplicationController {
 
-    private static final String APPLICATIONS_PREFIX = "applications/";
-
     private final ProxyContext context;
     private final EncryptionService encryptionService;
     private final AccessService accessService;
@@ -330,7 +328,7 @@ public class ApplicationController {
 
     private static ExternalService toSafeView(ExternalService service) {
         ResourceAuthSettings safe = service.getAuthSettings() == null ? null
-                : service.getAuthSettings().toBuilder().clientSecret(null).codeVerifier(null).build();
+                : service.getAuthSettings().withoutSecrets();
         return new ExternalService()
                 .setDisplayName(service.getDisplayName())
                 .setDescription(service.getDescription())
@@ -357,7 +355,8 @@ public class ApplicationController {
         if (id == null) {
             return null;
         }
-        return id.startsWith(APPLICATIONS_PREFIX) ? id.substring(APPLICATIONS_PREFIX.length()) : id;
+        return id.startsWith(CredentialsLocatorFactory.APPLICATIONS_PREFIX)
+                ? id.substring(CredentialsLocatorFactory.APPLICATIONS_PREFIX.length()) : id;
     }
 
     private void enrichExternalServiceStatuses(ApplicationData data) {
@@ -372,7 +371,8 @@ public class ApplicationController {
                 continue;
             }
             try {
-                String scopeId = APPLICATIONS_PREFIX + appId + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + entry.getKey();
+                String scopeId = CredentialsLocatorFactory.APPLICATIONS_PREFIX + appId
+                        + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + entry.getKey();
                 CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
                 resourceAuthSettingsService.setExternalServiceAuthStatuses(locator, authSettings, context.getUserId());
             } catch (RuntimeException e) {

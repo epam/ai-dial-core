@@ -189,7 +189,7 @@ public class ResourceController extends AccessControlBaseController {
         if (!application.isAllowUserExternalServices() || context.getUserId() == null) {
             return;
         }
-        String appPart = descriptor.getDecodedUrl().substring("applications/".length());
+        String appPart = descriptor.getDecodedUrl().substring(CredentialsLocatorFactory.APPLICATIONS_PREFIX.length());
         Map<String, ExternalService> merged = proxy.getUserExternalServiceService()
                 .overlay(application.getExternalServices(), context.getUserId(), appPart, Function.identity());
         application.setExternalServices(merged);
@@ -222,8 +222,7 @@ public class ResourceController extends AccessControlBaseController {
         }
         for (ExternalService service : services.values()) {
             if (service != null && service.getAuthSettings() != null) {
-                service.getAuthSettings().setClientSecret(null);
-                service.getAuthSettings().setCodeVerifier(null);
+                service.setAuthSettings(service.getAuthSettings().withoutSecrets());
             }
         }
     }
