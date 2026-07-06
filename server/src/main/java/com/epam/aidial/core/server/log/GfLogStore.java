@@ -25,6 +25,7 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
+import org.apache.commons.lang3.mutable.MutableBoolean;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -289,17 +290,15 @@ public class GfLogStore implements LogStore {
     @VisibleForTesting
     void appendClaims(ProxyContext context, LogEntry entry) throws JsonProcessingException {
         append(entry, ",\"claims\":{", false);
-        boolean[] first = {true};
-        appendStringMember(entry, "user_id", context.getUserId(), first);
+        MutableBoolean firstMember = new MutableBoolean(true);
+        appendStringMember(entry, "user_id", context.getUserId(), firstMember);
         List<String> roles = context.getUserRoles();
         if (roles != null) {
-            appendSeparator(entry, first);
+            appendSeparator(entry, firstMember);
             append(entry, "\"roles\":", false);
             append(entry, ProxyUtil.MAPPER.writeValueAsString(roles), false);
         }
-        appendStringMember(entry, "project", context.getProject(), first);
-        appendStringMember(entry, "user_hash", context.getUserHash(), first);
-        appendStringMember(entry, "user_display_name", context.getUserDisplayName(), first);
+        appendStringMember(entry, "user_display_name", context.getUserDisplayName(), firstMember);
         append(entry, "}", false);
     }
 
@@ -307,12 +306,12 @@ public class GfLogStore implements LogStore {
     void appendHeaders(ProxyContext context, LogEntry entry) {
         append(entry, ",\"headers\":{", false);
         MultiMap headers = context.getRequest().headers();
-        boolean[] first = {true};
+        MutableBoolean firstMember = new MutableBoolean(true);
         for (String name : headers.names()) {
             if (headersBlacklist.contains(name.toLowerCase(Locale.ROOT))) {
                 continue;
             }
-            appendSeparator(entry, first);
+            appendSeparator(entry, firstMember);
             append(entry, "\"", false);
             append(entry, name, true);
             append(entry, "\":\"", false);
@@ -331,11 +330,11 @@ public class GfLogStore implements LogStore {
         append(entry, "}", false);
     }
 
-    private static void appendStringMember(LogEntry entry, String name, String value, boolean[] first) {
+    private static void appendStringMember(LogEntry entry, String name, String value, MutableBoolean firstMember) {
         if (value == null) {
             return;
         }
-        appendSeparator(entry, first);
+        appendSeparator(entry, firstMember);
         append(entry, "\"", false);
         append(entry, name, false);
         append(entry, "\":\"", false);
@@ -343,9 +342,9 @@ public class GfLogStore implements LogStore {
         append(entry, "\"", false);
     }
 
-    private static void appendSeparator(LogEntry entry, boolean[] first) {
-        if (first[0]) {
-            first[0] = false;
+    private static void appendSeparator(LogEntry entry, MutableBoolean firstMember) {
+        if (firstMember.isTrue()) {
+            firstMember.setFalse();
         } else {
             append(entry, ",", false);
         }

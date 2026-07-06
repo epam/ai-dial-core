@@ -187,11 +187,11 @@ public class AiDial {
 
             AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx, settings("asyncTaskExecutor"));
 
-            JsonObject logSettings = settings("log");
-            boolean collectClaims = logSettings.getBoolean("collectClaims", false);
-            boolean collectHeaders = logSettings.getBoolean("collectHeaders", false);
+            JsonObject analyticsSettings = settings("analytics");
+            boolean collectClaims = analyticsSettings.getBoolean("collectClaims", false);
+            boolean collectHeaders = analyticsSettings.getBoolean("collectHeaders", false);
             // default is defined in the bundled aidial.settings.json and always merged in
-            Set<String> headersBlacklist = parseHeadersBlacklist(logSettings.getString("headersBlacklist"));
+            Set<String> headersBlacklist = parseHeadersBlacklist(analyticsSettings.getString("headersBlacklist"));
             LogStore logStore = new GfLogStore(collectClaims, collectHeaders, headersBlacklist);
 
             if (accessTokenValidator == null) {

@@ -303,8 +303,6 @@ public class GfLogStoreTest {
         ProxyContext context = mock(ProxyContext.class);
         when(context.getUserId()).thenReturn("user-1");
         when(context.getUserRoles()).thenReturn(List.of("admin", "reader"));
-        when(context.getProject()).thenReturn("proj");
-        when(context.getUserHash()).thenReturn("hash");
         when(context.getUserDisplayName()).thenReturn("Jane \"Doe\"");
 
         StringBuilder buffer = new StringBuilder();
@@ -316,8 +314,6 @@ public class GfLogStoreTest {
         assertEquals("user-1", claims.get("user_id").asText());
         assertEquals("admin", claims.get("roles").get(0).asText());
         assertEquals("reader", claims.get("roles").get(1).asText());
-        assertEquals("proj", claims.get("project").asText());
-        assertEquals("hash", claims.get("user_hash").asText());
         assertEquals("Jane \"Doe\"", claims.get("user_display_name").asText());
     }
 
@@ -327,8 +323,6 @@ public class GfLogStoreTest {
         ProxyContext context = mock(ProxyContext.class);
         when(context.getUserId()).thenReturn("user-1");
         when(context.getUserRoles()).thenReturn(null);
-        when(context.getProject()).thenReturn(null);
-        when(context.getUserHash()).thenReturn(null);
         when(context.getUserDisplayName()).thenReturn(null);
 
         StringBuilder buffer = new StringBuilder();
@@ -339,8 +333,6 @@ public class GfLogStoreTest {
         JsonNode claims = parseWrapped(buffer.toString());
         assertEquals("user-1", claims.get("user_id").asText());
         assertFalse(claims.has("roles"));
-        assertFalse(claims.has("project"));
-        assertFalse(claims.has("user_hash"));
         assertFalse(claims.has("user_display_name"));
     }
 
@@ -384,7 +376,6 @@ public class GfLogStoreTest {
         when(context.getRequest()).thenReturn(request);
         when(context.getUserId()).thenReturn("user-1");
         when(context.getUserRoles()).thenReturn(List.of("admin"));
-        when(context.getProject()).thenReturn("proj");
 
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
@@ -396,7 +387,7 @@ public class GfLogStoreTest {
 
         JsonNode root = ProxyUtil.MAPPER.readTree("{\"user\":{}" + buffer + "}");
         assertEquals("user-1", root.get("claims").get("user_id").asText());
-        assertEquals("proj", root.get("claims").get("project").asText());
+        assertEquals("admin", root.get("claims").get("roles").get(0).asText());
         assertFalse(root.get("headers").has("Authorization"));
         assertEquals("conv-1", root.get("headers").get("X-Conversation-Id").asText());
     }
