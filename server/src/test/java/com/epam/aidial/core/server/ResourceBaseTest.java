@@ -232,7 +232,7 @@ public class ResourceBaseTest {
     static ExtractedClaims createClaims(String role) {
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
         claims.put("title", "Manager");
-        return new ExtractedClaims(role, List.of(role), role, claims, null, null);
+        return new ExtractedClaims(role, List.of(role), role, claims, null, role + " user");
     }
 
     static ApiKeyData createAdminAppKey() {
