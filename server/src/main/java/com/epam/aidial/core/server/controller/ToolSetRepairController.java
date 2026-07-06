@@ -31,21 +31,22 @@ public class ToolSetRepairController implements Controller {
 
     @Override
     public Future<?> handle() {
-        if (!accessService.hasExplicitAdminAccess(context)) {
-            context.respond(HttpStatus.FORBIDDEN, "Admin access is required to repair a toolset");
-            return Future.succeededFuture();
-        }
-
-        return taskExecutor.submit(() -> repairService.repair(resource, context))
-                .onSuccess(outcome -> {
-                    String message = switch (outcome) {
-                        case NO_OP -> "no-op: client is valid and endpoints are unchanged";
-                        case ENDPOINTS_REFRESHED -> "endpoints refreshed: client is valid, endpoints updated";
-                        case REREGISTERED -> "re-registered: new client_id issued, credentials cleared";
-                    };
-                    context.respond(HttpStatus.OK, new RepairResponse(outcome.name(), message));
-                })
-                .onFailure(this::respondError);
+        return taskExecutor.submit(() -> {
+            if (!accessService.hasWriteAccess(resource, context)) {
+                throw new HttpException(HttpStatus.FORBIDDEN,
+                        "Write access to the toolset is required to repair it");
+            }
+            return repairService.repair(resource, context);
+        })
+        .onSuccess(outcome -> {
+            String message = switch (outcome) {
+                case NO_OP -> "no-op: client is valid and endpoints are unchanged";
+                case ENDPOINTS_REFRESHED -> "endpoints refreshed: client is valid, endpoints updated";
+                case REREGISTERED -> "re-registered: new client_id issued, credentials cleared";
+            };
+            context.respond(HttpStatus.OK, new RepairResponse(outcome.name(), message));
+        })
+        .onFailure(this::respondError);
     }
 
     record RepairResponse(String result, String message) {}

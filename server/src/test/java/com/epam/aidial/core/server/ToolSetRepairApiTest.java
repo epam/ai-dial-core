@@ -84,11 +84,63 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testRepairForbiddenForNonAdmin() {
+    void testRepairForbiddenWhenNoWriteAccess() {
+        // "user" has no write access to the admin's private toolset bucket
         Response response = send(HttpMethod.POST,
                 "/v1/toolsets/" + ADMIN_BUCKET + "/some-toolset/repair",
                 null, null, "authorization", "user");
         verify(response, 403);
+    }
+
+    @Test
+    void testRepairAllowedForOwner() throws Exception {
+        // Owner of the toolset (non-admin) can repair their own DCR toolset
+        String userBucket = new io.vertx.core.json.JsonObject(
+                send(HttpMethod.GET, "/v1/bucket", null, null, "authorization", "user").body()
+        ).getString("bucket");
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            setupDiscovery(server);
+            server.map(HttpMethod.POST, "/register",
+                    200, REGISTRATION_RESPONSE_JSON, "Content-Type", "application/json");
+            server.map(HttpMethod.POST, "/token",
+                    200, TOKEN_RESPONSE_JSON, "Content-Type", "application/json");
+
+            // Create DCR toolset as "user" (in user's own bucket)
+            Response create = send(HttpMethod.PUT,
+                    "/v1/toolsets/" + userBucket + "/owner-repair-toolset@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "redirect_uri": "http://localhost/callback"
+                        }
+                    }
+                    """, "authorization", "user");
+            assertEquals(200, create.status(), "Toolset creation failed: " + create.body());
+
+            // Sign in at GLOBAL level as "user" so there are credentials to probe
+            Response signIn = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "toolsets/%s/owner-repair-toolset@",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """.formatted(userBucket), "authorization", "user");
+            assertEquals(200, signIn.status(), "Sign-in failed: " + signIn.body());
+
+            // Owner (non-admin) can repair their own toolset
+            Response repair = send(HttpMethod.POST,
+                    "/v1/toolsets/" + userBucket + "/owner-repair-toolset@/repair",
+                    null, null, "authorization", "user");
+            assertEquals(200, repair.status(), repair.body());
+
+            io.vertx.core.json.JsonObject result = new io.vertx.core.json.JsonObject(repair.body());
+            assertEquals("NO_OP", result.getString("result"));
+        }
     }
 
     @Test
