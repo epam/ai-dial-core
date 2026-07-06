@@ -76,6 +76,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
+import javax.annotation.Nullable;
 
 @Slf4j
 @Getter
@@ -93,6 +94,12 @@ public class Proxy implements Handler<HttpServerRequest> {
     // All new headers should start with X-DIAL- while existing may stay untouched
 
     public static final String HEADER_API_KEY = "API-KEY";
+    /**
+     * Authentication header of the <a href="https://platform.claude.com/docs/en/api/overview#authentication">Anthropic API</a>.
+     * Native Anthropic SDK clients pointed at {@code /anthropic/v1/messages} send the DIAL API key in this header
+     * and cannot set {@link #HEADER_API_KEY} or {@code Authorization}. It is accepted as the DIAL key only when
+     * neither of those headers is present (see {@link #extractApiKey}) and is stripped before forwarding upstream.
+     */
     public static final String HEADER_X_API_KEY = "x-api-key";
     public static final String HEADER_JOB_TITLE = "X-JOB-TITLE";
     public static final String HEADER_CONVERSATION_ID = "X-CONVERSATION-ID";
@@ -293,11 +300,8 @@ public class Proxy implements Handler<HttpServerRequest> {
      * @return the future of {@link AuthorizationResult}
      */
     private Future<AuthorizationResult> authorizeRequest(HttpServerRequest request) {
-        String apiKeyHeader = request.headers().get(HEADER_API_KEY);
+        String apiKey = extractApiKey(request);
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-        String apiKey = apiKeyHeader == null && authorization == null
-                ? request.headers().get(HEADER_X_API_KEY)
-                : apiKeyHeader;
         log.debug("Authorization header: {}", authorization);
 
         String clientIpAddress = ProxyUtil.getClientIpAddress(request, apiKeyValidation.getProxyCount());
@@ -358,6 +362,23 @@ public class Proxy implements Handler<HttpServerRequest> {
                     }
                 });
 
+    }
+
+    /**
+     * Extracts the DIAL API key from the request. The key is taken from the {@link #HEADER_API_KEY} header;
+     * when neither it nor {@code Authorization} is present, falls back to {@link #HEADER_X_API_KEY} — the header
+     * native Anthropic SDK clients send their credentials in — so existing authentication flows are unaffected.
+     *
+     * @param request HTTP request
+     * @return the API key or {@code null} if the request carries none
+     */
+    @Nullable
+    private static String extractApiKey(HttpServerRequest request) {
+        String apiKey = request.headers().get(HEADER_API_KEY);
+        if (apiKey == null && request.getHeader(HttpHeaders.AUTHORIZATION) == null) {
+            return request.headers().get(HEADER_X_API_KEY);
+        }
+        return apiKey;
     }
 
     private static void enableCors(HttpServerRequest request) {
