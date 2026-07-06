@@ -50,6 +50,7 @@ import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
+import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
@@ -248,8 +249,11 @@ public class AiDial {
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
                     resourceAuthSettingsEncryptionService, resourceCredentialsService);
 
+            ExternalServiceService externalServiceService = new ExternalServiceService(
+                    resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService);
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
-                    resourceService, lockService, operatorService, applicationSchemaService, configStore, generator, settings("applications"));
+                    externalServiceService, resourceService, lockService, operatorService, applicationSchemaService,
+                    configStore, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
                     lockService, applicationSchemaService, clock, resourceCredentialsService);
             RuleService ruleService = new RuleService(resourceService);
@@ -291,13 +295,14 @@ public class AiDial {
             ResponseMappingService responseMappingService = new ResponseMappingService(generator, resourceService);
             responseMappingService.init(vertx, taskExecutor);
 
-            FolderResourceService folderResourceService = new FolderResourceService(resourceService);
+            FolderResourceService folderResourceService = new FolderResourceService(
+                    resourceService, lockService, shareService, invitationService);
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
-                    notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
+                    notificationService, applicationService, externalServiceService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
                     toolSetService, applicationSchemaService, authorizationHeaderProvider, resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),

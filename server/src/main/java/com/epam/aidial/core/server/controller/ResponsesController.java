@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
@@ -94,8 +95,11 @@ public class ResponsesController extends BaseDeploymentPostController {
             deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
         }
 
-        if (deployment.getResponsesEndpoint() == null) {
-            throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
+        if (!deployment.supportsInterface(InterfaceType.OPENAI_RESPONSES)) {
+            throw new HttpException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "OpenAI responses not supported for this deployment type"
+            );
         }
 
         context.setTraceOperation("Send request to %s deployment".formatted(deployment.getName()));
@@ -163,7 +167,8 @@ public class ResponsesController extends BaseDeploymentPostController {
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
-                .get(deployment, context.getCacheBreakpointContext(), upstreamId);
+                .get(deployment, context.getCacheBreakpointContext(),
+                        dep -> dep.resolveEndpoint(InterfaceType.OPENAI_RESPONSES), upstreamId);
 
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
@@ -179,7 +184,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 respond(HttpStatus.SERVICE_UNAVAILABLE, "Upstream is missing required id");
                 return;
             }
-            createProxyRequest(Deployment::getResponsesEndpoint)
+            createProxyRequest(InterfaceType.OPENAI_RESPONSES)
                     .onSuccess(this::handleProxyRequest)
                     .onFailure(this::handleProxyConnectionError);
         }

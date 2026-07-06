@@ -177,6 +177,19 @@
                 }
             ],
             "userRoles": ["role3"]
+        },
+        "gpt-4-via-interfaces": {
+            "type": "chat",
+            "displayName": "GPT-4 (interfaces)",
+            "interfaces": {
+                "openaiChatCompletions": {
+                    "base_url": "http://localhost:7005"
+                },
+                "openaiResponses": {
+                    "base_url": "http://localhost:7005"
+                }
+            },
+            "userRoles": ["role1"]
         }
     },
     "toolsets": {

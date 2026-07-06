@@ -41,6 +41,7 @@ public class FolderResourceMarker {
     private String etag;
     private Long createdAt;
     private Long updatedAt;
+    private Long deletedAt;
     private String author;
     /**
      * Type-specific metadata extracted by the per-type handler (e.g. skill name/description/version).
