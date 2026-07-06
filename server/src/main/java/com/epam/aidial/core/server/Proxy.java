@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
@@ -252,7 +251,6 @@ public class Proxy implements Handler<HttpServerRequest> {
             return;
         }
 
-        Config config = configStore.get();
         SpanContext spanContext = Span.current().getSpanContext();
         String traceId = spanContext.getTraceId();
         String spanId = spanContext.getSpanId();
@@ -260,7 +258,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         request.pause();
         Future<AuthorizationResult> authorizationResultFuture = authorizeRequest(request);
-        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, config, request, result.apiKeyData, traceId, spanId, traceFlags))
+        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, request, result.apiKeyData, traceId, spanId, traceFlags))
                 .onFailure(error -> handleError(error, request))
                 .onComplete(ignore -> request.resume());
     }
@@ -375,14 +373,14 @@ public class Proxy implements Handler<HttpServerRequest> {
     }
 
     @SneakyThrows
-    private Future<?> processAuthorizationResult(ExtractedClaims extractedClaims, Config config,
+    private Future<?> processAuthorizationResult(ExtractedClaims extractedClaims,
                                                  HttpServerRequest request, ApiKeyData apiKeyData,
                                                  String traceId, String spanId, String traceFlags) {
         // Clear context when the response is actually closed, not when controller completes
         request.response().closeHandler(v -> ContextManager.clearContext());
         Future<?> future;
         try {
-            ProxyContext context = new ProxyContext(this, config, request, apiKeyData, extractedClaims, traceId, spanId, traceFlags);
+            ProxyContext context = new ProxyContext(this, request, apiKeyData, extractedClaims, traceId, spanId, traceFlags);
             ContextManager.setProxyContext(context);
             ControllerTemplate controllerTemplate = ControllerSelector.select(request);
             Controller controller = controllerTemplate.build(this, context);
