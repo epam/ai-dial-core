@@ -1189,9 +1189,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
     }
 
     @SneakyThrows
-    private Response awaitApplicationStatus(String path, String status) {
+    private Response awaitApplicationStatus(String path, String status, String... headers) {
         for (long deadline = System.currentTimeMillis() + 10_000; ; ) {
-            Response response = send(HttpMethod.GET, path, null, null);
+            Response response = send(HttpMethod.GET, path, null, null, headers);
             verify(response, 200);
 
             if (response.body().contains(status)) {
@@ -1252,5 +1252,232 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
 
         response = awaitApplicationStatus("/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app", "DEPLOYED");
         verify(response, 200);
+    }
+
+    @Test
+    void testDirectPublicApplicationCreated() {
+        Response response = send(HttpMethod.PUT, "/v1/applications/public/my-app", null, """
+                {
+                  "display_name": "My App",
+                  "display_version": "1.0",
+                  "icon_url": "http://application1/icon.svg",
+                  "description": "My App Description",
+                  "function": {
+                    "runtime": "python3.11",
+                    "source_folder": "files/public/my-app/",
+                    "mapping" : {
+                      "chat_completion" : "/application"
+                    },
+                    "env": {
+                      "VAR": "VAL"
+                    }
+                  }
+                }
+                """, "authorization", "admin");
+        verify(response, 200);
+        id++;
+    }
+
+    @Test
+    void testDirectPublicApplicationStarted() {
+        testDirectPublicApplicationCreated();
+
+        Response response = upload(HttpMethod.PUT, "/v1/files/public/my-app/app.py", null, """
+                some python code
+                """, "authorization", "admin");
+        verify(response, 200);
+
+        webServer.map(HttpMethod.POST, "/v1/image/0123", 200, """
+                :heartbeat
+                
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.POST, "/v1/deployment/0123", 200, """
+                event: result
+                data: {"url":"http://localhost:17321"}
+                """);
+
+        response = send(HttpMethod.POST, "/v1/ops/application/deploy", null, """
+                {
+                  "url": "applications/public/my-app"
+                }
+                """, "authorization", "admin");
+        verifyJsonNotExact(response, 200, """
+                {
+                  "name" : "applications/public/my-app",
+                  "display_name" : "My App",
+                  "display_version" : "1.0",
+                  "icon_url" : "http://application1/icon.svg",
+                  "description" : "My App Description",
+                  "reference" : "@ignore",
+                  "forward_auth_token" : false,
+                  "features" : { },
+                  "defaults" : { },
+                  "responses_defaults" : { },
+                  "interceptors" : [ ],
+                  "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
+                  "dependencies" : [ ],
+                  "function" : {
+                    "id" : "0123",
+                    "runtime": "python3.11",
+                    "author_bucket" : "public",
+                    "source_folder" : "files/public/my-app/",
+                    "target_folder" : "files/BHSYDZdoJ31Kxh6XahLj91CUKXVSiLVJVCvSWyUkqFuc/",
+                    "status" : "DEPLOYING",
+                    "mapping" : {
+                      "chat_completion" : "/application"
+                    },
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
+                  },
+                  "routes" : { }
+                }
+                """);
+
+        response = awaitApplicationStatus("/v1/applications/public/my-app", "DEPLOYED", "authorization", "admin");
+        verifyJsonNotExact(response, 200, """
+                {
+                  "name" : "applications/public/my-app",
+                  "endpoint" : "http://localhost:17321/application",
+                  "display_name" : "My App",
+                  "display_version" : "1.0",
+                  "icon_url" : "http://application1/icon.svg",
+                  "description" : "My App Description",
+                  "reference" : "@ignore",
+                  "forward_auth_token" : false,
+                  "features" : { },
+                  "defaults" : { },
+                  "responses_defaults" : { },
+                  "interceptors" : [ ],
+                  "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
+                  "dependencies" : [ ],
+                  "author" : "admin user",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
+                  "function" : {
+                    "id" : "0123",
+                    "runtime": "python3.11",
+                    "author_bucket" : "public",
+                    "source_folder" : "files/public/my-app/",
+                    "target_folder" : "files/BHSYDZdoJ31Kxh6XahLj91CUKXVSiLVJVCvSWyUkqFuc/",
+                    "status" : "DEPLOYED",
+                    "mapping" : {
+                      "chat_completion" : "/application"
+                    },
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
+                  },
+                  "routes" : { }
+                }
+                """);
+
+        response = send(HttpMethod.GET, "/v1/metadata/files/BHSYDZdoJ31Kxh6XahLj91CUKXVSiLVJVCvSWyUkqFuc/app.py", null, null,
+                "authorization", "admin");
+        verify(response, 200);
+    }
+
+    @Test
+    void testDirectPublicApplicationStopped() {
+        testDirectPublicApplicationStarted();
+
+        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200,
+                """
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 200,
+                """
+                event: result
+                data: {"deleted":true}
+                """);
+
+        Response response = send(HttpMethod.POST, "/v1/ops/application/undeploy", null, """
+                {
+                  "url": "applications/public/my-app"
+                }
+                """, "authorization", "admin");
+        verifyJsonNotExact(response, 200, """
+                {
+                  "name" : "applications/public/my-app",
+                  "display_name" : "My App",
+                  "display_version" : "1.0",
+                  "icon_url" : "http://application1/icon.svg",
+                  "description" : "My App Description",
+                  "reference" : "@ignore",
+                  "forward_auth_token" : false,
+                  "features" : { },
+                  "defaults" : { },
+                  "responses_defaults" : { },
+                  "interceptors" : [ ],
+                  "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
+                  "dependencies" : [ ],
+                  "function" : {
+                    "id" : "0123",
+                    "runtime": "python3.11",
+                    "author_bucket" : "public",
+                    "source_folder" : "files/public/my-app/",
+                    "target_folder" : "files/BHSYDZdoJ31Kxh6XahLj91CUKXVSiLVJVCvSWyUkqFuc/",
+                    "status" : "UNDEPLOYING",
+                    "mapping" : {
+                      "chat_completion" : "/application"
+                    },
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
+                  },
+                   "routes" : { }
+                }
+                """);
+
+        response = awaitApplicationStatus("/v1/applications/public/my-app", "UNDEPLOYED", "authorization", "admin");
+        verifyJsonNotExact(response, 200, """
+                {
+                  "name" : "applications/public/my-app",
+                  "display_name" : "My App",
+                  "display_version" : "1.0",
+                  "icon_url" : "http://application1/icon.svg",
+                  "description" : "My App Description",
+                  "reference" : "@ignore",
+                  "forward_auth_token" : false,
+                  "features" : { },
+                  "defaults" : { },
+                  "responses_defaults" : { },
+                  "interceptors" : [ ],
+                  "description_keywords" : [ ],
+                  "max_retry_attempts" : 1,
+                  "dependencies" : [ ],
+                  "author" : "admin user",
+                  "created_at" : "@ignore",
+                  "updated_at" : "@ignore",
+                  "function" : {
+                    "id" : "0123",
+                    "runtime": "python3.11",
+                    "author_bucket" : "public",
+                    "source_folder" : "files/public/my-app/",
+                    "target_folder" : "files/BHSYDZdoJ31Kxh6XahLj91CUKXVSiLVJVCvSWyUkqFuc/",
+                    "status" : "UNDEPLOYED",
+                    "mapping" : {
+                      "chat_completion" : "/application"
+                    },
+                    "env" : {
+                      "VAR" : "VAL"
+                    }
+                  },
+                  "routes" : { }
+                }
+                """);
+
+        response = send(HttpMethod.GET, "/v1/metadata/files/public/my-app/app.py", null, null,
+                "authorization", "admin");
+        verify(response, 200);
+        response = send(HttpMethod.GET, "/v1/metadata/files/BHSYDZdoJ31Kxh6XahLj91CUKXVSiLVJVCvSWyUkqFuc/app.py", null, null,
+                "authorization", "admin");
+        verify(response, 404);
     }
 }

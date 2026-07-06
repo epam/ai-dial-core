@@ -5,7 +5,9 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.security.ExtractedClaims;
@@ -108,6 +110,14 @@ public class RateLimiterTest {
         rateLimiter = new RateLimiter(taskExecutor, resourceService);
     }
 
+    private static Proxy mockProxy(Config config) {
+        ConfigStore configStore = mock(ConfigStore.class);
+        when(configStore.get()).thenReturn(config);
+        Proxy proxy = mock(Proxy.class);
+        when(proxy.getConfigStore()).thenReturn(configStore);
+        return proxy;
+    }
+
     @Test
     public void testLimit_ApiKeyLimitNegative() {
         Key key = new Key();
@@ -121,7 +131,7 @@ public class RateLimiterTest {
         config.setRoles(Map.of("role", role));
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
+        ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData, null, "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
@@ -147,7 +157,7 @@ public class RateLimiterTest {
         config.setRoles(Map.of("role", role));
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
+        ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData, null, "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
@@ -180,7 +190,7 @@ public class RateLimiterTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
         apiKeyData.setPerRequestKey("per-request-key");
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
+        ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData, null, "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
@@ -235,7 +245,7 @@ public class RateLimiterTest {
         config.setRoles(Map.of("role", role));
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(key);
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
+        ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData, null, "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
         proxyContext.setDeployment(model);
@@ -319,7 +329,7 @@ public class RateLimiterTest {
         apiKeyData.setPerRequestKey("per-request-key");
         apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash",
                 ProxyUtil.MAPPER.createObjectNode(), null, null));
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData,
+        ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData,
                 null, "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
@@ -361,7 +371,7 @@ public class RateLimiterTest {
         Config config = new Config();
 
         ApiKeyData apiKeyData = new ApiKeyData();
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData,
+        ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData,
                 new ExtractedClaims("sub", List.of("role1"), "user-hash",
                         ProxyUtil.MAPPER.createObjectNode(), null, null),
                 "trace-id", "span-id", "01");
@@ -419,7 +429,7 @@ public class RateLimiterTest {
         config.getRoles().put("role2", role2);
 
         ApiKeyData apiKeyData = new ApiKeyData();
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData,
+        ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData,
                 new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash",
                         ProxyUtil.MAPPER.createObjectNode(), null, null),
                 "trace-id", "span-id", "01");

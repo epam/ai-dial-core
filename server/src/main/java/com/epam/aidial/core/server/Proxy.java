@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
@@ -77,6 +76,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
+import javax.annotation.Nullable;
 
 @Slf4j
 @Getter
@@ -94,6 +94,13 @@ public class Proxy implements Handler<HttpServerRequest> {
     // All new headers should start with X-DIAL- while existing may stay untouched
 
     public static final String HEADER_API_KEY = "API-KEY";
+    /**
+     * Authentication header of the <a href="https://platform.claude.com/docs/en/api/overview#authentication">Anthropic API</a>.
+     * Native Anthropic SDK clients pointed at {@code /anthropic/v1/messages} send the DIAL API key in this header
+     * and cannot set {@link #HEADER_API_KEY} or {@code Authorization}. It is accepted as the DIAL key only when
+     * neither of those headers is present (see {@link #extractApiKey}) and is stripped before forwarding upstream.
+     */
+    public static final String HEADER_X_API_KEY = "x-api-key";
     public static final String HEADER_JOB_TITLE = "X-JOB-TITLE";
     public static final String HEADER_CONVERSATION_ID = "X-CONVERSATION-ID";
     public static final String HEADER_UPSTREAM_ID = "X-UPSTREAM-ID";
@@ -254,7 +261,6 @@ public class Proxy implements Handler<HttpServerRequest> {
             return;
         }
 
-        Config config = configStore.get();
         SpanContext spanContext = Span.current().getSpanContext();
         String traceId = spanContext.getTraceId();
         String spanId = spanContext.getSpanId();
@@ -262,7 +268,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         request.pause();
         Future<AuthorizationResult> authorizationResultFuture = authorizeRequest(request);
-        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, config, request, result.apiKeyData, traceId, spanId, traceFlags))
+        authorizationResultFuture.compose(result -> processAuthorizationResult(result.extractedClaims, request, result.apiKeyData, traceId, spanId, traceFlags))
                 .onFailure(error -> handleError(error, request))
                 .onComplete(ignore -> request.resume());
     }
@@ -294,7 +300,7 @@ public class Proxy implements Handler<HttpServerRequest> {
      * @return the future of {@link AuthorizationResult}
      */
     private Future<AuthorizationResult> authorizeRequest(HttpServerRequest request) {
-        String apiKey = request.headers().get(HEADER_API_KEY);
+        String apiKey = extractApiKey(request);
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
         log.debug("Authorization header: {}", authorization);
 
@@ -358,6 +364,23 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     }
 
+    /**
+     * Extracts the DIAL API key from the request. The key is taken from the {@link #HEADER_API_KEY} header;
+     * when neither it nor {@code Authorization} is present, falls back to {@link #HEADER_X_API_KEY} — the header
+     * native Anthropic SDK clients send their credentials in — so existing authentication flows are unaffected.
+     *
+     * @param request HTTP request
+     * @return the API key or {@code null} if the request carries none
+     */
+    @Nullable
+    private static String extractApiKey(HttpServerRequest request) {
+        String apiKey = request.headers().get(HEADER_API_KEY);
+        if (apiKey == null && request.getHeader(HttpHeaders.AUTHORIZATION) == null) {
+            return request.headers().get(HEADER_X_API_KEY);
+        }
+        return apiKey;
+    }
+
     private static void enableCors(HttpServerRequest request) {
         HttpServerResponse response = request.response();
         response.putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "*");
@@ -377,14 +400,14 @@ public class Proxy implements Handler<HttpServerRequest> {
     }
 
     @SneakyThrows
-    private Future<?> processAuthorizationResult(ExtractedClaims extractedClaims, Config config,
+    private Future<?> processAuthorizationResult(ExtractedClaims extractedClaims,
                                                  HttpServerRequest request, ApiKeyData apiKeyData,
                                                  String traceId, String spanId, String traceFlags) {
         // Clear context when the response is actually closed, not when controller completes
         request.response().closeHandler(v -> ContextManager.clearContext());
         Future<?> future;
         try {
-            ProxyContext context = new ProxyContext(this, config, request, apiKeyData, extractedClaims, traceId, spanId, traceFlags);
+            ProxyContext context = new ProxyContext(this, request, apiKeyData, extractedClaims, traceId, spanId, traceFlags);
             ContextManager.setProxyContext(context);
             ControllerTemplate controllerTemplate = ControllerSelector.select(request);
             Controller controller = controllerTemplate.build(this, context);

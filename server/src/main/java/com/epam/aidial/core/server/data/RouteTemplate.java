@@ -7,6 +7,19 @@ import java.util.regex.Pattern;
 @Getter
 public enum RouteTemplate {
 
+    // Anthropic API routes.
+    // count_tokens is declared first: both regexes are $-anchored and mutually exclusive today, but
+    // keeping the more specific path ahead of the generic one stays correct if a greedy
+    // /messages/(?<id>...) route is ever added.
+    LLM_MESSAGES_API_COUNT_TOKENS(
+            "^/+anthropic/v1/messages/count_tokens$",
+            "/anthropic/v1/messages/count_tokens"
+    ),
+    LLM_MESSAGES_API(
+            "^/+anthropic/v1/messages$",
+            "/anthropic/v1/messages"
+    ),
+
     // OpenAI API routes
     LLM_RESPONSES_API(
             "^/+openai/v1/responses$",

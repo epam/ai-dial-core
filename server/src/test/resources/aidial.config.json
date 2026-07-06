@@ -181,6 +181,37 @@
       "upstreams": [
         {"endpoint": "http://chat/completions", "responsesEndpoint": "http://responses", "key": "modelKey", "id": "responses-upstream"}
       ]
+    },
+    "claude-ns": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} }
+    },
+    "claude-stream": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} }
+    },
+    "claude-count": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} }
+    },
+    "claude-xapikey": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} }
+    },
+    "claude-limited": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} }
+    },
+    "claude-upstream": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} },
+      "upstreams": [
+        {"key": "modelKey", "id": "messages-upstream"}
+      ]
+    },
+    "claude-no-iface": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/v1/chat/completions"
     }
   },
   "toolsets": {
@@ -261,7 +292,14 @@
         "forecast": {},
         "calculator": {},
         "app": {},
-        "gpt-3-turbo": {"minute": "100", "day": "1000"}
+        "gpt-3-turbo": {"minute": "100", "day": "1000"},
+        "claude-ns": {"minute": "100000", "day": "10000000"},
+        "claude-stream": {"minute": "100000", "day": "10000000"},
+        "claude-count": {"minute": "100000", "day": "10000000"},
+        "claude-xapikey": {"minute": "100000", "day": "10000000"},
+        "claude-limited": {"minute": "10", "day": "10"},
+        "claude-upstream": {"minute": "100000", "day": "10000000"},
+        "claude-no-iface": {"minute": "100000", "day": "10000000"}
       }
     },
     "vstore_user": {
