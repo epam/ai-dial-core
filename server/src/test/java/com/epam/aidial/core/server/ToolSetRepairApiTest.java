@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class ToolSetRepairApiTest extends ResourceBaseTest {
 
@@ -527,6 +529,139 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
                     "/v1/toolsets/" + ADMIN_BUCKET + "/toolset-api-key@/repair",
                     null, null, "authorization", "admin");
             verify(repair, 400);
+        }
+    }
+
+    @Test
+    void testRepairAllowedForAdminOnPublicToolset() throws Exception {
+        try (TestWebServer server = new TestWebServer(9876)) {
+            setupDiscovery(server);
+            server.map(HttpMethod.POST, "/register",
+                    200, REGISTRATION_RESPONSE_JSON, "Content-Type", "application/json");
+            server.map(HttpMethod.POST, "/token",
+                    200, TOKEN_RESPONSE_JSON, "Content-Type", "application/json");
+
+            createDcrToolset("toolset-repair-pub@");
+
+            // Publish toolset to public/
+            Response pubCreate = send(HttpMethod.POST, "/v1/ops/publication/create", null, """
+                    {
+                      "targetFolder": "public/",
+                      "resources": [
+                        {
+                          "action": "ADD",
+                          "sourceUrl": "toolsets/%s/toolset-repair-pub@",
+                          "targetUrl": "toolsets/public/toolset-repair-pub@"
+                        }
+                      ]
+                    }
+                    """.formatted(ADMIN_BUCKET), "authorization", "admin");
+            assertEquals(200, pubCreate.status(), "Publication create failed: " + pubCreate.body());
+            String pubUrl = ProxyUtil.MAPPER.readTree(pubCreate.body()).get("url").asText();
+
+            Response pubApprove = send(HttpMethod.POST, "/v1/ops/publication/approve", null, """
+                    {"url": "%s"}
+                    """.formatted(pubUrl), "authorization", "admin");
+            assertEquals(200, pubApprove.status(), "Publication approve failed: " + pubApprove.body());
+
+            // Admin signs in at GLOBAL to the public toolset URL
+            Response signIn = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "toolsets/public/toolset-repair-pub@",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, signIn.status(), "Sign-in to public toolset failed: " + signIn.body());
+
+            // Admin repairs the public toolset → 200
+            Response repair = send(HttpMethod.POST,
+                    "/v1/toolsets/public/toolset-repair-pub@/repair",
+                    null, null, "authorization", "admin");
+            assertEquals(200, repair.status(), repair.body());
+
+            JsonNode result = ProxyUtil.MAPPER.readTree(repair.body());
+            assertEquals("NO_OP", result.get("result").asText());
+        }
+    }
+
+    @Test
+    void testRepairAllowedForSharedWriteUser() throws Exception {
+        try (TestWebServer server = new TestWebServer(9876)) {
+            setupDiscovery(server);
+            server.map(HttpMethod.POST, "/register",
+                    200, REGISTRATION_RESPONSE_JSON, "Content-Type", "application/json");
+            server.map(HttpMethod.POST, "/token",
+                    200, TOKEN_RESPONSE_JSON, "Content-Type", "application/json");
+
+            // Admin creates DCR toolset and signs in at GLOBAL
+            createDcrToolset("toolset-repair-shared@");
+            signInGlobal("toolset-repair-shared@");
+
+            // Admin shares the toolset with WRITE permissions
+            Response shareCreate = send(HttpMethod.POST, "/v1/ops/resource/share/create", null, """
+                    {
+                      "invitationType": "link",
+                      "resources": [
+                        {
+                          "url": "toolsets/%s/toolset-repair-shared@",
+                          "permissions": ["WRITE"]
+                        }
+                      ]
+                    }
+                    """.formatted(ADMIN_BUCKET), "authorization", "admin");
+            assertEquals(200, shareCreate.status(), "Share create failed: " + shareCreate.body());
+            InvitationLink invitationLink = ProxyUtil.convertToObject(shareCreate.body(), InvitationLink.class);
+            assertNotNull(invitationLink);
+
+            // User accepts the invitation
+            Response accept = send(HttpMethod.GET,
+                    invitationLink.invitationLink(), "accept=true", null, "authorization", "user");
+            assertEquals(200, accept.status(), "Invitation accept failed: " + accept.body());
+
+            // Shared user with WRITE calls repair → 200
+            Response repair = send(HttpMethod.POST,
+                    "/v1/toolsets/" + ADMIN_BUCKET + "/toolset-repair-shared@/repair",
+                    null, null, "authorization", "user");
+            assertEquals(200, repair.status(), repair.body());
+
+            JsonNode result = ProxyUtil.MAPPER.readTree(repair.body());
+            assertEquals("NO_OP", result.get("result").asText());
+        }
+    }
+
+    @Test
+    void testRepairForbiddenForAdminOnPrivateToolset() {
+        // Admin cannot repair a toolset in another user's private bucket
+        String userBucket = new io.vertx.core.json.JsonObject(
+                send(HttpMethod.GET, "/v1/bucket", null, null, "authorization", "user").body()
+        ).getString("bucket");
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            setupDiscovery(server);
+            server.map(HttpMethod.POST, "/register",
+                    200, REGISTRATION_RESPONSE_JSON, "Content-Type", "application/json");
+
+            Response create = send(HttpMethod.PUT,
+                    "/v1/toolsets/" + userBucket + "/toolset-repair-priv@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "redirect_uri": "http://localhost/callback"
+                        }
+                    }
+                    """, "authorization", "user");
+            assertEquals(200, create.status(), "Toolset creation failed: " + create.body());
+
+            // Admin tries to repair a toolset in the user's private bucket → 403
+            Response repair = send(HttpMethod.POST,
+                    "/v1/toolsets/" + userBucket + "/toolset-repair-priv@/repair",
+                    null, null, "authorization", "admin");
+            verify(repair, 403);
         }
     }
 }
