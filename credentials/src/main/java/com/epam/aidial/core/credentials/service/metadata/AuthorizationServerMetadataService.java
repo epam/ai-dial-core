@@ -117,5 +117,7 @@ public class AuthorizationServerMetadataService {
         fallbackEndpoints.add(ResourceEndpointUtil.buildMetadataEndpoint(resourceEndpoint, WELL_KNOWN_AUTH_SERVER_SUFFIX, true));
         fallbackEndpoints.add(ResourceEndpointUtil.buildMetadataEndpoint(resourceEndpoint, WELL_KNOWN_OPENID_CONFIG_SUFFIX, false));
         fallbackEndpoints.add(ResourceEndpointUtil.buildMetadataEndpoint(resourceEndpoint, WELL_KNOWN_OPENID_CONFIG_SUFFIX, true));
+        // OpenID Connect Discovery 1.0 path-append form (e.g. Keycloak: {issuer}/.well-known/openid-configuration)
+        fallbackEndpoints.add(ResourceEndpointUtil.buildAppendedMetadataEndpoint(resourceEndpoint, WELL_KNOWN_OPENID_CONFIG_SUFFIX));
     }
 }
