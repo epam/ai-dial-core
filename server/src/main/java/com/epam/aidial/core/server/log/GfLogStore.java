@@ -18,12 +18,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
+import org.apache.commons.lang3.mutable.MutableBoolean;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -31,8 +33,10 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Scanner;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import javax.annotation.Nullable;
@@ -43,6 +47,8 @@ public class GfLogStore implements LogStore {
     private static final Log LOGGER = LogFactory.getLog("aidial.log");
     // Max allowed size is 4 mb for request/response body
     private static final int MAX_BODY_SIZE_BYTES = 4 * 1024 * 1024;
+    // Max allowed size for a single collected request header value
+    private static final int MAX_HEADER_VALUE_LENGTH = 4 * 1024;
 
     private static final String[] CONTROL_SYMBOLS = new String[0x1F + 1];
 
@@ -54,8 +60,14 @@ public class GfLogStore implements LogStore {
     }
 
     private final ExecutorService executor;
+    private final boolean collectClaims;
+    private final boolean collectHeaders;
+    private final Set<String> headersBlacklist;
 
-    public GfLogStore() {
+    public GfLogStore(boolean collectClaims, boolean collectHeaders, Set<String> headersBlacklist) {
+        this.collectClaims = collectClaims;
+        this.collectHeaders = collectHeaders;
+        this.headersBlacklist = headersBlacklist == null ? Set.of() : headersBlacklist;
         BasicThreadFactory factory = BasicThreadFactory.builder()
                 .namingPattern("gflog-store-%d")
                 .daemon(true)
@@ -114,6 +126,14 @@ public class GfLogStore implements LogStore {
         append(entry, "\",\"title\":\"", false);
         append(entry, context.getRequestHeader(Proxy.HEADER_JOB_TITLE), true);
         append(entry, "\"}", false);
+
+        if (collectClaims) {
+            appendClaims(context, entry);
+        }
+
+        if (collectHeaders) {
+            appendHeaders(context, entry);
+        }
 
         TokenUsage tokenUsage = context.getTokenUsage();
         if (tokenUsage != null) {
@@ -265,6 +285,69 @@ public class GfLogStore implements LogStore {
         }
 
         entry.append(chars, j, i);
+    }
+
+    @VisibleForTesting
+    void appendClaims(ProxyContext context, LogEntry entry) throws JsonProcessingException {
+        append(entry, ",\"claims\":{", false);
+        MutableBoolean firstMember = new MutableBoolean(true);
+        appendStringMember(entry, "user_id", context.getUserId(), firstMember);
+        List<String> roles = context.getUserRoles();
+        if (roles != null) {
+            appendSeparator(entry, firstMember);
+            append(entry, "\"roles\":", false);
+            append(entry, ProxyUtil.MAPPER.writeValueAsString(roles), false);
+        }
+        appendStringMember(entry, "user_display_name", context.getUserDisplayName(), firstMember);
+        append(entry, "}", false);
+    }
+
+    @VisibleForTesting
+    void appendHeaders(ProxyContext context, LogEntry entry) {
+        append(entry, ",\"headers\":{", false);
+        MultiMap headers = context.getRequest().headers();
+        MutableBoolean firstMember = new MutableBoolean(true);
+        for (String name : headers.names()) {
+            if (headersBlacklist.contains(name.toLowerCase(Locale.ROOT))) {
+                continue;
+            }
+            appendSeparator(entry, firstMember);
+            append(entry, "\"", false);
+            append(entry, name, true);
+            append(entry, "\":\"", false);
+            String value = String.join(", ", headers.getAll(name));
+            boolean truncated = value.length() > MAX_HEADER_VALUE_LENGTH;
+            if (truncated) {
+                value = value.substring(0, MAX_HEADER_VALUE_LENGTH);
+            }
+            append(entry, value, true);
+            if (truncated) {
+                // append a special marker that the value is cut off due to its large size
+                append(entry, ">>", false);
+            }
+            append(entry, "\"", false);
+        }
+        append(entry, "}", false);
+    }
+
+    private static void appendStringMember(LogEntry entry, String name, String value, MutableBoolean firstMember) {
+        if (value == null) {
+            return;
+        }
+        appendSeparator(entry, firstMember);
+        append(entry, "\"", false);
+        append(entry, name, false);
+        append(entry, "\":\"", false);
+        append(entry, value, true);
+        append(entry, "\"", false);
+    }
+
+    private static void appendSeparator(LogEntry entry, MutableBoolean firstMember) {
+        if (firstMember.isTrue()) {
+            firstMember.setFalse();
+        } else {
+            append(entry, ",", false);
+        }
     }
 
     private static char escape(char c) {
