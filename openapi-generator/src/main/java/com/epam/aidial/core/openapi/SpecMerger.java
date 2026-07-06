@@ -13,7 +13,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -24,22 +25,25 @@ import java.util.TreeSet;
 
 public final class SpecMerger {
 
-    private static final Set<String> MANUAL_PREFERRED_FIELDS = Set.of(
-            "description", "summary", "example", "examples",
-            "externalDocs", "x-codegen-request-body-name", "title"
+    private enum FieldPrecedence {
+        MANUAL, SKELETON, MERGE_RECURSIVELY
+    }
 
+    private static final Set<String> MANUAL_PREFERRED_FIELDS = Set.of(
+            "description", "summary", "example", "examples", "externalDocs", "x-codegen-request-body-name", "title"
     );
 
     private static final Set<String> SKELETON_PREFERRED_FIELDS = Set.of(
-            "type", "properties", "required",
-            "schema", "items", "allOf", "oneOf", "anyOf",
-            "operationId", "tags", "discriminator"
+            "type", "properties", "required", "schema", "items", "allOf", "oneOf", "anyOf", "operationId", "discriminator"
     );
 
     private final ObjectMapper yamlMapper;
     private int addedCount;
     private int orphanedCount;
-    private int mergedCount;
+
+    // Track exact context keys of orphans to fail the build cleanly
+    private final List<String> orphanedPaths = new ArrayList<>();
+    private final List<String> orphanedSchemas = new ArrayList<>();
 
     public SpecMerger() {
         YAMLFactory yamlFactory = YAMLFactory.builder()
@@ -56,13 +60,7 @@ public final class SpecMerger {
             System.err.println("Usage: SpecMerger <skeleton> <manual> <output>");
             System.exit(1);
         }
-
-        Path skeletonPath = Paths.get(args[0]);
-        Path manualPath = Paths.get(args[1]);
-        Path outputPath = Paths.get(args[2]);
-
-        SpecMerger merger = new SpecMerger();
-        merger.merge(skeletonPath, manualPath, outputPath);
+        new SpecMerger().merge(Paths.get(args[0]), Paths.get(args[1]), Paths.get(args[2]));
     }
 
     public void merge(Path skeletonPath, Path manualPath, Path outputPath) throws IOException {
@@ -74,281 +72,304 @@ public final class SpecMerger {
         stripMarkers(merged);
 
         Files.createDirectories(outputPath.getParent());
-        String yamlOutput = yamlMapper.writeValueAsString(merged);
-        Files.writeString(outputPath, yamlOutput);
+        Files.writeString(outputPath, yamlMapper.writeValueAsString(merged));
 
         System.out.println("Merge complete:");
-        System.out.println("  New endpoints/schemas (from skeleton): " + addedCount);
-        System.out.println("  Orphaned entries (in manual only): " + orphanedCount);
-        System.out.println("  Merged entries: " + mergedCount);
-        System.out.println("Output: " + outputPath.toAbsolutePath());
+        System.out.println("  New top-level endpoints/schemas (from skeleton): " + addedCount);
+        System.out.println("  Orphaned top-level entries (in manual only): " + orphanedCount);
+
+        // Fail the CI/CD pipeline if code drift is detected
+        if (orphanedCount > 0) {
+            System.err.println("ERROR: OpenAPI Specification merge failed due to deprecated orphaned entries!");
+            if (!orphanedPaths.isEmpty()) {
+                System.err.println("  Orphaned Paths (present in manual spec but removed from Java source code):");
+                orphanedPaths.forEach(path -> System.err.println("    - " + path));
+            }
+            if (!orphanedSchemas.isEmpty()) {
+                System.err.println("  Orphaned Component Schemas (present in manual spec but removed from Java code):");
+                orphanedSchemas.forEach(schema -> System.err.println("    - " + schema));
+            }
+            System.err.println("Please remove these stale definitions from your manual OpenAPI file.");
+            throw new IllegalStateException("OpenAPI Specification merge failed due to " + orphanedCount + " orphaned entries.");
+        }
     }
 
     private ObjectNode mergeNodes(ObjectNode skeleton, ObjectNode manual, String jsonPath) {
+        // 1. Root-level structural routing (Paths and Schemas)
         if ("paths".equals(jsonPath)) {
-            return mergePathObjects(skeleton, manual);
+            return mergePaths(skeleton, manual);
         }
         if ("components.schemas".equals(jsonPath)) {
-            return mergeComponentSchemas(skeleton, manual);
+            return mergeSchemas(skeleton, manual);
         }
 
         ObjectNode result = yamlMapper.createObjectNode();
-
-        // Manual ordering first, then new skeleton entries appended
         Set<String> allFields = new LinkedHashSet<>();
-        manual.fieldNames().forEachRemaining(allFields::add);
-        skeleton.fieldNames().forEachRemaining(allFields::add);
+        if (manual != null) {
+            manual.fieldNames().forEachRemaining(allFields::add);
+        }
+        if (skeleton != null) {
+            skeleton.fieldNames().forEachRemaining(allFields::add);
+        }
 
         for (String field : allFields) {
-            boolean inSkeleton = skeleton.has(field);
-            boolean inManual = manual.has(field);
+            JsonNode skelVal = skeleton != null ? skeleton.get(field) : null;
+            JsonNode manVal = manual != null ? manual.get(field) : null;
             String childPath = jsonPath.isEmpty() ? field : jsonPath + "." + field;
 
-            if (inSkeleton && inManual) {
-                // Both have the field - merge
-                JsonNode skeletonValue = skeleton.get(field);
-                JsonNode manualValue = manual.get(field);
-                result.set(field, mergeField(field, skeletonValue, manualValue, childPath));
-                if (isPathOrSchemaField(jsonPath)) {
-                    mergedCount++;
-                }
-            } else if (inSkeleton) {
-                // New in skeleton - mark as generated (only at top-level paths/schemas)
-                JsonNode skeletonValue = skeleton.get(field);
-                if (isPathOrSchemaField(jsonPath) && skeletonValue.isObject()) {
-                    ObjectNode markedNode = skeletonValue.deepCopy();
-                    markedNode.put("x-generated", true);
-                    result.set(field, markedNode);
+            if (skelVal != null && manVal != null) {
+                // 2. Structural interceptors for specialized OpenAPI nodes
+                if ("tags".equals(field)) {
+                    result.set(field, "tags".equals(childPath) ? manVal.deepCopy() : skelVal.deepCopy());
+                } else if ("enum".equals(field)) {
+                    result.set(field, skelVal.deepCopy());
+                } else if ("responses".equals(field) && skelVal.isObject() && manVal.isObject()) {
+                    result.set(field, mergeResponses((ObjectNode) skelVal, (ObjectNode) manVal, childPath));
+                } else if ("content".equals(field) && skelVal.isObject() && manVal.isObject()) {
+                    result.set(field, mergeContent((ObjectNode) skelVal, (ObjectNode) manVal, childPath));
+                } else if ("parameters".equals(field) && skelVal.isArray() && manVal.isArray()) {
+                    result.set(field, mergeParameters((ArrayNode) skelVal, (ArrayNode) manVal, childPath));
+                } else if (Set.of("allOf", "oneOf", "anyOf").contains(field) && skelVal.isArray() && manVal.isArray()) {
+                    result.set(field, mergeSchemaArrays((ArrayNode) skelVal, (ArrayNode) manVal, childPath));
                 } else {
-                    result.set(field, skeletonValue.deepCopy());
+                    // 3. Universal recursive merge engine based on field precedence
+                    FieldPrecedence precedence = resolvePrecedence(field);
+
+                    if (precedence == FieldPrecedence.MANUAL) {
+                        result.set(field, manVal.deepCopy());
+                    } else {
+                        // Cascading descent: complex objects are always merged recursively
+                        if (skelVal.isObject() && manVal.isObject()) {
+                            if (skelVal.has("$ref") && !manVal.has("$ref")) {
+                                ObjectNode mergedRef = (ObjectNode) skelVal.deepCopy();
+                                for (String docField : MANUAL_PREFERRED_FIELDS) {
+                                    if (manVal.has(docField)) {
+                                        mergedRef.set(docField, manVal.get(docField).deepCopy());
+                                    }
+                                }
+                                result.set(field, mergedRef);
+                            } else {
+                                result.set(field, mergeNodes((ObjectNode) skelVal, (ObjectNode) manVal, childPath));
+                            }
+                        } else if (skelVal.isArray() && manVal.isArray()) {
+                            result.set(field, mergeArrays((ArrayNode) skelVal, (ArrayNode) manVal, childPath));
+                        } else {
+                            result.set(field, skelVal.deepCopy());
+                        }
+                    }
                 }
-                if (isPathOrSchemaField(jsonPath)) {
-                    addedCount++;
-                }
+            } else if (skelVal != null) {
+                result.set(field, skelVal.deepCopy());
             } else {
-                // Only in manual - preserve as orphaned
-                JsonNode manualValue = manual.get(field);
-                if (isPathOrSchemaField(jsonPath) && manualValue.isObject()) {
-                    ObjectNode orphanedNode = manualValue.deepCopy();
-                    orphanedNode.put("x-orphaned", true);
-                    result.set(field, orphanedNode);
-                    orphanedCount++;
-                } else {
-                    result.set(field, manualValue.deepCopy());
-                }
+                result.set(field, manVal.deepCopy());
             }
         }
-
         return result;
     }
 
-    private ObjectNode mergePathObjects(ObjectNode skeleton, ObjectNode manual) {
-        ObjectNode result = yamlMapper.createObjectNode();
-
-        Map<String, String> skeletonRawByNorm = new LinkedHashMap<>();
-        Map<String, ObjectNode> skeletonNodeByNorm = new LinkedHashMap<>();
-        skeleton.fields().forEachRemaining(entry -> {
-            String norm = OpenApiPathNormalizer.normalizePath(entry.getKey());
-            skeletonRawByNorm.putIfAbsent(norm, entry.getKey());
-            skeletonNodeByNorm.putIfAbsent(norm, (ObjectNode) entry.getValue());
-        });
-
-        Map<String, String> manualRawByNorm = new LinkedHashMap<>();
-        Map<String, ObjectNode> manualNodeByNorm = new LinkedHashMap<>();
-        manual.fields().forEachRemaining(entry -> {
-            String norm = OpenApiPathNormalizer.normalizePath(entry.getKey());
-            manualRawByNorm.putIfAbsent(norm, entry.getKey());
-            manualNodeByNorm.putIfAbsent(norm, (ObjectNode) entry.getValue());
-        });
-
-        // Collect all paths and sort alphabetically for deterministic output
-        Set<String> allNormalized = new TreeSet<>();
-        manual.fields().forEachRemaining(entry ->
-                allNormalized.add(OpenApiPathNormalizer.normalizePath(entry.getKey())));
-        skeleton.fields().forEachRemaining(entry ->
-                allNormalized.add(OpenApiPathNormalizer.normalizePath(entry.getKey())));
-
-        for (String normPath : allNormalized) {
-            String skeletonRaw = skeletonRawByNorm.get(normPath);
-            String manualRaw = manualRawByNorm.get(normPath);
-            ObjectNode skeletonNode = skeletonNodeByNorm.get(normPath);
-            ObjectNode manualNode = manualNodeByNorm.get(normPath);
-
-            if (skeletonNode != null && manualNode != null) {
-                String outputKey = skeletonRaw != null ? skeletonRaw : manualRaw;
-                result.set(outputKey, mergeNodes(skeletonNode, manualNode, "paths." + outputKey));
-                mergedCount++;
-            } else if (skeletonNode != null) {
-                ObjectNode markedNode = skeletonNode.deepCopy();
-                markedNode.put("x-generated", true);
-                result.set(skeletonRaw, markedNode);
-                addedCount++;
-            } else {
-                ObjectNode orphanedNode = manualNode.deepCopy();
-                orphanedNode.put("x-orphaned", true);
-                result.set(manualRaw, orphanedNode);
-                orphanedCount++;
-            }
-        }
-
-        return result;
-    }
-
-    private ObjectNode mergeComponentSchemas(ObjectNode skeleton, ObjectNode manual) {
-        ObjectNode result = yamlMapper.createObjectNode();
-
-        // Sort schema names alphabetically for deterministic output
-        Set<String> allSchemas = new TreeSet<>();
-        manual.fieldNames().forEachRemaining(allSchemas::add);
-        skeleton.fieldNames().forEachRemaining(allSchemas::add);
-
-        for (String schemaName : allSchemas) {
-            JsonNode skeletonSchema = skeleton.get(schemaName);
-            JsonNode manualSchema = manual.get(schemaName);
-
-            if (skeletonSchema != null && manualSchema != null) {
-                if (skeletonSchema.isObject() && manualSchema.isObject()) {
-                    result.set(schemaName, mergeSchemaNodes((ObjectNode) skeletonSchema, (ObjectNode) manualSchema));
-                } else {
-                    result.set(schemaName, skeletonSchema.deepCopy());
-                }
-                mergedCount++;
-            } else if (skeletonSchema != null) {
-                ObjectNode markedNode = skeletonSchema.deepCopy();
-                markedNode.put("x-generated", true);
-                result.set(schemaName, markedNode);
-                addedCount++;
-            } else {
-                ObjectNode orphanedNode = manualSchema.deepCopy();
-                orphanedNode.put("x-orphaned", true);
-                result.set(schemaName, orphanedNode);
-                orphanedCount++;
-            }
-        }
-
-        return result;
-    }
-
-    private JsonNode mergeField(String fieldName, JsonNode skeletonValue,
-            JsonNode manualValue, String jsonPath) {
-        // Extension fields prefer skeleton (from annotations), but merge recursively for complex types
+    private FieldPrecedence resolvePrecedence(String fieldName) {
         if (fieldName.startsWith("x-")) {
-            // For simple values (strings, numbers, booleans), always take skeleton
-            if (!skeletonValue.isObject() && !skeletonValue.isArray()) {
-                return skeletonValue.deepCopy();
-            }
-            // For objects and arrays, merge recursively to preserve manual documentation within
-            if (skeletonValue.isObject() && manualValue.isObject()) {
-                return mergeNodes((ObjectNode) skeletonValue, (ObjectNode) manualValue, jsonPath);
-            }
-            if (skeletonValue.isArray() && manualValue.isArray()) {
-                return mergeArrays((ArrayNode) skeletonValue, (ArrayNode) manualValue, jsonPath);
-            }
-            // If types don't match, prefer skeleton
-            return skeletonValue.deepCopy();
+            return FieldPrecedence.MERGE_RECURSIVELY;
         }
-        // Security always comes from generated spec
-        if ("security".equals(fieldName)) {
-            return skeletonValue.deepCopy();
-        }
-        if ("responses".equals(fieldName) && skeletonValue.isObject() && manualValue.isObject()) {
-            return mergeResponses((ObjectNode) skeletonValue, (ObjectNode) manualValue);
-        }
-
-        // requestBody -> merge with skeleton content structure as source of truth
-        if ("requestBody".equals(fieldName) && skeletonValue.isObject() && manualValue.isObject()) {
-            return mergeRequestBody((ObjectNode) skeletonValue, (ObjectNode) manualValue, jsonPath);
-        }
-
-        // Manual-preferred fields
         if (MANUAL_PREFERRED_FIELDS.contains(fieldName)) {
-            return manualValue.deepCopy();
+            return FieldPrecedence.MANUAL;
         }
-
-        if ("schema".equals(fieldName) && skeletonValue.isObject() && manualValue.isObject()) {
-            return mergeSchemaNodes((ObjectNode) skeletonValue, (ObjectNode) manualValue);
-        }
-
-        // Skeleton-preferred fields (structural truth from code)
         if (SKELETON_PREFERRED_FIELDS.contains(fieldName)) {
-            if (skeletonValue.isObject() && manualValue.isObject()) {
-                return mergeNodes((ObjectNode) skeletonValue, (ObjectNode) manualValue, jsonPath);
-            }
-            return skeletonValue.deepCopy();
+            return FieldPrecedence.SKELETON;
         }
-
-        // For tags at the top level, prefer manual (global tag definitions)
-        if ("tags".equals(fieldName) && jsonPath.equals("tags")) {
-            return manualValue.deepCopy();
-        }
-
-        // For operation-level tags, prefer skeleton (annotation is source of truth)
-        if ("tags".equals(fieldName)) {
-            return skeletonValue.deepCopy();
-        }
-
-        // For object nodes, recurse
-        if (skeletonValue.isObject() && manualValue.isObject()) {
-            return mergeNodes((ObjectNode) skeletonValue, (ObjectNode) manualValue, jsonPath);
-        }
-
-        // For array nodes, merge by index or keep skeleton structure
-        if (skeletonValue.isArray() && manualValue.isArray()) {
-            return mergeArrays((ArrayNode) skeletonValue, (ArrayNode) manualValue, jsonPath);
-        }
-
-        // Default: prefer skeleton for structural fields, manual for descriptive
-        return skeletonValue.deepCopy();
+        return FieldPrecedence.MERGE_RECURSIVELY;
     }
 
-    private JsonNode mergeResponses(ObjectNode skeleton, ObjectNode manual) {
+    private ObjectNode mergePaths(ObjectNode skeleton, ObjectNode manual) {
         ObjectNode result = yamlMapper.createObjectNode();
 
-        // Collect all response codes
-        List<String> allCodes = new ArrayList<>();
-        manual.fieldNames().forEachRemaining(allCodes::add);
-        skeleton.fieldNames().forEachRemaining(code -> {
-            if (!allCodes.contains(code)) {
-                allCodes.add(code);
-            }
-        });
+        Map<String, String> skelRawByNorm = new LinkedHashMap<>();
+        if (skeleton != null) {
+            skeleton.fieldNames().forEachRemaining(k -> skelRawByNorm.putIfAbsent(OpenApiPathNormalizer.normalizePath(k), k));
+        }
 
-        // Sort response codes: numeric codes ascending, "default" last
-        allCodes.sort((code1, code2) -> {
-            if ("default".equals(code1)) {
+        Map<String, String> manRawByNorm = new LinkedHashMap<>();
+        if (manual != null) {
+            manual.fieldNames().forEachRemaining(k -> manRawByNorm.putIfAbsent(OpenApiPathNormalizer.normalizePath(k), k));
+        }
+
+        Set<String> allNorm = new TreeSet<>(skelRawByNorm.keySet());
+        allNorm.addAll(manRawByNorm.keySet());
+
+        for (String norm : allNorm) {
+            String skelKey = skelRawByNorm.get(norm);
+            String manKey = manRawByNorm.get(norm);
+
+            ObjectNode skelNode = skelKey != null ? (ObjectNode) skeleton.get(skelKey) : null;
+            ObjectNode manNode = manKey != null ? (ObjectNode) manual.get(manKey) : null;
+            String outKey = skelKey != null ? skelKey : manKey;
+
+            if (skelNode != null && manNode != null) {
+                result.set(outKey, mergeNodes(skelNode, manNode, "paths." + outKey));
+            } else if (skelNode != null) {
+                ObjectNode marked = skelNode.deepCopy();
+                marked.put("x-generated", true);
+                result.set(outKey, marked);
+                addedCount++;
+            } else {
+                ObjectNode marked = manNode.deepCopy();
+                marked.put("x-orphaned", true);
+                result.set(outKey, marked);
+                orphanedCount++;
+                orphanedPaths.add(outKey);
+            }
+        }
+        return result;
+    }
+
+    private ObjectNode mergeSchemas(ObjectNode skeleton, ObjectNode manual) {
+        ObjectNode result = yamlMapper.createObjectNode();
+        Set<String> keys = new TreeSet<>();
+        if (skeleton != null) {
+            skeleton.fieldNames().forEachRemaining(keys::add);
+        }
+        if (manual != null) {
+            manual.fieldNames().forEachRemaining(keys::add);
+        }
+
+        for (String key : keys) {
+            ObjectNode skelNode = skeleton != null && skeleton.has(key) ? (ObjectNode) skeleton.get(key) : null;
+            ObjectNode manNode = manual != null && manual.has(key) ? (ObjectNode) manual.get(key) : null;
+
+            if (skelNode != null && manNode != null) {
+                result.set(key, mergeNodes(skelNode, manNode, "components.schemas." + key));
+            } else if (skelNode != null) {
+                ObjectNode marked = skelNode.deepCopy();
+                marked.put("x-generated", true);
+                result.set(key, marked);
+                addedCount++;
+            } else {
+                ObjectNode marked = manNode.deepCopy();
+                marked.put("x-orphaned", true);
+                result.set(key, marked);
+                orphanedCount++;
+                orphanedSchemas.add(key);
+            }
+        }
+        return result;
+    }
+
+    private ObjectNode mergeResponses(ObjectNode skeleton, ObjectNode manual, String jsonPath) {
+        ObjectNode result = yamlMapper.createObjectNode();
+        List<String> codes = new ArrayList<>();
+        if (skeleton != null) {
+            skeleton.fieldNames().forEachRemaining(codes::add);
+        }
+        if (manual != null) {
+            manual.fieldNames().forEachRemaining(c -> {
+                if (!codes.contains(c)) {
+                    codes.add(c);
+                }
+            });
+        }
+
+        codes.sort((c1, c2) -> {
+            if ("default".equals(c1)) {
                 return 1;
             }
-            if ("default".equals(code2)) {
+            if ("default".equals(c2)) {
                 return -1;
             }
-            try {
-                return Integer.compare(Integer.parseInt(code1), Integer.parseInt(code2));
-            } catch (NumberFormatException e) {
-                return code1.compareTo(code2);
-            }
+            return c1.compareTo(c2);
         });
 
-        for (String code : allCodes) {
-            JsonNode skeletonResponse = skeleton.get(code);
-            JsonNode manualResponse = manual.get(code);
+        for (String code : codes) {
+            JsonNode skelNode = skeleton != null ? skeleton.get(code) : null;
+            JsonNode manNode = manual != null ? manual.get(code) : null;
 
-            if (skeletonResponse != null && manualResponse != null) {
-                if (skeletonResponse.isObject() && manualResponse.isObject()) {
-                    result.set(code, mergeResponse((ObjectNode) skeletonResponse, (ObjectNode) manualResponse, "responses." + code));
-                } else {
-                    result.set(code, skeletonResponse.deepCopy());
-                }
-            } else if (skeletonResponse != null) {
-                result.set(code, skeletonResponse.deepCopy());
+            if (skelNode != null && manNode != null && skelNode.isObject() && manNode.isObject()) {
+                result.set(code, mergeNodes((ObjectNode) skelNode, (ObjectNode) manNode, jsonPath + "." + code));
             } else {
-                result.set(code, manualResponse.deepCopy());
+                result.set(code, skelNode != null ? skelNode.deepCopy() : manNode.deepCopy());
             }
         }
-
         return result;
     }
 
-    private JsonNode mergeArrays(ArrayNode skeleton, ArrayNode manual, String jsonPath) {
+    private ArrayNode mergeParameters(ArrayNode skeleton, ArrayNode manual, String jsonPath) {
+        ArrayNode result = yamlMapper.createArrayNode();
+        Map<String, JsonNode> manByKey = new LinkedHashMap<>();
+
+        if (manual != null) {
+            manual.forEach(n -> {
+                if (n.isObject() && n.has("name")) {
+                    manByKey.put(paramKey(n), n);
+                }
+            });
+        }
+
+        Set<String> merged = new HashSet<>();
+        int i = 0;
+        if (skeleton != null) {
+            for (JsonNode skelNode : skeleton) {
+                if (skelNode.isObject() && skelNode.has("name")) {
+                    String key = paramKey(skelNode);
+                    JsonNode manNode = manByKey.get(key);
+                    if (manNode != null) {
+                        result.add(mergeNodes((ObjectNode) skelNode, (ObjectNode) manNode, jsonPath + "[" + i + "]"));
+                        merged.add(key);
+                    } else {
+                        result.add(skelNode.deepCopy());
+                    }
+                } else {
+                    result.add(skelNode.deepCopy());
+                }
+                i++;
+            }
+        }
+
+        if (manual != null) {
+            manual.forEach(n -> {
+                if (n.isObject() && n.has("name") && !merged.contains(paramKey(n))) {
+                    result.add(n.deepCopy());
+                } else if (!n.isObject() || !n.has("name")) {
+                    result.add(n.deepCopy());
+                }
+            });
+        }
+        return result;
+    }
+
+    private ArrayNode mergeSchemaArrays(ArrayNode skeleton, ArrayNode manual, String jsonPath) {
+        ArrayNode result = yamlMapper.createArrayNode();
+        Map<String, JsonNode> manByRef = new HashMap<>();
+
+        if (manual != null) {
+            manual.forEach(n -> {
+                if (n.isObject() && n.has("$ref")) {
+                    manByRef.put(n.get("$ref").asText(), n);
+                }
+            });
+        }
+
+        int i = 0;
+        if (skeleton != null) {
+            for (JsonNode skelNode : skeleton) {
+                if (skelNode.isObject() && skelNode.has("$ref")) {
+                    String ref = skelNode.get("$ref").asText();
+                    JsonNode manNode = manByRef.remove(ref);
+                    if (manNode != null) {
+                        result.add(mergeNodes((ObjectNode) skelNode, (ObjectNode) manNode, jsonPath + "[" + i + "]"));
+                    } else {
+                        result.add(skelNode.deepCopy());
+                    }
+                } else {
+                    result.add(skelNode.deepCopy());
+                }
+                i++;
+            }
+        }
+
+        manByRef.values().forEach(n -> result.add(n.deepCopy()));
+        return result;
+    }
+
+    private ArrayNode mergeArrays(ArrayNode skeleton, ArrayNode manual, String jsonPath) {
         if (skeleton.isEmpty()) {
             return manual.deepCopy();
         }
@@ -356,394 +377,72 @@ public final class SpecMerger {
             return skeleton.deepCopy();
         }
 
-        // For arrays of objects, try to match by "name" key and merge recursively
-        if (skeleton.get(0).isObject() && manual.get(0).isObject()) {
+        if (skeleton.get(0).isObject() && manual.get(0).isObject() && skeleton.get(0).has("name")) {
             return mergeObjectArrays(skeleton, manual, jsonPath);
         }
 
-        // For simple arrays, union both (deduplicated)
+        if (skeleton.get(0).isContainerNode() || manual.get(0).isContainerNode()) {
+            return skeleton.deepCopy();
+        }
+
         ArrayNode result = yamlMapper.createArrayNode();
-        Set<String> seen = new LinkedHashSet<>();
-        for (JsonNode node : skeleton) {
-            String text = node.isTextual() ? node.asText() : node.toString();
-            if (seen.add(text)) {
-                result.add(node.deepCopy());
+        List<JsonNode> seen = new ArrayList<>();
+        skeleton.forEach(n -> {
+            if (addIfNotSeen(seen, n)) {
+                result.add(n.deepCopy());
             }
-        }
-        for (JsonNode node : manual) {
-            String text = node.isTextual() ? node.asText() : node.toString();
-            if (seen.add(text)) {
-                result.add(node.deepCopy());
+        });
+        manual.forEach(n -> {
+            if (addIfNotSeen(seen, n)) {
+                result.add(n.deepCopy());
             }
-        }
+        });
         return result;
     }
 
-    private JsonNode mergeObjectArrays(ArrayNode skeleton, ArrayNode manual, String jsonPath) {
+    private ArrayNode mergeObjectArrays(ArrayNode skeleton, ArrayNode manual, String jsonPath) {
         ArrayNode result = yamlMapper.createArrayNode();
         Map<String, ObjectNode> manualByKey = new LinkedHashMap<>();
 
-        for (JsonNode node : manual) {
+        manual.forEach(node -> {
             if (node.isObject() && node.has("name")) {
-                manualByKey.put(elementKey(node), (ObjectNode) node);
+                manualByKey.put(paramKey(node), (ObjectNode) node);
             }
-        }
+        });
 
-        Set<String> mergedKeys = new LinkedHashSet<>();
-        for (JsonNode skNode : skeleton) {
-            if (skNode.isObject() && skNode.has("name")) {
-                String key = elementKey(skNode);
-                ObjectNode manualMatch = manualByKey.get(key);
-                if (manualMatch != null) {
-                    result.add(mergeNodes((ObjectNode) skNode, manualMatch, jsonPath + "[]"));
+        Set<String> mergedKeys = new HashSet<>();
+        int i = 0;
+        for (JsonNode skelNode : skeleton) {
+            if (skelNode.isObject() && skelNode.has("name")) {
+                String key = paramKey(skelNode);
+                ObjectNode manNode = manualByKey.get(key);
+                if (manNode != null) {
+                    result.add(mergeNodes((ObjectNode) skelNode, manNode, jsonPath + "[" + i + "]"));
                     mergedKeys.add(key);
                 } else {
-                    result.add(skNode.deepCopy());
+                    result.add(skelNode.deepCopy());
                 }
             } else {
-                result.add(skNode.deepCopy());
+                result.add(skelNode.deepCopy());
             }
+            i++;
         }
 
-        // Append unmatched manual entries
-        for (JsonNode node : manual) {
+        manual.forEach(node -> {
             if (node.isObject() && node.has("name")) {
-                if (!mergedKeys.contains(elementKey(node))) {
+                String key = paramKey(node);
+                if (!mergedKeys.contains(key)) {
                     result.add(node.deepCopy());
                 }
             } else if (!node.isObject() || !node.has("name")) {
                 result.add(node.deepCopy());
             }
-        }
+        });
 
         return result;
     }
 
-    /**
-     * Merges schema objects with skeleton structure as absolute source of truth.
-     * Manual specifications can only contribute documentation fields (description,
-     * example, examples, title) but never structural fields
-     * (type, properties, items, required, allOf, oneOf, anyOf, $ref, discriminator).
-     * x-* extensions are merged recursively to preserve manual documentation within.
-     */
-    private ObjectNode mergeSchemaNodes(ObjectNode skeleton, ObjectNode manual) {
-        ObjectNode result = skeleton.deepCopy();
-        overlayDocumentationFields(manual, result);
-
-        // Merge x-* extensions recursively to preserve manual documentation within
-        for (Iterator<String> it = manual.fieldNames(); it.hasNext();) {
-            String field = it.next();
-            if (field.startsWith("x-")) {
-                JsonNode manualExt = manual.get(field);
-                JsonNode skeletonExt = result.get(field);
-
-                if (skeletonExt != null && manualExt != null) {
-                    // Both have the extension - merge recursively
-                    if (skeletonExt.isArray() && manualExt.isArray()) {
-                        result.set(field, mergeArrays((ArrayNode) skeletonExt, (ArrayNode) manualExt, ""));
-                    } else if (skeletonExt.isObject() && manualExt.isObject()) {
-                        result.set(field, mergeNodes((ObjectNode) skeletonExt, (ObjectNode) manualExt, ""));
-                    }
-                    // Otherwise keep skeleton value (already in result from deepCopy)
-                }
-                // If only in manual, don't add it (skeleton is source of truth for which extensions exist)
-            }
-        }
-
-        return result;
-    }
-
-    /**
-     * Merges a single media type object. Schema structure from skeleton;
-     * documentation and examples from manual.
-     */
-    private ObjectNode mergeMediaType(ObjectNode skeletonMedia, ObjectNode manualMedia, String jsonPath) {
-        ObjectNode result = yamlMapper.createObjectNode();
-
-        Set<String> allFields = new LinkedHashSet<>();
-        skeletonMedia.fieldNames().forEachRemaining(allFields::add);
-        manualMedia.fieldNames().forEachRemaining(allFields::add);
-
-        for (String field : allFields) {
-            boolean inSkeleton = skeletonMedia.has(field);
-            boolean inManual = manualMedia.has(field);
-
-            if ("schema".equals(field)) {
-                // Schema: skeleton structure is authoritative
-                if (inSkeleton && inManual) {
-                    JsonNode skeletonSchema = skeletonMedia.get("schema");
-                    JsonNode manualSchema = manualMedia.get("schema");
-                    if (skeletonSchema.isObject() && manualSchema.isObject()) {
-                        result.set("schema", mergeSchemaNodes((ObjectNode) skeletonSchema, (ObjectNode) manualSchema));
-                    } else {
-                        result.set("schema", skeletonSchema.deepCopy());
-                    }
-                } else if (inSkeleton) {
-                    result.set("schema", skeletonMedia.get("schema").deepCopy());
-                } else {
-                    result.set("schema", manualMedia.get("schema").deepCopy());
-                }
-            } else if ("example".equals(field) || "examples".equals(field)) {
-                // Examples: always prefer manual
-                if (inManual) {
-                    result.set(field, manualMedia.get(field).deepCopy());
-                } else if (inSkeleton) {
-                    result.set(field, skeletonMedia.get(field).deepCopy());
-                }
-            } else if (MANUAL_PREFERRED_FIELDS.contains(field)) {
-                // Documentation fields: prefer manual
-                if (inManual) {
-                    result.set(field, manualMedia.get(field).deepCopy());
-                } else {
-                    result.set(field, skeletonMedia.get(field).deepCopy());
-                }
-            } else if (field.startsWith("x-")) {
-                // Extension fields: prefer skeleton (from annotations)
-                if (inSkeleton) {
-                    result.set(field, skeletonMedia.get(field).deepCopy());
-                } else {
-                    result.set(field, manualMedia.get(field).deepCopy());
-                }
-            } else {
-                // Other fields: prefer skeleton
-                if (inSkeleton) {
-                    result.set(field, skeletonMedia.get(field).deepCopy());
-                } else {
-                    result.set(field, manualMedia.get(field).deepCopy());
-                }
-            }
-        }
-
-        return result;
-    }
-
-    /**
-     * Merges content objects (collections of media types) from requestBody or responses.
-     */
-    private ObjectNode mergeContent(ObjectNode skeletonContent, ObjectNode manualContent, String jsonPath) {
-        ObjectNode result = yamlMapper.createObjectNode();
-
-        // Sort media types alphabetically for deterministic output
-        Set<String> allMediaTypes = new TreeSet<>();
-        manualContent.fieldNames().forEachRemaining(allMediaTypes::add);
-        skeletonContent.fieldNames().forEachRemaining(allMediaTypes::add);
-
-        for (String mediaType : allMediaTypes) {
-            boolean inSkeleton = skeletonContent.has(mediaType);
-            boolean inManual = manualContent.has(mediaType);
-
-            if (inSkeleton && inManual) {
-                JsonNode skeletonMedia = skeletonContent.get(mediaType);
-                JsonNode manualMedia = manualContent.get(mediaType);
-                if (skeletonMedia.isObject() && manualMedia.isObject()) {
-                    result.set(mediaType, mergeMediaType((ObjectNode) skeletonMedia, (ObjectNode) manualMedia, jsonPath + "." + mediaType));
-                } else {
-                    result.set(mediaType, skeletonMedia.deepCopy());
-                }
-            } else if (inSkeleton) {
-                result.set(mediaType, skeletonContent.get(mediaType).deepCopy());
-            } else {
-                result.set(mediaType, manualContent.get(mediaType).deepCopy());
-            }
-        }
-
-        return result;
-    }
-
-    /**
-     * Merges requestBody objects with skeleton content structure as source of truth.
-     */
-    private ObjectNode mergeRequestBody(ObjectNode skeleton, ObjectNode manual, String jsonPath) {
-        ObjectNode result = yamlMapper.createObjectNode();
-
-        Set<String> allFields = new LinkedHashSet<>();
-        manual.fieldNames().forEachRemaining(allFields::add);
-        skeleton.fieldNames().forEachRemaining(allFields::add);
-
-        for (String field : allFields) {
-            boolean inSkeleton = skeleton.has(field);
-            boolean inManual = manual.has(field);
-
-            if ("content".equals(field)) {
-                if (inSkeleton && inManual) {
-                    JsonNode skeletonContent = skeleton.get("content");
-                    JsonNode manualContent = manual.get("content");
-                    if (skeletonContent.isObject() && manualContent.isObject()) {
-                        result.set("content", mergeContent((ObjectNode) skeletonContent, (ObjectNode) manualContent, jsonPath + ".content"));
-                    } else {
-                        result.set("content", skeletonContent.deepCopy());
-                    }
-                } else if (inSkeleton) {
-                    result.set("content", skeleton.get("content").deepCopy());
-                } else {
-                    result.set("content", manual.get("content").deepCopy());
-                }
-            } else if (MANUAL_PREFERRED_FIELDS.contains(field)) {
-                if (inManual) {
-                    result.set(field, manual.get(field).deepCopy());
-                } else if (inSkeleton) {
-                    result.set(field, skeleton.get(field).deepCopy());
-                }
-            } else if (field.startsWith("x-")) {
-                // Extension fields: prefer skeleton (from annotations)
-                if (inSkeleton) {
-                    result.set(field, skeleton.get(field).deepCopy());
-                } else if (inManual) {
-                    result.set(field, manual.get(field).deepCopy());
-                }
-            } else {
-                if (inSkeleton) {
-                    result.set(field, skeleton.get(field).deepCopy());
-                } else if (inManual) {
-                    result.set(field, manual.get(field).deepCopy());
-                }
-            }
-        }
-
-        return result;
-    }
-
-    /**
-     * Merges a single response object with skeleton content structure as source of truth.
-     */
-    private ObjectNode mergeResponse(ObjectNode skeleton, ObjectNode manual, String jsonPath) {
-        ObjectNode result = yamlMapper.createObjectNode();
-
-        Set<String> allFields = new LinkedHashSet<>();
-        manual.fieldNames().forEachRemaining(allFields::add);
-        skeleton.fieldNames().forEachRemaining(allFields::add);
-
-        for (String field : allFields) {
-            boolean inSkeleton = skeleton.has(field);
-            boolean inManual = manual.has(field);
-
-            if ("content".equals(field)) {
-                if (inSkeleton && inManual) {
-                    JsonNode skeletonContent = skeleton.get("content");
-                    JsonNode manualContent = manual.get("content");
-                    if (skeletonContent.isObject() && manualContent.isObject()) {
-                        result.set("content", mergeContent((ObjectNode) skeletonContent, (ObjectNode) manualContent, jsonPath + ".content"));
-                    } else {
-                        result.set("content", skeletonContent.deepCopy());
-                    }
-                } else if (inSkeleton) {
-                    result.set("content", skeleton.get("content").deepCopy());
-                } else {
-                    result.set("content", manual.get("content").deepCopy());
-                }
-            } else if ("headers".equals(field)) {
-                if (inSkeleton && inManual) {
-                    JsonNode skeletonHeaders = skeleton.get("headers");
-                    JsonNode manualHeaders = manual.get("headers");
-                    if (skeletonHeaders.isObject() && manualHeaders.isObject()) {
-                        result.set("headers", mergeNodes((ObjectNode) skeletonHeaders, (ObjectNode) manualHeaders, jsonPath + ".headers"));
-                    } else {
-                        result.set("headers", skeletonHeaders.deepCopy());
-                    }
-                } else if (inSkeleton) {
-                    result.set("headers", skeleton.get("headers").deepCopy());
-                } else {
-                    result.set("headers", manual.get("headers").deepCopy());
-                }
-            } else if (MANUAL_PREFERRED_FIELDS.contains(field)) {
-                if (inManual) {
-                    result.set(field, manual.get(field).deepCopy());
-                } else if (inSkeleton) {
-                    result.set(field, skeleton.get(field).deepCopy());
-                }
-            } else if (field.startsWith("x-")) {
-                // Extension fields: prefer skeleton (from annotations)
-                if (inSkeleton) {
-                    result.set(field, skeleton.get(field).deepCopy());
-                } else if (inManual) {
-                    result.set(field, manual.get(field).deepCopy());
-                }
-            } else {
-                if (inSkeleton) {
-                    result.set(field, skeleton.get(field).deepCopy());
-                } else if (inManual) {
-                    result.set(field, manual.get(field).deepCopy());
-                }
-            }
-        }
-
-        return result;
-    }
-
-    /**
-     * Overlays only documentation fields from manual onto skeleton target,
-     * without modifying any structural schema fields or extension fields (x-*).
-     * Extension fields are controlled by annotations and come from the skeleton.
-     * For nested structural fields like properties, recursively overlays documentation
-     * within the skeleton structure.
-     */
-    private void overlayDocumentationFields(ObjectNode manual, ObjectNode target) {
-        for (String field : MANUAL_PREFERRED_FIELDS) {
-            if (manual.has(field)) {
-                target.set(field, manual.get(field).deepCopy());
-            }
-        }
-        // Note: x-* extensions are NOT overlaid from manual - they come from skeleton (annotations)
-
-        // Recursively overlay documentation in nested structural fields
-        if (manual.has("properties") && target.has("properties")) {
-            JsonNode manualProps = manual.get("properties");
-            JsonNode targetProps = target.get("properties");
-            if (manualProps.isObject() && targetProps.isObject()) {
-                overlayDocumentationInProperties((ObjectNode) manualProps, (ObjectNode) targetProps);
-            }
-        }
-        if (manual.has("items") && target.has("items")) {
-            JsonNode manualItems = manual.get("items");
-            JsonNode targetItems = target.get("items");
-            if (manualItems.isObject() && targetItems.isObject()) {
-                overlayDocumentationFields((ObjectNode) manualItems, (ObjectNode) targetItems);
-            }
-        }
-        if (manual.has("allOf") && target.has("allOf")) {
-            overlayDocumentationInArray(manual.get("allOf"), target.get("allOf"));
-        }
-        if (manual.has("oneOf") && target.has("oneOf")) {
-            overlayDocumentationInArray(manual.get("oneOf"), target.get("oneOf"));
-        }
-        if (manual.has("anyOf") && target.has("anyOf")) {
-            overlayDocumentationInArray(manual.get("anyOf"), target.get("anyOf"));
-        }
-    }
-
-    /**
-     * Overlays documentation fields on properties object (recursively handles nested properties).
-     */
-    private void overlayDocumentationInProperties(ObjectNode manualProps, ObjectNode targetProps) {
-        for (Iterator<String> it = manualProps.fieldNames(); it.hasNext();) {
-            String propName = it.next();
-            if (targetProps.has(propName)) {
-                JsonNode manualProp = manualProps.get(propName);
-                JsonNode targetProp = targetProps.get(propName);
-                if (manualProp.isObject() && targetProp.isObject()) {
-                    overlayDocumentationFields((ObjectNode) manualProp, (ObjectNode) targetProp);
-                }
-            }
-        }
-    }
-
-    /**
-     * Overlays documentation in schema arrays (allOf, oneOf, anyOf).
-     */
-    private void overlayDocumentationInArray(JsonNode manualArray, JsonNode targetArray) {
-        if (manualArray.isArray() && targetArray.isArray()
-                && manualArray.size() == targetArray.size()) {
-            for (int i = 0; i < manualArray.size(); i++) {
-                JsonNode manualItem = manualArray.get(i);
-                JsonNode targetItem = targetArray.get(i);
-                if (manualItem.isObject() && targetItem.isObject()) {
-                    overlayDocumentationFields((ObjectNode) manualItem, (ObjectNode) targetItem);
-                }
-            }
-        }
-    }
-
-    private static String elementKey(JsonNode node) {
+    private String paramKey(JsonNode node) {
         String name = node.path("name").asText();
         if (node.has("in")) {
             String in = node.get("in").asText();
@@ -755,26 +454,46 @@ public final class SpecMerger {
         return name;
     }
 
-
-    private boolean isPathOrSchemaField(String jsonPath) {
-        return jsonPath.equals("paths") || jsonPath.equals("components.schemas");
+    private boolean addIfNotSeen(List<JsonNode> seen, JsonNode node) {
+        if (seen.stream().noneMatch(n -> n.equals(node))) {
+            seen.add(node);
+            return true;
+        }
+        return false;
     }
 
-    private void stripMarkers(ObjectNode node) {
-        node.remove("x-orphaned");
-        node.remove("x-generated");
-        Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-        while (fields.hasNext()) {
-            JsonNode child = fields.next().getValue();
-            if (child.isObject()) {
-                stripMarkers((ObjectNode) child);
-            } else if (child.isArray()) {
-                for (JsonNode element : child) {
-                    if (element.isObject()) {
-                        stripMarkers((ObjectNode) element);
-                    }
-                }
+    private void stripMarkers(JsonNode node) {
+        if (node.isObject()) {
+            ((ObjectNode) node).remove("x-orphaned");
+            ((ObjectNode) node).remove("x-generated");
+        }
+        for (JsonNode child : node) {
+            stripMarkers(child);
+        }
+    }
+
+    private ObjectNode mergeContent(ObjectNode skeleton, ObjectNode manual, String jsonPath) {
+        ObjectNode result = yamlMapper.createObjectNode();
+
+        Set<String> allMediaTypes = new TreeSet<>();
+        if (skeleton != null) {
+            skeleton.fieldNames().forEachRemaining(allMediaTypes::add);
+        }
+        if (manual != null) {
+            manual.fieldNames().forEachRemaining(allMediaTypes::add);
+        }
+
+        for (String mediaType : allMediaTypes) {
+            JsonNode skelMedia = skeleton != null ? skeleton.get(mediaType) : null;
+            JsonNode manMedia = manual != null ? manual.get(mediaType) : null;
+            String childPath = jsonPath + "." + mediaType;
+
+            if (skelMedia != null && manMedia != null && skelMedia.isObject() && manMedia.isObject()) {
+                result.set(mediaType, mergeNodes((ObjectNode) skelMedia, (ObjectNode) manMedia, childPath));
+            } else {
+                result.set(mediaType, skelMedia != null ? skelMedia.deepCopy() : manMedia.deepCopy());
             }
         }
+        return result;
     }
 }

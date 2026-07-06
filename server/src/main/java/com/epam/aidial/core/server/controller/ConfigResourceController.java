@@ -156,7 +156,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved model", required = true)
                                     })
@@ -219,7 +219,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved interceptor", required = true)
                                     })
@@ -282,7 +282,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved role", required = true)
                                     })
@@ -345,7 +345,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved key", required = true)
                                     })
@@ -408,7 +408,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved route", required = true)
                                     })
@@ -472,7 +472,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved schema", required = true)
                                     })
@@ -532,7 +532,7 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved settings", required = true)
                                     })
@@ -1287,4 +1287,5 @@ public class ConfigResourceController implements Controller {
             boolean isKey
     ) {}
 
+    public record ConfigWriteResponse(String name) {}
 }

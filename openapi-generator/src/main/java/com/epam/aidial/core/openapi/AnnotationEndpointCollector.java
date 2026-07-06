@@ -42,12 +42,14 @@ import com.epam.aidial.core.server.controller.ToolSetMcpProxyController;
 import com.epam.aidial.core.server.controller.ToolSetToolsController;
 import com.epam.aidial.core.server.controller.UploadFileController;
 import com.epam.aidial.core.server.controller.UserInfoController;
+import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+@Slf4j
 public final class AnnotationEndpointCollector {
 
     private static final List<Class<?>> CONTROLLER_CLASSES = List.of(
@@ -103,6 +105,12 @@ public final class AnnotationEndpointCollector {
             }
         }
 
+        if (endpoints.isEmpty()) {
+            throw new IllegalStateException(
+                    "OpenAPI endpoint collection failed: Zero annotated operations detected. Check controller registrations."
+            );
+        }
+
         return Collections.unmodifiableList(endpoints);
     }
 
@@ -112,7 +120,10 @@ public final class AnnotationEndpointCollector {
 
         // Check for @ApiOperations container first
         ApiOperations container = method.getAnnotation(ApiOperations.class);
+        boolean hasOperations = false;
+
         if (container != null) {
+            hasOperations = true;
             for (ApiOperation op : container.value()) {
                 endpoints.add(toEndpoint(
                         op,
@@ -124,12 +135,20 @@ public final class AnnotationEndpointCollector {
         // Check for individual @ApiOperation annotations
         ApiOperation[] operations = method.getAnnotationsByType(ApiOperation.class);
         if (container == null && operations.length > 0) {
+            hasOperations = true;
             for (ApiOperation op : operations) {
                 endpoints.add(toEndpoint(
                         op,
                         mergeParameters(methodParameters, op.parameters()),
                         mergeResponses(methodResponses, op.responses())));
             }
+        }
+
+        if (!hasOperations && (methodParameters.length > 0 || methodResponses.length > 0)) {
+            log.warn("Dangling OpenAPI metadata discovered: Method '{}.{}' has @ApiParameter or @ApiResponse "
+                            + "annotations but is missing mandatory @ApiOperation/@ApiOperations root trigger. "
+                            + "This block will be completely ignored during specification assembly.",
+                    method.getDeclaringClass().getSimpleName(), method.getName());
         }
     }
 

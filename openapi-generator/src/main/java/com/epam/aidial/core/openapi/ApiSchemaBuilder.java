@@ -3,6 +3,7 @@ package com.epam.aidial.core.openapi;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 
 import java.lang.annotation.Annotation;
+import java.util.Objects;
 
 /**
  * Utility to programmatically create ApiSchema annotation instances.
@@ -67,6 +68,12 @@ public final class ApiSchemaBuilder {
     }
 
     public static ApiSchema forSchemaRef(String schemaRef) {
+        // Enforce strategy group invariant and validate incoming parameters
+        Objects.requireNonNull(schemaRef, "Schema reference cannot be null");
+        if (schemaRef.isBlank()) {
+            throw new IllegalArgumentException("Invalid @ApiSchema strategy: 'schemaRef' cannot be empty or blank");
+        }
+
         return new ApiSchema() {
             @Override
             public Class<? extends Annotation> annotationType() {

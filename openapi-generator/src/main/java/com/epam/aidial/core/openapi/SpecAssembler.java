@@ -43,10 +43,14 @@ public class SpecAssembler {
     public String assemble() {
         List<EndpointMetadata.Endpoint> endpoints = new ArrayList<>(AnnotationEndpointCollector.collect());
 
+        if (endpoints.isEmpty()) {
+            throw new IllegalStateException("OpenAPI Spec assembly aborted: Collected endpoint list is empty.");
+        }
+
         // Deterministic ordering for stable YAML generation
         endpoints.sort(
                 Comparator.comparing(EndpointMetadata.Endpoint::path)
-                    .thenComparing(EndpointMetadata.Endpoint::method)
+                        .thenComparing(EndpointMetadata.Endpoint::method)
         );
 
         // Collect all DTO types for schema generation
@@ -249,7 +253,7 @@ public class SpecAssembler {
             schema.setTitle(jsonSchemaNode.get("title").asText());
         }
 
-        // Handle Draft 2020-12 const -> single-value enum for OAS 3.0 compat
+        // Combined const and enum handling into an else-if chain to prevent type loss
         if (jsonSchemaNode.has("const")) {
             JsonNode constNode = jsonSchemaNode.get("const");
             if (constNode.isBoolean()) {
@@ -259,11 +263,17 @@ public class SpecAssembler {
             } else {
                 schema.setEnum(List.of(constNode.asText()));
             }
-        }
-
-        if (jsonSchemaNode.has("enum")) {
+        } else if (jsonSchemaNode.has("enum")) {
             List<Object> enumValues = new ArrayList<>();
-            jsonSchemaNode.get("enum").forEach(nd -> enumValues.add(nd.asText()));
+            jsonSchemaNode.get("enum").forEach(nd -> {
+                if (nd.isBoolean()) {
+                    enumValues.add(nd.asBoolean());
+                } else if (nd.isNumber()) {
+                    enumValues.add(nd.numberValue());
+                } else {
+                    enumValues.add(nd.asText());
+                }
+            });
             schema.setEnum(enumValues);
         }
 

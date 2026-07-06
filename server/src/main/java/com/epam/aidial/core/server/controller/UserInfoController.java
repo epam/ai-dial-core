@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -14,6 +15,7 @@ import io.vertx.core.json.JsonObject;
 import lombok.AllArgsConstructor;
 
 import java.util.Iterator;
+import java.util.List;
 
 @AllArgsConstructor
 public class UserInfoController implements Controller {
@@ -25,7 +27,7 @@ public class UserInfoController implements Controller {
             path = "/v1/user/info",
             operationId = "getUserInfo",
             responses = {
-                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS),
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS, body = @ApiSchema(schemaRef = "UserInfoResponse")),
                     @ApiResponse(code = 400, description = OpenApiDescriptions.RESPONSE_INVALID_AUTHENTICATION),
                     @ApiResponse(code = 401, description = OpenApiDescriptions.RESPONSE_UNAUTHORIZED)
             }

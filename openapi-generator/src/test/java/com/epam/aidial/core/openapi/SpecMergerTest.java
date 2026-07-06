@@ -133,7 +133,7 @@ class SpecMergerTest {
     }
 
     @Test
-    void orphanedEntriesPreserved(@TempDir Path tempDir) throws IOException {
+    void mergeFailsAndReportsOrphanedEntries(@TempDir Path tempDir) throws IOException {
         ObjectNode skeleton = mapper.createObjectNode();
         ObjectNode skeletonPaths = mapper.createObjectNode();
         ObjectNode existingPath = mapper.createObjectNode();
@@ -159,11 +159,14 @@ class SpecMergerTest {
         mapper.writeValue(manualFile.toFile(), manual);
 
         SpecMerger merger = new SpecMerger();
-        merger.merge(skeletonFile, manualFile, outputFile);
 
-        String output = Files.readString(outputFile);
-        assertTrue(output.contains("/v1/legacy"), "Should preserve orphaned paths");
-        assertFalse(output.contains("x-orphaned"), "x-orphaned markers should be stripped from output");
+        IllegalStateException exception = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class,
+                () -> merger.merge(skeletonFile, manualFile, outputFile),
+                "Should fail the merge if orphaned entries are present"
+        );
+
+        assertTrue(exception.getMessage().contains("orphaned entries"), "Exception message should report orphans");
     }
 
     @Test
@@ -250,6 +253,46 @@ class SpecMergerTest {
         String output = Files.readString(outputFile);
         assertTrue(output.contains("Deployment listing"), "Skeleton tag should be used");
         assertFalse(output.contains("Old Tag Name"), "Manual tag should NOT be in output");
+    }
+
+    @Test
+    void topLevelTagsPreferManual(@TempDir Path tempDir) throws IOException {
+        ObjectNode skeleton = mapper.createObjectNode();
+        ArrayNode skeletonTags = mapper.createArrayNode();
+        ObjectNode skeletonTag = mapper.createObjectNode();
+        skeletonTag.put("name", "Deployments");
+        skeletonTag.put("description", "Auto-generated tag from code");
+        skeletonTags.add(skeletonTag);
+        skeleton.set("tags", skeletonTags);
+
+        ObjectNode manual = mapper.createObjectNode();
+        ArrayNode manualTags = mapper.createArrayNode();
+        ObjectNode manualTag = mapper.createObjectNode();
+        manualTag.put("name", "Deployments");
+        manualTag.put("description", "Hand-maintained tag documentation with examples");
+        ObjectNode externalDocs = mapper.createObjectNode();
+        externalDocs.put("url", "https://docs.example.com/deployments");
+        manualTag.set("externalDocs", externalDocs);
+        manualTags.add(manualTag);
+        manual.set("tags", manualTags);
+
+        Path skeletonFile = tempDir.resolve("skeleton.yaml");
+        Path manualFile = tempDir.resolve("manual.yaml");
+        Path outputFile = tempDir.resolve("output.yaml");
+
+        mapper.writeValue(skeletonFile.toFile(), skeleton);
+        mapper.writeValue(manualFile.toFile(), manual);
+
+        SpecMerger merger = new SpecMerger();
+        merger.merge(skeletonFile, manualFile, outputFile);
+
+        String output = Files.readString(outputFile);
+        assertTrue(output.contains("Hand-maintained tag documentation with examples"),
+                "Manual top-level tag description should be preserved");
+        assertTrue(output.contains("https://docs.example.com/deployments"),
+                "Manual tag externalDocs should be preserved");
+        assertFalse(output.contains("Auto-generated tag from code"),
+                "Skeleton tag should NOT override manual top-level tag");
     }
 
     @Test
@@ -347,45 +390,6 @@ class SpecMergerTest {
         String output = Files.readString(outputFile);
         assertTrue(output.contains("Error schema"), "401 error content should be preserved");
         assertFalse(output.contains("x-orphaned"), "401 content should NOT be marked x-orphaned");
-    }
-
-    @Test
-    void markersStrippedFromOutput(@TempDir Path tempDir) throws IOException {
-        ObjectNode skeleton = mapper.createObjectNode();
-        ObjectNode skeletonPaths = mapper.createObjectNode();
-        ObjectNode existingPath = mapper.createObjectNode();
-        existingPath.put("summary", "Existing");
-        skeletonPaths.set("/v1/existing", existingPath);
-        ObjectNode newPath = mapper.createObjectNode();
-        newPath.put("summary", "New endpoint");
-        skeletonPaths.set("/v1/new", newPath);
-        skeleton.set("paths", skeletonPaths);
-
-        ObjectNode manual = mapper.createObjectNode();
-        ObjectNode manualPaths = mapper.createObjectNode();
-        ObjectNode existingPathManual = mapper.createObjectNode();
-        existingPathManual.put("summary", "Existing");
-        manualPaths.set("/v1/existing", existingPathManual);
-        ObjectNode orphanedPath = mapper.createObjectNode();
-        orphanedPath.put("summary", "Legacy endpoint");
-        manualPaths.set("/v1/legacy", orphanedPath);
-        manual.set("paths", manualPaths);
-
-        Path skeletonFile = tempDir.resolve("skeleton.yaml");
-        Path manualFile = tempDir.resolve("manual.yaml");
-        Path outputFile = tempDir.resolve("output.yaml");
-
-        mapper.writeValue(skeletonFile.toFile(), skeleton);
-        mapper.writeValue(manualFile.toFile(), manual);
-
-        SpecMerger merger = new SpecMerger();
-        merger.merge(skeletonFile, manualFile, outputFile);
-
-        String output = Files.readString(outputFile);
-        assertTrue(output.contains("/v1/legacy"), "Orphaned paths should be preserved");
-        assertTrue(output.contains("/v1/new"), "New skeleton paths should be preserved");
-        assertFalse(output.contains("x-orphaned"), "x-orphaned markers should be stripped from output");
-        assertFalse(output.contains("x-generated"), "x-generated markers should be stripped from output");
     }
 
     @Test
@@ -866,6 +870,61 @@ class SpecMergerTest {
         assertTrue(output.contains("Inline schema documentation from manual spec"),
                 "Manual description on inline schema should be preserved when skeleton uses $ref");
         assertTrue(output.contains("ChatRequest"), "Skeleton $ref should be preserved");
+    }
+
+    @Test
+    void compositionArrayMergesByRef(@TempDir Path tempDir) throws IOException {
+        ObjectNode skeleton = mapper.createObjectNode();
+        ObjectNode skeletonComponents = mapper.createObjectNode();
+        ObjectNode skeletonSchemas = mapper.createObjectNode();
+        ObjectNode skeletonSchema = mapper.createObjectNode();
+        ArrayNode skeletonAllOf = mapper.createArrayNode();
+        // Note: order is different from manual
+        ObjectNode skeletonRef1 = mapper.createObjectNode();
+        skeletonRef1.put("$ref", "#/components/schemas/BaseModel");
+        skeletonAllOf.add(skeletonRef1);
+        ObjectNode skeletonRef2 = mapper.createObjectNode();
+        skeletonRef2.put("$ref", "#/components/schemas/Metadata");
+        skeletonAllOf.add(skeletonRef2);
+        skeletonSchema.set("allOf", skeletonAllOf);
+        skeletonSchemas.set("ExtendedModel", skeletonSchema);
+        skeletonComponents.set("schemas", skeletonSchemas);
+        skeleton.set("components", skeletonComponents);
+
+        ObjectNode manual = mapper.createObjectNode();
+        ObjectNode manualComponents = mapper.createObjectNode();
+        ObjectNode manualSchemas = mapper.createObjectNode();
+        ObjectNode manualSchema = mapper.createObjectNode();
+        ArrayNode manualAllOf = mapper.createArrayNode();
+        // Note: order is different from skeleton
+        ObjectNode manualRef2 = mapper.createObjectNode();
+        manualRef2.put("$ref", "#/components/schemas/Metadata");
+        manualRef2.put("description", "Metadata fields documentation");
+        manualAllOf.add(manualRef2);
+        ObjectNode manualRef1 = mapper.createObjectNode();
+        manualRef1.put("$ref", "#/components/schemas/BaseModel");
+        manualRef1.put("description", "Base model documentation");
+        manualAllOf.add(manualRef1);
+        manualSchema.set("allOf", manualAllOf);
+        manualSchemas.set("ExtendedModel", manualSchema);
+        manualComponents.set("schemas", manualSchemas);
+        manual.set("components", manualComponents);
+
+        Path skeletonFile = tempDir.resolve("skeleton.yaml");
+        Path manualFile = tempDir.resolve("manual.yaml");
+        Path outputFile = tempDir.resolve("output.yaml");
+
+        mapper.writeValue(skeletonFile.toFile(), skeleton);
+        mapper.writeValue(manualFile.toFile(), manual);
+
+        SpecMerger merger = new SpecMerger();
+        merger.merge(skeletonFile, manualFile, outputFile);
+
+        String output = Files.readString(outputFile);
+        assertTrue(output.contains("Base model documentation"),
+                "Manual description for BaseModel $ref should be preserved despite reordering");
+        assertTrue(output.contains("Metadata fields documentation"),
+                "Manual description for Metadata $ref should be preserved despite reordering");
     }
 
     @Test

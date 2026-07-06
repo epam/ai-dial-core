@@ -37,6 +37,9 @@ class SpecMergerDeterminismTest {
                   /m/path:
                     get:
                       summary: M
+                  /b/path:
+                    get:
+                      summary: B skeleton
                 """;
 
         String manual = """
@@ -69,6 +72,8 @@ class SpecMergerDeterminismTest {
                     ASchema:
                       type: object
                     MSchema:
+                      type: object
+                    BSchema:
                       type: object
                 """;
 
@@ -184,11 +189,16 @@ class SpecMergerDeterminismTest {
                           description: Error
                         "200":
                           description: OK
+                  /a:
+                    get:
+                      summary: A path skeleton
                 components:
                   schemas:
                     ZModel:
                       type: object
                     AModel:
+                      type: object
+                    MModel:
                       type: object
                 """;
 
@@ -197,11 +207,11 @@ class SpecMergerDeterminismTest {
                 paths:
                   /a:
                     get:
-                      description: A path
+                      description: A path manual documentation
                 components:
                   schemas:
                     MModel:
-                      description: M schema
+                      description: M schema manual documentation
                 """;
 
         String merged1 = performMerge(skeleton, manual);

@@ -1,6 +1,5 @@
 package com.epam.aidial.core.openapi;
 
-
 import com.epam.aidial.core.openapi.annotations.ApiSubType;
 import com.epam.aidial.core.openapi.annotations.ApiSubTypes;
 import com.fasterxml.classmate.ResolvedType;
@@ -21,8 +20,9 @@ import com.github.victools.jsonschema.module.jackson.JacksonOption;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.util.Iterator;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -32,11 +32,10 @@ public class DtoSchemaGenerator {
     private static final String REF_KEY = "$ref";
     private static final String DEFS_PREFIX = "#/$defs/";
     private static final String COMPONENTS_PREFIX = "#/components/schemas/";
-    private static final Pattern NON_ALPHANUMERIC = Pattern.compile("[^a-zA-Z0-9]");
+    private static final Pattern NON_ALPHANUMERIC = Pattern.compile("[^a-zA-Z0-9_\\-]");
 
     private final SchemaGenerator generator;
     private final Map<String, ObjectNode> schemas = new LinkedHashMap<>();
-
     private final ExternalSchemaRegistry externalSchemaRegistry = new ExternalSchemaRegistry(schemas);
 
     public DtoSchemaGenerator() {
@@ -94,30 +93,13 @@ public class DtoSchemaGenerator {
                     processType(subtype.type());
                 }
             }
-            // Check for single implementation interfaces and create an alias
-            if (clazz.isInterface()) {
-                Class<?> singleImpl = findSingleImplementation(clazz);
-                if (singleImpl != null) {
-                    // Process the implementation type to ensure it's in schemas
-                    processType(singleImpl);
-                    // Create an alias schema that references the implementation
-                    String interfaceName = resolveTypeName(type);
-                    String implName = buildSchemaName(singleImpl);
-                    ObjectNode aliasSchema = generator.getConfig().createObjectNode();
-                    aliasSchema.put("$ref", COMPONENTS_PREFIX + implName);
-                    schemas.putIfAbsent(interfaceName, aliasSchema);
-                    return; // Don't generate the interface schema
-                }
-            }
         }
         JsonNode schema = generator.generateSchema(type);
         if (!(schema instanceof ObjectNode rootNode)) {
             return;
         }
         registerDefinitions(rootNode);
-        // Fix $ref paths in the main schema
         ObjectNode fixedRoot = fixRefPaths(rootNode);
-        // Determine the schema name from the type
         String schemaName = resolveTypeName(type);
         schemas.putIfAbsent(schemaName, fixedRoot);
     }
@@ -154,29 +136,25 @@ public class DtoSchemaGenerator {
 
         ObjectNode schema = context.getGeneratorConfig().createObjectNode();
         schema.put("type", "object");
-        schema.set("additionalProperties",
-                context.createDefinitionReference(params.get(1)));
+        schema.set("additionalProperties", context.createDefinitionReference(params.get(1)));
 
         return new CustomDefinition(schema);
     }
 
     private CustomDefinition createPolymorphicDefinition(ResolvedType javaType, SchemaGenerationContext context) {
         Class<?> clazz = javaType.getErasedType();
-
-        // Check for single implementation interfaces
-        if (clazz.isInterface()) {
-            Class<?> singleImpl = findSingleImplementation(clazz);
-            if (singleImpl != null) {
-                // Generate schema based on the single implementation
-                ResolvedType implType = context.getTypeContext().resolve(singleImpl);
-                return new CustomDefinition(context.createDefinition(implType));
-            }
-        }
-
         ApiSubTypes subTypes = clazz.getAnnotation(ApiSubTypes.class);
         if (subTypes == null) {
             return null;
         }
+
+        if (subTypes.value().length == 1) {
+            Class<?> targetImpl = subTypes.value()[0].type();
+            ResolvedType implType = context.getTypeContext().resolve(targetImpl);
+
+            return new CustomDefinition(context.createDefinitionReference(implType));
+        }
+
         ObjectNode schema = context.getGeneratorConfig().createObjectNode();
         schema.set("oneOf", createOneOf(subTypes, context));
         schema.set("required", createRequired(subTypes, context));
@@ -184,52 +162,12 @@ public class DtoSchemaGenerator {
         return new CustomDefinition(schema);
     }
 
-    private Class<?> findSingleImplementation(Class<?> interfaceClass) {
-        if (!interfaceClass.isInterface()) {
-            return null;
-        }
-
-        // Search for implementations in the same package and subpackages
-        Package pkg = interfaceClass.getPackage();
-        if (pkg == null) {
-            return null;
-        }
-
-        String packageName = pkg.getName();
-        String interfaceName = interfaceClass.getSimpleName();
-
-        // Common naming patterns for single implementations
-        String[] possibleNames = {
-            packageName + "." + interfaceName + "s",     // e.g., ResourceType -> ResourceTypes
-            packageName + "." + interfaceName + "Impl",  // e.g., ResourceType -> ResourceTypeImpl
-            packageName + "." + "Default" + interfaceName
-        };
-
-        Class<?> foundImpl = null;
-        for (String className : possibleNames) {
-            try {
-                Class<?> candidate = Class.forName(className);
-                if (interfaceClass.isAssignableFrom(candidate) && candidate != interfaceClass) {
-                    if (foundImpl != null) {
-                        // Multiple implementations found, not a single implementation case
-                        return null;
-                    }
-                    foundImpl = candidate;
-                }
-            } catch (ClassNotFoundException ignored) {
-                // Expected for non-existent classes
-            }
-        }
-
-        return foundImpl;
-    }
-
     private ArrayNode createOneOf(ApiSubTypes subTypes, SchemaGenerationContext context) {
         ArrayNode oneOf = context.getGeneratorConfig().createArrayNode();
 
         for (ApiSubType subtype : subTypes.value()) {
             ObjectNode ref = context.getGeneratorConfig().createObjectNode();
-            ref.put("$ref", "#/$defs/" + buildSchemaName(subtype.type()));
+            ref.put(REF_KEY, COMPONENTS_PREFIX + buildSchemaName(subtype.type()));
             oneOf.add(ref);
         }
         return oneOf;
@@ -246,26 +184,29 @@ public class DtoSchemaGenerator {
         discriminator.put("propertyName", subTypes.discriminatorProperty());
         ObjectNode mapping = context.getGeneratorConfig().createObjectNode();
         for (ApiSubType subtype : subTypes.value()) {
-            mapping.put(subtype.discriminatorValue(), "#/$defs/" + buildSchemaName(subtype.type()));
+            mapping.put(subtype.discriminatorValue(), COMPONENTS_PREFIX + buildSchemaName(subtype.type()));
         }
         discriminator.set("mapping", mapping);
         return discriminator;
     }
 
     private void registerDefinitions(ObjectNode rootNode) {
-        // Extract $defs into the shared schemas map
         if (!rootNode.has(DEFS_KEY)) {
             return;
         }
         ObjectNode defs = (ObjectNode) rootNode.get(DEFS_KEY);
-        defs.fields().forEachRemaining(entry -> {
-            if (entry.getValue() instanceof ObjectNode defNode) {
+        List<String> fieldNames = new ArrayList<>();
+        defs.fieldNames().forEachRemaining(fieldNames::add);
+
+        for (String fieldName : fieldNames) {
+            JsonNode defNode = defs.get(fieldName);
+            if (defNode instanceof ObjectNode objectNode) {
                 schemas.putIfAbsent(
-                        sanitizeSchemaName(entry.getKey()),
-                        fixRefPaths(defNode)
+                        sanitizeSchemaName(fieldName),
+                        fixRefPaths(objectNode)
                 );
             }
-        });
+        }
         rootNode.remove(DEFS_KEY);
     }
 
@@ -276,6 +217,7 @@ public class DtoSchemaGenerator {
     private JsonNode fixRefPathsRecursive(JsonNode node) {
         if (node.isObject()) {
             ObjectNode objNode = (ObjectNode) node;
+
             if (objNode.has(REF_KEY)) {
                 String refValue = objNode.get(REF_KEY).asText();
                 if (refValue.startsWith(DEFS_PREFIX)) {
@@ -283,25 +225,28 @@ public class DtoSchemaGenerator {
                     objNode.set(REF_KEY, new TextNode(COMPONENTS_PREFIX + schemaName));
                 }
             }
+
             if (objNode.has("discriminator")) {
                 JsonNode discriminator = objNode.get("discriminator");
                 if (discriminator.isObject() && discriminator.has("mapping")) {
                     ObjectNode mapping = (ObjectNode) discriminator.get("mapping");
-                    Iterator<Map.Entry<String, JsonNode>> entries = mapping.fields();
-                    while (entries.hasNext()) {
-                        Map.Entry<String, JsonNode> entry = entries.next();
-                        String value = entry.getValue().asText();
+                    List<String> mappingKeys = new ArrayList<>();
+                    mapping.fieldNames().forEachRemaining(mappingKeys::add);
+
+                    for (String key : mappingKeys) {
+                        String value = mapping.get(key).asText();
                         if (value.startsWith(DEFS_PREFIX)) {
                             String schemaName = sanitizeSchemaName(value.substring(DEFS_PREFIX.length()));
-                            mapping.put(entry.getKey(), COMPONENTS_PREFIX + schemaName);
+                            mapping.put(key, COMPONENTS_PREFIX + schemaName);
                         }
                     }
                 }
             }
-            Iterator<Map.Entry<String, JsonNode>> fields = objNode.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> entry = fields.next();
-                entry.setValue(fixRefPathsRecursive(entry.getValue()));
+
+            List<String> fields = new ArrayList<>();
+            objNode.fieldNames().forEachRemaining(fields::add);
+            for (String field : fields) {
+                objNode.set(field, fixRefPathsRecursive(objNode.get(field)));
             }
             return objNode;
         } else if (node.isArray()) {

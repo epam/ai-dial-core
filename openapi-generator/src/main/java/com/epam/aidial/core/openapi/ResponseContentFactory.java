@@ -13,12 +13,16 @@ final class ResponseContentFactory {
     }
 
     static Content build(String[] contentTypes, ApiSchema apiSchema, DtoSchemaGenerator schemaGenerator) {
+        if (contentTypes == null || contentTypes.length == 0) {
+            return null;
+        }
         Content content = new Content();
 
         // Sort content types alphabetically for deterministic ordering
-        Arrays.sort(contentTypes);
+        String[] sortedContentTypes = contentTypes.clone();
+        Arrays.sort(sortedContentTypes);
 
-        for (String contentType : contentTypes) {
+        for (String contentType : sortedContentTypes) {
             Schema<?> schema = ResponseSchemaFactory.forContentType(contentType, apiSchema, schemaGenerator);
 
             if (schema == null) {

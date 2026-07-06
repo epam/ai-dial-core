@@ -1850,407 +1850,6 @@ paths:
               schema:
                 type: object
                 description: Json object with metaschema you can use to create other schemas.
-              examples:
-                Example:
-                  value:
-                    $schema: http://json-schema.org/draft-07/schema#
-                    $id: https://dial.epam.com/application_type_schemas/schema#
-                    title: Core meta-schema defining Ai DIAL custom application schemas
-                    allOf:
-                    - $ref: "#/definitions/topLevelSchema"
-                    - $ref: "#/definitions/dialRootSchema"
-                    definitions:
-                      dialRootSchema:
-                        properties:
-                          dial:applicationTypeEditorUrl:
-                            type: string
-                            format: uri
-                            description: URL to the editor UI of the custom application of given type
-                          dial:applicationTypeViewerUrl:
-                            type: string
-                            format: uri
-                            description: URL to the view UI of the custom application of given type
-                          dial:applicationTypeSchemaEndpoint:
-                            type: string
-                            format: uri
-                            description: URL to retrieve JSON schema of the custom application of given type.
-                          dial:applicationTypeCompletionEndpoint:
-                            type: string
-                            format: uri
-                            description: URL to the completion endpoint of the custom application of given type
-                          dial:applicationTypeConfigurationEndpoint:
-                            type: string
-                            format: uri
-                            description: URL to the configuration endpoint of the custom application of given type
-                          dial:applicationTypeRateEndpoint:
-                            type: string
-                            format: uri
-                            description: URL to the rate endpoint of the custom application of given type
-                          dial:applicationTypeTokenizeEndpoint:
-                            type: string
-                            format: uri
-                            description: URL to the tokenize endpoint of the custom application of given type
-                          dial:applicationTypeTruncatePromptEndpoint:
-                            type: string
-                            format: uri
-                            description: URL to the truncate prompt of the custom application of given type
-                          dial:applicationTypeDisplayName:
-                            type: string
-                            description: Display name of the custom application of given type
-                          dial:appendApplicationPropertiesHeader:
-                            type: boolean
-                            description: "If this flag is set to true, the header with properties will augment the request while proxying"
-                        required:
-                        - dial:applicationTypeCompletionEndpoint
-                        - dial:applicationTypeDisplayName
-                      dialFileFormatAndTypeSchema:
-                        $comment: Sub-schema defining the type format and dial:file properties
-                        properties:
-                          format:
-                            type: string
-                          type:
-                            anyOf:
-                            - $ref: "#/definitions/simpleTypes"
-                            - type: array
-                              items:
-                                $ref: "#/definitions/simpleTypes"
-                              minItems: 1
-                              uniqueItems: true
-                          dial:file:
-                            description: Required to check file existence in DIAL instance
-                            type: boolean
-                            default: false
-                        allOf:
-                        - if:
-                            properties:
-                              dial:file:
-                                const: true
-                            required:
-                            - dial:file
-                          then:
-                            required:
-                            - format
-                            - type
-                            properties:
-                              format:
-                                const: dial-file-encoded
-                              type:
-                                const: string
-                      topLevelSchema:
-                        allOf:
-                        - $ref: "#/definitions/dialFileFormatAndTypeSchema"
-                        - type:
-                          - object
-                          - boolean
-                          properties:
-                            $id:
-                              type: string
-                              format: uri-reference
-                            $schema:
-                              type: string
-                              format: uri
-                            $ref:
-                              type: string
-                              format: uri-reference
-                            $comment:
-                              type: string
-                            title:
-                              type: string
-                            description:
-                              type: string
-                            default: true
-                            readOnly:
-                              type: boolean
-                              default: false
-                            writeOnly:
-                              type: boolean
-                              default: false
-                            examples:
-                              type: array
-                              items: true
-                            multipleOf:
-                              type: number
-                              exclusiveMinimum: 0
-                            maximum:
-                              type: number
-                            exclusiveMaximum:
-                              type: number
-                            minimum:
-                              type: number
-                            exclusiveMinimum:
-                              type: number
-                            maxLength:
-                              $ref: "#/definitions/nonNegativeInteger"
-                            minLength:
-                              $ref: "#/definitions/nonNegativeIntegerDefault0"
-                            pattern:
-                              type: string
-                              format: regex
-                            additionalItems:
-                              $ref: "#/definitions/notTopLevelSchema"
-                            items:
-                              anyOf:
-                              - $ref: "#/definitions/notTopLevelSchema"
-                              - $ref: "#/definitions/notTopLevelSchemaArray"
-                              default: true
-                            maxItems:
-                              $ref: "#/definitions/nonNegativeInteger"
-                            minItems:
-                              $ref: "#/definitions/nonNegativeIntegerDefault0"
-                            uniqueItems:
-                              type: boolean
-                              default: false
-                            contains:
-                              $ref: "#/definitions/notTopLevelSchema"
-                            maxProperties:
-                              $ref: "#/definitions/nonNegativeInteger"
-                            minProperties:
-                              $ref: "#/definitions/nonNegativeIntegerDefault0"
-                            required:
-                              $ref: "#/definitions/stringArray"
-                            additionalProperties:
-                              $ref: "#/definitions/notTopLevelSchema"
-                            definitions:
-                              type: object
-                              additionalProperties:
-                                $ref: "#/definitions/notTopLevelSchema"
-                              default: {}
-                            properties:
-                              type: object
-                              additionalProperties:
-                                $ref: "#/definitions/topLevelPropertySchema"
-                              default: {}
-                            patternProperties:
-                              type: object
-                              additionalProperties:
-                                $ref: "#/definitions/topLevelPropertySchema"
-                              propertyNames:
-                                format: regex
-                              default: {}
-                            dependencies:
-                              type: object
-                              additionalProperties:
-                                anyOf:
-                                - $ref: "#/definitions/notTopLevelSchema"
-                                - $ref: "#/definitions/stringArray"
-                            propertyNames:
-                              $ref: "#/definitions/notTopLevelSchema"
-                            const: true
-                            enum:
-                              type: array
-                              items: true
-                              minItems: 1
-                              uniqueItems: true
-                            contentMediaType:
-                              type: string
-                            contentEncoding:
-                              type: string
-                            if:
-                              $ref: "#/definitions/notTopLevelSchema"
-                            then:
-                              $ref: "#/definitions/notTopLevelSchema"
-                            else:
-                              $ref: "#/definitions/notTopLevelSchema"
-                            allOf:
-                              $ref: "#/definitions/notTopLevelSchemaArray"
-                            anyOf:
-                              $ref: "#/definitions/notTopLevelSchemaArray"
-                            oneOf:
-                              $ref: "#/definitions/notTopLevelSchemaArray"
-                            not:
-                              $ref: "#/definitions/notTopLevelSchema"
-                          default: true
-                      notTopLevelSchema:
-                        allOf:
-                        - $ref: "#/definitions/dialFileFormatAndTypeSchema"
-                        - type:
-                          - object
-                          - boolean
-                          properties:
-                            $id:
-                              type: string
-                              format: uri-reference
-                            $schema:
-                              type: string
-                              format: uri
-                            $ref:
-                              type: string
-                              format: uri-reference
-                            $comment:
-                              type: string
-                            title:
-                              type: string
-                            description:
-                              type: string
-                            default: true
-                            readOnly:
-                              type: boolean
-                              default: false
-                            writeOnly:
-                              type: boolean
-                              default: false
-                            examples:
-                              type: array
-                              items: true
-                            multipleOf:
-                              type: number
-                              exclusiveMinimum: 0
-                            maximum:
-                              type: number
-                            exclusiveMaximum:
-                              type: number
-                            minimum:
-                              type: number
-                            exclusiveMinimum:
-                              type: number
-                            maxLength:
-                              $ref: "#/definitions/nonNegativeInteger"
-                            minLength:
-                              $ref: "#/definitions/nonNegativeIntegerDefault0"
-                            pattern:
-                              type: string
-                              format: regex
-                            additionalItems:
-                              $ref: "#/definitions/notTopLevelSchema"
-                            items:
-                              anyOf:
-                              - $ref: "#/definitions/notTopLevelSchema"
-                              - $ref: "#/definitions/notTopLevelSchemaArray"
-                              default: true
-                            maxItems:
-                              $ref: "#/definitions/nonNegativeInteger"
-                            minItems:
-                              $ref: "#/definitions/nonNegativeIntegerDefault0"
-                            uniqueItems:
-                              type: boolean
-                              default: false
-                            contains:
-                              $ref: "#/definitions/notTopLevelSchema"
-                            maxProperties:
-                              $ref: "#/definitions/nonNegativeInteger"
-                            minProperties:
-                              $ref: "#/definitions/nonNegativeIntegerDefault0"
-                            required:
-                              $ref: "#/definitions/stringArray"
-                            additionalProperties:
-                              $ref: "#/definitions/notTopLevelPropertySchema"
-                            definitions:
-                              type: object
-                              additionalProperties:
-                                $ref: "#/definitions/notTopLevelSchema"
-                              default: {}
-                            properties:
-                              type: object
-                              additionalProperties:
-                                $ref: "#/definitions/notTopLevelPropertySchema"
-                              default: {}
-                            patternProperties:
-                              type: object
-                              additionalProperties:
-                                $ref: "#/definitions/notTopLevelPropertySchema"
-                              propertyNames:
-                                format: regex
-                              default: {}
-                            dependencies:
-                              type: object
-                              additionalProperties:
-                                anyOf:
-                                - $ref: "#/definitions/notTopLevelSchema"
-                                - $ref: "#/definitions/stringArray"
-                            propertyNames:
-                              $ref: "#/definitions/notTopLevelSchema"
-                            const: true
-                            enum:
-                              type: array
-                              items: true
-                              minItems: 1
-                              uniqueItems: true
-                            contentMediaType:
-                              type: string
-                            contentEncoding:
-                              type: string
-                            if:
-                              $ref: "#/definitions/notTopLevelSchema"
-                            then:
-                              $ref: "#/definitions/notTopLevelSchema"
-                            else:
-                              $ref: "#/definitions/notTopLevelSchema"
-                            allOf:
-                              $ref: "#/definitions/notTopLevelSchemaArray"
-                            anyOf:
-                              $ref: "#/definitions/notTopLevelSchemaArray"
-                            oneOf:
-                              $ref: "#/definitions/notTopLevelSchemaArray"
-                            not:
-                              $ref: "#/definitions/notTopLevelSchema"
-                          default: true
-                      topLevelPropertySchema:
-                        allOf:
-                        - $ref: "#/definitions/notTopLevelSchema"
-                        - $ref: "#/definitions/dialPropertyMetaSchema"
-                      notTopLevelPropertySchema:
-                        allOf:
-                        - $ref: "#/definitions/notTopLevelSchema"
-                        - propertyNames:
-                            not:
-                              enum:
-                              - dial:meta
-                      dialPropertyKind:
-                        $comment: Enum defining the property to be available to the clients or to be server-side only
-                        enum:
-                        - server
-                        - client
-                      dialPropertyMetaSchema:
-                        $comment: Sub-schema defining the meta-property with information AI Dial purposes
-                        type: object
-                        properties:
-                          dial:meta:
-                            type:
-                            - object
-                            properties:
-                              dial:propertyOrder:
-                                type: number
-                                description: Order in which the property should be displayed in the default editor UI
-                              dial:propertyKind:
-                                description: Is property available for the clients or server-side only
-                                $ref: "#/definitions/dialPropertyKind"
-                            required:
-                            - dial:propertyOrder
-                            - dial:propertyKind
-                        required:
-                        - dial:meta
-                      topLevelSchemaArray:
-                        type: array
-                        minItems: 1
-                        items:
-                          $ref: "#/definitions/topLevelSchema"
-                      notTopLevelSchemaArray:
-                        type: array
-                        minItems: 1
-                        items:
-                          $ref: "#/definitions/notTopLevelSchema"
-                      nonNegativeInteger:
-                        type: integer
-                        minimum: 0
-                      nonNegativeIntegerDefault0:
-                        allOf:
-                        - $ref: "#/definitions/nonNegativeInteger"
-                        - default: 0
-                      simpleTypes:
-                        enum:
-                        - array
-                        - boolean
-                        - integer
-                        - "null"
-                        - number
-                        - object
-                        - string
-                      stringArray:
-                        type: array
-                        items:
-                          type: string
-                        uniqueItems: true
-                        default: []
         "400":
           description: Bad request
           content:
@@ -2297,223 +1896,6 @@ paths:
               schema:
                 type: object
                 description: "Json object with schema of the requested application type. Refer to [/v1/application_type_schemas/schemas](/dial_api#tag/Applications/operation/listCustomApplicationSchemas) to view descriptions of several standard parameters."
-              examples:
-                Example:
-                  value:
-                    $schema: https://dial.epam.com/application_type_schemas/schema#
-                    $id: https://mydial.epam.com/custom_application_schemas/quickapps
-                    dial:applicationTypeDisplayName: Quick app
-                    dial:applicationTypeSchemaEndpoint: https://mydial.com/schema
-                    $defs:
-                      ToolEndpointInfo:
-                        properties:
-                          name:
-                            title: Name
-                            type: string
-                          method_url:
-                            title: Method Url
-                            type: string
-                          method_type:
-                            $ref: "#/$defs/ToolEndpointInfoMethodType"
-                          description:
-                            title: Description
-                            type: string
-                          parameters:
-                            items:
-                              $ref: "#/$defs/ToolEndpointParameterInfo"
-                            title: Parameters
-                            type: array
-                        required:
-                        - name
-                        - method_url
-                        - method_type
-                        - description
-                        - parameters
-                        title: ToolEndpointInfo
-                        type: object
-                      ToolEndpointInfoMethodType:
-                        enum:
-                        - get
-                        - post
-                        - put
-                        - delete
-                        title: ToolEndpointInfoMethodType
-                        type: string
-                      ToolEndpointParameterInfo:
-                        properties:
-                          name:
-                            title: Name
-                            type: string
-                          description:
-                            title: Description
-                            type: string
-                          url_param:
-                            default: false
-                            title: Url Param
-                            type: boolean
-                          constant_value:
-                            default: null
-                            title: Constant Value
-                          parameter_type:
-                            $ref: "#/$defs/ToolEndpointParameterTypeInfo"
-                          item_parameter_type:
-                            anyOf:
-                            - $ref: "#/$defs/ToolEndpointParameterTypeInfo"
-                            - type: "null"
-                            default: null
-                          item_descriptor:
-                            anyOf:
-                            - type: string
-                            - type: "null"
-                            default: null
-                            title: Item Descriptor
-                        required:
-                        - name
-                        - description
-                        - parameter_type
-                        title: ToolEndpointParameterInfo
-                        type: object
-                      ToolEndpointParameterTypeInfo:
-                        enum:
-                        - string
-                        - number
-                        - integer
-                        - object
-                        - array
-                        - boolean
-                        title: ToolEndpointParameterTypeInfo
-                        type: string
-                      WebApiToolsetInfo:
-                        properties:
-                          tool_endpoints:
-                            items:
-                              $ref: "#/$defs/ToolEndpointInfo"
-                            title: Tool Endpoints
-                            type: array
-                          auth_info:
-                            anyOf:
-                            - discriminator:
-                                mapping:
-                                  apikey: "#/$defs/WebApiToolsetKeyAuthInfo"
-                                  obo: "#/$defs/WebApiToolsetOBOAuthInfo"
-                                propertyName: auth_type
-                              oneOf:
-                              - $ref: "#/$defs/WebApiToolsetOBOAuthInfo"
-                              - $ref: "#/$defs/WebApiToolsetKeyAuthInfo"
-                            - type: "null"
-                            title: Auth Info
-                        required:
-                        - tool_endpoints
-                        - auth_info
-                        title: WebApiToolsetInfo
-                        type: object
-                      WebApiToolsetKeyAuthInfo:
-                        properties:
-                          auth_type:
-                            const: apikey
-                            enum:
-                            - apikey
-                            title: Auth Type
-                            type: string
-                          api_key:
-                            format: password
-                            title: Api Key
-                            type: string
-                            writeOnly: true
-                          url_param:
-                            default: false
-                            title: Url Param
-                            type: boolean
-                        required:
-                        - auth_type
-                        - api_key
-                        title: WebApiToolsetKeyAuthInfo
-                        type: object
-                      WebApiToolsetOBOAuthInfo:
-                        properties:
-                          auth_type:
-                            const: obo
-                            enum:
-                            - obo
-                            title: Auth Type
-                            type: string
-                          tenant:
-                            title: Tenant
-                            type: string
-                          grant_type:
-                            title: Grant Type
-                            type: string
-                          client_id:
-                            title: Client Id
-                            type: string
-                          client_secret:
-                            format: password
-                            title: Client Secret
-                            type: string
-                            writeOnly: true
-                          scope:
-                            title: Scope
-                            type: string
-                          assertion:
-                            title: Assertion
-                            type: string
-                        required:
-                        - auth_type
-                        - tenant
-                        - grant_type
-                        - client_id
-                        - client_secret
-                        - scope
-                        - assertion
-                        title: WebApiToolsetOBOAuthInfo
-                        type: object
-                    properties:
-                      temperature:
-                        title: Temperature
-                        type: number
-                        dial:meta:
-                          dial:propertyKind: server
-                          dial:propertyOrder: 1
-                      instructions:
-                        title: Instructions
-                        type: string
-                        dial:meta:
-                          dial:propertyKind: server
-                          dial:propertyOrder: 2
-                      model:
-                        title: Model
-                        type: string
-                        dial:meta:
-                          dial:propertyKind: server
-                          dial:propertyOrder: 3
-                      web_api_toolset:
-                        items:
-                          $ref: "#/$defs/WebApiToolsetInfo"
-                        title: Web Api Toolset
-                        type: array
-                        dial:meta:
-                          dial:propertyKind: server
-                          dial:propertyOrder: 4
-                      document_relative_url:
-                        type: string
-                        format: dial-file-encoded
-                        dial:meta:
-                          dial:propertyKind: server
-                          dial:propertyOrder: 5
-                        dial:file: true
-                      starters:
-                        items:
-                          type: string
-                        title: Starter buttons
-                        type: array
-                        dial:meta:
-                          dial:propertyKind: server
-                          dial:propertyOrder: 6
-                    required:
-                    - temperature
-                    - instructions
-                    - model
-                    - web_api_toolset
         "400":
           description: Bad request
           content:
@@ -3867,7 +3249,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ResourceItemMetadata"
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
         "304":
           description: Not Modified
         "400":
@@ -4322,7 +3704,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ResourceItemMetadata"
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
         "304":
           description: Not Modified
         "400":
@@ -5548,7 +4930,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ResourceItemMetadata"
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
         "304":
           description: Not Modified
         "400":
@@ -8522,7 +7904,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ResourceItemMetadata"
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
         "304":
           description: Not Modified
         "400":
@@ -8767,7 +8149,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ResourceItemMetadata"
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
         "304":
           description: Not Modified
         "400":
@@ -9012,7 +8394,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ResourceItemMetadata"
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
         "304":
           description: Not Modified
         "400":
@@ -9251,7 +8633,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ResourceItemMetadata"
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
         "304":
           description: Not Modified
         "400":
@@ -9921,7 +9303,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/userinfo"
+                $ref: "#/components/schemas/UserInfoResponse"
               examples:
                 API Key:
                   value:
@@ -10533,8 +9915,8 @@ components:
           - assistant
           - tool
         content:
-          type: string
           nullable: true
+          type: string
         refusal:
           type: string
           nullable: true
@@ -10777,6 +10159,11 @@ components:
           $ref: "#/components/schemas/LinkedHashMapStringRoute"
         toolsets:
           $ref: "#/components/schemas/MapStringToolSet"
+    ConfigResourceControllerConfigWriteResponse:
+      type: object
+      properties:
+        name:
+          type: string
     Consent:
       type: object
       properties:
@@ -13132,6 +12519,25 @@ components:
           type: integer
         total_tokens:
           type: integer
+    UserInfoResponse:
+      type: object
+      properties:
+        roles:
+          type: array
+          description: List of user or API key authorization roles
+          items:
+            type: string
+        project:
+          type: string
+          description: Present only if authenticated via an API Key. Represents the target project scope.
+        userClaims:
+          type: object
+          additionalProperties:
+            type: array
+            description: Array representation of a specific claim value (normalized for backward compatibility)
+            items:
+              type: string
+          description: Normalized token claims. Present only for user-based session authentication.
     ValidationResult:
       type: object
       properties:
@@ -13149,32 +12555,6 @@ components:
       - skipped
     ValueNode:
       type: object
-    userinfo:
-      type: object
-      description: User info
-      properties:
-        project:
-          type: string
-          description: The project name.
-        roles:
-          type: array
-          description: List of user or API key roles.
-          items:
-            type: string
-        userClaims:
-          type: object
-          description: Claims extracted from the access token.
-          properties:
-            email:
-              type: array
-              description: The email of the user.
-              items:
-                type: string
-            sub:
-              type: array
-              description: Identifies the principal or subject of the token.
-              items:
-                type: string
   securitySchemes:
     ApiKeyAuth:
       type: apiKey
