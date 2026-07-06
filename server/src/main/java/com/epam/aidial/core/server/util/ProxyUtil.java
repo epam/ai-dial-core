@@ -264,11 +264,14 @@ public class ProxyUtil {
         return socketAddress.host();
     }
 
+    public void copyResponse(HttpServerResponse response, HttpClientResponse proxyResponse) {
+        response.setStatusCode(proxyResponse.statusCode());
+        copyHeaders(proxyResponse.headers(), response.headers());
+    }
+
     public void handleChunkedResponse(HttpServerResponse response, HttpClientResponse proxyResponse) {
         response.setChunked(true);
-        int responseStatusCode = proxyResponse.statusCode();
-        response.setStatusCode(responseStatusCode);
-        copyHeaders(proxyResponse.headers(), response.headers());
+        copyResponse(response, proxyResponse);
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
         if (Strings.CI.contains(contentType, "text/event-stream")) {
             response.putHeader("X-Accel-Buffering", "no");

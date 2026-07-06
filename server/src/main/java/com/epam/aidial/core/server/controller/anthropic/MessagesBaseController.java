@@ -24,20 +24,24 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
+import io.vertx.core.http.HttpHeaders;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.Strings;
 
 import java.io.IOException;
 import java.util.List;
 
 /**
  * Shared plumbing for the Anthropic Messages API controllers ({@link MessagesController} and
- * {@link MessagesCountTokensController}): body parsing, deployment resolution + the
- * {@code anthropicMessages} 503 gate, the enhancement chain, upstream-route preparation, and the
- * send/retry loop. Subclasses only implement {@link #processResponse(HttpClientResponse)}.
+ * {@link MessagesCountTokensController}): the whole {@link #handle()} flow — body parsing,
+ * deployment resolution + the {@code anthropicMessages} 503 gate, the enhancement chain,
+ * upstream-route preparation and the send/retry loop. Subclasses implement
+ * {@link #processResponse(HttpClientResponse)} and may override {@link #verifyLimit()}.
  */
 @Slf4j
 abstract class MessagesBaseController extends BaseDeploymentPostController {
@@ -52,6 +56,43 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                 new EnhanceModelRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
                 new CollectDeploymentsFn(proxy, context));
+    }
+
+    public Future<?> handle() {
+        String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
+        if (!Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
+            return respond(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Only application/json is supported");
+        }
+        context.getRequest().body()
+                .map(MessagesBaseController::parseBody)
+                .compose(request -> {
+                    String model = request.getModel();
+                    return proxy.getTaskExecutor().submit(() -> setupDeployment(model))
+                            .compose(ignore -> verifyLimit())
+                            .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
+                                    .map(ignored -> handleRequestBody(request)))
+                            .otherwise(error -> handleRequestError(model, error));
+                })
+                .onFailure(this::handleRequestBodyError);
+
+        return Future.succeededFuture();
+    }
+
+    /**
+     * Rate-limit gate before the upstream call. No-op by default: count_tokens does not generate,
+     * so it charges no limits.
+     */
+    protected Future<Void> verifyLimit() {
+        return Future.succeededFuture();
+    }
+
+    @SneakyThrows
+    private Void handleRequestBody(RequestObject request) {
+        context.setStreamingRequest(request.isStreaming());
+        prepareUpstreamRoute(request);
+        sendRequest();
+
+        return null;
     }
 
     protected static MessagesApiRequest parseBody(Buffer body) {
