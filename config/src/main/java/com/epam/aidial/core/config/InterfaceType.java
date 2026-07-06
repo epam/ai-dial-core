@@ -14,7 +14,9 @@ public enum InterfaceType {
     @JsonAlias({"openai_chat_completions"})
     OPENAI_CHAT_COMPLETIONS("openaiChatCompletions"),
     @JsonAlias({"openai_responses"})
-    OPENAI_RESPONSES("openaiResponses");
+    OPENAI_RESPONSES("openaiResponses"),
+    @JsonAlias({"anthropic_messages"})
+    ANTHROPIC_MESSAGES("anthropicMessages");
 
     @JsonValue
     private final String value;
