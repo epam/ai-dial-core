@@ -13,7 +13,6 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
@@ -304,9 +303,13 @@ public class ResponsesController extends BaseDeploymentPostController {
                     response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
 
                     if (context.isBackgroundJob() && context.getDialResponseId() != null) {
-                        BackgroundJobRecord record = BackgroundJobRecord.from(context);
-                        proxy.getBackgroundJobService().saveJob(context.getDialResponseId(), record);
-                        return response.end(rewritten);
+                        return proxy.getBackgroundJobService().saveJob(context)
+                                .onComplete(result -> {
+                                    if (result.failed()) {
+                                        log.warn("Failed to save background job record", result.cause());
+                                    }
+                                    response.end(rewritten);
+                                });
                     } else {
                         return collectTokenUsage(rewritten)
                                 .transform(result -> {

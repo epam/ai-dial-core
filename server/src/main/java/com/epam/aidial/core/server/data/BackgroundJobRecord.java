@@ -10,6 +10,7 @@ import lombok.Builder;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 
 @Builder
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -33,9 +34,9 @@ public record BackgroundJobRecord(
         String requestBody,
         String upstreamEndpoint) {
 
-    public static BackgroundJobRecord from(ProxyContext context) {
+    public static BackgroundJobRecord from(ProxyContext context, UnaryOperator<String> keyEncryptor) {
         return BackgroundJobRecord.builder()
-                .perRequestKey(context.getProxyApiKeyData().getPerRequestKey())
+                .perRequestKey(keyEncryptor.apply(context.getProxyApiKeyData().getPerRequestKey()))
                 .isRootSpan(context.isOriginalRequest())
                 .traceId(context.getTraceId())
                 .spanId(context.getSpanId())

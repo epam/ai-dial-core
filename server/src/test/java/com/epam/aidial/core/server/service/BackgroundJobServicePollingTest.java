@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -60,6 +61,9 @@ class BackgroundJobServicePollingTest {
     @Mock
     private RedissonClient redis;
 
+    @Mock
+    private CredentialEncryptionService encryptionService;
+
     private BackgroundJobService service;
 
     @BeforeEach
@@ -67,7 +71,7 @@ class BackgroundJobServicePollingTest {
         ResponsesApiClient responsesApiClient = new ResponsesApiClient(httpClient, new HttpClientOptions());
         service = new BackgroundJobService(null, redis, "test", null, null,
                 configStore, null, null, null, null, upstreamRouteProvider, responsesApiClient,
-                new BackgroundJobService.Settings(), null);
+                new BackgroundJobService.Settings(), null, encryptionService);
     }
 
     @Test

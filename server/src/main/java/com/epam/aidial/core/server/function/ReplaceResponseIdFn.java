@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.function;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
@@ -73,8 +72,7 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
                     if (!context.isBackgroundJob()) {
                         return Future.succeededFuture();
                     }
-                    BackgroundJobRecord record = BackgroundJobRecord.from(context);
-                    return proxy.getBackgroundJobService().saveJob(context.getDialResponseId(), record);
+                    return proxy.getBackgroundJobService().saveJob(context);
                 })
                 .map(tree);
     }

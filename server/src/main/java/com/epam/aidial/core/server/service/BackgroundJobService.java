@@ -4,6 +4,9 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
+import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
@@ -40,6 +43,8 @@ import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 import org.redisson.client.protocol.ScoredEntry;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -69,6 +74,7 @@ public class BackgroundJobService {
     private final UpstreamRouteProvider upstreamRouteProvider;
     private final ResponsesApiClient client;
     private final LogStore logStore;
+    private final CredentialEncryptionService encryptionService;
     private final RScript script;
     private final RScoredSortedSet<String> schedule;
     private final String scheduleKey;
@@ -89,7 +95,8 @@ public class BackgroundJobService {
             UpstreamRouteProvider upstreamRouteProvider,
             ResponsesApiClient client,
             Settings settings,
-            LogStore logStore) {
+            LogStore logStore,
+            CredentialEncryptionService encryptionService) {
         this.prefix = prefix;
         this.settings = settings;
         this.vertx = vertx;
@@ -104,6 +111,7 @@ public class BackgroundJobService {
         this.upstreamRouteProvider = upstreamRouteProvider;
         this.client = client;
         this.logStore = logStore;
+        this.encryptionService = encryptionService;
         this.script = redis.getScript(StringCodec.INSTANCE);
         this.scheduleKey = "background_job_schedule:" + BlobStorageUtil.toStoragePath(prefix, "queue");
         this.schedule = redis.getScoredSortedSet(scheduleKey, StringCodec.INSTANCE);
@@ -123,9 +131,11 @@ public class BackgroundJobService {
         vertx.setPeriodic(0, settings.getScanIntervalMs(), id -> taskExecutor.submit(this::scan));
     }
 
-    public Future<Void> saveJob(String dialId, BackgroundJobRecord record) {
-        String json = ProxyUtil.convertToString(record);
+    public Future<Void> saveJob(ProxyContext context) {
+        String dialId = context.getDialResponseId();
         ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(dialId);
+        BackgroundJobRecord record = BackgroundJobRecord.from(context, key -> encryptKey(descriptor, key));
+        String json = ProxyUtil.convertToString(record);
         return taskExecutor.submit(() -> resourceService.putResource(descriptor, json, EtagHeader.NEW_ONLY))
                 .onSuccess(ignore -> schedule(dialId, System.currentTimeMillis() + settings.getInitialPollIntervalMs()))
                 .mapEmpty();
@@ -312,6 +322,20 @@ public class BackgroundJobService {
         return ProxyUtil.convertToObject(json, BackgroundJobRecord.class);
     }
 
+    private String encryptKey(ResourceDescriptor descriptor, String key) {
+        BucketInfo bucketInfo = new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation());
+        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
+        byte[] cipher = encryptionService.encrypt(bucketInfo, key.getBytes(StandardCharsets.UTF_8), aad);
+        return Base64.getEncoder().encodeToString(cipher);
+    }
+
+    private String decryptKey(ResourceDescriptor descriptor, String key) {
+        BucketInfo bucketInfo = new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation());
+        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
+        byte[] raw = Base64.getDecoder().decode(key);
+        return new String(encryptionService.decrypt(bucketInfo, raw, aad), StandardCharsets.UTF_8);
+    }
+
     private Future<Void> completeAndProcess(
             String dialId,
             long owner,
@@ -430,8 +454,10 @@ public class BackgroundJobService {
             String responseId, BackgroundJobRecord jobRecord, ResponseMapping responseMapping, ResponsesApiClient.TerminalResult result) {
         Config config = configStore.get();
         Deployment deployment = config.selectDeployment(responseMapping.getDeploymentName());
+        ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(responseId);
+        String perRequestKey = decryptKey(descriptor, jobRecord.perRequestKey());
 
-        apiKeyStore.getApiKeyData(jobRecord.perRequestKey(), null)
+        apiKeyStore.getApiKeyData(perRequestKey, null)
                 .recover(e -> Future.succeededFuture(null))
                 .onSuccess(apiKeyData -> {
                     String traceId = apiKeyData != null ? apiKeyData.getTraceId() : null;
@@ -455,7 +481,7 @@ public class BackgroundJobService {
                     if (traceId != null && Boolean.TRUE.equals(jobRecord.isRootSpan())) {
                         future = future.compose(ignored -> tokenStatsTracker.endSpan(traceId));
                     }
-                    future.eventually(() -> invalidatePerRequestKey(jobRecord.perRequestKey()))
+                    future.eventually(() -> invalidatePerRequestKey(perRequestKey))
                             .onComplete(ignored -> logStore.save(AnalyticsLogContext.from(jobRecord, result)))
                             .onFailure(error -> log.error("Failed to finalize background job {}", responseId, error));
                 });

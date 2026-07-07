@@ -10,7 +10,6 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
-import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -64,7 +63,6 @@ import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_
 import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -780,8 +778,6 @@ public class ResponsesControllerTest {
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         when(request.body()).thenReturn(Future.succeededFuture(requestBody));
         when(request.headers()).thenReturn(new HeadersMultiMap());
-        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
-        when(request.method()).thenReturn(HttpMethod.POST);
         when(upstreamRoute.next()).thenReturn(upstream);
         when(upstreamRoute.get()).thenReturn(upstream);
         when(context.getRequest()).thenReturn(request);
@@ -809,7 +805,7 @@ public class ResponsesControllerTest {
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getResponseMappingService().saveMapping(any(), any())).thenReturn(expectedDialId);
         when(context.getUserId()).thenReturn("test-user");
-        when(proxy.getBackgroundJobService().saveJob(any(), any())).thenAnswer(invocation -> {
+        when(proxy.getBackgroundJobService().saveJob(any())).thenAnswer(invocation -> {
             textContext.completeNow();
             return Future.<Void>succeededFuture();
         });
@@ -831,10 +827,6 @@ public class ResponsesControllerTest {
         controller.handle();
 
         await(textContext);
-
-        ArgumentCaptor<BackgroundJobRecord> recordCaptor = ArgumentCaptor.forClass(BackgroundJobRecord.class);
-        verify(proxy.getBackgroundJobService()).saveJob(eq(expectedDialId), recordCaptor.capture());
-        assertNotNull(recordCaptor.getValue().requestBody());
     }
 
     private static Future<?> complete(VertxTestContext textContext) {
