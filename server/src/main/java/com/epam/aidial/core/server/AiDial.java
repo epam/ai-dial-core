@@ -244,7 +244,7 @@ public class AiDial {
                     resourceAuthSettingsEncryptionService, resourceCredentialsService);
             ToolSetRepairService toolSetRepairService = new ToolSetRepairService(resourceService,
                     resourceAuthSettingsEncryptionService, resourceCredentialsService,
-                    tokenService, resourceRegistrationService, resourceAuthSettingsService);
+                    resourceRegistrationService, resourceAuthSettingsService);
 
             ExternalServiceService externalServiceService = new ExternalServiceService(
                     resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService);

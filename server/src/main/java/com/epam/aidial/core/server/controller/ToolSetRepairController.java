@@ -36,16 +36,11 @@ public class ToolSetRepairController implements Controller {
                 throw new HttpException(HttpStatus.FORBIDDEN,
                         "Write access to the toolset is required to repair it");
             }
-            return repairService.repair(resource, context);
+            repairService.repair(resource, context);
+            return null;
         })
-        .onSuccess(outcome -> {
-            String message = switch (outcome) {
-                case NO_OP -> "no-op: client is valid and endpoints are unchanged";
-                case ENDPOINTS_REFRESHED -> "endpoints refreshed: client is valid, endpoints updated";
-                case REREGISTERED -> "re-registered: new client_id issued, credentials cleared";
-            };
-            context.respond(HttpStatus.OK, new RepairResponse(outcome.name(), message));
-        })
+        .onSuccess(ignored -> context.respond(HttpStatus.OK,
+                new RepairResponse("REREGISTERED", "re-registered: new client_id issued, all credentials cleared")))
         .onFailure(this::respondError);
     }
 
