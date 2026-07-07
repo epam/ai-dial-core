@@ -114,6 +114,11 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePathV2(path));
         });
+        get(RouteTemplate.SKILL_FILE, (proxy, context, pathMatcher) -> {
+            FolderResourceController controller = new FolderResourceController(proxy, context, false,
+                    UrlUtil.decodePath(pathMatcher.group("filePath")));
+            return () -> controller.handle(skillResourceUrl(pathMatcher));
+        });
         get(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
         get(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
         // Wire POST/PUT/DELETE so the controller can emit a proper 405 + Allow header (RFC 7231)
@@ -488,6 +493,16 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePathV2(path));
         });
+        put(RouteTemplate.SKILL_FILE, (proxy, context, pathMatcher) -> {
+            FolderResourceController controller = new FolderResourceController(proxy, context, true,
+                    UrlUtil.decodePath(pathMatcher.group("filePath")));
+            return () -> controller.handle(skillResourceUrl(pathMatcher));
+        });
+        delete(RouteTemplate.SKILL_FILE, (proxy, context, pathMatcher) -> {
+            FolderResourceController controller = new FolderResourceController(proxy, context, true,
+                    UrlUtil.decodePath(pathMatcher.group("filePath")));
+            return () -> controller.handle(skillResourceUrl(pathMatcher));
+        });
 
         // add deployment routes
         ControllerRoute.Initializer applicationRouteTemplate = ((proxy, context, pathMatcher) -> {
@@ -591,6 +606,12 @@ public class ControllerSelector {
         }
 
         return url.substring(prefix.length());
+    }
+
+    // Builds the skill folder resource url (still percent-encoded, decoded downstream by fromAnyUrl) for a
+    // single-file route match, so access control is evaluated against the whole skill.
+    private static String skillResourceUrl(Matcher matcher) {
+        return "skills/" + matcher.group("bucket") + "/" + matcher.group("path");
     }
 
     private record ControllerRoute(HttpMethod method, Pattern pathPattern, Initializer initializer) {

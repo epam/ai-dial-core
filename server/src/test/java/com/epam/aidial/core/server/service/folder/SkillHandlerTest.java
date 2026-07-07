@@ -50,6 +50,20 @@ class SkillHandlerTest {
     }
 
     @Test
+    void testValidateFileMutationRejectsManifestDelete() {
+        HttpException ex = assertThrows(HttpException.class,
+                () -> handler.validateFileMutation("SKILL.md", FolderResourceHandler.FileMutation.DELETE));
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
+    }
+
+    @Test
+    void testValidateFileMutationAllowsManifestEditAndOtherDeletes() {
+        // editing the manifest and deleting other files is allowed
+        handler.validateFileMutation("SKILL.md", FolderResourceHandler.FileMutation.PUT);
+        handler.validateFileMutation("scripts/run.sh", FolderResourceHandler.FileMutation.DELETE);
+    }
+
+    @Test
     void testValidateRejectsMissingManifest() {
         Map<String, byte[]> files = new HashMap<>();
         files.put("data.txt", "x".getBytes(StandardCharsets.UTF_8));
