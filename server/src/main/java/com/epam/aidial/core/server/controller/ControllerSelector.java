@@ -322,7 +322,6 @@ public class ControllerSelector {
             };
         });
 
-        // Admin-only endpoint for OAuth client repair (re-discovery / re-registration). DCR toolsets only.
         post(RouteTemplate.TOOL_SET_REPAIR, (proxy, context, pathMatcher) -> {
             String bucket = pathMatcher.group("bucket");
             String path = pathMatcher.group("path");
