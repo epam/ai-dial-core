@@ -19,3 +19,4 @@ src/main/resources/version
 .settings/
 ### Personal Claude commands (not shared) ###
 .claude/commands/review-unified-config.md
+dump.rdb
