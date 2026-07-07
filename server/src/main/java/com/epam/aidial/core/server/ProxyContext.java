@@ -49,7 +49,6 @@ public class ProxyContext {
             .collect(Collectors.toUnmodifiableSet());
 
     private final Proxy proxy;
-    private final Config config;
     // API key of root requester
     private final Key key;
     private final HttpServerRequest request;
@@ -99,10 +98,9 @@ public class ProxyContext {
     private ServerWebSocket serverWebSocket;
     private boolean storeResponse;
 
-    public ProxyContext(Proxy proxy, Config config, HttpServerRequest request, ApiKeyData apiKeyData,
+    public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
         this.proxy = proxy;
-        this.config = config;
         this.apiKeyData = apiKeyData;
         this.request = request;
         this.response = request.response();
@@ -195,6 +193,10 @@ public class ProxyContext {
         return respond(exception.getStatus(), exception.getMessage());
     }
 
+    public Config getConfig() {
+        return proxy.getConfigStore().get();
+    }
+
     public String getProject() {
         if (userProject != null) {
             return userProject;
@@ -276,6 +278,6 @@ public class ProxyContext {
     }
 
     public ProxyContext copyWith(ApiKeyData newApiKeyData) {
-        return new ProxyContext(proxy, config, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
+        return new ProxyContext(proxy, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
     }
 }

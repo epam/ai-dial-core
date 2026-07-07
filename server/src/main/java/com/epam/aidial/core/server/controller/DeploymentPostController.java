@@ -370,33 +370,6 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         sendRequest(); // try next
     }
 
-    /**
-     * Called when proxy failed to send response to the client.
-     */
-    private void handleResponseError(Throwable error, BufferingReadStream responseStream) {
-        context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
-        log.warn("Can't send response to client. Error:", error);
-        Deployment deployment = context.getDeployment();
-        if (deployment instanceof Model) {
-            // make sure we collect token usage in case if client accidentally closed the connection
-            responseStream.endStreamFuture()
-                    .onFailure(ignore -> {
-                        context.getProxyRequest().reset(); // drop connection to stop origin response
-                    })
-                    .compose(ignore -> {
-                        Buffer responseBody = responseStream.getContent();
-                        context.setResponseBody(responseBody);
-                        context.setResponseBodyTimestamp(System.currentTimeMillis());
-                        return collectTokenUsage(responseBody);
-                    })
-                    .onSuccess(ignored -> proxy.getLogStore().save(context))
-                    .onComplete(ignored -> finalizeRequest());
-        } else {
-            // drop connection to stop application responding
-            context.getProxyRequest().reset();
-        }
-    }
-
     public static class ChatCompletionSseListener extends BufferingReadStream.BaseEventListener {
 
         public static final String CHAT_COMPLETION_FINAL_MESSAGE = "[DONE]";
