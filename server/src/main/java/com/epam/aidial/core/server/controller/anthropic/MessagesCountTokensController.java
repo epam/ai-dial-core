@@ -11,6 +11,7 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -78,7 +79,7 @@ public class MessagesCountTokensController extends MessagesBaseController {
         // count_tokens must NOT charge limits or collect token usage — just log and finalize.
         return response.end(body)
                 .transform(result -> {
-                    proxy.getLogStore().save(context);
+                    proxy.getLogStore().save(AnalyticsLogContext.from(context));
                     finalizeRequest();
                     return Future.<Void>succeededFuture();
                 });

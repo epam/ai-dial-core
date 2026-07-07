@@ -268,18 +268,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         if (!context.isStreamingRequest()) {
             // Read the entire response to replace the response ID with the DIAL ID
             proxyResponse.body()
-                    .compose(body -> rewriteResponseId(proxyResponse, body)
-                            .compose(rewritten -> {
-                                context.setResponseBody(rewritten);
-                                context.setResponseBodyTimestamp(System.currentTimeMillis());
-                                HttpServerResponse response = context.getResponse();
-                                ProxyUtil.copyResponse(response, proxyResponse);
-                                response.setChunked(false);
-                                response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
-                                response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(upstreamRoute.getAttemptCount()));
-                                return response;
-                            }))
-                    .onSuccess(response -> finishNonStreamingResponse(response))
+                    .compose(body -> handleNonStreamingResponse(proxyResponse, body))
                     .onFailure(this::handleProxyConnectionError);
             return;
         }
@@ -303,26 +292,37 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    private void finishNonStreamingResponse(HttpServerResponse response) {
-        Buffer responseBody = context.getResponseBody();
-        if (context.isBackgroundJob() && context.getDialResponseId() != null) {
-            BackgroundJobRecord record = BackgroundJobRecord.from(context);
-            proxy.getBackgroundJobService().saveJob(context.getDialResponseId(), record);
-            response.end(responseBody);
-        } else {
-            collectTokenUsage(responseBody)
-                            .transform(result -> {
-                                if (result.failed()) {
-                                    log.warn("Failed to collect token usage", result.cause());
-                                }
-                                return collectResponseAttachments(responseBody, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
-                            })
-                            .onComplete(result -> {
-                                if (result.failed()) {
-                                    log.warn("Failed to collect attachments from response", result.cause());
-                                }
-                                completeProxyResponse(() -> response.end(responseBody));
-                            });
+    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
+        return rewriteResponseId(proxyResponse, body)
+                .compose(rewritten -> {
+                    context.setResponseBody(rewritten);
+                    context.setResponseBodyTimestamp(System.currentTimeMillis());
+                    HttpServerResponse response = context.getResponse();
+                    ProxyUtil.copyResponse(response, proxyResponse);
+                    response.setChunked(false);
+                    response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
+                    response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+
+                    if (context.isBackgroundJob() && context.getDialResponseId() != null) {
+                        BackgroundJobRecord record = BackgroundJobRecord.from(context);
+                        proxy.getBackgroundJobService().saveJob(context.getDialResponseId(), record);
+                        return response.end(rewritten);
+                    } else {
+                        return collectTokenUsage(rewritten)
+                                .transform(result -> {
+                                    if (result.failed()) {
+                                        log.warn("Failed to collect token usage", result.cause());
+                                    }
+                                    return collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
+                                })
+                                .onComplete(result -> {
+                                    if (result.failed()) {
+                                        log.warn("Failed to collect attachments from response", result.cause());
+                                    }
+                                    response.end(rewritten);
+                                    completeProxyResponse();
+                                });
+                    }
                 });
     }
 
@@ -386,12 +386,12 @@ public class ResponsesController extends BaseDeploymentPostController {
             if (result.failed()) {
                 log.warn("Failed to collect token usage", result.cause());
             }
-            completeProxyResponse(() -> responseStream.end(context.getResponse()));
+            responseStream.end(context.getResponse());
+            completeProxyResponse();
         });
     }
 
-    private void completeProxyResponse(Runnable endResponse) {
-        endResponse.run();
+    private void completeProxyResponse() {
         proxy.getLogStore().save(AnalyticsLogContext.from(context));
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."

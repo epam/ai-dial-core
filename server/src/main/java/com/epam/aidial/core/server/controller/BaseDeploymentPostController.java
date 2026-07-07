@@ -11,7 +11,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
-import com.epam.aidial.core.server.token.TokenStatsTracker;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -151,7 +151,7 @@ public class BaseDeploymentPostController {
                         context.setResponseBodyTimestamp(System.currentTimeMillis());
                         return collectTokenUsage(responseBody);
                     })
-                    .onSuccess(ignored -> proxy.getLogStore().save(context))
+                    .onSuccess(ignored -> proxy.getLogStore().save(AnalyticsLogContext.from(context)))
                     .onComplete(ignored -> finalizeRequest());
         } else {
             // drop connection to stop application responding

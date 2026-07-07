@@ -15,6 +15,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.ResponsesController;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.CollectMessagesTokenUsageFn;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -137,7 +138,7 @@ public class MessagesController extends MessagesBaseController {
 
     private void completeProxyResponse(Runnable endResponse) {
         endResponse.run();
-        proxy.getLogStore().save(context);
+        proxy.getLogStore().save(AnalyticsLogContext.from(context));
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Interface: {}. Upstream: {}. Length: {}. Tokens: {}.",
                 context.getDeployment().getName(),
