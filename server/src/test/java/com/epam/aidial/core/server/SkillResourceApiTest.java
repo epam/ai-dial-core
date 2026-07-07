@@ -128,10 +128,24 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testNestedPathRejectedByRouting() {
-        // The v2 route only matches a single root-level path segment.
-        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
-        assertNotEquals(200, uploadSkill("/group/nested", files).status());
+    void testNestedPathRoundTrip() {
+        // The skill name may span multiple path segments.
+        Map<String, byte[]> files = new LinkedHashMap<>();
+        files.put("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        files.put("scripts/run.sh", "echo hi".getBytes(StandardCharsets.UTF_8));
+
+        verify(uploadSkill("/group/nested", files), 200);
+
+        BinaryResponse zip = downloadSkill("/group/nested");
+        assertEquals(200, zip.status());
+        assertEquals(files.keySet(), unzip(zip.body()).keySet());
+
+        // single-file operations resolve the skill name across the segments before "/files/"
+        verify(putSkillFile("/group/nested", "docs/readme.md", "hi".getBytes(StandardCharsets.UTF_8)), 200);
+        assertEquals("hi", new String(getSkillFile("/group/nested", "docs/readme.md").body(), StandardCharsets.UTF_8));
+
+        verify(deleteSkill("/group/nested"), 200);
+        assertEquals(404, downloadSkill("/group/nested").status());
     }
 
     @Test
