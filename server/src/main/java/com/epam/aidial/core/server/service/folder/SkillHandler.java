@@ -57,6 +57,24 @@ public class SkillHandler implements FolderResourceHandler {
         return metadata;
     }
 
+    @Override
+    public void validateFileMutation(String relativePath, FileMutation mutation) {
+        if (mutation == FileMutation.DELETE && MANIFEST.equals(relativePath)) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, MANIFEST + " cannot be deleted");
+        }
+    }
+
+    @Override
+    public Map<String, Object> refreshMetadataOnPut(String relativePath, byte[] content) {
+        if (!MANIFEST.equals(relativePath)) {
+            // Only the manifest carries skill metadata; other files leave it unchanged.
+            return null;
+        }
+        Map<String, byte[]> files = Map.of(MANIFEST, content);
+        validate(files);
+        return buildMarkerMetadata(files);
+    }
+
     private Map<String, Object> parseFrontmatter(Map<String, byte[]> files) {
         byte[] manifest = files.get(MANIFEST);
         if (manifest == null) {

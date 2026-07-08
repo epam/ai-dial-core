@@ -132,11 +132,36 @@ public class BaseDeploymentPostController {
         log.warn("Failed to receive client body. Error: {}", error.getMessage());
     }
 
+    /**
+     * Called when proxy failed to send response to the client.
+     */
+    protected void handleResponseError(Throwable error, BufferingReadStream responseStream) {
+        context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
+        log.warn("Can't send response to client. Error:", error);
+        Deployment deployment = context.getDeployment();
+        if (deployment instanceof Model) {
+            // make sure we collect token usage in case if client accidentally closed the connection
+            responseStream.endStreamFuture()
+                    .onFailure(ignore -> context.getProxyRequest().reset()) // drop connection to stop origin response
+                    .compose(ignore -> {
+                        Buffer responseBody = responseStream.getContent();
+                        context.setResponseBody(responseBody);
+                        context.setResponseBodyTimestamp(System.currentTimeMillis());
+                        return collectTokenUsage(responseBody);
+                    })
+                    .onSuccess(ignored -> proxy.getLogStore().save(context))
+                    .onComplete(ignored -> finalizeRequest());
+        } else {
+            // drop connection to stop application responding
+            context.getProxyRequest().reset();
+        }
+    }
+
     protected Future<TokenUsage> collectTokenUsage(Buffer responseBody) {
         Future<TokenUsage> tokenUsageFuture = Future.succeededFuture();
         if (context.getDeployment() instanceof Model model) {
             if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
-                TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
+                TokenUsage tokenUsage = parseTokenUsage(responseBody);
                 if (tokenUsage == null) {
                     Pricing pricing = model.getPricing();
                     if (pricing == null || "token".equals(pricing.getUnit())) {
@@ -163,6 +188,14 @@ public class BaseDeploymentPostController {
             tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context).andThen(result -> context.setTokenUsage(result.result()));
         }
         return tokenUsageFuture;
+    }
+
+    /**
+     * Parses token usage from the fully buffered response body. Overridable so provider-specific
+     * controllers can supply their own accounting (e.g. the Anthropic Messages API).
+     */
+    protected TokenUsage parseTokenUsage(Buffer responseBody) {
+        return TokenUsageParser.parse(responseBody);
     }
 
     /**

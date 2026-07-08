@@ -5,6 +5,8 @@ import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.controller.anthropic.MessagesController;
+import com.epam.aidial.core.server.controller.anthropic.MessagesCountTokensController;
 import com.epam.aidial.core.server.controller.route.ApplicationRouteController;
 import com.epam.aidial.core.server.controller.route.GlobalRouteController;
 import com.epam.aidial.core.server.data.RouteTemplate;
@@ -111,6 +113,11 @@ public class ControllerSelector {
             FolderResourceController controller = new FolderResourceController(proxy, context, false);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePathV2(path));
+        });
+        get(RouteTemplate.SKILL_FILE, (proxy, context, pathMatcher) -> {
+            FolderResourceController controller = new FolderResourceController(proxy, context, false,
+                    UrlUtil.decodePath(pathMatcher.group("filePath")));
+            return () -> controller.handle(skillResourceUrl(pathMatcher));
         });
         get(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
         get(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
@@ -231,6 +238,16 @@ public class ControllerSelector {
         });
         post(RouteTemplate.LLM_RESPONSES_API, (proxy, context, pathMatcher) -> {
             ResponsesController controller = new ResponsesController(proxy, context);
+            return controller::handle;
+        });
+        // count_tokens first: matching is first-registered-wins, so the more specific path must not
+        // be swallowed if a greedy /messages/(?<id>...) route is ever added.
+        post(RouteTemplate.LLM_MESSAGES_API_COUNT_TOKENS, (proxy, context, pathMatcher) -> {
+            MessagesCountTokensController controller = new MessagesCountTokensController(proxy, context);
+            return controller::handle;
+        });
+        post(RouteTemplate.LLM_MESSAGES_API, (proxy, context, pathMatcher) -> {
+            MessagesController controller = new MessagesController(proxy, context);
             return controller::handle;
         });
         post(RouteTemplate.LLM_RESPONSES_API_CANCEL, (proxy, context, pathMatcher) -> {
@@ -476,6 +493,16 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePathV2(path));
         });
+        put(RouteTemplate.SKILL_FILE, (proxy, context, pathMatcher) -> {
+            FolderResourceController controller = new FolderResourceController(proxy, context, true,
+                    UrlUtil.decodePath(pathMatcher.group("filePath")));
+            return () -> controller.handle(skillResourceUrl(pathMatcher));
+        });
+        delete(RouteTemplate.SKILL_FILE, (proxy, context, pathMatcher) -> {
+            FolderResourceController controller = new FolderResourceController(proxy, context, true,
+                    UrlUtil.decodePath(pathMatcher.group("filePath")));
+            return () -> controller.handle(skillResourceUrl(pathMatcher));
+        });
 
         // add deployment routes
         ControllerRoute.Initializer applicationRouteTemplate = ((proxy, context, pathMatcher) -> {
@@ -579,6 +606,12 @@ public class ControllerSelector {
         }
 
         return url.substring(prefix.length());
+    }
+
+    // Builds the skill folder resource url (still percent-encoded, decoded downstream by fromAnyUrl) for a
+    // single-file route match, so access control is evaluated against the whole skill.
+    private static String skillResourceUrl(Matcher matcher) {
+        return "skills/" + matcher.group("bucket") + "/" + matcher.group("path");
     }
 
     private record ControllerRoute(HttpMethod method, Pattern pathPattern, Initializer initializer) {
