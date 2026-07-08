@@ -231,6 +231,10 @@ public class ResourceCredentialsService {
      * rather than silently serve a shared/app-level identity. Returns {@code null} when the owner has no
      * USER-level credential for the scope (the locator must carry only a USER bucket, but the userSub
      * match is enforced defensively here too).
+     *
+     * <p>When a credential exists but the owner did not grant offline-usage consent, it is returned <b>as
+     * stored, un-refreshed</b> (the refresh token is deliberately not rotated) so the caller can reject on
+     * consent rather than mistake it for a missing credential.
      */
     @Nullable
     public ResourceCredentials getRefreshedUserCredentials(CredentialsLocator credentialsLocator,

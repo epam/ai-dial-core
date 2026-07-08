@@ -209,6 +209,10 @@ public class ResourceBaseTest {
                             return Future.succeededFuture(createWorkloadClaims(authorization.substring("azp:".length())));
                         }
 
+                        if (authorization.startsWith("appid:")) {
+                            return Future.succeededFuture(createAppidClaims(authorization.substring("appid:".length())));
+                        }
+
                         return Future.failedFuture("Not authorized");
                     });
 
@@ -244,6 +248,13 @@ public class ResourceBaseTest {
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
         claims.put("azp", azp);
         return new ExtractedClaims(azp, List.of(), azp, claims, null, null);
+    }
+
+    // Token carrying only Azure v1 appid (no azp) — used to assert the appid fallback is not honored.
+    static ExtractedClaims createAppidClaims(String appid) {
+        ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
+        claims.put("appid", appid);
+        return new ExtractedClaims(appid, List.of(), appid, claims, null, null);
     }
 
     static ApiKeyData createAdminAppKey() {

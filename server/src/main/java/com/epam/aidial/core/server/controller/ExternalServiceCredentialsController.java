@@ -207,13 +207,17 @@ public class ExternalServiceCredentialsController {
 
                     try {
                         String[] scope = CredentialsLocatorFactory.parseExternalServiceScope(request.getUrl());
-                        ResolvedExternalService resolved = resolveExternalService(request.getUrl(), request.getOwnerSub());
 
-                        if (!AppIdentityMatcher.matches(context, resolved.application.getAppIdentity())) {
+                        // Gate on app_identity before resolving the owner-scoped service, so an untrusted caller
+                        // gets a uniform 403 with no owner-bucket read (no 404-vs-403 enumeration oracle).
+                        ResolvedApplication app = resolveApplication(scope[0]);
+                        if (!AppIdentityMatcher.matches(context, app.application.getAppIdentity())) {
                             throw new PermissionDeniedException("Caller identity does not match the application's app_identity");
                         }
 
-                        ResourceAuthSettings authSettings = resolved.externalService.getAuthSettings();
+                        ExternalService externalService = resolveExternalServiceDefinition(
+                                app.application, scope[0], scope[1], request.getOwnerSub());
+                        ResourceAuthSettings authSettings = externalService.getAuthSettings();
                         CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScopeForOwner(
                                 request.getUrl(), request.getOwnerSub(), context);
                         ResourceCredentials credentials = resourceCredentialsService.getRefreshedUserCredentials(
@@ -277,36 +281,38 @@ public class ExternalServiceCredentialsController {
     /**
      * Canonical external-service definition resolver. Resolves the admin/inline definition first; when the
      * app permits it ({@code allow_user_external_services}) and no inline definition exists, falls back to a
-     * user-authored definition in the owner's bucket (design §9/§10). {@code ownerSub} is the credential
+     * user-authored definition in the owner's bucket. {@code ownerSub} is the credential
      * owner on the OBO path; {@code null} on caller-scoped paths, where the caller is the owner.
      */
     private ResolvedExternalService resolveExternalService(String scopeId, @Nullable String ownerSub) {
         String[] parts = CredentialsLocatorFactory.parseExternalServiceScope(scopeId);
-        String appPart = parts[0];
-        String externalServiceId = parts[1];
+        ResolvedApplication app = resolveApplication(parts[0]);
+        ExternalService externalService = resolveExternalServiceDefinition(app.application, parts[0], parts[1], ownerSub);
+        return new ResolvedExternalService(app.application, externalService, app.applicationDescriptor, app.staticApp);
+    }
 
-        Application application;
-        ResourceDescriptor appDescriptor = null;
-        boolean staticApp;
-
+    /** Resolves only the application for a scope's app part — never the owner's bucket — so the OBO gate can run first. */
+    private ResolvedApplication resolveApplication(String appPart) {
         Deployment deployment = context.getConfig().selectDeployment(appPart);
         if (deployment instanceof Application configApp) {
-            application = configApp;
-            staticApp = true;
-        } else {
-            staticApp = false;
-            try {
-                appDescriptor = ResourceDescriptorFactory.fromAnyUrl(
-                        CredentialsLocatorFactory.APPLICATIONS_PREFIX + UrlUtil.encodePath(appPart), encryptionService);
-            } catch (IllegalArgumentException e) {
-                throw new ResourceNotFoundException("Application not found: " + appPart);
-            }
-            application = applicationService.getApplicationWithDecryptedSecrets(appDescriptor).getValue();
-            if (application == null) {
-                throw new ResourceNotFoundException("Application not found: " + appPart);
-            }
+            return new ResolvedApplication(configApp, null, true);
         }
+        ResourceDescriptor appDescriptor;
+        try {
+            appDescriptor = ResourceDescriptorFactory.fromAnyUrl(
+                    CredentialsLocatorFactory.APPLICATIONS_PREFIX + UrlUtil.encodePath(appPart), encryptionService);
+        } catch (IllegalArgumentException e) {
+            throw new ResourceNotFoundException("Application not found: " + appPart);
+        }
+        Application application = applicationService.getApplicationWithDecryptedSecrets(appDescriptor).getValue();
+        if (application == null) {
+            throw new ResourceNotFoundException("Application not found: " + appPart);
+        }
+        return new ResolvedApplication(application, appDescriptor, false);
+    }
 
+    private ExternalService resolveExternalServiceDefinition(Application application, String appPart,
+                                                             String externalServiceId, @Nullable String ownerSub) {
         ExternalService externalService = application.getExternalServices() == null
                 ? null : application.getExternalServices().get(externalServiceId);
         if (externalService == null && application.isAllowUserExternalServices()) {
@@ -323,7 +329,7 @@ public class ExternalServiceCredentialsController {
             throw new ResourceNotFoundException(
                     "External service '%s' has no auth settings".formatted(externalServiceId));
         }
-        return new ResolvedExternalService(application, externalService, appDescriptor, staticApp);
+        return externalService;
     }
 
     private void verifyAccess(ResolvedExternalService resolved, CredentialsLevel credentialsLevel) {
@@ -388,8 +394,17 @@ public class ExternalServiceCredentialsController {
                 status = HttpStatus.FORBIDDEN;
                 body = permissionDeniedException.getMessage();
             }
-            case EncryptionException encryptionException -> body = encryptionException.getMessage();
-            case null, default -> log.warn(message, error);
+            case EncryptionException ignored -> {
+                // Never surface crypto internals to the caller.
+                status = HttpStatus.INTERNAL_SERVER_ERROR;
+                body = message;
+            }
+            case null, default -> body = message;
+        }
+
+        // Log server-side failures with the trace id; keep the client body generic.
+        if (status.is5xx()) {
+            log.warn("{} (trace_id={})", message, context.getTraceId(), error);
         }
 
         context.respond(status, body);
@@ -399,5 +414,10 @@ public class ExternalServiceCredentialsController {
                                            ExternalService externalService,
                                            ResourceDescriptor applicationDescriptor,
                                            boolean staticApp) {
+    }
+
+    private record ResolvedApplication(Application application,
+                                       ResourceDescriptor applicationDescriptor,
+                                       boolean staticApp) {
     }
 }

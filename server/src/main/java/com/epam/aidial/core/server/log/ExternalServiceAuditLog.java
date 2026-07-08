@@ -9,7 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Distinct audit stream for on-behalf-of external-service events (design §8). Kept separate from the downstream
+ * Distinct audit stream for on-behalf-of external-service events. Kept separate from the downstream
  * credential-resolution logs so operators can route/retain it independently. Each event records both identities
  * (a non-secret actor + the owner subject), the scope, the outcome, and the trace id — never credential material.
  */
@@ -29,13 +29,14 @@ public final class ExternalServiceAuditLog {
             case ResourceNotFoundException ignored -> "NOT_FOUND";
             default -> "ERROR";
         };
+        // reason echoes only the exception message, never a response body or secret — keep it that way.
         AUDIT.info("event=obo_credential_retrieval outcome={} actor={} owner_sub={} application_id={} "
                         + "external_service_id={} trace_id={}{}",
                 outcome, actorEvidence(context), ownerSub, applicationId, externalServiceId, context.getTraceId(),
                 error == null ? "" : " reason=\"%s\"".formatted(error.getMessage()));
     }
 
-    // Non-secret evidence of the calling actor: the DIAL key's project, or the workload JWT's azp (Azure v1: appid).
+    // Non-secret evidence of the calling actor: the DIAL key's project, or the workload JWT's azp.
     private static String actorEvidence(ProxyContext context) {
         Key key = context.getKey();
         if (key != null) {

@@ -92,9 +92,11 @@ public class ExternalServiceManagementController {
         if (inline && resolved.application.getExternalServices() != null) {
             services.putAll(resolved.application.getExternalServices());
         }
+        // Overlay user-authored services only for a real user (mirrors the read-overlay guards); writes reject null owners.
         if (resolved.application.isAllowUserExternalServices()) {
-            Map<String, ExternalService> userAuthored = userExternalServiceService.list(context.getUserId(), appId);
-            userAuthored.forEach(services::putIfAbsent);
+            if (context.getUserId() != null) {
+                userExternalServiceService.list(context.getUserId(), appId).forEach(services::putIfAbsent);
+            }
         } else if (!inline) {
             throw new PermissionDeniedException("This application does not allow user-authored external services");
         }
@@ -111,7 +113,7 @@ public class ExternalServiceManagementController {
         } else {
             requireUserAuthoringAllowed(resolved);
         }
-        if (resolved.application.isAllowUserExternalServices()) {
+        if (resolved.application.isAllowUserExternalServices() && context.getUserId() != null) {
             ExternalService service = userExternalServiceService.get(context.getUserId(), appId, serviceId);
             if (service != null) {
                 return service;
@@ -153,7 +155,7 @@ public class ExternalServiceManagementController {
                 externalServiceService.deleteExternalService(resolved.descriptor, serviceId, resolved.author);
 
                 // Cascade: purge APP-level credentials for the removed scope. USER-level credentials live in
-                // individual user buckets and are not swept (known limitation shared with toolsets, §11.6).
+                // individual user buckets and are not swept (known limitation shared with toolsets).
                 purgeCredentials(appId, serviceId, CredentialsLevel.APPLICATION);
                 return true;
             }

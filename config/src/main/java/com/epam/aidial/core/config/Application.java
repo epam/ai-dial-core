@@ -43,13 +43,13 @@ public class Application extends Deployment {
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     private Map<String, ExternalService> externalServices = new LinkedHashMap<>();
 
-    // The app's own actor identity (#1) for OBO credential retrieval: SHA-256 hex of its DIAL key, or
-    // (when wired) its workload client_id. The caller's derived identity must equal it. Absent ⇒ OBO off.
+    // The app's own actor identity for OBO credential retrieval: SHA-256 hex of its DIAL key, or its workload
+    // client_id (azp). The caller's derived identity must equal it. Absent ⇒ OBO off.
     @JsonAlias({"appIdentity", "app_identity"})
     private String appIdentity;
 
     // Governance: when true, regular users (not just admins/owners) may author external services on this
-    // app (design §9). Admin-set, default false ⇒ today's admin-only authoring is preserved.
+    // app. Admin-set, default false ⇒ today's admin-only authoring is preserved.
     @JsonAlias({"allowUserExternalServices", "allow_user_external_services"})
     @JsonInclude(JsonInclude.Include.NON_DEFAULT)
     private boolean allowUserExternalServices;

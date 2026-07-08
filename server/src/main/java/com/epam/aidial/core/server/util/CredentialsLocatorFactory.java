@@ -31,9 +31,9 @@ public class CredentialsLocatorFactory {
      * </ul>
      *
      * <p>For static apps the resource id is normalized to
-     * {@code applications/config/{appName}/external_services/{id}} (per §6.3 of the design doc)
-     * and the APPLICATION bucket is the public bucket. For dynamic apps the resource id is
-     * preserved and the APPLICATION bucket is the owning application's bucket.
+     * {@code applications/config/{appName}/external_services/{id}} and the APPLICATION bucket is the public
+     * bucket. For dynamic apps the resource id is preserved and the APPLICATION bucket is the owning
+     * application's bucket.
      */
     public static CredentialsLocator fromExternalServiceScope(String scopeId, ProxyContext proxyContext) {
         String[] parts = parseExternalServiceScope(scopeId);
@@ -63,7 +63,7 @@ public class CredentialsLocatorFactory {
     }
 
     // Storage path a credential is read from / written to. Static-config apps normalize to
-    // applications/config/{appName}/... (per §6.3); dynamic apps preserve the app path.
+    // applications/config/{appName}/...; dynamic apps preserve the app path.
     private static String normalizeResourceId(boolean configApp, String appPart, String externalServiceId) {
         String prefix = configApp ? APPLICATIONS_PREFIX + CONFIG_SEGMENT : APPLICATIONS_PREFIX;
         return prefix + UrlUtil.encodePath(appPart) + EXTERNAL_SERVICES_SEPARATOR + UrlUtil.encodePath(externalServiceId);

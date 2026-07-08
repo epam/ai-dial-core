@@ -17,6 +17,7 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -28,7 +29,7 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * User-authored external-service definitions (design §9/§10): each is its own resource in the author's
+ * User-authored external-service definitions: each is its own resource in the author's
  * bucket at {@code Users/{ownerSub}/external_services/applications/{app_id}/{id}}. Isolation rides on
  * bucket ownership; the {@code client_secret} is encrypted under the owner's CEK.
  */
@@ -42,6 +43,8 @@ public class UserExternalServiceService {
     private final EncryptionService bucketEncryptionService;
 
     public ResourceDescriptor descriptor(String ownerSub, String appPart, String serviceId) {
+        requireOwner(ownerSub);
+        ExternalServiceValidation.validateServiceId(serviceId);
         String bucketLocation = BucketBuilder.USER_BUCKET_PATTERN.formatted(ownerSub);
         String bucketName = bucketEncryptionService.encrypt(bucketLocation);
         List<String> parentFolders = applicationSegments(appPart);
@@ -49,11 +52,19 @@ public class UserExternalServiceService {
     }
 
     private ResourceDescriptor folderDescriptor(String ownerSub, String appPart) {
+        requireOwner(ownerSub);
         String bucketLocation = BucketBuilder.USER_BUCKET_PATTERN.formatted(ownerSub);
         String bucketName = bucketEncryptionService.encrypt(bucketLocation);
         List<String> segments = applicationSegments(appPart);
         String name = segments.remove(segments.size() - 1);
         return new ResourceDescriptor(ResourceTypes.EXTERNAL_SERVICE, name, segments, bucketName, bucketLocation, true);
+    }
+
+    // A blank owner would derive the shared "Users/null/" bucket (cross-caller secret leak); require a real owner.
+    private static void requireOwner(String ownerSub) {
+        if (StringUtils.isBlank(ownerSub)) {
+            throw new PermissionDeniedException("A user identity is required to manage user-authored external services");
+        }
     }
 
     // Storage path segments for an app's user-authored services: "applications" + the app path parts.

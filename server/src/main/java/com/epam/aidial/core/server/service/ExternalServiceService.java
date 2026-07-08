@@ -66,7 +66,7 @@ public class ExternalServiceService {
     }
 
     // Drop APP-level credentials for removed services, else a same-id re-create inherits the old token/secret.
-    // USER-level credentials live in per-user buckets and are left untouched (same limitation as toolsets, §11.6).
+    // USER-level credentials live in per-user buckets and are left untouched (same limitation as toolsets).
     public void purgeApplicationCredentials(ResourceDescriptor resource, Collection<String> serviceIds) {
         if (serviceIds == null || serviceIds.isEmpty()) {
             return;

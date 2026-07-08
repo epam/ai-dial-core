@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.security;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
 
@@ -9,17 +10,15 @@ public record ExtractedClaims(String userId, List<String> userRoles, String user
                               ObjectNode userClaims, String project, String userDisplayName) {
 
     /**
-     * The token's authorized party — the calling workload's client id: the {@code azp} claim, or {@code appid}
-     * (Azure v1) as a fallback. {@code null} when neither is present.
+     * The token's authorized party — the calling workload's client id from the {@code azp} claim, or {@code null}
+     * when absent. Only {@code azp} is honored (not Azure v1 {@code appid}, which may be an interactive client).
      */
     public String authorizedParty() {
         if (userClaims == null) {
             return null;
         }
         JsonNode azp = userClaims.get("azp");
-        if (azp == null || azp.isNull()) {
-            azp = userClaims.get("appid");
-        }
-        return azp == null || azp.isNull() ? null : azp.asText();
+        // Treat a present-but-blank claim as absent so it can never match a (mis)configured blank app_identity.
+        return azp == null ? null : StringUtils.trimToNull(azp.asText());
     }
 }

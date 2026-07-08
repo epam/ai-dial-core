@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
+import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -484,8 +485,8 @@ public class AdminApplyController {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.APPLICATION, ResourceDescriptor.PUBLIC_BUCKET,
                 ResourceDescriptor.PUBLIC_LOCATION, entry.name());
-        // Bulk admin apply is always admin context — preserve forwardAuthToken if the manifest set it.
-        applicationService.putApplication(descriptor, EtagHeader.ANY, null, application, true);
+        applicationService.putApplication(descriptor, EtagHeader.ANY, null, application, true,
+                AdminManagedFieldsWriteMode.AUTHORITATIVE);
         return new EntityResult(id, "applied", null);
     }
 

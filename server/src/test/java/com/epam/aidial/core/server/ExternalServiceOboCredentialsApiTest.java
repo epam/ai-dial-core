@@ -98,6 +98,154 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation("dial-config/external-service-obo.json")
+    void testOboUntrustedCallerCannotDistinguishMissingFromForbidden() throws Exception {
+        // The actor gate runs before any owner-scoped resolution, so an untrusted caller gets a uniform 403
+        // whether the service exists or not — no 404-vs-403 enumeration oracle over who authored what.
+        int existing = obo(BILLING_SCOPE, "user", UNTRUSTED_KEY).status();
+        int missing = obo("applications/app-with-services/external_services/no-such-service", "user", UNTRUSTED_KEY).status();
+        assertEquals(403, existing);
+        assertEquals(403, missing, "untrusted caller must not learn a service is absent (would be 404 if gated after resolution)");
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testUserlessCallerCannotAuthorUserExternalService() throws Exception {
+        // A project key has no user sub (getUserId()==null). It must not fall into the user-authoring branch and
+        // derive the shared "Users/null/" bucket (a namespace shared across all userless callers) — reject 403.
+        Response put = send(HttpMethod.PUT, USER_SVC_PUT, null, USER_SVC_BODY, "api-key", "proxyKey1");
+        assertEquals(403, put.status(), () -> put.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testOboTrustedKeyOnAppWithDifferentIdentityDenied() throws Exception {
+        // scheduler-key matches app-with-services, but workload-app declares a different, non-null app_identity
+        // (exercises the non-matching branch, distinct from other-app's null app_identity).
+        assertEquals(403, obo(WORKLOAD_BILLING_SCOPE, "user", SCHEDULER_KEY).status());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testOboTrustedCallerMissingAppOrServiceReturns404() throws Exception {
+        // Gate passes (trusted); a valid-shape url for a non-existent app or service is a plain 404.
+        assertEquals(404, obo("applications/no-such-app/external_services/x", "user", SCHEDULER_KEY).status());
+        assertEquals(404, obo("applications/app-with-services/external_services/no-such", "user", SCHEDULER_KEY).status());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testOboMissingOwnerCredentialReturns404() throws Exception {
+        // Real, trusted service but the named owner never signed in ⇒ no USER credential ⇒ fail closed with 404.
+        assertEquals(404, obo(BILLING_SCOPE, "ghost-user", SCHEDULER_KEY).status());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testOboAppidClaimNotHonored() throws Exception {
+        // Azure v1 appid is not accepted as the actor identity (only azp is) ⇒ no match ⇒ 403.
+        assertEquals(403, oboWithAuth(WORKLOAD_BILLING_SCOPE, "user", "appid:" + WORKLOAD_CLIENT_ID).status());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testOboDeniedResponsesDoNotLeakCredential() throws Exception {
+        verify(signInUserBilling("super-secret-key", false), 200, "true");
+
+        Response noConsent = obo(BILLING_SCOPE, "user", SCHEDULER_KEY);
+        assertEquals(403, noConsent.status(), () -> noConsent.body());
+        assertFalse(noConsent.body().contains("super-secret-key"), () -> noConsent.body());
+
+        Response gateMismatch = obo(BILLING_SCOPE, "user", UNTRUSTED_KEY);
+        assertEquals(403, gateMismatch.status(), () -> gateMismatch.body());
+        assertFalse(gateMismatch.body().contains("super-secret-key"), () -> gateMismatch.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testOboOauthExpiresAtIsEpochSeconds() throws Exception {
+        AtomicInteger counter = new AtomicInteger(0);
+        TestWebServer.Handler handler = request -> {
+            String body = counter.getAndIncrement() == 0
+                    ? "{\"access_token\":\"access-token-1\",\"refresh_token\":\"refresh-token-1\",\"expires_in\":0}"
+                    : OAUTH_TOKEN_RESPONSE_REFRESHED;
+            return new MockResponse().setBody(body).setHeader("Content-Type", "application/json");
+        };
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            verify(signInUserOauth(true), 200, "true");
+            Response obo = obo(SALESFORCE_SCOPE, "user", SCHEDULER_KEY);
+            assertEquals(200, obo.status(), () -> obo.body());
+            long expiresAt = ProxyUtil.MAPPER.readTree(obo.body()).get("expires_at").asLong();
+            // Epoch seconds (~1.7e9), not milliseconds (~1.7e12) — guards the ms→s conversion.
+            assertTrue(expiresAt > 1_000_000_000L && expiresAt < 10_000_000_000L,
+                    () -> "expires_at should be epoch seconds: " + expiresAt);
+        }
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testInlineServiceWinsOverUserAuthoredIdClash() throws Exception {
+        assertEquals(200, send(HttpMethod.PUT, "/v1/applications/collision-app/external-services/billing-api", null, """
+                {
+                    "display_name": "User Billing",
+                    "auth_settings": { "authentication_type": "API_KEY", "api_key_header": "X-User-Key" }
+                }
+                """, "authorization", "user").status());
+
+        Response view = send(HttpMethod.GET, "/openai/applications/collision-app", null, "", "authorization", "user");
+        assertEquals(200, view.status(), () -> view.body());
+        JsonNode billing = ProxyUtil.MAPPER.readTree(view.body()).get("external_services").get("billing-api");
+        assertEquals("Inline Billing", billing.get("display_name").asText(), () -> view.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testUserAuthoredOauthServiceSecretStrippedAndResolvable() throws Exception {
+        String put = "/v1/applications/user-services-app/external-services/myoauth";
+        String scope = "applications/user-services-app/external_services/myoauth";
+        assertEquals(200, send(HttpMethod.PUT, put, null, """
+                {
+                    "display_name": "My OAuth",
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "cid",
+                        "client_secret": "shh-secret",
+                        "authorization_endpoint": "http://localhost:9876/authorize",
+                        "token_endpoint": "http://localhost:9876/token",
+                        "redirect_uri": "http://localhost:3000/cb"
+                    }
+                }
+                """, "authorization", "user").status());
+
+        Response get = send(HttpMethod.GET, put, null, "", "authorization", "user");
+        assertEquals(200, get.status(), () -> get.body());
+        assertFalse(get.body().contains("shh-secret"), () -> "client_secret must be stripped on read: " + get.body());
+
+        AtomicInteger counter = new AtomicInteger(0);
+        TestWebServer.Handler handler = request -> {
+            String body = counter.getAndIncrement() == 0
+                    ? "{\"access_token\":\"at-1\",\"refresh_token\":\"rt-1\",\"expires_in\":3600}"
+                    : OAUTH_TOKEN_RESPONSE_REFRESHED;
+            return new MockResponse().setBody(body).setHeader("Content-Type", "application/json");
+        };
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            verify(send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                    {
+                        "url": "%s",
+                        "credentials_level": "USER",
+                        "authentication_type": "OAUTH",
+                        "code": "auth-code",
+                        "offline_usage_consent": true
+                    }
+                    """.formatted(scope), "authorization", "user"), 200, "true");
+
+            Response obo = obo(scope, "user", SCHEDULER_KEY);
+            assertEquals(200, obo.status(), () -> obo.body());
+            assertEquals("Bearer at-1", ProxyUtil.MAPPER.readTree(obo.body()).get("header_value").asText());
+        }
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
     void testOboRequiresOfflineUsageConsent() throws Exception {
         // Signed in WITHOUT offline-usage consent — OBO must be refused (403), distinct from a 404.
         verify(signInUserBilling("user-billing-key", false), 200, "true");
@@ -371,6 +519,66 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         Response obo = obo(scope, "user", SCHEDULER_KEY);
         assertEquals(200, obo.status(), () -> "app_identity must survive the edit: " + obo.body());
         assertEquals("edit-secret", ProxyUtil.MAPPER.readTree(obo.body()).get("header_value").asText());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testAdminPublicPutStripsAdminManagedFields() throws Exception {
+        // An admin PUT to the public bucket via the resource API is NOT the authoritative governance channel
+        // (that is config file / admin-apply). It may set forwardAuthToken but must strip the admin-managed fields.
+        String appUrl = "/v1/applications/public/gov-admin-public-app";
+        Response create = send(HttpMethod.PUT, appUrl, null, """
+                {
+                    "endpoint": "http://localhost:7001/v1/x",
+                    "display_name": "Gov Admin Public App",
+                    "app_identity": "%s",
+                    "allow_user_external_services": true
+                }
+                """.formatted(SCHEDULER_KEY_HASH), "authorization", "admin");
+        assertEquals(200, create.status(), () -> create.body());
+
+        Response get = send(HttpMethod.GET, appUrl, null, "", "authorization", "admin");
+        assertFalse(get.body().contains(SCHEDULER_KEY_HASH),
+                () -> "admin public PUT must not set app_identity: " + get.body());
+        assertFalse(get.body().contains("allow_user_external_services"),
+                () -> "admin public PUT must not set allow_user_external_services: " + get.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testAdminApplyUpdatesAdminManagedFields() throws Exception {
+        // Admin-apply is the declarative desired-state channel: re-applying a manifest updates the admin-managed
+        // fields, not only sets them at creation.
+        String appUrl = "/v1/applications/public/gov-reapply-app";
+        assertEquals(200, applyGovApp("gov-reapply-app", true).status());
+
+        JsonNode afterCreate = ProxyUtil.MAPPER.readTree(send(HttpMethod.GET, appUrl, null, "", "authorization", "admin").body());
+        assertTrue(afterCreate.get("allow_user_external_services").asBoolean(), afterCreate::toString);
+
+        // Re-apply with allow_user_external_services=false — the update must honor the incoming value (with the old
+        // inherit-on-update behavior it would stay true). false is omitted from the read, so treat absent as false.
+        assertEquals(200, applyGovApp("gov-reapply-app", false).status());
+        JsonNode afterUpdate = ProxyUtil.MAPPER.readTree(send(HttpMethod.GET, appUrl, null, "", "authorization", "admin").body());
+        assertFalse(afterUpdate.path("allow_user_external_services").asBoolean(false), afterUpdate::toString);
+    }
+
+    private Response applyGovApp(String name, boolean allowUserExternalServices) {
+        return send(HttpMethod.POST, "/v1/admin/apply", null, """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Application",
+                      "name": "%s",
+                      "spec": {
+                        "endpoint": "http://localhost:7001/v1/x",
+                        "display_name": "Gov Reapply App",
+                        "app_identity": "%s",
+                        "allow_user_external_services": %s
+                      }
+                    }
+                  ]
+                }
+                """.formatted(name, SCHEDULER_KEY_HASH, allowUserExternalServices), "authorization", "admin");
     }
 
     @Test

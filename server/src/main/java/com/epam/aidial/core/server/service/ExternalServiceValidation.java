@@ -22,11 +22,16 @@ public class ExternalServiceValidation {
 
     // Static OAuth clients only (no PKCE/DCR). A first-time OAUTH create requires client_secret
     // (CREATE_STATIC_CLIENT); updates use NO_CLIENT_CHANGES so an omitted secret is preserved from storage.
-    public static void validate(String serviceId, ExternalService service, boolean isCreate) {
+    // Re-validate on every access: descriptor() builds storage paths from the id, keeping get/delete self-enforcing.
+    public static void validateServiceId(String serviceId) {
         if (serviceId == null || !SERVICE_ID_PATTERN.matcher(serviceId).matches()) {
             throw new HttpException(HttpStatus.BAD_REQUEST,
                     "External service id '%s' must contain only letters, digits, '-' or '_'".formatted(serviceId));
         }
+    }
+
+    public static void validate(String serviceId, ExternalService service, boolean isCreate) {
+        validateServiceId(serviceId);
         ResourceAuthSettings authSettings = service == null ? null : service.getAuthSettings();
         if (authSettings == null || authSettings.getAuthenticationType() == null) {
             throw new HttpException(HttpStatus.BAD_REQUEST,
