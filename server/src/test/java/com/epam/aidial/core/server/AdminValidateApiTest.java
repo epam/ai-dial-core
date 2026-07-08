@@ -504,7 +504,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
             JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
             assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
             assertEquals(0, parsed.get("failed").asInt());
-            assertEquals("valid", parsed.get("results").get(0).get("status").asText());
+            assertEquals("VALID", parsed.get("results").get(0).get("status").asText());
             verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-mode", null, "",
                     "authorization", "admin"), 404);
         }

@@ -516,7 +516,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
             verify(response, 200);
             JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
             assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
-            assertEquals("applied_invalid", parsed.get("results").get(0).get("status").asText());
+            assertEquals("APPLIED_INVALID", parsed.get("results").get(0).get("status").asText());
 
             // Wait for rebuild to surface the invalid record.
             JsonNode found = null;
