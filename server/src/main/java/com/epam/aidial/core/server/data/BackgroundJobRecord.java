@@ -9,6 +9,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Builder;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.UnaryOperator;
 
@@ -25,6 +27,10 @@ public record BackgroundJobRecord(
         String conversationId,
         String jobTitle,
         boolean securedApiKey,
+        String userId,
+        List<String> userRoles,
+        String userDisplayName,
+        Map<String, List<String>> requestHeaders,
         String deploymentName,
         String parentDeployment,
         String requestProtocol,
@@ -46,6 +52,10 @@ public record BackgroundJobRecord(
                 .conversationId(context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID))
                 .jobTitle(context.getRequestHeader(Proxy.HEADER_JOB_TITLE))
                 .securedApiKey(context.isSecuredApiKey())
+                .userId(context.getUserId())
+                .userRoles(context.getUserRoles())
+                .userDisplayName(context.getUserDisplayName())
+                .requestHeaders(AnalyticsLogContext.toHeadersMap(context.getRequest().headers()))
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
                 .parentDeployment(AnalyticsLogContext.getParentDeployment(
                         context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))

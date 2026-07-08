@@ -7,12 +7,15 @@ import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -29,6 +32,11 @@ public class AnalyticsLogContext {
     private final String conversationId;
     private final String jobTitle;
     private final boolean securedApiKey;
+
+    private final String userId;
+    private final List<String> userRoles;
+    private final String userDisplayName;
+    private final Map<String, List<String>> requestHeaders;
 
     private final String deploymentName;
     private final String parentDeployment;
@@ -59,6 +67,10 @@ public class AnalyticsLogContext {
                 .conversationId(context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID))
                 .jobTitle(context.getRequestHeader(Proxy.HEADER_JOB_TITLE))
                 .securedApiKey(context.isSecuredApiKey())
+                .userId(context.getUserId())
+                .userRoles(context.getUserRoles())
+                .userDisplayName(context.getUserDisplayName())
+                .requestHeaders(toHeadersMap(context.getRequest().headers()))
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
                 .parentDeployment(getParentDeployment(
                         context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
@@ -89,6 +101,10 @@ public class AnalyticsLogContext {
                 .conversationId(record.conversationId())
                 .jobTitle(record.jobTitle())
                 .securedApiKey(record.securedApiKey())
+                .userId(record.userId())
+                .userRoles(record.userRoles())
+                .userDisplayName(record.userDisplayName())
+                .requestHeaders(record.requestHeaders())
                 .deploymentName(record.deploymentName())
                 .parentDeployment(record.parentDeployment())
                 .requestProtocol(record.requestProtocol())
@@ -101,6 +117,14 @@ public class AnalyticsLogContext {
                 .responseBody(result == null ? null : result.body())
                 .tokenUsage(result == null ? null : result.usage())
                 .build();
+    }
+
+    public static Map<String, List<String>> toHeadersMap(MultiMap headers) {
+        Map<String, List<String>> map = new LinkedHashMap<>();
+        for (String name : headers.names()) {
+            map.put(name, headers.getAll(name));
+        }
+        return map;
     }
 
     public static String getParentDeployment(String sourceDeployment, List<String> interceptors, List<String> executionPath) {

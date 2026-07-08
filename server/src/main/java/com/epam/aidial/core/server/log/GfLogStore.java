@@ -10,7 +10,6 @@ import com.epam.deltix.gflog.api.LogLevel;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
-import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
@@ -18,6 +17,7 @@ import org.apache.commons.lang3.mutable.MutableBoolean;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Map;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -246,7 +246,7 @@ public class GfLogStore implements LogStore {
     }
 
     @VisibleForTesting
-    void appendClaims(ProxyContext context, LogEntry entry) throws JsonProcessingException {
+    void appendClaims(AnalyticsLogContext context, LogEntry entry) throws JsonProcessingException {
         append(entry, ",\"claims\":{", false);
         MutableBoolean firstMember = new MutableBoolean(true);
         appendStringMember(entry, "user_id", context.getUserId(), firstMember);
@@ -261,29 +261,32 @@ public class GfLogStore implements LogStore {
     }
 
     @VisibleForTesting
-    void appendHeaders(ProxyContext context, LogEntry entry) {
+    void appendHeaders(AnalyticsLogContext context, LogEntry entry) {
         append(entry, ",\"headers\":{", false);
-        MultiMap headers = context.getRequest().headers();
+        Map<String, List<String>> headers = context.getRequestHeaders();
         MutableBoolean firstMember = new MutableBoolean(true);
-        for (String name : headers.names()) {
-            if (!isHeaderCollectable(name)) {
-                continue;
+        if (headers != null) {
+            for (Map.Entry<String, List<String>> header : headers.entrySet()) {
+                String name = header.getKey();
+                if (!isHeaderCollectable(name)) {
+                    continue;
+                }
+                appendSeparator(entry, firstMember);
+                append(entry, "\"", false);
+                append(entry, name, true);
+                append(entry, "\":\"", false);
+                String value = String.join(", ", header.getValue());
+                boolean truncated = value.length() > MAX_HEADER_VALUE_LENGTH;
+                if (truncated) {
+                    value = value.substring(0, MAX_HEADER_VALUE_LENGTH);
+                }
+                append(entry, value, true);
+                if (truncated) {
+                    // append a special marker that the value is cut off due to its large size
+                    append(entry, ">>", false);
+                }
+                append(entry, "\"", false);
             }
-            appendSeparator(entry, firstMember);
-            append(entry, "\"", false);
-            append(entry, name, true);
-            append(entry, "\":\"", false);
-            String value = String.join(", ", headers.getAll(name));
-            boolean truncated = value.length() > MAX_HEADER_VALUE_LENGTH;
-            if (truncated) {
-                value = value.substring(0, MAX_HEADER_VALUE_LENGTH);
-            }
-            append(entry, value, true);
-            if (truncated) {
-                // append a special marker that the value is cut off due to its large size
-                append(entry, ">>", false);
-            }
-            append(entry, "\"", false);
         }
         append(entry, "}", false);
     }

@@ -3,17 +3,17 @@ package com.epam.aidial.core.server.log;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.LogEntry;
 import com.fasterxml.jackson.databind.JsonNode;
-import io.vertx.core.MultiMap;
-import io.vertx.core.http.HttpServerRequest;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.anyChar;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -98,7 +98,7 @@ public class GfLogStoreTest {
     @SneakyThrows
     @Test
     public void testAppendClaims() {
-        ProxyContext context = mock(ProxyContext.class);
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
         when(context.getUserId()).thenReturn("user-1");
         when(context.getUserRoles()).thenReturn(List.of("admin", "reader"));
         when(context.getUserDisplayName()).thenReturn("Jane \"Doe\"");
@@ -118,7 +118,7 @@ public class GfLogStoreTest {
     @SneakyThrows
     @Test
     public void testAppendClaimsSkipsNullFields() {
-        ProxyContext context = mock(ProxyContext.class);
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
         when(context.getUserId()).thenReturn("user-1");
         when(context.getUserRoles()).thenReturn(null);
         when(context.getUserDisplayName()).thenReturn(null);
@@ -137,17 +137,14 @@ public class GfLogStoreTest {
     @SneakyThrows
     @Test
     public void testAppendHeadersAppliesBlacklistAndJoinsMultiValues() {
-        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
-        headers.add("Authorization", "Bearer secret");
-        headers.add("API-KEY", "key-secret");
-        headers.add("X-Conversation-Id", "conv-1");
-        headers.add("Accept", "text/plain");
-        headers.add("Accept", "application/json");
+        Map<String, List<String>> headers = new java.util.LinkedHashMap<>();
+        headers.put("Authorization", List.of("Bearer secret"));
+        headers.put("API-KEY", List.of("key-secret"));
+        headers.put("X-Conversation-Id", List.of("conv-1"));
+        headers.put("Accept", List.of("text/plain", "application/json"));
 
-        HttpServerRequest request = mock(HttpServerRequest.class);
-        when(request.headers()).thenReturn(headers);
-        ProxyContext context = mock(ProxyContext.class);
-        when(context.getRequest()).thenReturn(request);
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRequestHeaders()).thenReturn(headers);
 
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
@@ -164,14 +161,12 @@ public class GfLogStoreTest {
     @SneakyThrows
     @Test
     public void testClaimsAndHeadersComposeIntoValidLogJson() {
-        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
-        headers.add("Authorization", "Bearer secret");
-        headers.add("X-Conversation-Id", "conv-1");
+        Map<String, List<String>> headers = new java.util.LinkedHashMap<>();
+        headers.put("Authorization", List.of("Bearer secret"));
+        headers.put("X-Conversation-Id", List.of("conv-1"));
 
-        HttpServerRequest request = mock(HttpServerRequest.class);
-        when(request.headers()).thenReturn(headers);
-        ProxyContext context = mock(ProxyContext.class);
-        when(context.getRequest()).thenReturn(request);
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRequestHeaders()).thenReturn(headers);
         when(context.getUserId()).thenReturn("user-1");
         when(context.getUserRoles()).thenReturn(List.of("admin"));
 
