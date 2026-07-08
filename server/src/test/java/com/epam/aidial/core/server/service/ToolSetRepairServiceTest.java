@@ -14,6 +14,8 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -30,13 +32,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
-import com.epam.aidial.core.storage.http.HttpException;
-import com.epam.aidial.core.storage.http.HttpStatus;
-
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
@@ -122,9 +120,18 @@ class ToolSetRepairServiceTest {
         // Track call order for decrypt/applyRegistration/encrypt to verify the invariant:
         // both decrypts (outer + inner-callback) happen before applyRegistration, which happens before encrypt.
         List<String> callOrder = new ArrayList<>();
-        doAnswer(inv -> { callOrder.add("decrypt"); return null; }).when(encryptionService).decrypt(any(), any(), any());
-        doAnswer(inv -> { callOrder.add("encrypt"); return null; }).when(encryptionService).encrypt(any(), any(), any());
-        doAnswer(inv -> { callOrder.add("applyRegistration"); return null; }).when(authSettingsService).applyRegistration(any(), any());
+        doAnswer(inv -> {
+            callOrder.add("decrypt");
+            return null;
+        }).when(encryptionService).decrypt(any(), any(), any());
+        doAnswer(inv -> {
+            callOrder.add("encrypt");
+            return null;
+        }).when(encryptionService).encrypt(any(), any(), any());
+        doAnswer(inv -> {
+            callOrder.add("applyRegistration");
+            return null;
+        }).when(authSettingsService).applyRegistration(any(), any());
 
         when(resourceService.computeResource(eq(resource), eq(EtagHeader.ANY), eq("test-author"), any()))
                 .thenAnswer(invocation -> {
