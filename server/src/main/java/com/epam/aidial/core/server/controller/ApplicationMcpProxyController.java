@@ -98,9 +98,9 @@ public class ApplicationMcpProxyController extends McpProxyController {
             proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
         }
 
-        if (application.getMcp().getConfigDelivery() == Application.McpConfigDelivery.HEADER) {
-            proxyRequest.putHeader(HEADER_APPLICATION_ID, application.getName());
+        proxyRequest.putHeader(HEADER_APPLICATION_ID, application.getName());
 
+        if (application.getMcp().getConfigDelivery() == Application.McpConfigDelivery.HEADER) {
             applicationSchemaService.consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
                 if (appendApplicationPropertiesHeader) {
                     String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
