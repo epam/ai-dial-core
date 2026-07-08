@@ -40,6 +40,7 @@ public class ToolSetData extends SecuredResourceData {
         data.setIconUrl(toolSet.getIconUrl());
         data.setDisplayVersion(toolSet.getDisplayVersion());
         data.setDescription(toolSet.getDescription());
+        data.setIntro(toolSet.getIntro());
         data.setDescriptionKeywords(toolSet.getDescriptionKeywords());
         data.setReference(toolSet.getReference() == null ? toolSet.getName() : toolSet.getReference());
         FeaturesData featuresData = FeaturesData.createFeatures(toolSet.getFeatures());

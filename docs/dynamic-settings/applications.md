@@ -31,6 +31,7 @@ An object containing parameters for each [application](#applications).
 * `interfaces`: A typed alternative to the flat `endpoint` field for declaring the routing target. For applications, only the `openaiChatCompletions` interface is supported; the Responses API and other interfaces are not. Refer to [applications.<application_name>.interfaces](#applicationsapplication_nameinterfaces).
 * `iconUrl`: A string with URL of the icon to display for the app in the UI.
 * `description`: A string with a brief description of the application.
+* `intro`: A string with a short introductory/onboarding text for the application, shown to end users separately from `description`.
 * `displayName`: A string with the app's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs for identification purposes.
 * `displayVersion`: A string with the app's version.
 * `inputAttachmentTypes`: A list of allowed [MIME types](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types) for the input attachments.
@@ -60,6 +61,7 @@ An object containing parameters for each [application](#applications).
             "displayName": "Forecast",
             "iconUrl": "https://host/app.svg",
             "description": "Application that provides forecast",
+            "intro": "Get a quick forecast for your data",
             "descriptionKeywords": ["code-gen"],
             "userRoles": [
                 "Forecast"

@@ -68,6 +68,7 @@ public class ModelController {
         data.setDisplayVersion(model.getDisplayVersion());
         data.setIconUrl(model.getIconUrl());
         data.setDescription(model.getDescription());
+        data.setIntro(model.getIntro());
         FeaturesData featuresData = FeaturesData.createFeatures(model.getFeatures());
         featuresData.setChatCompletion(model.getEndpoint() != null);
         featuresData.setResponsesApi(model.getResponsesEndpoint() != null);
