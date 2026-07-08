@@ -85,7 +85,7 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
     @Test
     void testRepairForbiddenWhenNoWriteAccess() {
         Response response = send(HttpMethod.POST,
-                "/v1/toolsets/" + ADMIN_BUCKET + "/some-toolset/repair",
+                "/v1/ops/toolset/" + ADMIN_BUCKET + "/some-toolset/repair",
                 null, null, "authorization", "user");
         verify(response, 403);
     }
@@ -116,7 +116,7 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
             assertEquals(200, create.status(), "Toolset creation failed: " + create.body());
 
             Response repair = send(HttpMethod.POST,
-                    "/v1/toolsets/" + userBucket + "/owner-repair-toolset@/repair",
+                    "/v1/ops/toolset/" + userBucket + "/owner-repair-toolset@/repair",
                     null, null, "authorization", "user");
             assertEquals(200, repair.status(), repair.body());
 
@@ -128,7 +128,7 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
     @Test
     void testRepairNotFoundForMissingToolset() {
         Response response = send(HttpMethod.POST,
-                "/v1/toolsets/" + ADMIN_BUCKET + "/nonexistent-toolset/repair",
+                "/v1/ops/toolset/" + ADMIN_BUCKET + "/nonexistent-toolset/repair",
                 null, null, "authorization", "admin");
         verify(response, 404);
     }
@@ -157,7 +157,7 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
             assertEquals(200, create.status());
 
             Response repair = send(HttpMethod.POST,
-                    "/v1/toolsets/" + ADMIN_BUCKET + "/toolset-static-repair@/repair",
+                    "/v1/ops/toolset/" + ADMIN_BUCKET + "/toolset-static-repair@/repair",
                     null, null, "authorization", "admin");
             verify(repair, 400);
         }
@@ -173,7 +173,7 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
             createDcrToolset("toolset-repair-reregister@");
 
             Response repair = send(HttpMethod.POST,
-                    "/v1/toolsets/" + ADMIN_BUCKET + "/toolset-repair-reregister@/repair",
+                    "/v1/ops/toolset/" + ADMIN_BUCKET + "/toolset-repair-reregister@/repair",
                     null, null, "authorization", "admin");
             assertEquals(200, repair.status(), repair.body());
 
@@ -205,7 +205,7 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
             assertEquals(200, userSignin.status(), "USER sign-in failed: " + userSignin.body());
 
             Response repair = send(HttpMethod.POST,
-                    "/v1/toolsets/" + ADMIN_BUCKET + "/toolset-repair-clear-all@/repair",
+                    "/v1/ops/toolset/" + ADMIN_BUCKET + "/toolset-repair-clear-all@/repair",
                     null, null, "authorization", "admin");
             assertEquals(200, repair.status(), repair.body());
             assertEquals("REREGISTERED", ProxyUtil.MAPPER.readTree(repair.body()).get("result").asText());
@@ -224,7 +224,7 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testRepairFailsWithBadGatewayWhenDiscoveryReturnsNotFound() {
+    void testRepairFailsWithFailedDependencyWhenDiscoveryReturnsNotFound() {
         try (TestWebServer server = new TestWebServer(9876)) {
             setupDiscovery(server);
             server.map(HttpMethod.POST, "/register",
@@ -236,9 +236,9 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
             server.map(HttpMethod.GET, "/.well-known/oauth-authorization-server", 404, "");
 
             Response repair = send(HttpMethod.POST,
-                    "/v1/toolsets/" + ADMIN_BUCKET + "/toolset-repair-discovery-fail@/repair",
+                    "/v1/ops/toolset/" + ADMIN_BUCKET + "/toolset-repair-discovery-fail@/repair",
                     null, null, "authorization", "admin");
-            verify(repair, 502);
+            verify(repair, 424);
         }
     }
 
@@ -262,7 +262,7 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
             assertEquals(200, create.status());
 
             Response repair = send(HttpMethod.POST,
-                    "/v1/toolsets/" + ADMIN_BUCKET + "/toolset-api-key@/repair",
+                    "/v1/ops/toolset/" + ADMIN_BUCKET + "/toolset-api-key@/repair",
                     null, null, "authorization", "admin");
             verify(repair, 400);
         }
@@ -298,7 +298,7 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
             assertEquals(200, pubApprove.status(), "Publication approve failed: " + pubApprove.body());
 
             Response repair = send(HttpMethod.POST,
-                    "/v1/toolsets/public/toolset-repair-pub@/repair",
+                    "/v1/ops/toolset/public/toolset-repair-pub@/repair",
                     null, null, "authorization", "admin");
             assertEquals(200, repair.status(), repair.body());
 
@@ -336,7 +336,7 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
             assertEquals(200, accept.status(), "Invitation accept failed: " + accept.body());
 
             Response repair = send(HttpMethod.POST,
-                    "/v1/toolsets/" + ADMIN_BUCKET + "/toolset-repair-shared@/repair",
+                    "/v1/ops/toolset/" + ADMIN_BUCKET + "/toolset-repair-shared@/repair",
                     null, null, "authorization", "user");
             assertEquals(200, repair.status(), repair.body());
 
@@ -371,7 +371,7 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
             assertEquals(200, create.status(), "Toolset creation failed: " + create.body());
 
             Response repair = send(HttpMethod.POST,
-                    "/v1/toolsets/" + userBucket + "/toolset-repair-priv@/repair",
+                    "/v1/ops/toolset/" + userBucket + "/toolset-repair-priv@/repair",
                     null, null, "authorization", "admin");
             verify(repair, 403);
         }

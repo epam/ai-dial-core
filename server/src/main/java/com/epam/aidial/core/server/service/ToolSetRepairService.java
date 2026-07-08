@@ -61,11 +61,9 @@ public class ToolSetRepairService {
 
         encryptionService.decrypt(resourceUrl, bucketInfo, authSettings);
 
-        // Pre-flight 502 guard: register() throws IllegalArgumentException (not HttpException) when AS
-        // is unreachable, which would surface as 400. This probe maps AS unavailability to 502 instead.
         log.info("Repair: discovering AS metadata for toolset={}", resourceUrl);
         if (registrationService.discoverMetadata(resourceUrl, toolSet.getEndpoint()) == null) {
-            throw new HttpException(HttpStatus.BAD_GATEWAY,
+            throw new HttpException(HttpStatus.FAILED_DEPENDENCY,
                     "Cannot discover AS metadata for toolset " + resourceUrl + ": AS unreachable or PRM missing");
         }
 
@@ -80,6 +78,10 @@ public class ToolSetRepairService {
                 throw new ResourceNotFoundException("ToolSet is not found: " + resourceUrl);
             }
             ResourceAuthSettings storedSettings = stored.getAuthSettings();
+            // Decrypt before applying registration: applyRegistration only replaces fields present
+            // in the new ClientRegistration (e.g. codeVerifier is skipped when PKCE is absent).
+            // Any field left untouched would still carry its encrypted value and be double-encrypted.
+            encryptionService.decrypt(resourceUrl, bucketInfo, storedSettings);
             authSettingsService.applyRegistration(storedSettings, registration);
             storedSettings.setDynamicallyRegistered(true);
             encryptionService.encrypt(resourceUrl, bucketInfo, storedSettings);

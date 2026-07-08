@@ -219,8 +219,8 @@ public enum RouteTemplate {
     ),
 
     TOOL_SET_REPAIR(
-        "^/v1/toolsets/(?<bucket>[a-zA-Z0-9]+)/(?<path>.+)/repair$",
-        "/v1/toolsets/{bucket}/{path}/repair"
+        "^/v1/ops/toolset/(?<bucket>[a-zA-Z0-9]+)/(?<path>.+)/repair$",
+        "/v1/ops/toolset/{bucket}/{path}/repair"
     ),
 
     EXTERNAL_SERVICE_CREDENTIALS(
