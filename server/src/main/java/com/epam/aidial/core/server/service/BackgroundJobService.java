@@ -363,18 +363,19 @@ public class BackgroundJobService {
         List<Object> result = script.eval(
                 RScript.Mode.READ_WRITE,
                 """
-                        local score = redis.call('ZSCORE', KEYS[1], ARGV[3])
-                        if score == false or tonumber(score) > tonumber(ARGV[1]) then
+                        local score = redis.call('ZSCORE', ARGV[1], ARGV[4])
+                        if score == false or tonumber(score) > tonumber(ARGV[2]) then
                             return {}
                         end
-                        redis.call('HSET', KEYS[2], 'owner', ARGV[4])
-                        redis.call('ZADD', KEYS[1], tonumber(ARGV[2]), ARGV[3])
-                        local attempts = redis.call('HGET', KEYS[2], 'attempts')
-                        local errors = redis.call('HGET', KEYS[2], 'errors')
+                        redis.call('HSET', KEYS[1], 'owner', ARGV[5])
+                        redis.call('ZADD', ARGV[1], tonumber(ARGV[3]), ARGV[4])
+                        local attempts = redis.call('HGET', KEYS[1], 'attempts')
+                        local errors = redis.call('HGET', KEYS[1], 'errors')
                         return {attempts or '0', errors or '0'}
                         """,
                 RScript.ReturnType.MULTI,
-                List.of(scheduleKey, stateKey(entry.getValue())),
+                List.of(stateKey(entry.getValue())),
+                scheduleKey,
                 String.valueOf(entry.getScore()),
                 String.valueOf(leaseUntil),
                 entry.getValue(),
@@ -393,17 +394,18 @@ public class BackgroundJobService {
         return toFuture(script.<Long>evalAsync(
                 RScript.Mode.READ_WRITE,
                 """
-                        local owner = redis.call('HGET', KEYS[2], 'owner')
-                        if owner ~= ARGV[2] then
+                        local owner = redis.call('HGET', KEYS[1], 'owner')
+                        if owner ~= ARGV[3] then
                             return 0
                         end
-                        redis.call('ZADD', KEYS[1], tonumber(ARGV[3]), ARGV[1])
-                        redis.call('HSET', KEYS[2], 'attempts', ARGV[4])
-                        redis.call('HSET', KEYS[2], 'errors', ARGV[5])
+                        redis.call('ZADD', ARGV[1], tonumber(ARGV[4]), ARGV[2])
+                        redis.call('HSET', KEYS[1], 'attempts', ARGV[5])
+                        redis.call('HSET', KEYS[1], 'errors', ARGV[6])
                         return 1
                         """,
                 RScript.ReturnType.INTEGER,
-                List.of(scheduleKey, stateKey(dialId)),
+                List.of(stateKey(dialId)),
+                scheduleKey,
                 dialId,
                 String.valueOf(owner),
                 String.valueOf(nextPollTime),
@@ -424,16 +426,17 @@ public class BackgroundJobService {
         Long result = script.<Long>eval(
                 RScript.Mode.READ_WRITE,
                 """
-                        local owner = redis.call('HGET', KEYS[2], 'owner')
-                        if owner ~= false and owner ~= ARGV[2] then
+                        local owner = redis.call('HGET', KEYS[1], 'owner')
+                        if owner ~= false and owner ~= ARGV[3] then
                             return 0
                         end
-                        redis.call('ZREM', KEYS[1], ARGV[1])
-                        redis.call('DEL', KEYS[2])
+                        redis.call('ZREM', ARGV[1], ARGV[2])
+                        redis.call('DEL', KEYS[1])
                         return 1
                         """,
                 RScript.ReturnType.INTEGER,
-                List.of(scheduleKey, stateKey(dialId)),
+                List.of(stateKey(dialId)),
+                scheduleKey,
                 dialId,
                 String.valueOf(owner));
 
