@@ -225,13 +225,23 @@ public class BackgroundJobService {
 
             try {
                 ClaimResult claimResult = executeClaim(scoredEntry);
-                if (claimResult != null) {
-                    poll(dialId, claimResult)
-                            .onComplete(ignore -> inFlightJobIds.remove(dialId))
-                            .onFailure(e -> log.warn("Failed to process background job {}", dialId, e));
-                } else {
+                if (claimResult == null) {
                     inFlightJobIds.remove(dialId);
+                    continue;
                 }
+                Map.Entry<BackgroundJobRecord, ResponseMapping> jobData = loadJobData(dialId);
+                if (jobData == null) {
+                    log.info("Background job {} record or mapping not found, stopping polling", dialId);
+                    executeComplete(dialId, claimResult.owner);
+                    inFlightJobIds.remove(dialId);
+                    continue;
+                }
+                BackgroundJobRecord record = jobData.getKey();
+                ResponseMapping mapping = jobData.getValue();
+
+                poll(dialId, record, mapping, claimResult)
+                        .onComplete(ignore -> inFlightJobIds.remove(dialId))
+                        .onFailure(e -> log.warn("Failed to process background job {}", dialId, e));
             } catch (Throwable e) {
                 log.warn("Failed to process background job {}", dialId, e);
                 inFlightJobIds.remove(dialId);
@@ -282,39 +292,29 @@ public class BackgroundJobService {
                 });
     }
 
-    private Future<Void> poll(String dialId, ClaimResult claimResult) {
-        return taskExecutor.submit(() -> loadJobData(dialId))
-                .compose(pair -> {
-                    if (pair == null) {
-                        log.info("Background job {} record or mapping not found, stopping polling", dialId);
-                        return executeComplete(dialId, claimResult.owner);
-                    }
-                    BackgroundJobRecord record = pair.getKey();
-                    ResponseMapping mapping = pair.getValue();
-                    return pollMapping(mapping)
-                            .compose(
-                                    result -> {
-                                        if (result == null) {
-                                            long backoff = (long) Math.min(
-                                                    settings.getInitialPollIntervalMs() * Math.pow(settings.getPollBackoffFactor(), claimResult.attempts),
-                                                    settings.getMaxPollIntervalMs());
-                                            long nextPollTime = System.currentTimeMillis() + backoff;
-                                            return executeReschedule(dialId, claimResult, true, nextPollTime);
-                                        }
-                                        return completeAndProcess(dialId, claimResult.owner, record, mapping, result);
-                                    },
-                                    error -> {
-                                        int newErrors = claimResult.errors + 1;
-                                        if (newErrors >= settings.getMaxSequentialPollFailures()) {
-                                            log.error("Background job {} exceeded max poll failures, giving up", dialId, error);
-                                            return completeAndProcess(dialId, claimResult.owner, record, mapping, null);
-                                        }
-                                        log.warn("Poll failed for background job {} ({}/{})", dialId, newErrors,
-                                                settings.getMaxSequentialPollFailures(), error);
-                                        long nextPollTime = System.currentTimeMillis() + settings.getInitialPollIntervalMs();
-                                        return executeReschedule(dialId, claimResult, false, nextPollTime);
-                                    });
-                });
+    private Future<Void> poll(String dialId, BackgroundJobRecord record, ResponseMapping mapping, ClaimResult claimResult) {
+        return pollMapping(mapping)
+                .compose(
+                        result -> {
+                            if (result != null) {
+                                return completeAndProcess(dialId, claimResult.owner, record, mapping, result);
+                            }
+                            long backoff = (long) Math.min(
+                                    settings.getInitialPollIntervalMs() * Math.pow(settings.getPollBackoffFactor(), claimResult.attempts),
+                                    settings.getMaxPollIntervalMs());
+                            long nextPollTime = System.currentTimeMillis() + backoff;
+                            return executeReschedule(dialId, claimResult.owner, claimResult.attempts + 1, 0, nextPollTime);
+                        },
+                        error -> {
+                            int newErrors = claimResult.errors + 1;
+                            if (newErrors >= settings.getMaxSequentialPollFailures()) {
+                                log.error("Background job {} exceeded max poll failures, giving up", dialId, error);
+                                return completeAndProcess(dialId, claimResult.owner, record, mapping, null);
+                            }
+                            log.warn("Poll failed for background job {} ({}/{})", dialId, newErrors, settings.getMaxSequentialPollFailures(), error);
+                            long nextPollTime = System.currentTimeMillis() + settings.getInitialPollIntervalMs();
+                            return executeReschedule(dialId, claimResult.owner, claimResult.attempts, newErrors, nextPollTime);
+                        });
     }
 
     private BackgroundJobRecord loadBackgroundJobRecord(String dialId) {
@@ -342,14 +342,17 @@ public class BackgroundJobService {
             BackgroundJobRecord record,
             ResponseMapping mapping,
             ResponsesApiClient.TerminalResult result) {
-        return taskExecutor.submit(() -> resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId), EtagHeader.ANY))
+        return taskExecutor.submit(() -> {
+                    executeComplete(dialId, owner);
+                    return resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId), EtagHeader.ANY);
+                })
                 .compose(deleted -> {
-                    Future<Void> redisCleanup = executeComplete(dialId, owner);
-                    if (!deleted) {
+                    if (deleted) {
                         log.info("Background job {} already completed by another handler, skipping processing", dialId);
-                        return redisCleanup;
+                        return processResult(dialId, record, mapping, result);
                     }
-                    return redisCleanup.eventually(() -> processResult(dialId, record, mapping, result));
+
+                    return Future.succeededFuture();
                 });
     }
 
@@ -386,7 +389,7 @@ public class BackgroundJobService {
         return new ClaimResult(owner, attempts, errors);
     }
 
-    private Future<Void> executeReschedule(String dialId, ClaimResult claimResult, boolean success, long nextPollTime) {
+    private Future<Void> executeReschedule(String dialId, long owner, int attempts, int errors, long nextPollTime) {
         return toFuture(script.<Long>evalAsync(
                 RScript.Mode.READ_WRITE,
                 """
@@ -402,10 +405,10 @@ public class BackgroundJobService {
                 RScript.ReturnType.INTEGER,
                 List.of(scheduleKey, stateKey(dialId)),
                 dialId,
-                String.valueOf(claimResult.owner),
+                String.valueOf(owner),
                 String.valueOf(nextPollTime),
-                String.valueOf(success ? claimResult.attempts + 1 : claimResult.attempts),
-                String.valueOf(success ? 0 : claimResult.errors + 1)))
+                String.valueOf(attempts),
+                String.valueOf(errors)))
                 .map(result -> {
                     if (result == 1L) {
                         log.debug("Background job {} rescheduled", dialId);
@@ -417,8 +420,8 @@ public class BackgroundJobService {
                 });
     }
 
-    private Future<Void> executeComplete(String dialId, long owner) {
-        return toFuture(script.<Long>evalAsync(
+    private void executeComplete(String dialId, long owner) {
+        Long result = script.<Long>eval(
                 RScript.Mode.READ_WRITE,
                 """
                         local owner = redis.call('HGET', KEYS[2], 'owner')
@@ -432,16 +435,13 @@ public class BackgroundJobService {
                 RScript.ReturnType.INTEGER,
                 List.of(scheduleKey, stateKey(dialId)),
                 dialId,
-                String.valueOf(owner)))
-                .map(result -> {
-                    if (result == 1L) {
-                        log.info("Background job {} completed and removed from Redis", dialId);
-                    } else {
-                        log.warn("Background job {} complete skipped (owner mismatch)", dialId);
-                    }
+                String.valueOf(owner));
 
-                    return null;
-                });
+        if (result == 1L) {
+            log.info("Background job {} completed and removed from Redis", dialId);
+        } else {
+            log.warn("Background job {} complete skipped (owner mismatch)", dialId);
+        }
     }
 
     private Future<Void> forceRemoveFromRedis(String dialId) {

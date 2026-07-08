@@ -138,8 +138,7 @@ public class ResponseItemController implements Controller {
         }
         return proxy.getBackgroundJobService().isJobActive(context.getDialResponseId())
                 .compose(active -> active
-                        ? Future.failedFuture(new HttpException(HttpStatus.CONFLICT,
-                                "Cannot delete response while background job is in progress"))
+                        ? Future.failedFuture(new HttpException(HttpStatus.CONFLICT, "Cannot delete response while background job is in progress"))
                         : Future.succeededFuture(mapping));
     }
 

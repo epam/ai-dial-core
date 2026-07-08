@@ -153,7 +153,6 @@ class BackgroundJobServiceTest {
 
         lenient().when(encryptionService.encrypt(any(), any(), any())).thenAnswer(inv -> inv.getArgument(1));
         lenient().when(encryptionService.decrypt(any(), any(), any())).thenAnswer(inv -> inv.getArgument(1));
-        lenient().when(encryptionService.minEncryptedLength()).thenReturn(0);
 
         BackgroundJobService.Settings settings = buildTestSettings(10);
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
