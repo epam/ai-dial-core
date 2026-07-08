@@ -10484,6 +10484,8 @@ components:
           $ref: "#/components/schemas/MapStringExternalService"
         interfaces:
           $ref: "#/components/schemas/MapStringDeploymentInterface"
+        intro:
+          type: string
     ApplicationData:
       type: object
       properties:
@@ -10556,6 +10558,8 @@ components:
           type: string
         external_services:
           $ref: "#/components/schemas/MapStringExternalService"
+        intro:
+          type: string
     ApplicationFunction:
       type: object
       properties:
@@ -11632,6 +11636,8 @@ components:
             type: string
         interfaces:
           $ref: "#/components/schemas/MapStringDeploymentInterface"
+        intro:
+          type: string
     Invitation:
       type: object
       properties:
@@ -12123,6 +12129,8 @@ components:
             type: string
         interfaces:
           $ref: "#/components/schemas/MapStringDeploymentInterface"
+        intro:
+          type: string
     ModelData:
       type: object
       properties:
@@ -12190,6 +12198,8 @@ components:
           type: string
         updated_at:
           type: integer
+        intro:
+          type: string
     ModelType:
       type: string
       enum:
@@ -13203,6 +13213,8 @@ components:
           $ref: "#/components/schemas/MapStringDeploymentInterface"
         provider:
           type: string
+        intro:
+          type: string
     ToolSetData:
       type: object
       properties:
@@ -13267,6 +13279,8 @@ components:
         updated_at:
           type: integer
         provider:
+          type: string
+        intro:
           type: string
     ToolSetToolsResponse:
       type: object
