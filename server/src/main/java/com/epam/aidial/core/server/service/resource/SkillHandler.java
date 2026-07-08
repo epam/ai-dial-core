@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.service.folder;
+package com.epam.aidial.core.server.service.resource;
 
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
  * Handler for the {@code skills} group. A skill must contain a {@code SKILL.md} at its root carrying
  * YAML frontmatter (delimited by {@code ---} lines) with at least {@code name} and {@code description}.
  */
-public class SkillHandler implements FolderResourceHandler {
+public class SkillHandler implements ComplexResourceHandler {
 
     public static final String MANIFEST = "SKILL.md";
 

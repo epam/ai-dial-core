@@ -3,9 +3,9 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
-import com.epam.aidial.core.server.service.folder.FolderResourceHandler;
-import com.epam.aidial.core.server.service.folder.FolderResourceService;
-import com.epam.aidial.core.server.service.folder.SkillHandler;
+import com.epam.aidial.core.server.service.resource.ComplexResourceHandler;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
+import com.epam.aidial.core.server.service.resource.SkillHandler;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.InputStreamReader;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -32,37 +32,61 @@ import java.util.Map;
 
 /**
  * Whole-resource (folder-as-resource) controller for the v2 API. Handles the HTTP concerns (multipart
- * decoding for PUT, ZIP streaming for GET) and delegates the resource logic to {@link FolderResourceService}
+ * decoding for PUT, ZIP streaming for GET) and delegates the resource logic to {@link ComplexResourceService}
  * using a per-type handler keyed by URL group.
  */
 @Slf4j
-public class FolderResourceController extends AccessControlBaseController {
+public class ComplexResourceController extends AccessControlBaseController {
 
-    private static final Map<ResourceType, FolderResourceHandler> HANDLERS = Map.of(
+    private static final Map<ResourceType, ComplexResourceHandler> HANDLERS = Map.of(
             ResourceTypes.SKILL, new SkillHandler());
 
-    private final FolderResourceService folderResourceService;
+    private final ComplexResourceService complexResourceService;
     // Relative path of a single file inside the resource; null for whole-resource operations.
     private final String filePath;
+    // True for DIAL grouping-folder operations (trailing-slash route).
+    private final boolean folderOp;
 
-    public FolderResourceController(Proxy proxy, ProxyContext context, boolean isWriteAccess) {
-        this(proxy, context, isWriteAccess, null);
+    public ComplexResourceController(Proxy proxy, ProxyContext context, boolean isWriteAccess) {
+        this(proxy, context, isWriteAccess, null, false);
     }
 
-    public FolderResourceController(Proxy proxy, ProxyContext context, boolean isWriteAccess, String filePath) {
+    public ComplexResourceController(Proxy proxy, ProxyContext context, boolean isWriteAccess, String filePath) {
+        this(proxy, context, isWriteAccess, filePath, false);
+    }
+
+    public ComplexResourceController(Proxy proxy, ProxyContext context, boolean isWriteAccess, boolean folderOp) {
+        this(proxy, context, isWriteAccess, null, folderOp);
+    }
+
+    private ComplexResourceController(Proxy proxy, ProxyContext context, boolean isWriteAccess, String filePath, boolean folderOp) {
         super(proxy, context, isWriteAccess);
-        this.folderResourceService = proxy.getFolderResourceService();
+        this.complexResourceService = proxy.getComplexResourceService();
         this.filePath = filePath;
+        this.folderOp = folderOp;
     }
 
     @Override
     protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
-        FolderResourceHandler handler = HANDLERS.get(resource.getType());
+        ComplexResourceHandler handler = HANDLERS.get(resource.getType());
         if (handler == null) {
             return context.respond(HttpStatus.BAD_REQUEST, "Unsupported folder resource type: " + resource.getType().group());
         }
 
         HttpMethod method = context.getRequest().method();
+        if (folderOp) {
+            if (HttpMethod.PUT.equals(method)) {
+                return putFolderCreate(resource);
+            }
+            if (HttpMethod.DELETE.equals(method)) {
+                return deleteFolderTarget(resource);
+            }
+            if (HttpMethod.GET.equals(method)) {
+                // A trailing-slash GET is never a valid whole-resource retrieval.
+                return context.respond(HttpStatus.BAD_REQUEST, "Path is a folder; use metadata listing: " + resource.getUrl());
+            }
+            return context.respond(HttpStatus.METHOD_NOT_ALLOWED);
+        }
         if (filePath != null) {
             if (HttpMethod.PUT.equals(method)) {
                 return putFile(resource, handler);
@@ -87,7 +111,7 @@ public class FolderResourceController extends AccessControlBaseController {
         return context.respond(HttpStatus.METHOD_NOT_ALLOWED);
     }
 
-    private Future<?> put(ResourceDescriptor resource, FolderResourceHandler handler) {
+    private Future<?> put(ResourceDescriptor resource, ComplexResourceHandler handler) {
         HttpServerRequest request = context.getRequest();
         String contentType = request.getHeader(HttpHeaderNames.CONTENT_TYPE);
         if (contentType == null || !HttpUtils.isValidMultipartContentType(contentType)) {
@@ -112,7 +136,7 @@ public class FolderResourceController extends AccessControlBaseController {
                 .exceptionHandler(received::tryFail);
 
         received.future()
-                .compose(v -> proxy.getTaskExecutor().submit(() -> folderResourceService.putFolder(resource, handler, uploads, etag, author)))
+                .compose(v -> proxy.getTaskExecutor().submit(() -> complexResourceService.putFolder(resource, handler, uploads, etag, author)))
                 .compose(aggregateEtag -> context.putHeader(HttpHeaders.ETAG, aggregateEtag)
                         .exposeHeaders()
                         .respond(HttpStatus.OK)
@@ -124,8 +148,36 @@ public class FolderResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
+    private Future<?> putFolderCreate(ResourceDescriptor resource) {
+        String author = context.getUserDisplayName();
+        proxy.getTaskExecutor().submit(() -> complexResourceService.createDialFolder(resource, author))
+                .compose(etag -> context.putHeader(HttpHeaders.ETAG, etag)
+                        .exposeHeaders()
+                        .respond(HttpStatus.OK)
+                        .mapEmpty())
+                .recover(error -> {
+                    log.warn("Failed to create folder: {}", resource.getUrl(), error);
+                    return context.respond(error, "Failed to create folder: " + resource.getUrl()).mapEmpty();
+                });
+        return Future.succeededFuture();
+    }
+
+    private Future<?> deleteFolderTarget(ResourceDescriptor resource) {
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
+        proxy.getTaskExecutor().submit(() -> {
+            complexResourceService.deleteDialFolder(resource, etag);
+            return null;
+        })
+                .compose(v -> context.respond(HttpStatus.OK).mapEmpty())
+                .recover(error -> {
+                    log.warn("Failed to delete folder: {}", resource.getUrl(), error);
+                    return context.respond(error, "Failed to delete folder: " + resource.getUrl()).mapEmpty();
+                });
+        return Future.succeededFuture();
+    }
+
     private Future<?> get(ResourceDescriptor resource) {
-        proxy.getTaskExecutor().submit(() -> folderResourceService.getMarker(resource))
+        proxy.getTaskExecutor().submit(() -> complexResourceService.getResourceMarkerOrRejectFolder(resource))
                 .compose(document -> {
                     if (document == null) {
                         return context.respond(HttpStatus.NOT_FOUND).mapEmpty();
@@ -143,7 +195,7 @@ public class FolderResourceController extends AccessControlBaseController {
     private Future<?> delete(ResourceDescriptor resource) {
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
         proxy.getTaskExecutor().submit(() -> {
-            folderResourceService.deleteFolder(resource, etag);
+            complexResourceService.deleteFolder(resource, etag);
             return null;
         })
                 .compose(v -> context.respond(HttpStatus.OK).mapEmpty())
@@ -154,7 +206,7 @@ public class FolderResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
-    private Future<?> putFile(ResourceDescriptor resource, FolderResourceHandler handler) {
+    private Future<?> putFile(ResourceDescriptor resource, ComplexResourceHandler handler) {
         HttpServerRequest request = context.getRequest();
         String contentType = request.getHeader(HttpHeaderNames.CONTENT_TYPE);
         if (contentType == null || !HttpUtils.isValidMultipartContentType(contentType)) {
@@ -189,7 +241,7 @@ public class FolderResourceController extends AccessControlBaseController {
                     }
                     byte[] content = buffer.getBytes();
                     return proxy.getTaskExecutor().submit(() ->
-                            folderResourceService.putFile(resource, handler, filePath, content, etag, author));
+                            complexResourceService.putFile(resource, handler, filePath, content, etag, author));
                 })
                 .compose(aggregateEtag -> context.putHeader(HttpHeaders.ETAG, aggregateEtag)
                         .exposeHeaders()
@@ -203,7 +255,7 @@ public class FolderResourceController extends AccessControlBaseController {
     }
 
     private Future<?> getFile(ResourceDescriptor resource) {
-        proxy.getTaskExecutor().submit(() -> folderResourceService.getFileStream(resource, filePath))
+        proxy.getTaskExecutor().submit(() -> complexResourceService.getFileStream(resource, filePath))
                 .compose(stream -> {
                     if (stream == null) {
                         return context.respond(HttpStatus.NOT_FOUND).mapEmpty();
@@ -218,10 +270,10 @@ public class FolderResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
-    private Future<?> deleteFile(ResourceDescriptor resource, FolderResourceHandler handler) {
+    private Future<?> deleteFile(ResourceDescriptor resource, ComplexResourceHandler handler) {
         String author = context.getUserDisplayName();
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
-        proxy.getTaskExecutor().submit(() -> folderResourceService.deleteFile(resource, handler, filePath, etag, author))
+        proxy.getTaskExecutor().submit(() -> complexResourceService.deleteFile(resource, handler, filePath, etag, author))
                 .compose(aggregateEtag -> context.putHeader(HttpHeaders.ETAG, aggregateEtag)
                         .exposeHeaders()
                         .respond(HttpStatus.OK)
@@ -251,7 +303,7 @@ public class FolderResourceController extends AccessControlBaseController {
     }
 
     private void downloadArchive(ResourceDescriptor resource, FolderResourceMarker document) {
-        Buffer archive = folderResourceService.downloadArchive(resource, document.getCurrentVersion());
+        Buffer archive = complexResourceService.downloadArchive(resource, document.getCurrentVersion());
 
         context.putHeader(HttpHeaders.CONTENT_TYPE, "application/zip")
                 .putHeader(HttpHeaders.ETAG, document.getEtag())

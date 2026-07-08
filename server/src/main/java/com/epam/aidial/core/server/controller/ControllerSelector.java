@@ -109,15 +109,30 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
-        get(RouteTemplate.SKILL_FOLDER, (proxy, context, pathMatcher) -> {
-            FolderResourceController controller = new FolderResourceController(proxy, context, false);
+        // Metadata routes: the file-listing route is more specific and must precede the children route.
+        get(RouteTemplate.COMPLEX_RESOURCE_FILE_METADATA, (proxy, context, pathMatcher) -> {
+            String filePath = pathMatcher.group("filePath");
+            String subPath = filePath == null ? null : UrlUtil.decodePath(filePath);
+            FolderResourceMetadataController controller = new FolderResourceMetadataController(proxy, context, true, subPath);
+            return () -> controller.handle(complexResourceUrl(pathMatcher));
+        });
+        get(RouteTemplate.COMPLEX_RESOURCE_METADATA, (proxy, context, pathMatcher) -> {
+            FolderResourceMetadataController controller = new FolderResourceMetadataController(proxy, context, false, null);
+            return () -> controller.handle(complexResourceFolderUrl(pathMatcher));
+        });
+        get(RouteTemplate.RESOURCE_FOLDER, (proxy, context, pathMatcher) -> {
+            ComplexResourceController controller = new ComplexResourceController(proxy, context, false, true);
+            return () -> controller.handle(complexResourceFolderUrl(pathMatcher));
+        });
+        get(RouteTemplate.COMPLEX_RESOURCE, (proxy, context, pathMatcher) -> {
+            ComplexResourceController controller = new ComplexResourceController(proxy, context, false);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePathV2(path));
         });
-        get(RouteTemplate.SKILL_FILE, (proxy, context, pathMatcher) -> {
-            FolderResourceController controller = new FolderResourceController(proxy, context, false,
+        get(RouteTemplate.COMPLEX_RESOURCE_FILE, (proxy, context, pathMatcher) -> {
+            ComplexResourceController controller = new ComplexResourceController(proxy, context, false,
                     UrlUtil.decodePath(pathMatcher.group("filePath")));
-            return () -> controller.handle(skillResourceUrl(pathMatcher));
+            return () -> controller.handle(complexResourceUrl(pathMatcher));
         });
         get(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
         get(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
@@ -483,25 +498,33 @@ public class ControllerSelector {
             return () -> controller.handle(resourcePath(path));
         });
         put(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
-        put(RouteTemplate.SKILL_FOLDER, (proxy, context, pathMatcher) -> {
-            FolderResourceController controller = new FolderResourceController(proxy, context, true);
+        put(RouteTemplate.RESOURCE_FOLDER, (proxy, context, pathMatcher) -> {
+            ComplexResourceController controller = new ComplexResourceController(proxy, context, true, true);
+            return () -> controller.handle(complexResourceFolderUrl(pathMatcher));
+        });
+        delete(RouteTemplate.RESOURCE_FOLDER, (proxy, context, pathMatcher) -> {
+            ComplexResourceController controller = new ComplexResourceController(proxy, context, true, true);
+            return () -> controller.handle(complexResourceFolderUrl(pathMatcher));
+        });
+        put(RouteTemplate.COMPLEX_RESOURCE, (proxy, context, pathMatcher) -> {
+            ComplexResourceController controller = new ComplexResourceController(proxy, context, true);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePathV2(path));
         });
-        delete(RouteTemplate.SKILL_FOLDER, (proxy, context, pathMatcher) -> {
-            FolderResourceController controller = new FolderResourceController(proxy, context, true);
+        delete(RouteTemplate.COMPLEX_RESOURCE, (proxy, context, pathMatcher) -> {
+            ComplexResourceController controller = new ComplexResourceController(proxy, context, true);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePathV2(path));
         });
-        put(RouteTemplate.SKILL_FILE, (proxy, context, pathMatcher) -> {
-            FolderResourceController controller = new FolderResourceController(proxy, context, true,
+        put(RouteTemplate.COMPLEX_RESOURCE_FILE, (proxy, context, pathMatcher) -> {
+            ComplexResourceController controller = new ComplexResourceController(proxy, context, true,
                     UrlUtil.decodePath(pathMatcher.group("filePath")));
-            return () -> controller.handle(skillResourceUrl(pathMatcher));
+            return () -> controller.handle(complexResourceUrl(pathMatcher));
         });
-        delete(RouteTemplate.SKILL_FILE, (proxy, context, pathMatcher) -> {
-            FolderResourceController controller = new FolderResourceController(proxy, context, true,
+        delete(RouteTemplate.COMPLEX_RESOURCE_FILE, (proxy, context, pathMatcher) -> {
+            ComplexResourceController controller = new ComplexResourceController(proxy, context, true,
                     UrlUtil.decodePath(pathMatcher.group("filePath")));
-            return () -> controller.handle(skillResourceUrl(pathMatcher));
+            return () -> controller.handle(complexResourceUrl(pathMatcher));
         });
 
         // add deployment routes
@@ -608,10 +631,21 @@ public class ControllerSelector {
         return url.substring(prefix.length());
     }
 
-    // Builds the skill folder resource url (still percent-encoded, decoded downstream by fromAnyUrl) for a
-    // single-file route match, so access control is evaluated against the whole skill.
-    private static String skillResourceUrl(Matcher matcher) {
+    // Builds the whole-resource url (still percent-encoded, decoded downstream by fromAnyUrl) for a
+    // single-file or metadata route match, so access control is evaluated against the whole resource.
+    private static String complexResourceUrl(Matcher matcher) {
         return "skills/" + matcher.group("bucket") + "/" + matcher.group("path");
+    }
+
+    // Builds the grouping-folder url (trailing slash so fromAnyUrl marks it a folder) for folder ops and the
+    // children metadata listing. An empty path lists the bucket root.
+    private static String complexResourceFolderUrl(Matcher matcher) {
+        String path = matcher.group("path");
+        if (path != null && path.endsWith("/")) {
+            path = path.substring(0, path.length() - 1);
+        }
+        String suffix = (path == null || path.isEmpty()) ? "" : path + "/";
+        return "skills/" + matcher.group("bucket") + "/" + suffix;
     }
 
     private record ControllerRoute(HttpMethod method, Pattern pathPattern, Initializer initializer) {

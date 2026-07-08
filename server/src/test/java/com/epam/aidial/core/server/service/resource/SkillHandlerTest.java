@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.service.folder;
+package com.epam.aidial.core.server.service.resource;
 
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -52,15 +52,15 @@ class SkillHandlerTest {
     @Test
     void testValidateFileMutationRejectsManifestDelete() {
         HttpException ex = assertThrows(HttpException.class,
-                () -> handler.validateFileMutation("SKILL.md", FolderResourceHandler.FileMutation.DELETE));
+                () -> handler.validateFileMutation("SKILL.md", ComplexResourceHandler.FileMutation.DELETE));
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
     }
 
     @Test
     void testValidateFileMutationAllowsManifestEditAndOtherDeletes() {
         // editing the manifest and deleting other files is allowed
-        handler.validateFileMutation("SKILL.md", FolderResourceHandler.FileMutation.PUT);
-        handler.validateFileMutation("scripts/run.sh", FolderResourceHandler.FileMutation.DELETE);
+        handler.validateFileMutation("SKILL.md", ComplexResourceHandler.FileMutation.PUT);
+        handler.validateFileMutation("scripts/run.sh", ComplexResourceHandler.FileMutation.DELETE);
     }
 
     @Test

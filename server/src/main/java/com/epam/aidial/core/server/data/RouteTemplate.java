@@ -80,20 +80,36 @@ public enum RouteTemplate {
     ),
 
     // V2 whole-resource (folder-as-resource) routes.
-    // The {path} is the skill name and may span multiple segments (e.g. /v2/skills/{bucket}/group/name).
+    // The {path} is the resource name and may span multiple segments (e.g. /v2/skills/{bucket}/group/name).
     // The pattern forbids empty segments and a trailing slash (a resource is addressed by name, not as a
     // folder listing), and reserves "/files/" as the single-file delimiter by refusing to cross it; this
-    // keeps SKILL_FOLDER and SKILL_FILE mutually exclusive regardless of route order.
-    SKILL_FOLDER(
+    // keeps COMPLEX_RESOURCE and COMPLEX_RESOURCE_FILE mutually exclusive regardless of route order.
+    COMPLEX_RESOURCE(
             "^/v2/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>[^/](?:[^/]|/(?=[^/])(?!files/))*)$",
             "/v2/skills/{bucket}/{path}"
     ),
-    // Single-file operations inside a skill. The {path} segment is the skill name (may contain slashes),
+    // Single-file operations inside a resource. The {path} segment is the resource name (may contain slashes),
     // split from {filePath} at the first "/files/"; {filePath} is the relative file path inside the resource
     // and may itself contain slashes.
-    SKILL_FILE(
+    COMPLEX_RESOURCE_FILE(
             "^/v2/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>.+?)/files/(?<filePath>.+)$",
             "/v2/skills/{bucket}/{path}/files/{filePath}"
+    ),
+    // A DIAL grouping folder, addressed with a trailing slash: create (PUT) / delete (DELETE) / GET -> 400.
+    RESOURCE_FOLDER(
+            "^/v2/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>[^/](?:[^/]|/(?=[^/]))*)/$",
+            "/v2/skills/{bucket}/{path}/"
+    ),
+    // Metadata: files inside a skill's current version. More specific than the children route, so it must
+    // be registered first. {filePath} is an optional subfolder to scope the listing.
+    COMPLEX_RESOURCE_FILE_METADATA(
+            "^/v2/metadata/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>.+?)/files(?:/(?<filePath>.*))?$",
+            "/v2/metadata/skills/{bucket}/{path}/files/{filePath}"
+    ),
+    // Metadata: classified, enriched children at a grouping level (empty path lists the bucket root).
+    COMPLEX_RESOURCE_METADATA(
+            "^/v2/metadata/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
+            "/v2/metadata/skills/{bucket}/{path}"
     ),
     RESOURCE_METADATA(
             "^/v1/metadata/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",

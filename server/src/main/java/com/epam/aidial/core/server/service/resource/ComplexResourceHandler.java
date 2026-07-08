@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.service.folder;
+package com.epam.aidial.core.server.service.resource;
 
 import com.epam.aidial.core.storage.resource.ResourceType;
 
@@ -6,10 +6,10 @@ import java.util.Map;
 import javax.annotation.Nullable;
 
 /**
- * Per-type logic for a folder-as-resource group. The generic {@link FolderResourceService} engine
+ * Per-type logic for a complex resource. The generic {@link ComplexResourceService} engine
  * delegates type-specific validation and marker-metadata extraction to a handler keyed by URL group.
  */
-public interface FolderResourceHandler {
+public interface ComplexResourceHandler {
 
     /**
      * Resource type this handler serves (e.g. {@code SKILL}).
