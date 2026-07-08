@@ -56,7 +56,7 @@ public class AnalyticsLogContext {
 
     private final TokenUsage tokenUsage;
 
-    public static AnalyticsLogContext from(ProxyContext context) {
+    public static AnalyticsLogContext from(ProxyContext context, String assembledStreamingResponse) {
         Buffer responseBody = context.getResponseBody();
         return AnalyticsLogContext.builder()
                 .traceId(context.getTraceId())
@@ -86,7 +86,7 @@ public class AnalyticsLogContext {
                         .orElse(null))
                 .responseStatusCode(context.getResponse().getStatusCode())
                 .responseBody(responseBody)
-                .assembledStreamingResponse(context.getAssembledStreamingResponse())
+                .assembledStreamingResponse(assembledStreamingResponse)
                 .tokenUsage(context.getTokenUsage())
                 .build();
     }

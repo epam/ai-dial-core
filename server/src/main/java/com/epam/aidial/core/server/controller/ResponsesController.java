@@ -272,10 +272,10 @@ public class ResponsesController extends BaseDeploymentPostController {
             return;
         }
 
+        ExtractTerminalResponseFn extractFn = new ExtractTerminalResponseFn(proxy, context);
         BufferingReadStream responseStream = createResponseStream(proxyResponse, () -> {
             CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
             ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context);
-            ExtractTerminalResponseFn extractFn = new ExtractTerminalResponseFn(proxy, context);
             return new ResponsesSseListener(List.of(attachmentsFn, replaceIdFn, extractFn));
         });
 
@@ -287,7 +287,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .endOnFailure(false)
                 .endOnSuccess(false)
                 .to(response)
-                .onSuccess(ignored -> handleStreamingResponse(responseStream))
+                .onSuccess(ignored -> handleStreamingResponse(responseStream, extractFn.getAssembledStreamingResponse()))
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
@@ -323,7 +323,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                                         log.warn("Failed to collect attachments from response", result.cause());
                                     }
                                     response.end(rewritten);
-                                    completeProxyResponse();
+                                    completeProxyResponse(null);
                                 });
                     }
                 });
@@ -372,7 +372,7 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     }
 
-    private void handleStreamingResponse(BufferingReadStream responseStream) {
+    private void handleStreamingResponse(BufferingReadStream responseStream, String assembledStreamingResponse) {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
@@ -390,12 +390,12 @@ public class ResponsesController extends BaseDeploymentPostController {
                 log.warn("Failed to collect token usage", result.cause());
             }
             responseStream.end(context.getResponse());
-            completeProxyResponse();
+            completeProxyResponse(assembledStreamingResponse);
         });
     }
 
-    private void completeProxyResponse() {
-        proxy.getLogStore().save(AnalyticsLogContext.from(context));
+    private void completeProxyResponse(String assembledStreamingResponse) {
+        proxy.getLogStore().save(AnalyticsLogContext.from(context, assembledStreamingResponse));
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",

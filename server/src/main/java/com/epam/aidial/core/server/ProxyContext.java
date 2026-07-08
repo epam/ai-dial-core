@@ -98,7 +98,6 @@ public class ProxyContext {
     private boolean isStoreResponse;
     private boolean isBackgroundJob;
     private String dialResponseId;
-    private String assembledStreamingResponse;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {

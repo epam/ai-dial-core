@@ -138,7 +138,7 @@ public class MessagesController extends MessagesBaseController {
 
     private void completeProxyResponse(Runnable endResponse) {
         endResponse.run();
-        proxy.getLogStore().save(AnalyticsLogContext.from(context));
+        proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Interface: {}. Upstream: {}. Length: {}. Tokens: {}.",
                 context.getDeployment().getName(),

@@ -2,12 +2,15 @@ package com.epam.aidial.core.server.log;
 
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.util.MergeChunks;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.Log;
 import com.epam.deltix.gflog.api.LogEntry;
 import com.epam.deltix.gflog.api.LogFactory;
 import com.epam.deltix.gflog.api.LogLevel;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.buffer.Buffer;
@@ -15,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 import org.apache.commons.lang3.mutable.MutableBoolean;
 
+import javax.annotation.Nullable;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Map;
@@ -363,5 +367,92 @@ public class GfLogStore implements LogStore {
 
     private static boolean exceedLimit(Buffer body) {
         return body.length() > MAX_BODY_SIZE_BYTES;
+    }
+
+    /**
+     * Assembles streaming Chat Completions response into a single one.
+     * The assembling process merges chunks of the streaming response one by one using separator: <code>\n*data: *</code>
+     *
+     * @param response byte array response to be assembled.
+     * @return assembled streaming response
+     */
+    @Nullable
+    public static String assembleStreamingChatCompletionsResponse(@Nullable Buffer response) {
+        if (response == null) {
+            return null;
+        }
+        try (Scanner scanner = new Scanner(new ByteBufInputStream(response.getByteBuf()))) {
+            ObjectNode last = null;
+            JsonNode usage = null;
+            JsonNode statistics = null;
+            JsonNode systemFingerprint = null;
+            JsonNode model = null;
+            JsonNode choices = null;
+            // each chunk is separated by one or multiple new lines with the prefix: 'data:' (except the first chunk)
+            // chunks may contain `data:` inside chunk data, which may lead to incorrect parsing
+            scanner.useDelimiter("(^data: *|\n+data: *)");
+            while (scanner.hasNext()) {
+                String chunk = scanner.next();
+                if (chunk.startsWith("[DONE]")) {
+                    break;
+                }
+                ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(chunk);
+                usage = MergeChunks.merge(usage, tree.get("usage"));
+                statistics = MergeChunks.merge(statistics, tree.get("statistics"));
+                if (tree.get("system_fingerprint") != null) {
+                    systemFingerprint = tree.get("system_fingerprint");
+                }
+                if (model == null && tree.get("model") != null) {
+                    model = tree.get("model");
+                }
+                last = tree;
+                choices = MergeChunks.merge(choices, tree.get("choices"));
+            }
+
+            if (last == null) {
+                log.warn("no chunk is found in streaming response");
+                return "{}";
+            }
+
+            ObjectNode result = ProxyUtil.MAPPER.createObjectNode();
+            result.set("id", last.get("id"));
+            result.put("object", "chat.completion");
+            result.set("created", last.get("created"));
+            result.set("model", model);
+
+            if (usage != null) {
+                MergeChunks.removeIndices(usage);
+                result.set("usage", usage);
+            }
+            if (statistics != null) {
+                MergeChunks.removeIndices(statistics);
+                result.set("statistics", statistics);
+            }
+            if (systemFingerprint != null) {
+                result.set("system_fingerprint", systemFingerprint);
+            }
+
+            if (choices != null) {
+                if (choices.isArray()) {
+                    for (JsonNode choice : choices) {
+                        MergeChunks.removeIndices(choice);
+                        if (choice.isObject()) {
+                            ObjectNode choiceObj = (ObjectNode) choice;
+                            JsonNode delta = choiceObj.get("delta");
+                            if (delta != null) {
+                                choiceObj.set("message", delta);
+                                choiceObj.remove("delta");
+                            }
+                        }
+                    }
+                }
+
+                result.set("choices", choices);
+            }
+            return ProxyUtil.convertToString(result);
+        } catch (Throwable e) {
+            log.warn("Can't assemble streaming response", e);
+            return "{}";
+        }
     }
 }

@@ -151,7 +151,7 @@ public class BaseDeploymentPostController {
                         context.setResponseBodyTimestamp(System.currentTimeMillis());
                         return collectTokenUsage(responseBody);
                     })
-                    .onSuccess(ignored -> proxy.getLogStore().save(AnalyticsLogContext.from(context)))
+                    .onSuccess(ignored -> proxy.getLogStore().save(AnalyticsLogContext.from(context, null)))
                     .onComplete(ignored -> finalizeRequest());
         } else {
             // drop connection to stop application responding

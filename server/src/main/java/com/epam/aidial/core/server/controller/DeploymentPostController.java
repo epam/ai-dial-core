@@ -30,19 +30,17 @@ import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
-import com.epam.aidial.core.server.util.MergeChunks;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
-import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -54,9 +52,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.util.List;
-import java.util.Scanner;
 import java.util.function.Supplier;
-import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_CACHE_POLICY;
 import static com.epam.aidial.core.server.Proxy.HEADER_UPSTREAM_ID;
@@ -438,10 +434,11 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         HttpServerResponse response = context.getResponse();
         responseStream.end(response);
 
+        String assembledStreamingResponse = null;
         if (isEventStreamResponse(context.getProxyResponse())) {
-            context.setAssembledStreamingResponse(assembleStreamingResponse(context.getResponseBody()));
+            assembledStreamingResponse = GfLogStore.assembleStreamingChatCompletionsResponse(context.getResponseBody());
         }
-        proxy.getLogStore().save(AnalyticsLogContext.from(context));
+        proxy.getLogStore().save(AnalyticsLogContext.from(context, assembledStreamingResponse));
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
@@ -472,93 +469,6 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 context.getProxyRequest().connection().remoteAddress(),
                 error);
         sendRequest(); // try next
-    }
-
-    /**
-     * Assembles streaming response into a single one.
-     * The assembling process merges chunks of the streaming response one by one using separator: <code>\n*data: *</code>
-     *
-     * @param response byte array response to be assembled.
-     * @return assembled streaming response
-     */
-    @Nullable
-    static String assembleStreamingResponse(@Nullable Buffer response) {
-        if (response == null) {
-            return null;
-        }
-        try (Scanner scanner = new Scanner(new ByteBufInputStream(response.getByteBuf()))) {
-            ObjectNode last = null;
-            JsonNode usage = null;
-            JsonNode statistics = null;
-            JsonNode systemFingerprint = null;
-            JsonNode model = null;
-            JsonNode choices = null;
-            // each chunk is separated by one or multiple new lines with the prefix: 'data:' (except the first chunk)
-            // chunks may contain `data:` inside chunk data, which may lead to incorrect parsing
-            scanner.useDelimiter("(^data: *|\n+data: *)");
-            while (scanner.hasNext()) {
-                String chunk = scanner.next();
-                if (chunk.startsWith("[DONE]")) {
-                    break;
-                }
-                ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(chunk);
-                usage = MergeChunks.merge(usage, tree.get("usage"));
-                statistics = MergeChunks.merge(statistics, tree.get("statistics"));
-                if (tree.get("system_fingerprint") != null) {
-                    systemFingerprint = tree.get("system_fingerprint");
-                }
-                if (model == null && tree.get("model") != null) {
-                    model = tree.get("model");
-                }
-                last = tree;
-                choices = MergeChunks.merge(choices, tree.get("choices"));
-            }
-
-            if (last == null) {
-                log.warn("no chunk is found in streaming response");
-                return "{}";
-            }
-
-            ObjectNode result = ProxyUtil.MAPPER.createObjectNode();
-            result.set("id", last.get("id"));
-            result.put("object", "chat.completion");
-            result.set("created", last.get("created"));
-            result.set("model", model);
-
-            if (usage != null) {
-                MergeChunks.removeIndices(usage);
-                result.set("usage", usage);
-            }
-            if (statistics != null) {
-                MergeChunks.removeIndices(statistics);
-                result.set("statistics", statistics);
-            }
-            if (systemFingerprint != null) {
-                result.set("system_fingerprint", systemFingerprint);
-            }
-
-            if (choices != null) {
-                if (choices.isArray()) {
-                    for (JsonNode choice : choices) {
-                        MergeChunks.removeIndices(choice);
-                        if (choice.isObject()) {
-                            ObjectNode choiceObj = (ObjectNode) choice;
-                            JsonNode delta = choiceObj.get("delta");
-                            if (delta != null) {
-                                choiceObj.set("message", delta);
-                                choiceObj.remove("delta");
-                            }
-                        }
-                    }
-                }
-
-                result.set("choices", choices);
-            }
-            return ProxyUtil.convertToString(result);
-        } catch (Throwable e) {
-            log.warn("Can't assemble streaming response", e);
-            return "{}";
-        }
     }
 
     public static class ChatCompletionSseListener extends BufferingReadStream.BaseEventListener {

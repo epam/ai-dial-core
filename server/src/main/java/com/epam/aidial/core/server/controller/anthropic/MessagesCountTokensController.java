@@ -79,7 +79,7 @@ public class MessagesCountTokensController extends MessagesBaseController {
         // count_tokens must NOT charge limits or collect token usage — just log and finalize.
         return response.end(body)
                 .transform(result -> {
-                    proxy.getLogStore().save(AnalyticsLogContext.from(context));
+                    proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
                     finalizeRequest();
                     return Future.<Void>succeededFuture();
                 });

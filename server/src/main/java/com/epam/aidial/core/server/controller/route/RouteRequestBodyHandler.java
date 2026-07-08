@@ -210,7 +210,7 @@ class RouteRequestBodyHandler {
             }
             HttpServerResponse response = context.getResponse();
             responseStream.end(response);
-            proxy.getLogStore().save(AnalyticsLogContext.from(context));
+            proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
             controller.finalizeRequest();
         });
     }

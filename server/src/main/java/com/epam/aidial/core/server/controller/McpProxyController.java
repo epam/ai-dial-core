@@ -361,7 +361,7 @@ public class McpProxyController implements Controller {
         Buffer proxyResponseBody = responseStream.getContent();
         context.setResponseBody(proxyResponseBody);
         finalizeRequest();
-        logStore.save(AnalyticsLogContext.from(context));
+        logStore.save(AnalyticsLogContext.from(context, null));
     }
 
     private void handleResponse(int responseStatus, Buffer proxyResponseBody, List<String> contentEncodings) {
@@ -390,7 +390,7 @@ public class McpProxyController implements Controller {
         future.onSuccess(result -> {
             context.setResponseBody(result);
             respond(responseStatus, result);
-            logStore.save(AnalyticsLogContext.from(context));
+            logStore.save(AnalyticsLogContext.from(context, null));
         }).onFailure(error -> {
             log.error("Failed to handle MCP response body", error);
             respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to handle MCP response body");
