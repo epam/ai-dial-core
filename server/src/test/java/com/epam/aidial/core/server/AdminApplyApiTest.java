@@ -52,7 +52,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         assertEquals(3, parsed.get("applied").asInt(), () -> "Body: " + response.body());
         assertEquals(0, parsed.get("failed").asInt());
         for (JsonNode r : parsed.get("results")) {
-            assertEquals("applied", r.get("status").asText(), () -> "Body: " + response.body());
+            assertEquals("APPLIED", r.get("status").asText(), () -> "Body: " + response.body());
         }
         verify(send(HttpMethod.GET, "/v1/interceptors/platform/apply-int-1", null, "",
                 "authorization", "admin"), 200);
@@ -126,7 +126,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
             String status = r.get("status").asText();
             if ("FAILED".equals(status)) {
                 failed++;
-            } else if ("skipped".equals(status)) {
+            } else if ("SKIPPED".equals(status)) {
                 skipped++;
             }
         }
