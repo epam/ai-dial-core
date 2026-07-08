@@ -25,6 +25,7 @@ public abstract class Deployment extends RoleBasedEntity {
     @JsonAlias({"iconUrl", "icon_url"})
     private String iconUrl;
     private String description;
+    private String intro;
     private String reference;
     /**
      * Forward Http header with authorization token when request is sent to deployment.
