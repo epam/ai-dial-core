@@ -93,5 +93,10 @@
   },
   "asyncTaskExecutor": {
     "useVirtualThreads": true
+  },
+  "analytics": {
+    "collectClaims": false,
+    "collectHeaders": false,
+    "headersBlacklist": "authorization,api-key,cookie,proxy-authorization"
   }
 }
