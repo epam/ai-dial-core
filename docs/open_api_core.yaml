@@ -45,6 +45,7 @@ security:
 - ApiKeyAuth: []
 tags:
 - name: Admin
+- name: Anthropic
 - name: Applications
 - name: Client channel
 - name: Code interpreter
@@ -52,6 +53,7 @@ tags:
 - name: Conversations
 - name: Deployment listing
 - name: Deployments
+- name: External Services
 - name: Files
 - name: Global Settings
 - name: Interceptors
@@ -72,6 +74,166 @@ tags:
 - name: Toolsets
 - name: User Consent
 paths:
+  /anthropic/v1/messages:
+    post:
+      tags:
+      - Anthropic
+      summary: /anthropic/v1/messages
+      operationId: createAnthropicMessage
+      parameters:
+      - name: anthropic-version
+        in: header
+        description: "The Anthropic API version (e.g., 2023-06-01)"
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProxyRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            X-UPSTREAM-ATTEMPTS:
+              description: Number of upstream attempts performed before returning the response
+              required: false
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "415":
+          description: Unsupported Media Type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "503":
+          description: "The engine is currently overloaded, please try again later."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /anthropic/v1/messages/count_tokens:
+    post:
+      tags:
+      - Anthropic
+      summary: /anthropic/v1/messages/count_tokens
+      operationId: countAnthropicMessageTokens
+      parameters:
+      - name: anthropic-version
+        in: header
+        description: "The Anthropic API version (e.g., 2023-06-01)"
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProxyRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            X-UPSTREAM-ATTEMPTS:
+              description: Number of upstream attempts performed before returning the response
+              required: false
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "415":
+          description: Unsupported Media Type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "503":
+          description: "The engine is currently overloaded, please try again later."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /openai/applications:
     get:
       tags:
@@ -1983,6 +2145,216 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/applications/{appId}/external-services:
+    get:
+      tags:
+      - External Services
+      summary: "/v1/applications/{appId}/external-services"
+      operationId: listExternalServices
+      parameters:
+      - name: appId
+        in: path
+        description: The application ID. Can be either a static config application name or a dynamic application path.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalServiceData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/applications/{appId}/external-services/{id}:
+    get:
+      tags:
+      - External Services
+      summary: "/v1/applications/{appId}/external-services/{id}"
+      operationId: getExternalService
+      parameters:
+      - name: appId
+        in: path
+        description: The application ID. Can be either a static config application name or a dynamic application path.
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: The external service ID defined in the application's external_services configuration.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalServiceData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    put:
+      tags:
+      - External Services
+      summary: "/v1/applications/{appId}/external-services/{id}"
+      operationId: putExternalService
+      parameters:
+      - name: appId
+        in: path
+        description: The application ID. Can be either a static config application name or a dynamic application path.
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: The external service ID defined in the application's external_services configuration.
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExternalService"
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalServiceData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    delete:
+      tags:
+      - External Services
+      summary: "/v1/applications/{appId}/external-services/{id}"
+      operationId: deleteExternalService
+      parameters:
+      - name: appId
+        in: path
+        description: The application ID. Can be either a static config application name or a dynamic application path.
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: The external service ID defined in the application's external_services configuration.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: boolean
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -6095,6 +6467,153 @@ paths:
       - lang: cURL
         label: CURL
         source: "curl -X POST https://chat.<company>.com/v1/ops/config/reload \\\n  -H \"Api-Key: DIAL_API_KEY\"            \n"
+  /v1/ops/external-service/credentials:
+    post:
+      tags:
+      - External Services
+      summary: /v1/ops/external-service/credentials
+      operationId: externalServiceGetCredentials
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExternalServiceCredentialsRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalServiceCredentialsResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/ops/external-service/signin:
+    post:
+      tags:
+      - External Services
+      summary: /v1/ops/external-service/signin
+      operationId: externalServiceSignIn
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourceSignInRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: boolean
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/ops/external-service/signout:
+    post:
+      tags:
+      - External Services
+      summary: /v1/ops/external-service/signout
+      operationId: externalServiceSignOut
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourceSignOutRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: boolean
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/ops/notification/delete:
     post:
       tags:
@@ -9539,6 +10058,281 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+    delete:
+      tags:
+      - Skills
+      summary: "/v2/skills/{bucket}/{path}"
+      operationId: deleteSkillFolder
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The resource path within the bucket.
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag of the version to delete. Use * to delete any existing version.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Folder resource deleted successfully
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Folder resource not found
+        "412":
+          description: Precondition failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v2/skills/{bucket}/{path}/files/{filePath}:
+    get:
+      tags:
+      - Skills
+      summary: "/v2/skills/{bucket}/{path}/files/{filePath}"
+      operationId: downloadSkillFile
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The resource path within the bucket.
+        required: true
+        schema:
+          type: string
+      - name: filePath
+        in: path
+        description: The relative path of the file within the skill.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: File downloaded successfully
+          headers:
+            ETag:
+              description: The ETag of the skill version
+              required: false
+              schema:
+                type: string
+            Content-Type:
+              description: MIME type of the file
+              required: false
+              schema:
+                type: string
+            Content-Length:
+              description: Size of the file in bytes
+              required: false
+              schema:
+                type: integer
+                format: int64
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: File or skill not found
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Skills
+      summary: "/v2/skills/{bucket}/{path}/files/{filePath}"
+      operationId: uploadSkillFile
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The resource path within the bucket.
+        required: true
+        schema:
+          type: string
+      - name: filePath
+        in: path
+        description: The relative path of the file within the skill.
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag of the skill version. The file is added/replaced in the skill atomically.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              required:
+              - file
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+        required: true
+      responses:
+        "200":
+          description: File uploaded successfully
+          headers:
+            ETag:
+              description: The new ETag of the skill after file upload
+              required: false
+              schema:
+                type: string
+        "400":
+          description: Bad request - invalid content type or malformed request
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "412":
+          description: Precondition failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Skills
+      summary: "/v2/skills/{bucket}/{path}/files/{filePath}"
+      operationId: deleteSkillFile
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The resource path within the bucket.
+        required: true
+        schema:
+          type: string
+      - name: filePath
+        in: path
+        description: The relative path of the file within the skill.
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag of the skill version. The file is removed from the skill atomically.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: File deleted successfully
+          headers:
+            ETag:
+              description: The new ETag of the skill after file deletion
+              required: false
+              schema:
+                type: string
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: File or skill not found
+        "412":
+          description: Precondition failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
 components:
   schemas:
     AcceptConsentRequest:
@@ -9578,10 +10372,10 @@ components:
     AdminApplyStatus:
       type: string
       enum:
-      - applied
-      - applied_invalid
+      - APPLIED
+      - APPLIED_INVALID
       - FAILED
-      - skipped
+      - SKIPPED
     AdminManifest:
       type: object
       properties:
@@ -9686,6 +10480,10 @@ components:
             type: string
         viewer_url:
           type: string
+        external_services:
+          $ref: "#/components/schemas/MapStringExternalService"
+        interfaces:
+          $ref: "#/components/schemas/MapStringDeploymentInterface"
     ApplicationData:
       type: object
       properties:
@@ -9756,6 +10554,8 @@ components:
           type: integer
         viewer_url:
           type: string
+        external_services:
+          $ref: "#/components/schemas/MapStringExternalService"
     ApplicationFunction:
       type: object
       properties:
@@ -10374,6 +11174,11 @@ components:
       - $ref: "#/components/schemas/ModelData"
       - $ref: "#/components/schemas/ApplicationData"
       - $ref: "#/components/schemas/ToolSetData"
+    DeploymentInterface:
+      type: object
+      properties:
+        base_url:
+          type: string
     Embedding:
       required:
       - embedding
@@ -10463,6 +11268,40 @@ components:
         data:
           $ref: "#/components/schemas/JsonNode"
         message:
+          type: string
+    ExternalService:
+      type: object
+      properties:
+        auth_settings:
+          $ref: "#/components/schemas/ResourceAuthSettings"
+        description:
+          type: string
+        display_name:
+          type: string
+    ExternalServiceCredentialsRequest:
+      type: object
+      properties:
+        url:
+          type: string
+    ExternalServiceCredentialsResponse:
+      type: object
+      properties:
+        expires_at:
+          type: integer
+        header_name:
+          type: string
+        header_value:
+          type: string
+    ExternalServiceData:
+      type: object
+      properties:
+        auth_settings:
+          $ref: "#/components/schemas/ResourceAuthSettings"
+        description:
+          type: string
+        display_name:
+          type: string
+        id:
           type: string
     Features:
       type: object
@@ -10791,6 +11630,8 @@ components:
           type: array
           items:
             type: string
+        interfaces:
+          $ref: "#/components/schemas/MapStringDeploymentInterface"
     Invitation:
       type: object
       properties:
@@ -10998,6 +11839,14 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/ConsentDeployment"
+    MapStringDeploymentInterface:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/DeploymentInterface"
+    MapStringExternalService:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/ExternalService"
     MapStringInterceptor:
       type: object
       additionalProperties:
@@ -11272,6 +12121,8 @@ components:
           type: array
           items:
             type: string
+        interfaces:
+          $ref: "#/components/schemas/MapStringDeploymentInterface"
     ModelData:
       type: object
       properties:
@@ -12348,6 +13199,10 @@ components:
           type: array
           items:
             type: string
+        interfaces:
+          $ref: "#/components/schemas/MapStringDeploymentInterface"
+        provider:
+          type: string
     ToolSetData:
       type: object
       properties:
@@ -12411,6 +13266,8 @@ components:
           type: string
         updated_at:
           type: integer
+        provider:
+          type: string
     ToolSetToolsResponse:
       type: object
       properties:
@@ -12550,9 +13407,9 @@ components:
     ValidationStatus:
       type: string
       enum:
-      - valid
+      - VALID
       - FAILED
-      - skipped
+      - SKIPPED
     ValueNode:
       type: object
   securitySchemes:
