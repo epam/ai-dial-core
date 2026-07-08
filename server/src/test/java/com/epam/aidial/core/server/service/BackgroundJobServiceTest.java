@@ -488,6 +488,7 @@ class BackgroundJobServiceTest {
     private static BackgroundJobService.Settings buildTestSettings(int maxFailures) {
         BackgroundJobService.Settings settings = new BackgroundJobService.Settings();
         settings.setInitialPollIntervalMs(TEST_POLL_INTERVAL_MS);
+        settings.setSchedulerTickIntervalMs(TEST_POLL_INTERVAL_MS);
         settings.setMaxSequentialPollFailures(maxFailures);
         settings.setLeaseTimeoutMs(TEST_LEASE_TIMEOUT_MS);
         return settings;

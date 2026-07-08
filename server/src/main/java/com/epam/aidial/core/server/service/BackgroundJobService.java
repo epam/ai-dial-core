@@ -119,7 +119,7 @@ public class BackgroundJobService {
 
     public void init() {
         AtomicBoolean polling = new AtomicBoolean(false);
-        vertx.setPeriodic(0, 1, id -> {
+        vertx.setPeriodic(0, settings.getSchedulerTickIntervalMs(), id -> {
             if (nextJobTime.get() <= System.currentTimeMillis()
                     && polling.compareAndSet(false, true)) {
                 taskExecutor.submit(this::tryClaimAndPoll)
@@ -584,6 +584,7 @@ public class BackgroundJobService {
         long leaseTimeoutMs = TimeUnit.MINUTES.toMillis(5);
         int maxParallelJobs = 100;
         long scanIntervalMs = TimeUnit.MINUTES.toMillis(10);
+        long schedulerTickIntervalMs = TimeUnit.SECONDS.toMillis(5);
     }
 
     private record ClaimResult(long owner, int attempts, int errors) {
