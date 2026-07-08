@@ -260,6 +260,7 @@ public class ApplicationController {
         data.setDisplayVersion(application.getDisplayVersion());
         data.setIconUrl(application.getIconUrl());
         data.setDescription(application.getDescription());
+        data.setIntro(application.getIntro());
         FeaturesData featuresData = FeaturesData.createFeatures(application.getFeatures());
         featuresData.setMcp(application.getMcp() != null);
         featuresData.setChatCompletion(application.getEndpoint() != null);
