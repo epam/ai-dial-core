@@ -50,6 +50,7 @@ import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
+import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
@@ -113,6 +114,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RedissonClient;
 
 import java.io.FileInputStream;
@@ -121,7 +123,9 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
@@ -133,6 +137,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Setter
@@ -182,7 +187,12 @@ public class AiDial {
 
             AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx, settings("asyncTaskExecutor"));
 
-            LogStore logStore = new GfLogStore();
+            JsonObject analyticsSettings = settings("analytics");
+            boolean collectClaims = analyticsSettings.getBoolean("collectClaims", false);
+            boolean collectHeaders = analyticsSettings.getBoolean("collectHeaders", false);
+            // default is defined in the bundled aidial.settings.json and always merged in
+            Set<String> headersBlacklist = parseHeadersBlacklist(analyticsSettings.getString("headersBlacklist"));
+            LogStore logStore = new GfLogStore(collectClaims, collectHeaders, headersBlacklist);
 
             if (accessTokenValidator == null) {
                 String claimsLogLevel = settings.getString("claimsLogLevel", "DEBUG");
@@ -239,8 +249,11 @@ public class AiDial {
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
                     resourceAuthSettingsEncryptionService, resourceCredentialsService);
 
+            ExternalServiceService externalServiceService = new ExternalServiceService(
+                    resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService);
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
-                    resourceService, lockService, operatorService, applicationSchemaService, configStore, generator, settings("applications"));
+                    externalServiceService, resourceService, lockService, operatorService, applicationSchemaService,
+                    configStore, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
                     lockService, applicationSchemaService, clock, resourceCredentialsService);
             RuleService ruleService = new RuleService(resourceService);
@@ -282,13 +295,14 @@ public class AiDial {
             ResponseMappingService responseMappingService = new ResponseMappingService(generator, resourceService);
             responseMappingService.init(vertx, taskExecutor);
 
-            FolderResourceService folderResourceService = new FolderResourceService(resourceService);
+            FolderResourceService folderResourceService = new FolderResourceService(
+                    resourceService, lockService, shareService, invitationService);
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
-                    notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
+                    notificationService, applicationService, externalServiceService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
                     toolSetService, applicationSchemaService, authorizationHeaderProvider, resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
@@ -603,6 +617,17 @@ public class AiDial {
         OpenTelemetryOptions otelOpts = new OpenTelemetryOptions(openTelemetry);
         otelOpts.setFactory(new DialTracingFactory(otelOpts.getFactory()));
         vertxOptions.setTracingOptions(otelOpts);
+    }
+
+    private static Set<String> parseHeadersBlacklist(String value) {
+        if (StringUtils.isBlank(value)) {
+            return Set.of();
+        }
+        return Arrays.stream(value.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(s -> s.toLowerCase(Locale.ROOT))
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     private static String getOtlSetting(String envVar, String systemProperty) {

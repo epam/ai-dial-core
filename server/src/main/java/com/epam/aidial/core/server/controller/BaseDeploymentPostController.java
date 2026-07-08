@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Upstream;
@@ -131,11 +132,36 @@ public class BaseDeploymentPostController {
         log.warn("Failed to receive client body. Error: {}", error.getMessage());
     }
 
+    /**
+     * Called when proxy failed to send response to the client.
+     */
+    protected void handleResponseError(Throwable error, BufferingReadStream responseStream) {
+        context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
+        log.warn("Can't send response to client. Error:", error);
+        Deployment deployment = context.getDeployment();
+        if (deployment instanceof Model) {
+            // make sure we collect token usage in case if client accidentally closed the connection
+            responseStream.endStreamFuture()
+                    .onFailure(ignore -> context.getProxyRequest().reset()) // drop connection to stop origin response
+                    .compose(ignore -> {
+                        Buffer responseBody = responseStream.getContent();
+                        context.setResponseBody(responseBody);
+                        context.setResponseBodyTimestamp(System.currentTimeMillis());
+                        return collectTokenUsage(responseBody);
+                    })
+                    .onSuccess(ignored -> proxy.getLogStore().save(context))
+                    .onComplete(ignored -> finalizeRequest());
+        } else {
+            // drop connection to stop application responding
+            context.getProxyRequest().reset();
+        }
+    }
+
     protected Future<TokenUsage> collectTokenUsage(Buffer responseBody) {
         Future<TokenUsage> tokenUsageFuture = Future.succeededFuture();
         if (context.getDeployment() instanceof Model model) {
             if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
-                TokenUsage tokenUsage = TokenUsageParser.parse(responseBody);
+                TokenUsage tokenUsage = parseTokenUsage(responseBody);
                 if (tokenUsage == null) {
                     Pricing pricing = model.getPricing();
                     if (pricing == null || "token".equals(pricing.getUnit())) {
@@ -164,18 +190,45 @@ public class BaseDeploymentPostController {
         return tokenUsageFuture;
     }
 
-    protected Future<HttpClientRequest> createProxyRequest(Function<Deployment, String> endpointSelector) {
+    /**
+     * Parses token usage from the fully buffered response body. Overridable so provider-specific
+     * controllers can supply their own accounting (e.g. the Anthropic Messages API).
+     */
+    protected TokenUsage parseTokenUsage(Buffer responseBody) {
+        return TokenUsageParser.parse(responseBody);
+    }
+
+    /**
+     * Low-level: build and issue the proxy request to an already-resolved absolute URI.
+     */
+    protected Future<HttpClientRequest> createProxyRequest(String absoluteUri) {
         HttpServerRequest request = context.getRequest();
-        String uri = endpointSelector.apply(context.getDeployment())
-                + (request.query() == null ? "" : "?" + request.query());
         RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(uri)
+                .setAbsoluteURI(absoluteUri)
                 .setMethod(request.method())
                 .setTraceOperation(context.getTraceOperation())
                 .setConnectTimeout(proxy.getClientOptions().getConnectTimeout())
                 .setIdleTimeout(proxy.getClientOptions().getIdleTimeout());
 
         return proxy.getClient().request(options);
+    }
+
+    /**
+     * Dual-mode: route by interface type. When the deployment declares an {@code interfaces} base URL
+     * for the type, forward to {@code base_url + <exact ingress path>}; otherwise forward the verbatim
+     * legacy endpoint (plus the original query), byte-identical to the legacy flow.
+     */
+    protected Future<HttpClientRequest> createProxyRequest(InterfaceType type) {
+        HttpServerRequest request = context.getRequest();
+        Deployment deployment = context.getDeployment();
+        String baseUrl = deployment.getInterfaceBaseUrl(type);
+        String uri = baseUrl != null
+                // New flow: base_url + exact ingress path. request.uri() already includes path + query.
+                ? baseUrl + request.uri()
+                // Legacy flow: verbatim endpoint + original query — byte-identical to today.
+                : deployment.getLegacyEndpoint(type)
+                        + (request.query() == null ? "" : "?" + request.query());
+        return createProxyRequest(uri);
     }
 
     protected Future<HttpClientResponse> sendProxyRequest(

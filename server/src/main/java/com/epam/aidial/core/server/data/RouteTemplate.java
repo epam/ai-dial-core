@@ -7,6 +7,19 @@ import java.util.regex.Pattern;
 @Getter
 public enum RouteTemplate {
 
+    // Anthropic API routes.
+    // count_tokens is declared first: both regexes are $-anchored and mutually exclusive today, but
+    // keeping the more specific path ahead of the generic one stays correct if a greedy
+    // /messages/(?<id>...) route is ever added.
+    LLM_MESSAGES_API_COUNT_TOKENS(
+            "^/+anthropic/v1/messages/count_tokens$",
+            "/anthropic/v1/messages/count_tokens"
+    ),
+    LLM_MESSAGES_API(
+            "^/+anthropic/v1/messages$",
+            "/anthropic/v1/messages"
+    ),
+
     // OpenAI API routes
     LLM_RESPONSES_API(
             "^/+openai/v1/responses$",
@@ -67,11 +80,20 @@ public enum RouteTemplate {
     ),
 
     // V2 whole-resource (folder-as-resource) routes.
-    // Single-segment reluctant path with no trailing slash enforces root-level resources addressed by
-    // name (e.g. /v2/skills/{bucket}/{name}).
+    // The {path} is the skill name and may span multiple segments (e.g. /v2/skills/{bucket}/group/name).
+    // The pattern forbids empty segments and a trailing slash (a resource is addressed by name, not as a
+    // folder listing), and reserves "/files/" as the single-file delimiter by refusing to cross it; this
+    // keeps SKILL_FOLDER and SKILL_FILE mutually exclusive regardless of route order.
     SKILL_FOLDER(
-            "^/v2/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>[^/]+)$",
+            "^/v2/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>[^/](?:[^/]|/(?=[^/])(?!files/))*)$",
             "/v2/skills/{bucket}/{path}"
+    ),
+    // Single-file operations inside a skill. The {path} segment is the skill name (may contain slashes),
+    // split from {filePath} at the first "/files/"; {filePath} is the relative file path inside the resource
+    // and may itself contain slashes.
+    SKILL_FILE(
+            "^/v2/skills/(?<bucket>[a-zA-Z0-9]+)/(?<path>.+?)/files/(?<filePath>.+)$",
+            "/v2/skills/{bucket}/{path}/files/{filePath}"
     ),
     RESOURCE_METADATA(
             "^/v1/metadata/(conversations|prompts|applications|toolsets)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.*)$",
@@ -194,6 +216,22 @@ public enum RouteTemplate {
     TOOL_SET_CREDENTIALS(
         "^/v1/ops/toolset/(signin|signout)",
         "/v1/ops/toolset/{operation}"
+    ),
+
+    EXTERNAL_SERVICE_CREDENTIALS(
+        "^/v1/ops/external-service/(signin|signout|credentials)$",
+        "/v1/ops/external-service/{operation}"
+    ),
+
+    // External-service definition management (admin/app-owner). Hyphenated path per design §13.2;
+    // appId is a lazy group (static app name or dynamic {bucket}/{path}) per §13.1.
+    EXTERNAL_SERVICES_MANAGEMENT(
+        "^/v1/applications/(?<appId>.+?)/external-services$",
+        "/v1/applications/{appId}/external-services"
+    ),
+    EXTERNAL_SERVICE_MANAGEMENT(
+        "^/v1/applications/(?<appId>.+?)/external-services/(?<id>[^/]+)$",
+        "/v1/applications/{appId}/external-services/{id}"
     ),
 
     // Other routes

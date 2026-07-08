@@ -221,7 +221,7 @@ public class ResourceOperationController {
     public Future<?> subscribe() {
         HttpServerResponse response = context.getResponse();
         Consumer<ResourceEvent> subscriber = this::sendSubscriptionEvent;
-        Runnable heartbeat = this::sendHeartbeat;
+        Runnable heartbeat = () -> sendHeartbeat(response);
 
         context.getRequest()
                 .body()
@@ -299,9 +299,7 @@ public class ResourceOperationController {
         }
     }
 
-    private void sendHeartbeat() {
-        HttpServerResponse response = context.getResponse();
-
+    private static void sendHeartbeat(HttpServerResponse response) {
         try {
             response.write(": heartbeat\n\n");
         } catch (Throwable e) {

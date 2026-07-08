@@ -30,6 +30,7 @@ import org.apache.commons.lang3.mutable.MutableObject;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Slf4j
@@ -154,6 +155,20 @@ public class ResourceCredentialsService {
         log.info("Deleting all resource credentials for resourceId={} finished", credentialsLocator.getResourceId());
     }
 
+    /**
+     * Idempotently deletes credentials at a single level (used to cascade APP-level credentials when
+     * an external-service definition is removed). No-op when none exist.
+     */
+    public void deleteResourceCredentialsAtLevel(CredentialsLocator credentialsLocator, CredentialsLevel credentialsLevel) {
+        CredentialsDescriptor descriptor = credentialsLocator.getCredentialsDescriptors().get(credentialsLevel);
+        if (descriptor == null) {
+            return;
+        }
+        resourceService.deleteResource(descriptor.toResourceDescriptor(), EtagHeader.ANY);
+        log.debug("Deleted {}-level credentials for resourceId={}, bucket={}",
+                credentialsLevel, credentialsLocator.getResourceId(), descriptor.getBucketName());
+    }
+
     private void validateDeleteOperation(ResourceCredentials existingCredentials,
                                          CredentialsLevel credentialsLevel,
                                          String userId) {
@@ -181,23 +196,28 @@ public class ResourceCredentialsService {
             return null;
         }
 
-        ResourceCredentials userCredentials = getAndRefreshCredentials(
-                credentialsLocator.getCredentialsDescriptors().get(CredentialsLevel.USER),
-                authSettings
-        );
-        if (userCredentials != null
-                && userCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
-                && userCredentials.getUserId().equals(userSub)) {
-            return userCredentials;
+        Map<CredentialsLevel, CredentialsDescriptor> descriptors = credentialsLocator.getCredentialsDescriptors();
+
+        CredentialsDescriptor userDescriptor = descriptors.get(CredentialsLevel.USER);
+        if (userDescriptor != null) {
+            ResourceCredentials userCredentials = getAndRefreshCredentials(userDescriptor, authSettings);
+            if (userCredentials != null
+                    && userCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
+                    && Objects.equals(userSub, userCredentials.getUserId())) {
+                return userCredentials;
+            }
         }
 
-        ResourceCredentials globalCredentials = getAndRefreshCredentials(
-                credentialsLocator.getCredentialsDescriptors().get(CredentialsLevel.GLOBAL),
-                authSettings
-        );
-        if (globalCredentials != null
-                && globalCredentials.getCredentialsLevel().equals(CredentialsLevel.GLOBAL)) {
-            return globalCredentials;
+        // GLOBAL (toolsets) then APPLICATION (external services); a locator only carries the levels it supports.
+        for (CredentialsLevel level : List.of(CredentialsLevel.GLOBAL, CredentialsLevel.APPLICATION)) {
+            CredentialsDescriptor descriptor = descriptors.get(level);
+            if (descriptor == null) {
+                continue;
+            }
+            ResourceCredentials credentials = getAndRefreshCredentials(descriptor, authSettings);
+            if (credentials != null && level.equals(credentials.getCredentialsLevel())) {
+                return credentials;
+            }
         }
 
         return null;

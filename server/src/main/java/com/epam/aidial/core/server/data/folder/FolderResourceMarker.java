@@ -39,8 +39,14 @@ public class FolderResourceMarker {
      * Aggregate etag over all files of the current version.
      */
     private String etag;
+    /**
+     * Per-file etags of the current version (relative path -> etag). The aggregate {@link #etag} is derived
+     * from these, so single-file mutations can recompute it without reading file content.
+     */
+    private Map<String, String> files;
     private Long createdAt;
     private Long updatedAt;
+    private Long deletedAt;
     private String author;
     /**
      * Type-specific metadata extracted by the per-type handler (e.g. skill name/description/version).

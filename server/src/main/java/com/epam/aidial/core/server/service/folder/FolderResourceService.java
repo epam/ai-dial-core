@@ -1,10 +1,14 @@
 package com.epam.aidial.core.server.service.folder;
 
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
+import com.epam.aidial.core.server.service.InvitationService;
+import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
+import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -16,6 +20,7 @@ import io.vertx.core.buffer.Buffer;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.mutable.MutableObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -30,6 +35,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import javax.annotation.Nullable;
 
 /**
  * Generic engine for whole-resource (folder-as-resource) operations. A resource is materialized as a
@@ -51,14 +57,22 @@ public class FolderResourceService {
     private static final String VERSION_PREFIX = "v";
     private static final int SCHEMA_VERSION = 1;
     private static final String STATE_ACTIVE = "active";
+    private static final String STATE_DELETING = "deleting";
     private static final int PAGE_SIZE = 1000;
     // A folder or a file must not be named after a structural token.
     private static final Set<String> RESERVED_SEGMENTS = Set.of(VERSION_PREFIX, MARKER_NAME);
 
     private final ResourceService resourceService;
+    private final LockService lockService;
+    private final ShareService shareService;
+    private final InvitationService invitationService;
 
-    public FolderResourceService(ResourceService resourceService) {
+    public FolderResourceService(ResourceService resourceService, LockService lockService,
+                                 ShareService shareService, InvitationService invitationService) {
         this.resourceService = resourceService;
+        this.lockService = lockService;
+        this.shareService = shareService;
+        this.invitationService = invitationService;
     }
 
     /**
@@ -96,33 +110,19 @@ public class FolderResourceService {
             // Honor If-Match / If-None-Match against the marker's aggregate etag before writing anything.
             etag.validate(readAggregateEtag(marker));
 
-            EtagBuilder aggregate = new EtagBuilder();
             try {
+                Map<String, String> fileEtags = new TreeMap<>();
                 for (Map.Entry<String, byte[]> entry : files.entrySet()) {
                     String relativePath = entry.getKey();
                     byte[] content = entry.getValue();
                     ResourceDescriptor file = versionFile(resource, versionId, relativePath);
-                    resourceService.putFile(file, content, EtagHeader.ANY, BlobStorageUtil.getContentType(relativePath), author);
-                    aggregate.append(relativePath.getBytes(StandardCharsets.UTF_8)).append(content);
+                    FileMetadata written = resourceService.putFile(file, content, EtagHeader.ANY,
+                            BlobStorageUtil.getContentType(relativePath), author);
+                    fileEtags.put(relativePath, written.getEtag());
                 }
-                String aggregateEtag = aggregate.build();
-
-                long now = System.currentTimeMillis();
                 FolderResourceMarker existing = readMarker(marker, false);
-                FolderResourceMarker document = new FolderResourceMarker();
-                document.setType(resource.getType().group());
-                document.setSchemaVersion(SCHEMA_VERSION);
-                document.setState(STATE_ACTIVE);
-                document.setCurrentVersion(versionId);
-                document.setEtag(aggregateEtag);
-                document.setCreatedAt(existing == null ? now : existing.getCreatedAt());
-                document.setUpdatedAt(now);
-                document.setAuthor(author);
-                document.setMetadata(handler.buildMarkerMetadata(files));
-
-                String json = Objects.requireNonNull(ProxyUtil.convertToString(document));
-                resourceService.putResource(marker, json, EtagHeader.ANY, author, false);
-                return aggregateEtag;
+                return commitMarker(marker, resource, versionId, aggregateEtag(fileEtags),
+                        handler.buildMarkerMetadata(files), fileEtags, existing, author);
             } catch (Exception e) {
                 // Nothing is observable until the marker is committed; drop the orphan version files.
                 deleteVersion(versionFolder(resource, versionId));
@@ -132,10 +132,211 @@ public class FolderResourceService {
     }
 
     /**
-     * Returns the {@code .dial-resource} marker of the resource, or {@code null} if it does not exist.
+     * Streams a single file of the current version, or returns {@code null} if the resource is absent or
+     * in the {@code deleting} state, or the file does not exist in the current version (both surface as 404).
+     */
+    @SneakyThrows
+    public ResourceService.ResourceStream getFileStream(ResourceDescriptor resource, String relativePath) {
+        String normalized = normalizePath(relativePath);
+        FolderResourceMarker marker = getMarker(resource);
+        if (marker == null) {
+            return null;
+        }
+        ResourceDescriptor file = versionFile(resource, marker.getCurrentVersion(), normalized);
+        return resourceService.getResourceStream(file, EtagHeader.ANY);
+    }
+
+    /**
+     * Adds or replaces a single file via copy-on-write of a new version: the current version is copied
+     * server-side to a fresh {@code v/{versionId}/} prefix, the single file is written, then the marker is
+     * committed under the folder-scoped lock. Returns the new aggregate etag.
+     */
+    public String putFile(ResourceDescriptor resource, FolderResourceHandler handler, String relativePath,
+                          byte[] content, EtagHeader etag, String author) {
+        String normalized = normalizePath(relativePath);
+        handler.validateFileMutation(normalized, FolderResourceHandler.FileMutation.PUT);
+        return copyOnWrite(resource, etag, author, (newVersionId, fileEtags) -> {
+            FileMetadata written = resourceService.putFile(versionFile(resource, newVersionId, normalized),
+                    content, EtagHeader.ANY, BlobStorageUtil.getContentType(normalized), author);
+            fileEtags.put(normalized, written.getEtag());
+            // Only a change to a metadata-bearing file (e.g. the manifest) refreshes the marker metadata.
+            return handler.refreshMetadataOnPut(normalized, content);
+        });
+    }
+
+    /**
+     * Removes a single file via copy-on-write of a new version. Returns the new aggregate etag.
+     *
+     * @throws HttpException NOT_FOUND if the file does not exist in the current version
+     */
+    public String deleteFile(ResourceDescriptor resource, FolderResourceHandler handler, String relativePath,
+                             EtagHeader etag, String author) {
+        String normalized = normalizePath(relativePath);
+        handler.validateFileMutation(normalized, FolderResourceHandler.FileMutation.DELETE);
+        return copyOnWrite(resource, etag, author, (newVersionId, fileEtags) -> {
+            if (fileEtags.remove(normalized) == null) {
+                throw new HttpException(HttpStatus.NOT_FOUND, "File not found: " + normalized);
+            }
+            resourceService.deleteResource(versionFile(resource, newVersionId, normalized), EtagHeader.ANY);
+            // A deletable file never carries marker metadata (the manifest cannot be deleted).
+            return null;
+        });
+    }
+
+    /**
+     * Shared copy-on-write engine for single-file mutations. Under the folder-scoped lock it validates the
+     * {@code If-Match} precondition on the aggregate etag, copies the current version server-side to a fresh
+     * one, applies the single change to the new version and commits the marker. The aggregate etag is
+     * recomputed from the per-file etags carried in the marker, so no file content is read.
+     *
+     * @param mutation applies the change to the fresh version and to the per-file etag map, returning the
+     *                 refreshed marker metadata, or {@code null} to keep the existing metadata
+     */
+    private String copyOnWrite(ResourceDescriptor resource, EtagHeader etag, String author, VersionMutation mutation) {
+        ResourceDescriptor marker = markerDescriptor(resource);
+        String newVersionId = UUID.randomUUID().toString().replace("-", "");
+
+        try (LockService.Lock ignore = resourceService.lockResource(marker)) {
+            FolderResourceMarker current = readMarker(marker, false);
+            if (!isActive(current)) {
+                throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
+            }
+            etag.validate(current.getEtag());
+
+            Map<String, String> fileEtags = currentFileEtags(resource, current);
+            try {
+                resourceService.copyFolder(versionFolder(resource, current.getCurrentVersion()),
+                        versionFolder(resource, newVersionId), false);
+                Map<String, Object> refreshed = mutation.apply(newVersionId, fileEtags);
+                Map<String, Object> metadata = refreshed != null ? refreshed : current.getMetadata();
+
+                String aggregateEtag = commitMarker(marker, resource, newVersionId, aggregateEtag(fileEtags),
+                        metadata, fileEtags, current, author);
+                deleteVersion(versionFolder(resource, current.getCurrentVersion()));
+                return aggregateEtag;
+            } catch (Exception e) {
+                // Nothing is observable until the marker is committed; drop the orphan version files.
+                deleteVersion(versionFolder(resource, newVersionId));
+                throw e;
+            }
+        }
+    }
+
+    @FunctionalInterface
+    private interface VersionMutation {
+        @Nullable
+        Map<String, Object> apply(String newVersionId, Map<String, String> fileEtags);
+    }
+
+    /**
+     * Per-file etag map of the current version. Reconstructed from per-file metadata for legacy markers that
+     * predate the stored map (still no file content is read).
+     */
+    private Map<String, String> currentFileEtags(ResourceDescriptor resource, FolderResourceMarker current) {
+        if (current.getFiles() != null) {
+            return new TreeMap<>(current.getFiles());
+        }
+        Map<String, String> fileEtags = new TreeMap<>();
+        ResourceDescriptor versionFolder = versionFolder(resource, current.getCurrentVersion());
+        for (ResourceDescriptor file : listVersionFiles(versionFolder)) {
+            ResourceItemMetadata meta = resourceService.getResourceMetadata(file);
+            if (meta != null) {
+                fileEtags.put(versionFolder.getRelativePath(file), meta.getEtag());
+            }
+        }
+        return fileEtags;
+    }
+
+    private String commitMarker(ResourceDescriptor marker, ResourceDescriptor resource, String versionId,
+                                String aggregateEtag, Map<String, Object> metadata, Map<String, String> fileEtags,
+                                @Nullable FolderResourceMarker existing, String author) {
+        long now = System.currentTimeMillis();
+        FolderResourceMarker document = new FolderResourceMarker();
+        document.setType(resource.getType().group());
+        document.setSchemaVersion(SCHEMA_VERSION);
+        document.setState(STATE_ACTIVE);
+        document.setCurrentVersion(versionId);
+        document.setEtag(aggregateEtag);
+        document.setFiles(fileEtags);
+        document.setCreatedAt(existing == null ? now : existing.getCreatedAt());
+        document.setUpdatedAt(now);
+        document.setAuthor(author);
+        document.setMetadata(metadata);
+
+        String json = Objects.requireNonNull(ProxyUtil.convertToString(document));
+        resourceService.putResource(marker, json, EtagHeader.ANY, author, false);
+        return aggregateEtag;
+    }
+
+    /**
+     * Aggregate etag derived from the per-file etags (relative path -> etag), sorted by path so the result
+     * is deterministic regardless of insertion order.
+     */
+    private static String aggregateEtag(Map<String, String> fileEtags) {
+        EtagBuilder builder = new EtagBuilder();
+        for (Map.Entry<String, String> entry : new TreeMap<>(fileEtags).entrySet()) {
+            builder.append(entry.getKey().getBytes(StandardCharsets.UTF_8))
+                    .append(entry.getValue().getBytes(StandardCharsets.UTF_8));
+        }
+        return builder.build();
+    }
+
+    /**
+     * Returns the {@code .dial-resource} marker of the resource, or {@code null} if it does not exist
+     * or is in the {@code deleting} state (treated as absent).
      */
     public FolderResourceMarker getMarker(ResourceDescriptor resource) {
-        return readMarker(markerDescriptor(resource), true);
+        FolderResourceMarker marker = readMarker(markerDescriptor(resource), true);
+        if (!isActive(marker)) {
+            return null;
+        }
+        return marker;
+    }
+
+    /**
+     * Tombstones the resource by flipping the {@code .dial-resource} marker to {@code state: deleting},
+     * then best-effort removes the version tree and marker. If the marker does not exist the method
+     * returns without doing anything (idempotent).
+     *
+     * <p>The tombstone write (via {@link ResourceService#computeResource}) is the linearization point:
+     * once committed, all read paths return 404 even if the version tree still physically exists.
+     *
+     * @throws HttpException PRECONDITION_FAILED if the {@code If-Match} header does not match
+     */
+    public void deleteFolder(ResourceDescriptor resource, EtagHeader etag) {
+        ResourceDescriptor marker = markerDescriptor(resource);
+
+        MutableObject<String> capturedVersion = new MutableObject<>();
+        resourceService.computeResource(marker, json -> {
+            if (json == null) {
+                throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
+            }
+            FolderResourceMarker current = ProxyUtil.convertToObject(json, FolderResourceMarker.class);
+            if (!isActive(current)) {
+                throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
+            }
+            etag.validate(current.getEtag());
+            capturedVersion.setValue(current.getCurrentVersion());
+            current.setState(STATE_DELETING);
+            current.setDeletedAt(System.currentTimeMillis());
+            return Objects.requireNonNull(ProxyUtil.convertToString(current));
+        });
+
+        if (resource.isPrivate()) {
+            String bucketName = resource.getBucketName();
+            String bucketLocation = resource.getBucketLocation();
+            lockService.underBucketLock(bucketLocation, () -> {
+                invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
+                shareService.revokeSharedResource(bucketName, bucketLocation, resource);
+                return null;
+            });
+        }
+
+        if (capturedVersion.get() != null) {
+            ResourceDescriptor folderVersion = versionFolder(resource, capturedVersion.get());
+            deleteVersion(folderVersion);
+            resourceService.deleteResource(marker, EtagHeader.ANY);
+        }
     }
 
     @SneakyThrows
@@ -243,5 +444,9 @@ public class FolderResourceService {
             throw new HttpException(HttpStatus.BAD_REQUEST, "Reserved path segment: " + segments[0]);
         }
         return filename;
+    }
+
+    private static boolean isActive(@Nullable FolderResourceMarker marker) {
+        return marker != null && STATE_ACTIVE.equals(marker.getState());
     }
 }

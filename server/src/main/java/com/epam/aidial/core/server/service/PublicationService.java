@@ -321,7 +321,9 @@ public class PublicationService {
                         resourceService.computeResource(to, conversationBody -> PublicationUtil.replaceConversationLinks(conversationBody, to, replacementLinks));
                     }
                     if (to.getType() == ResourceTypes.APPLICATION) {
-                        Application app = applicationService.getApplication(to).getValue();
+                        // Decrypt external-service secrets on read so the re-put below re-encrypts plaintext
+                        // once; getApplication() returns them still encrypted, which would double-encrypt.
+                        Application app = applicationService.getApplicationWithDecryptedSecrets(to).getValue();
                         app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                         // Publication-approval is conservative: continue stripping forwardAuthToken.
                         // The originating user-bucket write already stripped it; this is defense in depth.

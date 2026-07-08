@@ -7,7 +7,9 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Role;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.security.ExtractedClaims;
@@ -116,6 +118,14 @@ public class CostRateLimitTest {
         rateLimiter = new RateLimiter(taskExecutor, resourceService);
     }
 
+    private static Proxy mockProxy(Config config) {
+        ConfigStore configStore = mock(ConfigStore.class);
+        when(configStore.get()).thenReturn(config);
+        Proxy proxy = mock(Proxy.class);
+        when(proxy.getConfigStore()).thenReturn(configStore);
+        return proxy;
+    }
+
     @Test
     public void testCostLimit_User_LimitFound() {
         // Set up configuration with cost limits
@@ -153,7 +163,7 @@ public class CostRateLimitTest {
         apiKeyData.setPerRequestKey("per-request-key");
         apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash",
                 ProxyUtil.MAPPER.createObjectNode(), null, null));
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
+        ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData, null, "trace-id", "span-id", "01");
 
         // Set up a model with pricing
         Model model = new Model();
@@ -247,7 +257,7 @@ public class CostRateLimitTest {
         apiKeyData.setPerRequestKey("per-request-key");
         apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role"), "user-hash",
                 ProxyUtil.MAPPER.createObjectNode(), null, null));
-        ProxyContext proxyContext = new ProxyContext(null, config, request, apiKeyData, null, "trace-id", "span-id", "01");
+        ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData, null, "trace-id", "span-id", "01");
 
         // Set up a model with pricing
         Model model = new Model();
@@ -350,7 +360,7 @@ public class CostRateLimitTest {
         apiKeyData1.setPerRequestKey("per-request-key-1");
         apiKeyData1.setExtractedClaims(new ExtractedClaims("user1", List.of("role"), "user-hash-1",
                 ProxyUtil.MAPPER.createObjectNode(), null, null));
-        ProxyContext proxyContext1 = new ProxyContext(null, config, request, apiKeyData1, null, "trace-id-1", "span-id-1", "01");
+        ProxyContext proxyContext1 = new ProxyContext(mockProxy(config), request, apiKeyData1, null, "trace-id-1", "span-id-1", "01");
         proxyContext1.setDeployment(model);
 
         // Create second user context
@@ -358,7 +368,7 @@ public class CostRateLimitTest {
         apiKeyData2.setPerRequestKey("per-request-key-2");
         apiKeyData2.setExtractedClaims(new ExtractedClaims("user2", List.of("role"), "user-hash-2",
                 ProxyUtil.MAPPER.createObjectNode(), null, null));
-        ProxyContext proxyContext2 = new ProxyContext(null, config, request, apiKeyData2, null, "trace-id-2", "span-id-2", "01");
+        ProxyContext proxyContext2 = new ProxyContext(mockProxy(config), request, apiKeyData2, null, "trace-id-2", "span-id-2", "01");
         proxyContext2.setDeployment(model);
 
         // Set up token usage for both users

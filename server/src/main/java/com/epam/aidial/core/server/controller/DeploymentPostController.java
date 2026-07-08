@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -166,7 +167,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                         dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(app);
                     }
 
-                    if (dep.getEndpoint() == null) {
+                    if (!dep.supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS)) {
                         throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
                     }
 
@@ -279,7 +280,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
     @SneakyThrows
     private void sendRequest() {
         if (nextUpstream()) {
-            createProxyRequest(Deployment::getEndpoint)
+            createProxyRequest(InterfaceType.OPENAI_CHAT_COMPLETIONS)
                     .onSuccess(this::handleProxyRequest)
                     .onFailure(this::handleProxyConnectionError);
         }
@@ -314,7 +315,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         String upstreamId = context.getRequest().headers().get(HEADER_UPSTREAM_ID);
         UpstreamRoute upstreamRoute;
         try {
-            upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext(), upstreamId);
+            upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext(),
+                    dep -> dep.resolveEndpoint(InterfaceType.OPENAI_CHAT_COMPLETIONS), upstreamId);
         } catch (HttpException e) {
             respond(e.getStatus(), e.getMessage());
             return;
@@ -442,33 +444,6 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 context.getProxyRequest().connection().remoteAddress(),
                 error);
         sendRequest(); // try next
-    }
-
-    /**
-     * Called when proxy failed to send response to the client.
-     */
-    private void handleResponseError(Throwable error, BufferingReadStream responseStream) {
-        context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
-        log.warn("Can't send response to client. Error:", error);
-        Deployment deployment = context.getDeployment();
-        if (deployment instanceof Model) {
-            // make sure we collect token usage in case if client accidentally closed the connection
-            responseStream.endStreamFuture()
-                    .onFailure(ignore -> {
-                        context.getProxyRequest().reset(); // drop connection to stop origin response
-                    })
-                    .compose(ignore -> {
-                        Buffer responseBody = responseStream.getContent();
-                        context.setResponseBody(responseBody);
-                        context.setResponseBodyTimestamp(System.currentTimeMillis());
-                        return collectTokenUsage(responseBody);
-                    })
-                    .onSuccess(ignored -> proxy.getLogStore().save(context))
-                    .onComplete(ignored -> finalizeRequest());
-        } else {
-            // drop connection to stop application responding
-            context.getProxyRequest().reset();
-        }
     }
 
     public static class ChatCompletionSseListener extends BufferingReadStream.BaseEventListener {

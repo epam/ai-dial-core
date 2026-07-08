@@ -5,6 +5,8 @@ import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.controller.anthropic.MessagesController;
+import com.epam.aidial.core.server.controller.anthropic.MessagesCountTokensController;
 import com.epam.aidial.core.server.controller.route.ApplicationRouteController;
 import com.epam.aidial.core.server.controller.route.GlobalRouteController;
 import com.epam.aidial.core.server.data.RouteTemplate;
@@ -33,6 +35,32 @@ public class ControllerSelector {
             "/{path}", GlobalRouteController::new);
 
     static {
+        // External-service definition management. Registered before the generic RESOURCE route so
+        // /v1/applications/{appId}/external-services[/{id}] is not swallowed by it (first match wins).
+        get(RouteTemplate.EXTERNAL_SERVICES_MANAGEMENT, (proxy, context, pathMatcher) -> {
+            String appId = UrlUtil.decodePath(pathMatcher.group("appId"));
+            ExternalServiceManagementController controller = new ExternalServiceManagementController(proxy, context);
+            return () -> controller.listExternalServices(appId);
+        });
+        get(RouteTemplate.EXTERNAL_SERVICE_MANAGEMENT, (proxy, context, pathMatcher) -> {
+            String appId = UrlUtil.decodePath(pathMatcher.group("appId"));
+            String serviceId = UrlUtil.decodePath(pathMatcher.group("id"));
+            ExternalServiceManagementController controller = new ExternalServiceManagementController(proxy, context);
+            return () -> controller.getExternalService(appId, serviceId);
+        });
+        put(RouteTemplate.EXTERNAL_SERVICE_MANAGEMENT, (proxy, context, pathMatcher) -> {
+            String appId = UrlUtil.decodePath(pathMatcher.group("appId"));
+            String serviceId = UrlUtil.decodePath(pathMatcher.group("id"));
+            ExternalServiceManagementController controller = new ExternalServiceManagementController(proxy, context);
+            return () -> controller.putExternalService(appId, serviceId);
+        });
+        delete(RouteTemplate.EXTERNAL_SERVICE_MANAGEMENT, (proxy, context, pathMatcher) -> {
+            String appId = UrlUtil.decodePath(pathMatcher.group("appId"));
+            String serviceId = UrlUtil.decodePath(pathMatcher.group("id"));
+            ExternalServiceManagementController controller = new ExternalServiceManagementController(proxy, context);
+            return () -> controller.deleteExternalService(appId, serviceId);
+        });
+
         // GET routes
         get(RouteTemplate.DEPLOYMENT, (proxy, context, pathMatcher) -> {
             DeploymentController controller = new DeploymentController(proxy, context);
@@ -85,6 +113,11 @@ public class ControllerSelector {
             FolderResourceController controller = new FolderResourceController(proxy, context, false);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePathV2(path));
+        });
+        get(RouteTemplate.SKILL_FILE, (proxy, context, pathMatcher) -> {
+            FolderResourceController controller = new FolderResourceController(proxy, context, false,
+                    UrlUtil.decodePath(pathMatcher.group("filePath")));
+            return () -> controller.handle(skillResourceUrl(pathMatcher));
         });
         get(RouteTemplate.CONFIG_RESOURCE, ControllerSelector::configResourceController);
         get(RouteTemplate.CONFIG_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
@@ -207,6 +240,16 @@ public class ControllerSelector {
             ResponsesController controller = new ResponsesController(proxy, context);
             return controller::handle;
         });
+        // count_tokens first: matching is first-registered-wins, so the more specific path must not
+        // be swallowed if a greedy /messages/(?<id>...) route is ever added.
+        post(RouteTemplate.LLM_MESSAGES_API_COUNT_TOKENS, (proxy, context, pathMatcher) -> {
+            MessagesCountTokensController controller = new MessagesCountTokensController(proxy, context);
+            return controller::handle;
+        });
+        post(RouteTemplate.LLM_MESSAGES_API, (proxy, context, pathMatcher) -> {
+            MessagesController controller = new MessagesController(proxy, context);
+            return controller::handle;
+        });
         post(RouteTemplate.LLM_RESPONSES_API_CANCEL, (proxy, context, pathMatcher) -> {
             String id = UrlUtil.decodePath(pathMatcher.group("id"));
             return new ResponseItemController(proxy, context, id, ResponseItemController.Operation.CANCEL);
@@ -289,6 +332,17 @@ public class ControllerSelector {
             return switch (operation) {
                 case "signin" -> controller::signIn;
                 case "signout" -> controller::signOut;
+                default -> null;
+            };
+        });
+        post(RouteTemplate.EXTERNAL_SERVICE_CREDENTIALS, (proxy, context, pathMatcher) -> {
+            String operation = pathMatcher.group(1);
+            ExternalServiceCredentialsController controller = new ExternalServiceCredentialsController(proxy, context);
+
+            return switch (operation) {
+                case "signin" -> controller::signIn;
+                case "signout" -> controller::signOut;
+                case "credentials" -> controller::getCredentials;
                 default -> null;
             };
         });
@@ -439,6 +493,21 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePathV2(path));
         });
+        delete(RouteTemplate.SKILL_FOLDER, (proxy, context, pathMatcher) -> {
+            FolderResourceController controller = new FolderResourceController(proxy, context, true);
+            String path = context.getRequest().path();
+            return () -> controller.handle(resourcePathV2(path));
+        });
+        put(RouteTemplate.SKILL_FILE, (proxy, context, pathMatcher) -> {
+            FolderResourceController controller = new FolderResourceController(proxy, context, true,
+                    UrlUtil.decodePath(pathMatcher.group("filePath")));
+            return () -> controller.handle(skillResourceUrl(pathMatcher));
+        });
+        delete(RouteTemplate.SKILL_FILE, (proxy, context, pathMatcher) -> {
+            FolderResourceController controller = new FolderResourceController(proxy, context, true,
+                    UrlUtil.decodePath(pathMatcher.group("filePath")));
+            return () -> controller.handle(skillResourceUrl(pathMatcher));
+        });
 
         // add deployment routes
         ControllerRoute.Initializer applicationRouteTemplate = ((proxy, context, pathMatcher) -> {
@@ -542,6 +611,12 @@ public class ControllerSelector {
         }
 
         return url.substring(prefix.length());
+    }
+
+    // Builds the skill folder resource url (still percent-encoded, decoded downstream by fromAnyUrl) for a
+    // single-file route match, so access control is evaluated against the whole skill.
+    private static String skillResourceUrl(Matcher matcher) {
+        return "skills/" + matcher.group("bucket") + "/" + matcher.group("path");
     }
 
     private record ControllerRoute(HttpMethod method, Pattern pathPattern, Initializer initializer) {

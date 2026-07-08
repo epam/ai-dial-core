@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -42,10 +43,20 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ResponseItemController implements Controller {
 
+    private static final String OPENAI_RESPONSES_BASE_PATH = "/openai/v1/responses";
+
     private final Proxy proxy;
     private final ProxyContext context;
     private final String dialResponseId;
     private final Operation operation;
+
+    /**
+     * New flow: base_url + /openai/v1/responses. Legacy flow: the verbatim responsesEndpoint.
+     */
+    private static String responsesBase(Deployment deployment) {
+        String baseUrl = deployment.getInterfaceBaseUrl(InterfaceType.OPENAI_RESPONSES);
+        return baseUrl != null ? baseUrl + OPENAI_RESPONSES_BASE_PATH : deployment.getResponsesEndpoint();
+    }
 
     @Override
     @ApiOperations({
@@ -126,15 +137,20 @@ public class ResponseItemController implements Controller {
 
     private Future<Void> forwardToUpstream(ResponseMapping mapping) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName());
-        if (deployment.getResponsesEndpoint() == null) {
+        if (!deployment.supportsInterface(InterfaceType.OPENAI_RESPONSES)) {
             return context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API")
                     .mapEmpty();
         }
-        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, null, mapping.getUpstreamKey());
+        UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
+                .get(deployment,
+                        null,
+                        dep -> dep.resolveEndpoint(InterfaceType.OPENAI_RESPONSES),
+                        mapping.getUpstreamKey()
+                );
         Upstream upstream = upstreamRoute.next();
 
         String query = context.getRequest().query();
-        String targetUrl = deployment.getResponsesEndpoint() + "/" + mapping.getUpstreamResponseId() + operation.suffix
+        String targetUrl = responsesBase(deployment) + "/" + mapping.getUpstreamResponseId() + operation.suffix
                 + (query != null ? "?" + query : "");
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(targetUrl)

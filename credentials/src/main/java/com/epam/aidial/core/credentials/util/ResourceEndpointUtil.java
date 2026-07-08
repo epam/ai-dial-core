@@ -83,5 +83,49 @@ public class ResourceEndpointUtil {
             throw new IllegalArgumentException("Resource endpoint is not valid URI");
         }
     }
+
+    /**
+     * Builds the metadata endpoint by appending the well-known suffix to the end of the resource path,
+     * following the OpenID Connect Discovery 1.0 convention (e.g. Keycloak: {@code {issuer}/.well-known/openid-configuration}).
+     *
+     * <p>This complements {@link #buildMetadataEndpoint}, which inserts the well-known component between
+     * the host and path per RFC 8414.</p>
+     *
+     * @param url             The resource endpoint URL
+     * @param wellKnownSuffix The well-known URI suffix
+     * @return The constructed metadata endpoint.
+     */
+    public static String buildAppendedMetadataEndpoint(String url, String wellKnownSuffix) {
+        if (url == null || url.isEmpty()) {
+            throw new IllegalArgumentException("URL cannot be null or empty.");
+        }
+
+        try {
+            URI resourceUri = new URI(url);
+
+            String scheme = resourceUri.getScheme();
+            String host = resourceUri.getHost();
+            String path = resourceUri.getPath();
+            int port = resourceUri.getPort();
+
+            if (scheme == null || host == null) {
+                throw new IllegalArgumentException("Invalid URL: Missing scheme or host.");
+            }
+
+            if (path.endsWith("/")) {
+                path = path.substring(0, path.length() - 1);
+            }
+
+            return String.format("%s://%s%s%s/.well-known/%s",
+                    scheme,
+                    host,
+                    (port > 0 ? ":" + port : ""),
+                    path,
+                    wellKnownSuffix
+            );
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException("Resource endpoint is not valid URI");
+        }
+    }
 }
 

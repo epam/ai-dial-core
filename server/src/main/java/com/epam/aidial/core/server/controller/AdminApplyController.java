@@ -567,15 +567,13 @@ public class AdminApplyController {
         String segment = KIND_URL_SEGMENT.getOrDefault(entry.kind(), entry.kind().toLowerCase());
         String name = entry.name() != null ? entry.name()
                 : ("Settings".equals(entry.kind()) ? SETTINGS_SINGLETON_NAME : "");
-        String bucket = "Model".equals(entry.kind()) || "Application".equals(entry.kind())
-                || "ToolSet".equals(entry.kind()) || "Schema".equals(entry.kind())
+        String bucket = "Application".equals(entry.kind()) || "ToolSet".equals(entry.kind())
                 ? ResourceDescriptor.PUBLIC_BUCKET : ResourceDescriptor.PLATFORM_BUCKET;
         return segment + "/" + bucket + "/" + name;
     }
 
     private static String canonical(String segment, String name) {
-        String bucket = "models".equals(segment) || "applications".equals(segment)
-                || "toolsets".equals(segment) || "schemas".equals(segment)
+        String bucket = "applications".equals(segment) || "toolsets".equals(segment)
                 ? ResourceDescriptor.PUBLIC_BUCKET : ResourceDescriptor.PLATFORM_BUCKET;
         return segment + "/" + bucket + "/" + name;
     }

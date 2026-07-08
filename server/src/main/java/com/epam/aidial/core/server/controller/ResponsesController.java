@@ -3,7 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
-import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
@@ -26,7 +26,6 @@ import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.JsonUtil;
@@ -115,8 +114,11 @@ public class ResponsesController extends BaseDeploymentPostController {
             deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
         }
 
-        if (deployment.getResponsesEndpoint() == null) {
-            throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
+        if (!deployment.supportsInterface(InterfaceType.OPENAI_RESPONSES)) {
+            throw new HttpException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "OpenAI responses not supported for this deployment type"
+            );
         }
 
         context.setTraceOperation("Send request to %s deployment".formatted(deployment.getName()));
@@ -184,7 +186,8 @@ public class ResponsesController extends BaseDeploymentPostController {
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
-                .get(deployment, context.getCacheBreakpointContext(), upstreamId);
+                .get(deployment, context.getCacheBreakpointContext(),
+                        dep -> dep.resolveEndpoint(InterfaceType.OPENAI_RESPONSES), upstreamId);
 
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
@@ -200,7 +203,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 respond(HttpStatus.SERVICE_UNAVAILABLE, "Upstream is missing required id");
                 return;
             }
-            createProxyRequest(Deployment::getResponsesEndpoint)
+            createProxyRequest(InterfaceType.OPENAI_RESPONSES)
                     .onSuccess(this::handleProxyRequest)
                     .onFailure(this::handleProxyConnectionError);
         }
@@ -277,26 +280,24 @@ public class ResponsesController extends BaseDeploymentPostController {
                     context.setResponseBody(rewritten);
                     context.setResponseBodyTimestamp(System.currentTimeMillis());
                     HttpServerResponse response = context.getResponse();
-                    ProxyUtil.handleChunkedResponse(response, proxyResponse);
-                    response.setChunked(false);
+                    ProxyUtil.copyResponse(response, proxyResponse);
                     response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
                     response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
-                    return response.end(rewritten);
-                })
-                .compose(ignore -> collectTokenUsage(context.getResponseBody()))
-                .transform(result -> {
-                    if (result.failed()) {
-                        log.warn("Failed to collect token usage", result.cause());
-                    }
-                    return collectResponseAttachments(context.getResponseBody(), new CollectResponsesApiOutputAttachmentsFn(proxy, context));
-                })
-                .onComplete(future -> {
-                    if (future.failed()) {
-                        log.warn("Failed to collect attachments from response", future.cause());
-                    }
-                    completeProxyResponse();
-                })
-                .mapEmpty();
+                    return collectTokenUsage(rewritten)
+                            .transform(result -> {
+                                if (result.failed()) {
+                                    log.warn("Failed to collect token usage", result.cause());
+                                }
+                                return collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
+                            })
+                            .transform(result -> {
+                                if (result.failed()) {
+                                    log.warn("Failed to collect attachments from response", result.cause());
+                                }
+                                completeProxyResponse(() -> response.end(rewritten));
+                                return Future.<Void>succeededFuture();
+                            });
+                });
     }
 
     private Future<Buffer> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
@@ -335,19 +336,16 @@ public class ResponsesController extends BaseDeploymentPostController {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
-        Future<TokenUsage> tokenUsageFuture = collectTokenUsage(responseBody);
-
-        tokenUsageFuture.onComplete(result -> {
+        collectTokenUsage(responseBody).onComplete(result -> {
             if (result.failed()) {
-                log.warn("Failed to collect attachments from response", result.cause());
+                log.warn("Failed to collect token usage", result.cause());
             }
-            HttpServerResponse response = context.getResponse();
-            responseStream.end(response);
-            completeProxyResponse();
+            completeProxyResponse(() -> responseStream.end(context.getResponse()));
         });
     }
 
-    private void completeProxyResponse() {
+    private void completeProxyResponse(Runnable endResponse) {
+        endResponse.run();
         proxy.getLogStore().save(context);
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
@@ -377,30 +375,6 @@ public class ResponsesController extends BaseDeploymentPostController {
                 error);
 
         sendRequest(); // try next
-    }
-
-    private void handleResponseError(Throwable error, BufferingReadStream responseStream) {
-        context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
-        log.warn("Can't send response to client. Error:", error);
-        Deployment deployment = context.getDeployment();
-        if (deployment instanceof Model) {
-            // make sure we collect token usage in case if client accidentally closed the connection
-            responseStream.endStreamFuture()
-                    .onFailure(ignore -> {
-                        context.getProxyRequest().reset(); // drop connection to stop origin response
-                    })
-                    .compose(ignore -> {
-                        Buffer responseBody = responseStream.getContent();
-                        context.setResponseBody(responseBody);
-                        context.setResponseBodyTimestamp(System.currentTimeMillis());
-                        return collectTokenUsage(responseBody);
-                    })
-                    .onSuccess(ignored -> proxy.getLogStore().save(context))
-                    .onComplete(ignored -> finalizeRequest());
-        } else {
-            // drop connection to stop application responding
-            context.getProxyRequest().reset();
-        }
     }
 
     private static Future<String> rewriteId(Proxy proxy, ProxyContext context, ResponseMapping mapping) {
