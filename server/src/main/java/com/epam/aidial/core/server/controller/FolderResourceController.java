@@ -116,7 +116,7 @@ public class FolderResourceController extends AccessControlBaseController {
                     @ApiResponse(code = 400, description = "Bad request - invalid content type or malformed request"),
                     @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch")
             },
-            responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL,
+            responseProfile = ResponseProfile.CONDITIONAL_AUTHORIZED_WRITE,
             extensions = {
                     @ApiExtension(name = "x-preview", value = "true")
             }
@@ -198,6 +198,27 @@ public class FolderResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "DELETE",
+            path = "/v2/skills/{bucket}/{path}",
+            operationId = "deleteSkillFolder",
+            tags = {"Skills"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true),
+                    @ApiParameter(name = "If-Match", in = ParameterIn.HEADER,
+                            description = "ETag of the version to delete. Use * to delete any existing version.")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Folder resource deleted successfully"),
+                    @ApiResponse(code = 404, description = "Folder resource not found"),
+                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch")
+            },
+            responseProfile = ResponseProfile.CONDITIONAL_AUTHORIZED_WRITE,
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     private Future<?> delete(ResourceDescriptor resource) {
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
         proxy.getTaskExecutor().submit(() -> {
@@ -212,6 +233,33 @@ public class FolderResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "PUT",
+            path = "/v2/skills/{bucket}/{path}/files/{filePath}",
+            operationId = "uploadSkillFile",
+            tags = {"Skills"},
+            contentType = "multipart/form-data",
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true),
+                    @ApiParameter(name = "filePath", in = ParameterIn.PATH, description = "The relative path of the file within the skill.", required = true),
+                    @ApiParameter(name = "If-Match", in = ParameterIn.HEADER,
+                            description = "ETag of the skill version. The file is added/replaced in the skill atomically.")
+            },
+            requestBody = @ApiSchema(implementation = byte[].class),
+            responses = {
+                    @ApiResponse(code = 200, description = "File uploaded successfully",
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "The new ETag of the skill after file upload")
+                            }),
+                    @ApiResponse(code = 400, description = "Bad request - invalid content type or malformed request"),
+                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch")
+            },
+            responseProfile = ResponseProfile.CONDITIONAL_AUTHORIZED_WRITE,
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     private Future<?> putFile(ResourceDescriptor resource, FolderResourceHandler handler) {
         HttpServerRequest request = context.getRequest();
         String contentType = request.getHeader(HttpHeaderNames.CONTENT_TYPE);
@@ -260,6 +308,31 @@ public class FolderResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/v2/skills/{bucket}/{path}/files/{filePath}",
+            operationId = "downloadSkillFile",
+            tags = {"Skills"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true),
+                    @ApiParameter(name = "filePath", in = ParameterIn.PATH, description = "The relative path of the file within the skill.", required = true)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "File downloaded successfully",
+                            body = @ApiSchema(implementation = byte[].class),
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "The ETag of the skill version"),
+                                    @ApiHeader(name = "Content-Type", description = "MIME type of the file"),
+                                    @ApiHeader(name = "Content-Length", description = "Size of the file in bytes", schema = Long.class)
+                            }),
+                    @ApiResponse(code = 404, description = "File or skill not found")
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_READ,
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     private Future<?> getFile(ResourceDescriptor resource) {
         proxy.getTaskExecutor().submit(() -> folderResourceService.getFileStream(resource, filePath))
                 .compose(stream -> {
@@ -276,6 +349,31 @@ public class FolderResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "DELETE",
+            path = "/v2/skills/{bucket}/{path}/files/{filePath}",
+            operationId = "deleteSkillFile",
+            tags = {"Skills"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The resource path within the bucket.", required = true),
+                    @ApiParameter(name = "filePath", in = ParameterIn.PATH, description = "The relative path of the file within the skill.", required = true),
+                    @ApiParameter(name = "If-Match", in = ParameterIn.HEADER,
+                            description = "ETag of the skill version. The file is removed from the skill atomically.")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "File deleted successfully",
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "The new ETag of the skill after file deletion")
+                            }),
+                    @ApiResponse(code = 404, description = "File or skill not found"),
+                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch")
+            },
+            responseProfile = ResponseProfile.CONDITIONAL_AUTHORIZED_WRITE,
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     private Future<?> deleteFile(ResourceDescriptor resource, FolderResourceHandler handler) {
         String author = context.getUserDisplayName();
         EtagHeader etag = ProxyUtil.etag(context.getRequest());

@@ -198,8 +198,11 @@ public final class OpenApiDescriptions {
     public static final String RESPONSE_FORBIDDEN = "Forbidden";
     public static final String RESPONSE_NOT_FOUND = "Not found";
     public static final String RESPONSE_CONFLICT = "Conflict";
-    public static final String RESPONSE_LIMIT_NOT_FOUND = "Limit not found";
-    public static final String RESPONSE_SESSION_NOT_FOUND = "Session is not found";
+    public static final String EXTERNAL_SERVICE_APP_ID =
+            "The application ID. Can be either a static config application name or a dynamic application path.";
+
+    public static final String EXTERNAL_SERVICE_ID =
+            "The external service ID defined in the application's external_services configuration.";
 
     private OpenApiDescriptions() {
     }

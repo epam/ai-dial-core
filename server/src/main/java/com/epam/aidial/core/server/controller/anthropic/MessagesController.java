@@ -2,6 +2,15 @@ package com.epam.aidial.core.server.controller.anthropic;
 
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.openapi.annotations.ApiHeader;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiOperations;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
+import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.ResponsesController;
@@ -29,6 +38,32 @@ public class MessagesController extends MessagesBaseController {
 
     public MessagesController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
+    }
+
+    @ApiOperations({
+            @ApiOperation(
+                    method = "POST",
+                    path = "/anthropic/v1/messages",
+                    operationId = "createAnthropicMessage",
+                    requestBody = @ApiSchema(schemaRef = "ProxyRequest"),
+                    tags = {"Anthropic"},
+                    parameters = {
+                            @ApiParameter(name = "anthropic-version", in = ParameterIn.HEADER, required = true,
+                                    description = "The Anthropic API version (e.g., 2023-06-01)")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                                    body = @ApiSchema(schemaRef = "ProxyResponse"),
+                                    headers = {
+                                            @ApiHeader(name = Proxy.HEADER_UPSTREAM_ATTEMPTS, description = "Number of upstream attempts performed before returning the response")
+                                    })
+                    },
+                    responseProfile = ResponseProfile.RESPONSES_API
+            )
+    })
+    @Override
+    public Future<?> handle() {
+        return super.handle();
     }
 
     @Override

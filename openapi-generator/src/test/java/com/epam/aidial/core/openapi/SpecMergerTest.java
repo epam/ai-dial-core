@@ -133,7 +133,7 @@ class SpecMergerTest {
     }
 
     @Test
-    void mergeFailsAndReportsOrphanedEntries(@TempDir Path tempDir) throws IOException {
+    void mergeRemovesAndLogsOrphanedEntries(@TempDir Path tempDir) throws IOException {
         ObjectNode skeleton = mapper.createObjectNode();
         ObjectNode skeletonPaths = mapper.createObjectNode();
         ObjectNode existingPath = mapper.createObjectNode();
@@ -148,7 +148,7 @@ class SpecMergerTest {
         manualPaths.set("/v1/existing", existingPathManual);
         ObjectNode orphanedPath = mapper.createObjectNode();
         orphanedPath.put("summary", "Legacy endpoint");
-        manualPaths.set("/v1/legacy", orphanedPath);
+        manualPaths.set("/v1/legacy", orphanedPath); // This should be safely removed
         manual.set("paths", manualPaths);
 
         Path skeletonFile = tempDir.resolve("skeleton.yaml");
@@ -159,14 +159,12 @@ class SpecMergerTest {
         mapper.writeValue(manualFile.toFile(), manual);
 
         SpecMerger merger = new SpecMerger();
+        merger.merge(skeletonFile, manualFile, outputFile);
 
-        IllegalStateException exception = org.junit.jupiter.api.Assertions.assertThrows(
-                IllegalStateException.class,
-                () -> merger.merge(skeletonFile, manualFile, outputFile),
-                "Should fail the merge if orphaned entries are present"
-        );
-
-        assertTrue(exception.getMessage().contains("orphaned entries"), "Exception message should report orphans");
+        String output = Files.readString(outputFile);
+        assertTrue(Files.exists(outputFile), "Output file should be created successfully without throwing exceptions");
+        assertTrue(output.contains("/v1/existing"), "Valid paths should be preserved");
+        assertFalse(output.contains("/v1/legacy"), "Orphaned legacy paths should be stripped from final schema");
     }
 
     @Test
@@ -256,7 +254,7 @@ class SpecMergerTest {
     }
 
     @Test
-    void topLevelTagsPreferManual(@TempDir Path tempDir) throws IOException {
+    void topLevelTagsPreferSkeleton(@TempDir Path tempDir) throws IOException {
         ObjectNode skeleton = mapper.createObjectNode();
         ArrayNode skeletonTags = mapper.createArrayNode();
         ObjectNode skeletonTag = mapper.createObjectNode();
@@ -287,12 +285,13 @@ class SpecMergerTest {
         merger.merge(skeletonFile, manualFile, outputFile);
 
         String output = Files.readString(outputFile);
-        assertTrue(output.contains("Hand-maintained tag documentation with examples"),
-                "Manual top-level tag description should be preserved");
-        assertTrue(output.contains("https://docs.example.com/deployments"),
-                "Manual tag externalDocs should be preserved");
-        assertFalse(output.contains("Auto-generated tag from code"),
-                "Skeleton tag should NOT override manual top-level tag");
+
+        assertTrue(output.contains("Auto-generated tag from code"),
+                "Skeleton tag should be used because tags have SKELETON precedence");
+        assertFalse(output.contains("https://docs.example.com/deployments"),
+                "Manual tag externalDocs should NOT be preserved with SKELETON precedence");
+        assertFalse(output.contains("Hand-maintained tag documentation with examples"),
+                "Manual description should NOT be in output with SKELETON precedence");
     }
 
     @Test

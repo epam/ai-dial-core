@@ -1,8 +1,8 @@
 package com.epam.aidial.core.server.data;
 
 public enum AdminApplyStatus {
-  applied,
-  applied_invalid,
+  APPLIED,
+  APPLIED_INVALID,
   FAILED,
-  skipped
+  SKIPPED
 }

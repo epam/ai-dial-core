@@ -16,6 +16,14 @@ import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
 import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiOperations;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
+import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ExternalServiceCredentialsRequest;
@@ -63,6 +71,18 @@ public class ExternalServiceCredentialsController {
         this.authorizationHeaderProvider = proxy.getAuthorizationHeaderProvider();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/external-service/signin",
+            operationId = "externalServiceSignIn",
+            requestBody = @ApiSchema(implementation = ResourceSignInRequest.class),
+            tags = {"External Services"},
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = Boolean.class))
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+    )
     public Future<?> signIn() {
         if (context.getApiKeyData().getPerRequestKey() != null) {
             context.respond(HttpStatus.UNAUTHORIZED, "Sign-in cannot be invoked with a per-request key");
@@ -106,6 +126,18 @@ public class ExternalServiceCredentialsController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/external-service/signout",
+            operationId = "externalServiceSignOut",
+            requestBody = @ApiSchema(implementation = ResourceSignOutRequest.class),
+            tags = {"External Services"},
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = Boolean.class))
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+    )
     public Future<?> signOut() {
         if (context.getApiKeyData().getPerRequestKey() != null) {
             context.respond(HttpStatus.UNAUTHORIZED, "Sign-out cannot be invoked with a per-request key");
@@ -136,6 +168,18 @@ public class ExternalServiceCredentialsController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/external-service/credentials",
+            operationId = "externalServiceGetCredentials",
+            requestBody = @ApiSchema(implementation = ExternalServiceCredentialsRequest.class),
+            tags = {"External Services"},
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = ExternalServiceCredentialsResponse.class))
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+    )
     public Future<?> getCredentials() {
         if (context.getApiKeyData().getPerRequestKey() == null) {
             context.respond(HttpStatus.UNAUTHORIZED, "Per-request key is required");

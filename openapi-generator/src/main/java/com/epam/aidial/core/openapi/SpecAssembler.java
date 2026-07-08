@@ -47,6 +47,9 @@ public class SpecAssembler {
             throw new IllegalStateException("OpenAPI Spec assembly aborted: Collected endpoint list is empty.");
         }
 
+        // Validate endpoints before assembly
+        EndpointValidator.validate(endpoints);
+
         // Deterministic ordering for stable YAML generation
         endpoints.sort(
                 Comparator.comparing(EndpointMetadata.Endpoint::path)

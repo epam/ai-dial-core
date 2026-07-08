@@ -8,6 +8,13 @@ import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
+import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ExternalServiceData;
@@ -58,6 +65,21 @@ public class ExternalServiceManagementController {
         this.resourceAuthSettingsService = proxy.getResourceAuthSettingsService();
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/applications/{appId}/external-services",
+            operationId = "listExternalServices",
+            tags = {"External Services"},
+            parameters = {
+                    @ApiParameter(name = "appId", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.EXTERNAL_SERVICE_APP_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = ExternalServiceData.class))
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_READ
+    )
     public Future<?> listExternalServices(String appId) {
         taskExecutor.submit(() -> {
             ResolvedApp resolved = resolveAndAuthorize(appId);
@@ -72,6 +94,23 @@ public class ExternalServiceManagementController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/applications/{appId}/external-services/{id}",
+            operationId = "getExternalService",
+            tags = {"External Services"},
+            parameters = {
+                    @ApiParameter(name = "appId", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.EXTERNAL_SERVICE_APP_ID),
+                    @ApiParameter(name = "id", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.EXTERNAL_SERVICE_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = ExternalServiceData.class))
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_READ
+    )
     public Future<?> getExternalService(String appId, String serviceId) {
         taskExecutor.submit(() -> {
             ResolvedApp resolved = resolveAndAuthorize(appId);
@@ -82,6 +121,24 @@ public class ExternalServiceManagementController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "PUT",
+            path = "/v1/applications/{appId}/external-services/{id}",
+            operationId = "putExternalService",
+            requestBody = @ApiSchema(implementation = ExternalService.class),
+            tags = {"External Services"},
+            parameters = {
+                    @ApiParameter(name = "appId", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.EXTERNAL_SERVICE_APP_ID),
+                    @ApiParameter(name = "id", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.EXTERNAL_SERVICE_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = ExternalServiceData.class))
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+    )
     public Future<?> putExternalService(String appId, String serviceId) {
         context.getRequest()
                 .body()
@@ -101,6 +158,23 @@ public class ExternalServiceManagementController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "DELETE",
+            path = "/v1/applications/{appId}/external-services/{id}",
+            operationId = "deleteExternalService",
+            tags = {"External Services"},
+            parameters = {
+                    @ApiParameter(name = "appId", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.EXTERNAL_SERVICE_APP_ID),
+                    @ApiParameter(name = "id", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.EXTERNAL_SERVICE_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = Boolean.class))
+            },
+            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+    )
     public Future<?> deleteExternalService(String appId, String serviceId) {
         taskExecutor.submit(() -> {
             ResolvedApp resolved = resolveAndAuthorize(appId);

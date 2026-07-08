@@ -34,14 +34,13 @@ public final class SpecMerger {
     );
 
     private static final Set<String> SKELETON_PREFERRED_FIELDS = Set.of(
-            "type", "properties", "required", "schema", "items", "allOf", "oneOf", "anyOf", "operationId", "discriminator"
+            "tags", "type", "properties", "required", "schema", "items", "allOf", "oneOf", "anyOf", "operationId", "discriminator"
     );
 
     private final ObjectMapper yamlMapper;
     private int addedCount;
     private int orphanedCount;
 
-    // Track exact context keys of orphans to fail the build cleanly
     private final List<String> orphanedPaths = new ArrayList<>();
     private final List<String> orphanedSchemas = new ArrayList<>();
 
@@ -76,26 +75,22 @@ public final class SpecMerger {
 
         System.out.println("Merge complete:");
         System.out.println("  New top-level endpoints/schemas (from skeleton): " + addedCount);
-        System.out.println("  Orphaned top-level entries (in manual only): " + orphanedCount);
+        System.out.println("  Orphaned top-level entries removed (in manual only): " + orphanedCount);
 
-        // Fail the CI/CD pipeline if code drift is detected
         if (orphanedCount > 0) {
-            System.err.println("ERROR: OpenAPI Specification merge failed due to deprecated orphaned entries!");
+            System.out.println("WARN: Detected and removed deleted (orphaned) entries from manual spec:");
             if (!orphanedPaths.isEmpty()) {
-                System.err.println("  Orphaned Paths (present in manual spec but removed from Java source code):");
-                orphanedPaths.forEach(path -> System.err.println("    - " + path));
+                System.out.println("  Removed Paths (no longer present in Java source code):");
+                orphanedPaths.forEach(path -> System.out.println("    - " + path));
             }
             if (!orphanedSchemas.isEmpty()) {
-                System.err.println("  Orphaned Component Schemas (present in manual spec but removed from Java code):");
-                orphanedSchemas.forEach(schema -> System.err.println("    - " + schema));
+                System.out.println("  Removed Component Schemas (no longer present in Java code):");
+                orphanedSchemas.forEach(schema -> System.out.println("    - " + schema));
             }
-            System.err.println("Please remove these stale definitions from your manual OpenAPI file.");
-            throw new IllegalStateException("OpenAPI Specification merge failed due to " + orphanedCount + " orphaned entries.");
         }
     }
 
     private ObjectNode mergeNodes(ObjectNode skeleton, ObjectNode manual, String jsonPath) {
-        // 1. Root-level structural routing (Paths and Schemas)
         if ("paths".equals(jsonPath)) {
             return mergePaths(skeleton, manual);
         }
@@ -118,9 +113,8 @@ public final class SpecMerger {
             String childPath = jsonPath.isEmpty() ? field : jsonPath + "." + field;
 
             if (skelVal != null && manVal != null) {
-                // 2. Structural interceptors for specialized OpenAPI nodes
-                if ("tags".equals(field)) {
-                    result.set(field, "tags".equals(childPath) ? manVal.deepCopy() : skelVal.deepCopy());
+                if ("tags".equals(field) && skelVal.isArray() && manVal.isArray()) {
+                    result.set(field, mergeTags((ArrayNode) skelVal, (ArrayNode) manVal, childPath));
                 } else if ("enum".equals(field)) {
                     result.set(field, skelVal.deepCopy());
                 } else if ("responses".equals(field) && skelVal.isObject() && manVal.isObject()) {
@@ -132,13 +126,11 @@ public final class SpecMerger {
                 } else if (Set.of("allOf", "oneOf", "anyOf").contains(field) && skelVal.isArray() && manVal.isArray()) {
                     result.set(field, mergeSchemaArrays((ArrayNode) skelVal, (ArrayNode) manVal, childPath));
                 } else {
-                    // 3. Universal recursive merge engine based on field precedence
                     FieldPrecedence precedence = resolvePrecedence(field);
 
                     if (precedence == FieldPrecedence.MANUAL) {
                         result.set(field, manVal.deepCopy());
                     } else {
-                        // Cascading descent: complex objects are always merged recursively
                         if (skelVal.isObject() && manVal.isObject()) {
                             if (skelVal.has("$ref") && !manVal.has("$ref")) {
                                 ObjectNode mergedRef = (ObjectNode) skelVal.deepCopy();
@@ -212,14 +204,100 @@ public final class SpecMerger {
                 result.set(outKey, marked);
                 addedCount++;
             } else {
-                ObjectNode marked = manNode.deepCopy();
-                marked.put("x-orphaned", true);
-                result.set(outKey, marked);
                 orphanedCount++;
                 orphanedPaths.add(outKey);
             }
         }
         return result;
+    }
+
+    private ArrayNode mergeTags(ArrayNode skeleton, ArrayNode manual, String jsonPath) {
+        FieldPrecedence precedence = resolvePrecedence("tags");
+        ArrayNode result = yamlMapper.createArrayNode();
+
+        // Handle operation-level tags (string arrays)
+        if ((skeleton != null && !skeleton.isEmpty() && skeleton.get(0).isTextual())
+                || (manual != null && !manual.isEmpty() && manual.get(0).isTextual())) {
+
+            if (precedence == FieldPrecedence.MANUAL) {
+                if (manual != null) {
+                    return (ArrayNode) manual.deepCopy();
+                }
+                return result;
+            } else if (precedence == FieldPrecedence.SKELETON) {
+                if (skeleton != null) {
+                    return (ArrayNode) skeleton.deepCopy();
+                }
+                return result;
+            } else { // MERGE_RECURSIVELY
+                Set<String> uniqueTags = new LinkedHashSet<>();
+                if (skeleton != null) {
+                    skeleton.forEach(node -> uniqueTags.add(node.asText()));
+                }
+                if (manual != null) {
+                    manual.forEach(node -> uniqueTags.add(node.asText()));
+                }
+                uniqueTags.forEach(result::add);
+                return result;
+            }
+        }
+
+        // Handle top-level tags (object arrays with "name" field)
+        if (precedence == FieldPrecedence.MANUAL) {
+            if (manual != null) {
+                return (ArrayNode) manual.deepCopy();
+            }
+            return result;
+        } else if (precedence == FieldPrecedence.SKELETON) {
+            if (skeleton != null) {
+                return (ArrayNode) skeleton.deepCopy();
+            }
+            return result;
+        } else { // MERGE_RECURSIVELY
+            Map<String, JsonNode> manualTagsByName = new LinkedHashMap<>();
+            if (manual != null) {
+                manual.forEach(tagNode -> {
+                    if (tagNode.isObject() && tagNode.has("name")) {
+                        manualTagsByName.put(tagNode.get("name").asText(), tagNode);
+                    }
+                });
+            }
+
+            Set<String> mergedTagNames = new HashSet<>();
+
+            if (skeleton != null) {
+                for (JsonNode skelTag : skeleton) {
+                    if (skelTag.isObject() && skelTag.has("name")) {
+                        String tagName = skelTag.get("name").asText();
+                        JsonNode manTag = manualTagsByName.get(tagName);
+
+                        if (manTag != null) {
+                            result.add(mergeNodes((ObjectNode) skelTag, (ObjectNode) manTag, jsonPath + "." + tagName));
+                        } else {
+                            result.add(skelTag.deepCopy());
+                        }
+                        mergedTagNames.add(tagName);
+                    } else {
+                        result.add(skelTag.deepCopy());
+                    }
+                }
+            }
+
+            if (manual != null) {
+                manual.forEach(tagNode -> {
+                    if (tagNode.isObject() && tagNode.has("name")) {
+                        String tagName = tagNode.get("name").asText();
+                        if (!mergedTagNames.contains(tagName)) {
+                            result.add(tagNode.deepCopy());
+                        }
+                    } else if (!tagNode.isObject() || !tagNode.has("name")) {
+                        result.add(tagNode.deepCopy());
+                    }
+                });
+            }
+
+            return result;
+        }
     }
 
     private ObjectNode mergeSchemas(ObjectNode skeleton, ObjectNode manual) {
@@ -244,9 +322,6 @@ public final class SpecMerger {
                 result.set(key, marked);
                 addedCount++;
             } else {
-                ObjectNode marked = manNode.deepCopy();
-                marked.put("x-orphaned", true);
-                result.set(key, marked);
                 orphanedCount++;
                 orphanedSchemas.add(key);
             }

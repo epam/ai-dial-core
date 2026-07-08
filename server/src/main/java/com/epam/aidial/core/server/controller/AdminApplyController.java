@@ -202,7 +202,7 @@ public class AdminApplyController {
             boolean anyFailure = false;
             for (AdminManifest entry : entries) {
                 ValidationResult result = validateOnly(entry, scratch, softValidation);
-                if (!ValidationStatus.valid.equals(result.status())) {
+                if (!ValidationStatus.VALID.equals(result.status())) {
                     anyFailure = true;
                     // Mirror /v1/admin/validate: the offending entry stays FAILED (carrying its
                     // error); only the valid siblings collapse to "skipped" below.
@@ -211,7 +211,7 @@ public class AdminApplyController {
                     // Mutate scratch so subsequent precheck entries see prior ones — even though we
                     // aren't writing yet, reference resolution depends on the cumulative scratch.
                     mutateScratch(scratch, entry);
-                    results.add(new EntityResult(result.entityId(), AdminApplyStatus.skipped, null));
+                    results.add(new EntityResult(result.entityId(), AdminApplyStatus.SKIPPED, null));
                 }
             }
             if (anyFailure) {
@@ -235,7 +235,7 @@ public class AdminApplyController {
                 result = new EntityResult(entityId(entry), AdminApplyStatus.FAILED, ex.getMessage());
             }
             results.add(result);
-            if (AdminApplyStatus.applied.equals(result.status()) || AdminApplyStatus.applied_invalid.equals(result.status())) {
+            if (AdminApplyStatus.APPLIED.equals(result.status()) || AdminApplyStatus.APPLIED_INVALID.equals(result.status())) {
                 anyApplied = true;
                 mutateScratch(scratch, entry);
                 if ("Settings".equals(entry.kind())) {
@@ -340,7 +340,7 @@ public class AdminApplyController {
         } catch (HttpException ex) {
             return new ValidationResult(id, ValidationStatus.FAILED, ex.getMessage());
         }
-        return new ValidationResult(id, ValidationStatus.valid, null);
+        return new ValidationResult(id, ValidationStatus.VALID, null);
     }
 
     private EntityResult applySingle(AdminManifest entry, Config scratch, List<EntityChange> pending) {
@@ -388,7 +388,7 @@ public class AdminApplyController {
                 ResourceDescriptor.PLATFORM_LOCATION, SETTINGS_SINGLETON_NAME);
         String blobBody = ConfigResourceController.serializeForBlob(settings);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-        return new EntityResult(id, AdminApplyStatus.applied, null);
+        return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
     private EntityResult applySchema(AdminManifest entry, String id, List<EntityChange> pending) {
@@ -408,7 +408,7 @@ public class AdminApplyController {
         }
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
         pending.add(new EntityChange(ResourceTypes.APP_TYPE_SCHEMA, MergedConfigStore.canonicalId(descriptor), entry.spec()));
-        return new EntityResult(id, AdminApplyStatus.applied, null);
+        return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
     private <T> EntityResult applyManagedEntity(AdminManifest entry, String id,
@@ -420,7 +420,7 @@ public class AdminApplyController {
         String blobBody = ConfigResourceController.serializeForBlob(entity);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
         pending.add(new EntityChange(type, MergedConfigStore.canonicalId(descriptor), entity));
-        return new EntityResult(id, AdminApplyStatus.applied, null);
+        return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
     private EntityResult applyKey(AdminManifest entry, String id, List<EntityChange> pending) {
@@ -468,7 +468,7 @@ public class AdminApplyController {
         // fully-plaintext Key. decryptValue is idempotent on plaintext fields.
         secretFieldProcessor.decryptFields(key, descriptor);
         pending.add(new EntityChange(ResourceTypes.PROJECT_KEY, MergedConfigStore.canonicalId(descriptor), key));
-        return new EntityResult(id, AdminApplyStatus.applied, null);
+        return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
     private EntityResult applyModel(AdminManifest entry, String id, Config scratch, List<EntityChange> pending) {
@@ -489,7 +489,7 @@ public class AdminApplyController {
         // Slice 4S.4: decrypt-in-place so partial-update receives plaintext upstream secrets.
         secretFieldProcessor.decryptFields(model, descriptor);
         pending.add(new EntityChange(ResourceTypes.MODEL, MergedConfigStore.canonicalId(descriptor), model));
-        return new EntityResult(id, invalid ? AdminApplyStatus.applied_invalid : AdminApplyStatus.applied, null);
+        return new EntityResult(id, invalid ? AdminApplyStatus.APPLIED_INVALID : AdminApplyStatus.APPLIED, null);
     }
 
     private EntityResult applyApplication(AdminManifest entry, String id) {
@@ -499,7 +499,7 @@ public class AdminApplyController {
                 ResourceDescriptor.PUBLIC_LOCATION, entry.name());
         // Bulk admin apply is always admin context — preserve forwardAuthToken if the manifest set it.
         applicationService.putApplication(descriptor, EtagHeader.ANY, null, application, true);
-        return new EntityResult(id, AdminApplyStatus.applied, null);
+        return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
     private EntityResult applyToolSet(AdminManifest entry, String id) {
@@ -508,7 +508,7 @@ public class AdminApplyController {
                 ResourceTypes.TOOL_SET, ResourceDescriptor.PUBLIC_BUCKET,
                 ResourceDescriptor.PUBLIC_LOCATION, entry.name());
         toolSetService.putToolSet(descriptor, EtagHeader.ANY, null, toolSet, true);
-        return new EntityResult(id, AdminApplyStatus.applied, null);
+        return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
     static void mutateScratch(Config scratch, AdminManifest entry) {
@@ -603,7 +603,7 @@ public class AdminApplyController {
         List<AdminApplyResult> responseResults = new ArrayList<>();
 
         for (EntityResult r : results) {
-            if (r.status() == AdminApplyStatus.applied || r.status() == AdminApplyStatus.applied_invalid) {
+            if (r.status() == AdminApplyStatus.APPLIED || r.status() == AdminApplyStatus.APPLIED_INVALID) {
                 applied++;
             } else if (r.status() == AdminApplyStatus.FAILED) {
                 failed++;

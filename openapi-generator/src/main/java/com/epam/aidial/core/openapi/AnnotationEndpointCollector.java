@@ -21,6 +21,8 @@ import com.epam.aidial.core.server.controller.DeploymentController;
 import com.epam.aidial.core.server.controller.DeploymentFeatureController;
 import com.epam.aidial.core.server.controller.DeploymentPostController;
 import com.epam.aidial.core.server.controller.DownloadFileController;
+import com.epam.aidial.core.server.controller.ExternalServiceCredentialsController;
+import com.epam.aidial.core.server.controller.ExternalServiceManagementController;
 import com.epam.aidial.core.server.controller.FileConfigController;
 import com.epam.aidial.core.server.controller.FileMetadataController;
 import com.epam.aidial.core.server.controller.FolderResourceController;
@@ -42,6 +44,8 @@ import com.epam.aidial.core.server.controller.ToolSetMcpProxyController;
 import com.epam.aidial.core.server.controller.ToolSetToolsController;
 import com.epam.aidial.core.server.controller.UploadFileController;
 import com.epam.aidial.core.server.controller.UserInfoController;
+import com.epam.aidial.core.server.controller.anthropic.MessagesController;
+import com.epam.aidial.core.server.controller.anthropic.MessagesCountTokensController;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Method;
@@ -70,11 +74,15 @@ public final class AnnotationEndpointCollector {
             DeploymentFeatureController.class,
             DeploymentPostController.class,
             DownloadFileController.class,
+            ExternalServiceCredentialsController.class,
+            ExternalServiceManagementController.class,
             FileConfigController.class,
             FileMetadataController.class,
             FolderResourceController.class,
             InvitationController.class,
             LimitController.class,
+            MessagesController.class,
+            MessagesCountTokensController.class,
             ModelController.class,
             NotificationController.class,
             PerRequestPermissionController.class,
@@ -118,24 +126,10 @@ public final class AnnotationEndpointCollector {
         ApiParameter[] methodParameters = method.getAnnotationsByType(ApiParameter.class);
         ApiResponse[] methodResponses = method.getAnnotationsByType(ApiResponse.class);
 
-        // Check for @ApiOperations container first
-        ApiOperations container = method.getAnnotation(ApiOperations.class);
-        boolean hasOperations = false;
-
-        if (container != null) {
-            hasOperations = true;
-            for (ApiOperation op : container.value()) {
-                endpoints.add(toEndpoint(
-                        op,
-                        mergeParameters(methodParameters, op.parameters()),
-                        mergeResponses(methodResponses, op.responses())));
-            }
-        }
-
-        // Check for individual @ApiOperation annotations
         ApiOperation[] operations = method.getAnnotationsByType(ApiOperation.class);
-        if (container == null && operations.length > 0) {
-            hasOperations = true;
+        boolean hasOperations = operations.length > 0;
+
+        if (hasOperations) {
             for (ApiOperation op : operations) {
                 endpoints.add(toEndpoint(
                         op,

@@ -146,13 +146,13 @@ public class AdminValidateController implements Controller {
             } else {
                 ValidationResult validation =
                         AdminApplyController.validateOnly(entry, scratch, softValidation);
-                if (!ValidationStatus.valid.equals(validation.status())) {
+                if (!ValidationStatus.VALID.equals(validation.status())) {
                     error = validation.error();
                 }
             }
             if (error == null) {
                 AdminApplyController.mutateScratch(scratch, entry);
-                results.add(new ValidationResult(entityId, ValidationStatus.valid, null));
+                results.add(new ValidationResult(entityId, ValidationStatus.VALID, null));
             } else {
                 anyFailure = true;
                 results.add(new ValidationResult(entityId, ValidationStatus.FAILED, error));
@@ -162,8 +162,8 @@ public class AdminValidateController implements Controller {
         if (precheck && anyFailure) {
             List<ValidationResult> finalResults = new ArrayList<>(results.size());
             for (ValidationResult r : results) {
-                if (ValidationStatus.valid.equals(r.status())) {
-                    finalResults.add(new ValidationResult(r.entityId(), ValidationStatus.skipped, null));
+                if (ValidationStatus.VALID.equals(r.status())) {
+                    finalResults.add(new ValidationResult(r.entityId(), ValidationStatus.SKIPPED, null));
                 } else {
                     finalResults.add(r);
                 }
@@ -178,7 +178,7 @@ public class AdminValidateController implements Controller {
         int valid = 0;
         int failed = 0;
         for (ValidationResult r : results) {
-            if (ValidationStatus.valid.equals(r.status())) {
+            if (ValidationStatus.VALID.equals(r.status())) {
                 valid++;
             } else if (ValidationStatus.FAILED.equals(r.status())) {
                 failed++;

@@ -38,6 +38,11 @@ public enum ResponseProfile {
     AUTHORIZED_OPERATION("400", "401", "403", "404", "500"),
 
     /**
+     * Authorized read profile: 401 Unauthorized, 403 Forbidden, 404 Not Found, 500 Internal Server Error.
+     * Use for read operations requiring both authentication and authorization that may encounter missing resources.
+     */
+    AUTHORIZED_READ("401", "403", "404", "500"),
+    /**
      * Conditional write profile: 401 Unauthorized, 412 Precondition Failed.
      * Use for write operations with ETag/If-Match/If-None-Match conditional headers.
      */
@@ -48,6 +53,13 @@ public enum ResponseProfile {
      * Use for resource write/delete operations with validation, size limits, and error handling.
      */
     CONDITIONAL_WRITE_EXTENDED("400", "401", "404", "412", "413", "500"),
+
+    /**
+     * Conditional authorized write profile: 400 Bad Request, 401 Unauthorized,
+     * 403 Forbidden, 404 Not Found, 412 Precondition Failed, 500 Internal Server Error.
+     * Use for write/delete operations requiring authorization and ETag preconditions.
+     */
+    CONDITIONAL_AUTHORIZED_WRITE("400", "401", "403", "404", "412", "500"),
 
     /**
      * Operations with bad request profile: 400 Bad Request, 401 Unauthorized, 404 Not Found, 422 Unprocessable Entity,
