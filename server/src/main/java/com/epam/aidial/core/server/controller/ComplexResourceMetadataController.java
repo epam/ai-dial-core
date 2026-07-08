@@ -15,7 +15,7 @@ import lombok.extern.slf4j.Slf4j;
  * immediate children of a grouping level; in files mode it lists the files of a resource's current version.
  */
 @Slf4j
-public class FolderResourceMetadataController extends AccessControlBaseController {
+public class ComplexResourceMetadataController extends AccessControlBaseController {
 
     private final ComplexResourceService complexResourceService;
     // True to list files of a skill's current version; false to list the children of a grouping level.
@@ -23,7 +23,7 @@ public class FolderResourceMetadataController extends AccessControlBaseControlle
     // Optional subfolder inside the version, for files mode.
     private final String subPath;
 
-    public FolderResourceMetadataController(Proxy proxy, ProxyContext context, boolean filesMode, String subPath) {
+    public ComplexResourceMetadataController(Proxy proxy, ProxyContext context, boolean filesMode, String subPath) {
         super(proxy, context, false);
         this.complexResourceService = proxy.getComplexResourceService();
         this.filesMode = filesMode;

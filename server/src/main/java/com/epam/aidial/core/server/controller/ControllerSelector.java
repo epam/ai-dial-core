@@ -113,11 +113,11 @@ public class ControllerSelector {
         get(RouteTemplate.COMPLEX_RESOURCE_FILE_METADATA, (proxy, context, pathMatcher) -> {
             String filePath = pathMatcher.group("filePath");
             String subPath = filePath == null ? null : UrlUtil.decodePath(filePath);
-            FolderResourceMetadataController controller = new FolderResourceMetadataController(proxy, context, true, subPath);
+            ComplexResourceMetadataController controller = new ComplexResourceMetadataController(proxy, context, true, subPath);
             return () -> controller.handle(complexResourceUrl(pathMatcher));
         });
         get(RouteTemplate.COMPLEX_RESOURCE_METADATA, (proxy, context, pathMatcher) -> {
-            FolderResourceMetadataController controller = new FolderResourceMetadataController(proxy, context, false, null);
+            ComplexResourceMetadataController controller = new ComplexResourceMetadataController(proxy, context, false, null);
             return () -> controller.handle(complexResourceFolderUrl(pathMatcher));
         });
         get(RouteTemplate.RESOURCE_FOLDER, (proxy, context, pathMatcher) -> {
