@@ -25,6 +25,10 @@ public abstract class Deployment extends RoleBasedEntity {
     @JsonAlias({"iconUrl", "icon_url"})
     private String iconUrl;
     private String description;
+    /**
+     * Short introductory/onboarding text for the deployment, shown to the end user
+     * separately from the more general-purpose {@link #description}.
+     */
     private String intro;
     private String reference;
     /**

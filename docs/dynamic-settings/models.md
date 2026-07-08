@@ -26,6 +26,7 @@ An object containing parameters for each [model](#models).
 * `type`: A string defining the model type (chat or embedding). DIAL Core uses this to choose the correct API endpoint and a payload schema.
 * `iconUrl`: A string with the URL with the icon location to display for the model on UI.
 * `description`: A string with a brief model description.
+* `intro`: A string with a short introductory/onboarding text for the model, shown to end users separately from `description`.
 * `displayName`: A string with the models's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs so operators can quickly identify the model.
 * `displayVersion`: A string with the model's version. Use it to distinguish between "latest," "beta," or date-stamped builds.
 * `endpoint`: Model API for chat completions or embeddings.
