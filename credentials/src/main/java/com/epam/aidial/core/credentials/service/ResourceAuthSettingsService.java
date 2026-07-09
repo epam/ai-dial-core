@@ -82,8 +82,13 @@ public class ResourceAuthSettingsService {
 
             resolveCodeChallengeSettings(resourceAuthSettings, existingResourceAuthSettings);
 
-            // Preserve dynamicallyRegistered; re-derive to false when update explicitly supplies clientId
-            if (!requiresDynamicClientRegistration && Boolean.TRUE.equals(existingResourceAuthSettings.getDynamicallyRegistered())) {
+            // Preserve dynamicallyRegistered; re-derive to false only when the PUT explicitly supplies
+            // both clientId and clientSecret — i.e. the caller is intentionally converting a DCR toolset
+            // to a static one. When clientSecret is absent (GET never returns it), the caller is just
+            // editing other fields of an existing DCR toolset and must not lose the flag.
+            boolean explicitlyConvertingToStatic = resourceAuthSettings.getClientId() != null
+                    && resourceAuthSettings.getClientSecret() != null;
+            if (explicitlyConvertingToStatic && Boolean.TRUE.equals(existingResourceAuthSettings.getDynamicallyRegistered())) {
                 resourceAuthSettings.setDynamicallyRegistered(false);
             } else {
                 resourceAuthSettings.setDynamicallyRegistered(existingResourceAuthSettings.getDynamicallyRegistered());
