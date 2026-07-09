@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ToolSetApiTest extends ResourceBaseTest {
@@ -722,6 +724,25 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
             assertEquals(307, resp.status());
             assertEquals("http://127.0.0.1:19999/final", resp.headers().get("Location"));
+        }
+    }
+
+    @Test
+    void testProxyMcpPostCall_IgnoresMalformedRedirectLocation() {
+        String mcpRequest = """
+                {
+                   "payload": "foo"
+                }
+                """;
+        TestWebServer.Handler handler = request ->
+                new MockResponse().setResponseCode(307).setHeader("Location", "http://[malformed");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            // a malformed Location must not hang the request - it should fall back to relaying the redirect as-is
+            Response resp = assertTimeoutPreemptively(Duration.ofSeconds(10),
+                    () -> sendNoRedirect(HttpMethod.POST, "/v1/toolset/git/mcp", mcpRequest));
+
+            assertEquals(307, resp.status());
+            assertEquals("http://[malformed", resp.headers().get("Location"));
         }
     }
 

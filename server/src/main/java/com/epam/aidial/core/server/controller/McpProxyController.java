@@ -319,7 +319,10 @@ public class McpProxyController implements Controller {
         URI redirectUri;
         try {
             currentUri = new URI(context.getProxyRequest().absoluteURI());
-            redirectUri = currentUri.resolve(location);
+            // resolve via URI.resolve(URI), not resolve(String) - the latter delegates to URI.create(String),
+            // which throws an unchecked IllegalArgumentException on a malformed location instead of the
+            // checked URISyntaxException caught below
+            redirectUri = currentUri.resolve(new URI(location));
         } catch (URISyntaxException e) {
             log.warn("Ignoring malformed MCP redirect location: {}", location);
             return false;
