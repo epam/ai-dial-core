@@ -51,6 +51,7 @@ tags:
 - name: Code interpreter
 - name: Config
 - name: Conversations
+- name: Deployment Feature
 - name: Deployment listing
 - name: Deployments
 - name: External Services
@@ -3109,6 +3110,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      tags:
+      - Deployment Feature
   /v1/deployments/{deployment_name}/limits:
     get:
       tags:
@@ -3258,6 +3261,7 @@ paths:
         required: true
         schema:
           type: string
+        description: The name of the deployment.
       responses:
         "200":
           description: Success
@@ -3295,6 +3299,8 @@ paths:
             schema:
               $ref: "#/components/schemas/TokenizeRequest"
         required: true
+      tags:
+      - Deployment Feature
   /v1/deployments/{deployment_name}/truncate_prompt:
     post:
       summary: "/v1/deployments/{deployment_name}/truncate_prompt"
@@ -3305,6 +3311,7 @@ paths:
         required: true
         schema:
           type: string
+        description: The name of the deployment.
       responses:
         "200":
           description: Success
@@ -3342,6 +3349,8 @@ paths:
             schema:
               $ref: "#/components/schemas/TruncatePromptRequest"
         required: true
+      tags:
+      - Deployment Feature
   /v1/files/{bucket}/{file_path}:
     get:
       tags:
@@ -3815,17 +3824,18 @@ paths:
       description: "Call this endpoint to get the invitation details or accept the invitation.      \n"
       operationId: getInvitation
       parameters:
+      - name: invitation_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The unique identifier of the invitation.
       - name: accept
         in: query
         description: Requests with `accept=true` accept an invitation.
         required: false
         schema:
           type: boolean
-      - name: invitation_id
-        in: path
-        required: true
-        schema:
-          type: string
       responses:
         "200":
           description: Success
@@ -3908,6 +3918,7 @@ paths:
         required: true
         schema:
           type: string
+        description: The unique identifier of the invitation.
       responses:
         "200":
           description: Success

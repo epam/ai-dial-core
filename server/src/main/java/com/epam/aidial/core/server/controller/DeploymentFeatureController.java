@@ -60,6 +60,7 @@ public class DeploymentFeatureController {
             method = "GET",
             path = "/v1/deployments/{deployment_name}/configuration",
             operationId = "configurationDeployment",
+            tags = {"Deployment Feature"},
             parameters = {
                     @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
                             description = OpenApiDescriptions.DEPLOYMENT_NAME)
@@ -73,6 +74,11 @@ public class DeploymentFeatureController {
             method = "POST",
             path = "/v1/deployments/{deployment_name}/tokenize",
             operationId = "tokenize",
+            tags = {"Deployment Feature"},
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME)
+            },
             requestBody = @ApiSchema(schemaRef = "TokenizeRequest"),
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "TokenizeResponse"))
@@ -83,6 +89,11 @@ public class DeploymentFeatureController {
             method = "POST",
             path = "/v1/deployments/{deployment_name}/truncate_prompt",
             operationId = "truncatePrompt",
+            tags = {"Deployment Feature"},
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME)
+            },
             requestBody = @ApiSchema(schemaRef = "TruncatePromptRequest"),
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "TruncatePromptResponse"))

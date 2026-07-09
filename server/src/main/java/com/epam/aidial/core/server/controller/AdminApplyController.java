@@ -43,6 +43,7 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -621,5 +622,6 @@ public class AdminApplyController {
 
     private record EntityResult(String entityId, AdminApplyStatus status, String error) {}
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private record ApplyResponse(HttpStatus status, AdminApplyResponse body) {}
 }

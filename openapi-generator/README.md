@@ -2,6 +2,13 @@
 
 Generates OpenAPI 3.0 specification from annotated controller methods in AI DIAL Core.
 
+## Why custom annotations?
+
+The generator uses custom annotations instead of the standard OpenAPI/Swagger annotations because AI DIAL Core does not follow the conventional **one controller method = one OpenAPI operation** model.
+
+A single controller method may describe multiple endpoints via `@ApiOperation`, each with its own HTTP method, path, parameters, responses, and extensions. Standard OpenAPI annotations are designed for a one-to-one mapping and cannot represent this structure without duplicating controller methods or introducing additional abstraction.
+
+
 ## Quick Start
 
 Annotate a controller method:
@@ -65,11 +72,43 @@ See [Schema Guide](SCHEMAS.md) for modeling strategies.
 
 ## Workflow
 
-1. Annotate controller method
-2. Run `./gradlew mergeOpenApiSpec`
-3. Review `build/generated/openapi-merged.yaml`
-4. Run `./gradlew replaceSpec`
-5. Commit `docs/open_api_core.yaml`
+1. Annotate controller method.
+2. Run `./gradlew lintMergedOpenApi`.
+3. Review `build/generated/openapi-merged.yaml`.
+4. Run `./gradlew replaceSpec`.
+5. Commit `docs/open_api_core.yaml`.
+
+`build/generated/openapi-merged.yaml` is a temporary build artifact generated during the build.
+
+`docs/open_api_core.yaml` is also generated. It is committed to the repository because it serves as the project's OpenAPI contract, allowing API changes to be reviewed in pull requests and consumed by downstream tools.
+
+## Validation
+
+Before committing changes, validate the generated specification:
+
+```bash
+./gradlew lintMergedOpenApi
+```
+
+The generator validates that:
+
+- required `@ApiOperation` fields (`method`, `path`, `operationId`) are present;
+- each `(HTTP method, path)` combination is unique;
+- path parameters match `@ApiParameter(in = PATH)` declarations;
+- response codes are valid HTTP status codes and `(code, contentType)` combinations are unique;
+- `@ApiSchema` uses a single schema definition strategy;
+- every `@ApiOperation(method, path)` matches a registered route in `ControllerSelector`;
+- every `operationId` is unique.
+
+If validation fails:
+
+1. Read the reported validation error.
+2. Update the corresponding annotation or schema definition.
+3. Regenerate the specification:
+   ```bash
+   ./gradlew lintMergedOpenApi
+   ```
+4. Run validation again.
 
 ## Documentation
 

@@ -66,6 +66,8 @@ public class InvitationController {
             operationId = "getInvitation",
             tags = {"Sharing"},
             parameters = {
+                    @ApiParameter(name = "invitation_id", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.INVITATION_ID),
                     @ApiParameter(name = "accept", in = ParameterIn.QUERY, description = OpenApiDescriptions.INVITATION_ACCEPT, schema = Boolean.class)
             },
             responses = {
@@ -108,7 +110,12 @@ public class InvitationController {
     @ApiOperation(
             method = "DELETE",
             path = "/v1/invitations/{invitation_id}",
-            operationId = "deleteInvitation", tags = {"Sharing"},
+            operationId = "deleteInvitation",
+            tags = {"Sharing"},
+            parameters = {
+                    @ApiParameter(name = "invitation_id", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.INVITATION_ID)
+            },
             responses = {
                     @ApiResponse(code = 200, description = "Success")
             },

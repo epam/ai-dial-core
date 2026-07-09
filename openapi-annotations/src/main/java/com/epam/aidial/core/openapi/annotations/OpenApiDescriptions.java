@@ -168,6 +168,7 @@ public final class OpenApiDescriptions {
             "The entity tag (ETag) of the toolset. This is used for conditional requests to ensure that the toolset is only "
                     + "deleted if it matches the specified ETag.";
 
+    public static final String INVITATION_ID = "The unique identifier of the invitation.";
     public static final String INVITATION_ACCEPT = "Requests with `accept=true` accept an invitation.";
     public static final String SCHEMA_ID = "schema ID of custom application";
 

@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -193,5 +194,6 @@ public class AdminValidateController implements Controller {
                 : "line " + e.getLocation().getLineNr() + ", column " + e.getLocation().getColumnNr();
     }
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private record ValidateResponse(HttpStatus status, AdminValidateResponse body) {}
 }
