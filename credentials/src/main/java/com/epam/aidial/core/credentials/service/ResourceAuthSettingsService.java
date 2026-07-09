@@ -64,6 +64,7 @@ public class ResourceAuthSettingsService {
         if (resourceAuthSettingsChangeMode == ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT
                 || resourceAuthSettingsChangeMode == ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT) {
             enrichResourceAuthSettings(updatedResource.getName(), updatedResource.getEndpoint(), resourceAuthSettings, requiresDynamicClientRegistration);
+            resourceAuthSettings.setDynamicallyRegistered(requiresDynamicClientRegistration);
         } else if (AuthenticationType.OAUTH.equals(resourceAuthSettings.getAuthenticationType())
                 && existingResource != null
                 && existingResource.getAuthSettings() != null) {
@@ -80,6 +81,13 @@ public class ResourceAuthSettingsService {
             }
 
             resolveCodeChallengeSettings(resourceAuthSettings, existingResourceAuthSettings);
+
+            // Preserve dynamicallyRegistered; re-derive to false when update explicitly supplies clientId
+            if (!requiresDynamicClientRegistration && Boolean.TRUE.equals(existingResourceAuthSettings.getDynamicallyRegistered())) {
+                resourceAuthSettings.setDynamicallyRegistered(false);
+            } else {
+                resourceAuthSettings.setDynamicallyRegistered(existingResourceAuthSettings.getDynamicallyRegistered());
+            }
         }
     }
 
@@ -207,6 +215,21 @@ public class ResourceAuthSettingsService {
         } else {
             resourceAuthSettings.setGlobalAuthStatus(ResourceAuthStatus.SIGNED_OUT);
         }
+    }
+
+    /**
+     * Applies a {@link ClientRegistration} result to {@code authSettings} in-place,
+     * including regenerating the PKCE code-challenge pair. Used by the repair path after DCR.
+     */
+    public void applyRegistration(ResourceAuthSettings authSettings, ClientRegistration registration) {
+        authSettings.setClientId(registration.getClientId());
+        authSettings.setClientSecret(registration.getClientSecret());
+        authSettings.setAuthorizationEndpoint(registration.getAuthorizationEndpoint());
+        authSettings.setTokenEndpoint(registration.getTokenEndpoint());
+        authSettings.setRedirectUri(registration.getRedirectUri());
+        authSettings.setScopesSupported(registration.getScopesSupported());
+        authSettings.setTokenEndpointAuthMethod(registration.getTokenEndpointAuthMethod());
+        setCodeChallengeProperties(authSettings, registration.getCodeChallengeMethod());
     }
 
     private void setCodeChallengeProperties(ResourceAuthSettings resourceAuthSettings,
