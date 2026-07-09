@@ -7,6 +7,8 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.route.ApplicationRouteController;
 import com.epam.aidial.core.server.controller.route.GlobalRouteController;
 import com.epam.aidial.core.server.data.RouteTemplate;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -239,6 +241,14 @@ public class ControllerSelector {
                 case "subscribe" -> controller::subscribe;
                 default -> null;
             };
+        });
+
+        post(RouteTemplate.TOOL_SET_REPAIR, (proxy, context, pathMatcher) -> {
+            String bucket = pathMatcher.group("bucket");
+            String path = pathMatcher.group("path");
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(
+                    "toolsets/" + bucket + "/" + path, proxy.getEncryptionService());
+            return new ToolSetRepairController(proxy, context, resource)::handle;
         });
 
         post(RouteTemplate.TOOL_SET_CREDENTIALS, (proxy, context, pathMatcher) -> {
