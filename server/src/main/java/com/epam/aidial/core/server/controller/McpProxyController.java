@@ -44,6 +44,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.io.InputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -52,6 +54,8 @@ import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_
 
 @Slf4j
 public class McpProxyController implements Controller {
+
+    private static final int MAX_MCP_REDIRECTS = 5;
 
     protected final String deploymentId;
 
@@ -82,6 +86,8 @@ public class McpProxyController implements Controller {
     private String mcpMethodName;
 
     private boolean useAllowedTools;
+
+    private int redirectCount;
 
 
     public McpProxyController(Proxy proxy, ProxyContext context, String deploymentId) {
@@ -132,12 +138,15 @@ public class McpProxyController implements Controller {
 
     private void sendRequest() {
         UpstreamRoute route = context.getUpstreamRoute();
-        HttpServerRequest request = context.getRequest();
-
         Upstream upstream = route.get();
         Objects.requireNonNull(upstream);
+        sendRequest(upstream.getEndpoint());
+    }
+
+    private void sendRequest(String absoluteUri) {
+        HttpServerRequest request = context.getRequest();
         RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(upstream.getEndpoint())
+                .setAbsoluteURI(absoluteUri)
                 .setMethod(request.method())
                 .setTraceOperation(context.getTraceOperation())
                 .setConnectTimeout(context.getProxy().getClientOptions().getConnectTimeout())
@@ -231,6 +240,10 @@ public class McpProxyController implements Controller {
         log.info("Received response header from origin: status={}, headers={}", responseStatusCode,
                 proxyResponse.headers().size());
 
+        if ((responseStatusCode == 307 || responseStatusCode == 308) && tryFollowRedirect(proxyResponse)) {
+            return;
+        }
+
         if (responseStatusCode == HttpStatus.TOO_MANY_REQUESTS.getCode()) {
             UpstreamRoute upstreamRoute = context.getUpstreamRoute();
             upstreamRoute.fail(proxyResponse);
@@ -287,6 +300,54 @@ public class McpProxyController implements Controller {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Follows a same-origin 307/308 upstream redirect internally instead of relaying it to the client
+     * (e.g. Starlette/FastMCP trailing-slash redirect from {@code /mcp} to {@code /mcp/}).
+     * Returns false - leaving the redirect to be relayed as-is - when the Location header is missing or
+     * malformed, the redirect cap is hit, or the target is a different origin (so Authorization/API-key
+     * headers are never forwarded to a different host).
+     */
+    private boolean tryFollowRedirect(HttpClientResponse proxyResponse) {
+        String location = proxyResponse.getHeader(HttpHeaders.LOCATION);
+        if (location == null || redirectCount >= MAX_MCP_REDIRECTS) {
+            return false;
+        }
+
+        URI currentUri;
+        URI redirectUri;
+        try {
+            currentUri = new URI(context.getProxyRequest().absoluteURI());
+            redirectUri = currentUri.resolve(location);
+        } catch (URISyntaxException e) {
+            log.warn("Ignoring malformed MCP redirect location: {}", location);
+            return false;
+        }
+
+        if (!isSameOrigin(currentUri, redirectUri)) {
+            log.warn("Refusing to follow cross-origin MCP redirect from {} to {}", currentUri, redirectUri);
+            return false;
+        }
+
+        redirectCount++;
+        String target = redirectUri.toString();
+        log.info("Following MCP redirect ({}) to {}", proxyResponse.statusCode(), target);
+        // drain the redirect body so the connection can be released before re-issuing the request
+        proxyResponse.body().onComplete(ignored -> sendRequest(target));
+        return true;
+    }
+
+    private static boolean isSameOrigin(URI a, URI b) {
+        return a.getHost() != null && b.getHost() != null
+                && a.getScheme().equalsIgnoreCase(b.getScheme())
+                && a.getHost().equalsIgnoreCase(b.getHost())
+                && resolvePort(a) == resolvePort(b);
+    }
+
+    private static int resolvePort(URI uri) {
+        int port = uri.getPort();
+        return port != -1 ? port : ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80);
     }
 
     /**

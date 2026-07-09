@@ -10,17 +10,25 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.http.HttpMethod;
+import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
 import okio.Buffer;
+import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
+import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
+import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -74,6 +82,22 @@ public class ToolSetApiTest extends ResourceBaseTest {
             // MCP server rejects authorization during the initialize handshake
             return new MockResponse().setResponseCode(statusCode);
         };
+    }
+
+    @SneakyThrows
+    private Response sendNoRedirect(HttpMethod method, String path, String body) {
+        try (CloseableHttpClient noRedirectClient = HttpClientBuilder.create()
+                .disableAutomaticRetries()
+                .disableRedirectHandling()
+                .build()) {
+            String uri = "http://127.0.0.1:" + serverPort + path;
+            HttpUriRequest request = new HttpUriRequestBase(method.name(), URI.create(uri));
+            request.setHeader("api-key", "proxyKey1");
+            if (body != null) {
+                request.setEntity(new StringEntity(body));
+            }
+            return noRedirectClient.execute(request, ResourceBaseTest::toResponse);
+        }
     }
 
     private static String extractJsonRpcId(String body) {
@@ -603,6 +627,122 @@ public class ToolSetApiTest extends ResourceBaseTest {
         Response resp = send(HttpMethod.POST, "/v1/toolset/unknown/mcp", null, mcpRequest);
 
         assertEquals(404, resp.status());
+    }
+
+    @Test
+    void testProxyMcpPostCall_Follows307Redirect() {
+        String mcpRequest = """
+                {
+                   "payload": "foo"
+                }
+                """;
+        String mcpResponse = """
+                {
+                  "result": "success"
+                }
+                """;
+        AtomicInteger requestCount = new AtomicInteger();
+        TestWebServer.Handler handler = request -> {
+            assertEquals("POST", request.getMethod());
+            assertEquals(mcpRequest, request.getBody().readString(StandardCharsets.UTF_8));
+            if (requestCount.getAndIncrement() == 0) {
+                // simulates a Starlette/FastMCP trailing-slash redirect, whatever the configured base path is
+                return new MockResponse().setResponseCode(307).setHeader("Location", "?redirected=1");
+            }
+            return new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "text/event-stream");
+        };
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response resp = send(HttpMethod.POST, "/v1/toolset/git/mcp", null, mcpRequest);
+
+            assertEquals(200, resp.status());
+            assertEquals(mcpResponse, resp.body());
+            assertNull(resp.headers().get("Location"));
+            assertEquals(2, requestCount.get());
+        }
+    }
+
+    @Test
+    void testProxyMcpPostCall_Follows308Redirect() {
+        String mcpRequest = """
+                {
+                   "payload": "foo"
+                }
+                """;
+        String mcpResponse = """
+                {
+                  "result": "success"
+                }
+                """;
+        AtomicInteger requestCount = new AtomicInteger();
+        TestWebServer.Handler handler = request -> {
+            assertEquals("POST", request.getMethod());
+            assertEquals(mcpRequest, request.getBody().readString(StandardCharsets.UTF_8));
+            if (requestCount.getAndIncrement() == 0) {
+                return new MockResponse().setResponseCode(308).setHeader("Location", "?redirected=1");
+            }
+            return new MockResponse().setBody(mcpResponse).setHeader("Content-Type", "text/event-stream");
+        };
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response resp = send(HttpMethod.POST, "/v1/toolset/git/mcp", null, mcpRequest);
+
+            assertEquals(200, resp.status());
+            assertEquals(mcpResponse, resp.body());
+            assertEquals(2, requestCount.get());
+        }
+    }
+
+    @Test
+    void testProxyMcpPostCall_DoesNotFollow302Redirect() {
+        String mcpRequest = """
+                {
+                   "payload": "foo"
+                }
+                """;
+        TestWebServer.Handler handler = request ->
+                new MockResponse().setResponseCode(302).setHeader("Location", "?redirected=1");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response resp = sendNoRedirect(HttpMethod.POST, "/v1/toolset/git/mcp", mcpRequest);
+
+            assertEquals(302, resp.status());
+            assertEquals("?redirected=1", resp.headers().get("Location"));
+        }
+    }
+
+    @Test
+    void testProxyMcpPostCall_RefusesCrossOriginRedirect() {
+        String mcpRequest = """
+                {
+                   "payload": "foo"
+                }
+                """;
+        TestWebServer.Handler handler = request ->
+                new MockResponse().setResponseCode(307).setHeader("Location", "http://127.0.0.1:19999/final");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response resp = sendNoRedirect(HttpMethod.POST, "/v1/toolset/git/mcp", mcpRequest);
+
+            assertEquals(307, resp.status());
+            assertEquals("http://127.0.0.1:19999/final", resp.headers().get("Location"));
+        }
+    }
+
+    @Test
+    void testProxyMcpPostCall_RedirectLoopIsCapped() {
+        String mcpRequest = """
+                {
+                   "payload": "foo"
+                }
+                """;
+        AtomicInteger requestCount = new AtomicInteger();
+        TestWebServer.Handler handler = request -> {
+            requestCount.incrementAndGet();
+            return new MockResponse().setResponseCode(307).setHeader("Location", "?redirected=1");
+        };
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response resp = sendNoRedirect(HttpMethod.POST, "/v1/toolset/git/mcp", mcpRequest);
+
+            assertEquals(307, resp.status());
+            assertEquals(6, requestCount.get());
+        }
     }
 
     @Test
