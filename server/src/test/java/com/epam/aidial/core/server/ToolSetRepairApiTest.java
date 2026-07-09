@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ToolSetRepairApiTest extends ResourceBaseTest {
 
@@ -374,6 +375,40 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
                     "/v1/ops/toolset/" + userBucket + "/toolset-repair-priv@/repair",
                     null, null, "authorization", "admin");
             verify(repair, 403);
+        }
+    }
+
+    @Test
+    void testDynamicallyRegisteredFieldPresentInListing() throws Exception {
+        try (TestWebServer server = new TestWebServer(9876)) {
+            setupDiscovery(server);
+            server.map(HttpMethod.POST, "/register",
+                    200, REGISTRATION_RESPONSE_JSON, "Content-Type", "application/json");
+
+            createDcrToolset("toolset-dcr-listing@");
+
+            Response listing = send(HttpMethod.GET, "/openai/toolsets",
+                    null, null, "authorization", "admin");
+            assertEquals(200, listing.status(), listing.body());
+
+            JsonNode data = ProxyUtil.MAPPER.readTree(listing.body()).get("data");
+            assertNotNull(data, "data array must be present");
+
+            JsonNode toolset = null;
+            for (JsonNode item : data) {
+                if (("toolsets/" + ADMIN_BUCKET + "/toolset-dcr-listing@").equals(item.path("id").asText())) {
+                    toolset = item;
+                    break;
+                }
+            }
+            assertNotNull(toolset, "toolset-dcr-listing@ must appear in /openai/toolsets listing");
+
+            JsonNode authSettings = toolset.get("auth_settings");
+            assertNotNull(authSettings, "auth_settings must be present");
+            assertTrue(authSettings.has("dynamically_registered"),
+                    "dynamically_registered must be present in auth_settings, got: " + authSettings);
+            assertEquals(true, authSettings.get("dynamically_registered").asBoolean(),
+                    "dynamically_registered must be true for a DCR toolset");
         }
     }
 }
