@@ -206,7 +206,7 @@
       "type": "chat",
       "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} },
       "upstreams": [
-        {"key": "modelKey", "id": "messages-upstream"}
+        {"endpoint": "http://messages-upstream/v1/messages", "key": "modelKey", "id": "messages-upstream"}
       ]
     },
     "claude-no-iface": {
