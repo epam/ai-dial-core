@@ -175,11 +175,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
-        // TODO: no per-upstream endpoint for the Messages API yet. A single endpoint can't cover
-        //  /v1/messages, /v1/messages/count_tokens and /v1/messages/batches, and the only adapter
-        //  serving this interface (bedrock) routes by interfaces.base_url + ingress path on its own.
-        //  Investigate a proper way to provide Messages API URLs to adapters before adding one.
-        sendProxyRequest(proxyRequest, upstream -> null)
+        sendProxyRequest(proxyRequest, Upstream::getEndpoint)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyResponseError);
     }
