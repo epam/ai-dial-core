@@ -60,6 +60,7 @@ import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
+import com.epam.aidial.core.server.service.ToolSetRepairService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.VertxTimerService;
@@ -226,10 +227,12 @@ public class AiDial {
             TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);
             ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient(httpProxySelector);
             List<String> allowedRedirectUris = getAllowedRedirectUris();
+            TokenService tokenService = new TokenService(resourceAuthorizationClient, allowedRedirectUris);
+            ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient, allowedRedirectUris);
             ResourceCredentialsService resourceCredentialsService = getResourceCredentialsService(
-                    tokenRefreshStrategyFactory, resourceAuthorizationClient, credentialEncryptionService, timeProvider, allowedRedirectUris);
+                    tokenRefreshStrategyFactory, credentialEncryptionService, timeProvider, tokenService);
             ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
-                    resourceCredentialsService, tokenRefreshStrategyFactory, resourceAuthorizationClient, allowedRedirectUris);
+                    resourceCredentialsService, tokenRefreshStrategyFactory, resourceRegistrationService);
             AuthorizationHeaderProvider authorizationHeaderProvider = new AuthorizationHeaderProvider(resourceCredentialsService);
             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
                     credentialEncryptionService);
@@ -237,6 +240,9 @@ public class AiDial {
                     encryptionService, resourceAuthSettingsEncryptionService);
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
                     resourceAuthSettingsEncryptionService, resourceCredentialsService);
+            ToolSetRepairService toolSetRepairService = new ToolSetRepairService(resourceService,
+                    resourceAuthSettingsEncryptionService, resourceCredentialsService,
+                    resourceRegistrationService, resourceAuthSettingsService);
 
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
                     resourceService, lockService, operatorService, applicationSchemaService, configStore, generator, settings("applications"));
@@ -287,7 +293,7 @@ public class AiDial {
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
-                    toolSetService, applicationSchemaService, authorizationHeaderProvider, resourceAuthSettingsService, resourceCredentialsService,
+                    toolSetService, toolSetRepairService, applicationSchemaService, authorizationHeaderProvider, resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
                     responseMappingService, generator);
 
@@ -361,11 +367,9 @@ public class AiDial {
     }
 
     private ResourceCredentialsService getResourceCredentialsService(TokenRefreshStrategyFactory tokenRefreshStrategyFactory,
-                                                                     ResourceAuthorizationClient resourceAuthorizationClient,
                                                                      CredentialEncryptionService credentialEncryptionService,
                                                                      TimeProvider timeProvider,
-                                                                     List<String> allowedRedirectUris) {
-        TokenService tokenService = new TokenService(resourceAuthorizationClient, allowedRedirectUris);
+                                                                     TokenService tokenService) {
         ResourceCredentialsFactoryProvider resourceCredentialsFactoryProvider = new ResourceCredentialsFactoryProvider(tokenService);
         return new ResourceCredentialsService(resourceService, credentialEncryptionService, resourceCredentialsFactoryProvider,
                 tokenService, tokenRefreshStrategyFactory, timeProvider);
@@ -373,9 +377,7 @@ public class AiDial {
 
     private ResourceAuthSettingsService getResourceAuthSettingsService(ResourceCredentialsService resourceCredentialsService,
                                                                        TokenRefreshStrategyFactory tokenRefreshStrategyFactory,
-                                                                       ResourceAuthorizationClient resourceAuthorizationClient,
-                                                                       List<String> allowedRedirectUris) {
-        ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient, allowedRedirectUris);
+                                                                       ResourceRegistrationService resourceRegistrationService) {
         AuthSettingsValidatorFactory authSettingsValidatorFactory = new AuthSettingsValidatorFactory();
         return new ResourceAuthSettingsService(resourceRegistrationService, resourceCredentialsService,
                 tokenRefreshStrategyFactory, authSettingsValidatorFactory);
