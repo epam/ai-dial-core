@@ -33,12 +33,11 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.Scanner;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -62,12 +61,16 @@ public class GfLogStore implements LogStore {
     private final ExecutorService executor;
     private final boolean collectClaims;
     private final boolean collectHeaders;
-    private final Set<String> headersBlacklist;
+    // never null; empty = block nothing
+    private final List<Pattern> headersBlacklist;
+    // null = allowlist disabled (collect all non-blocked headers)
+    private final List<Pattern> headersAllowlist;
 
-    public GfLogStore(boolean collectClaims, boolean collectHeaders, Set<String> headersBlacklist) {
+    public GfLogStore(boolean collectClaims, boolean collectHeaders, List<Pattern> headersBlacklist, List<Pattern> headersAllowlist) {
         this.collectClaims = collectClaims;
         this.collectHeaders = collectHeaders;
-        this.headersBlacklist = headersBlacklist == null ? Set.of() : headersBlacklist;
+        this.headersBlacklist = headersBlacklist == null ? List.of() : headersBlacklist;
+        this.headersAllowlist = headersAllowlist;
         BasicThreadFactory factory = BasicThreadFactory.builder()
                 .namingPattern("gflog-store-%d")
                 .daemon(true)
@@ -308,7 +311,7 @@ public class GfLogStore implements LogStore {
         MultiMap headers = context.getRequest().headers();
         MutableBoolean firstMember = new MutableBoolean(true);
         for (String name : headers.names()) {
-            if (headersBlacklist.contains(name.toLowerCase(Locale.ROOT))) {
+            if (!isHeaderCollectable(name)) {
                 continue;
             }
             appendSeparator(entry, firstMember);
@@ -328,6 +331,22 @@ public class GfLogStore implements LogStore {
             append(entry, "\"", false);
         }
         append(entry, "}", false);
+    }
+
+    private boolean isHeaderCollectable(String name) {
+        if (headersAllowlist != null && !matchesAny(headersAllowlist, name)) {
+            return false;
+        }
+        return !matchesAny(headersBlacklist, name);
+    }
+
+    private static boolean matchesAny(List<Pattern> patterns, String name) {
+        for (Pattern pattern : patterns) {
+            if (pattern.matcher(name).matches()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void appendStringMember(LogEntry entry, String name, String value, MutableBoolean firstMember) {
