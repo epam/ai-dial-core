@@ -13071,6 +13071,8 @@ components:
             type: string
         user_level_auth_status:
           $ref: "#/components/schemas/ResourceAuthStatus"
+        dynamically_registered:
+          type: boolean
     ResourceAuthStatus:
       type: string
       enum:
