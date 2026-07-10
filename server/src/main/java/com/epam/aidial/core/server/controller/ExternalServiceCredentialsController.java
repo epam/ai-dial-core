@@ -249,6 +249,22 @@ public class ExternalServiceCredentialsController {
      * gated also by the owner's recorded offline-usage consent and resolved USER-level only (fail closed).
      * Per-request keys are forbidden — that is the live-request {@code /credentials} path.
      */
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/external-service/obo-credentials",
+            operationId = "externalServiceGetOboCredentials",
+            requestBody = @ApiSchema(implementation = OboCredentialsRequest.class),
+            tags = {"External Services"},
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = ExternalServiceCredentialsResponse.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> getOboCredentials() {
         if (context.getApiKeyData().getPerRequestKey() != null) {
             context.respond(HttpStatus.UNAUTHORIZED, "On-behalf-of retrieval cannot be invoked with a per-request key");
