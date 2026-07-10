@@ -15,7 +15,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
@@ -59,10 +58,13 @@ public class ToolSetMcpProxyController extends McpProxyController {
                             @ApiParameter(name = "toolset_name", in = ParameterIn.PATH, required = true,
                                     description = OpenApiDescriptions.TOOLSET_NAME)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse"))
-                },
-                responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST),
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse")),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500)
+                    }),
     })
     public Future<?> handle() {
         return super.handle();

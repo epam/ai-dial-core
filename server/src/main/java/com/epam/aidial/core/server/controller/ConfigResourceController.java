@@ -16,7 +16,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
@@ -138,7 +137,6 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the model", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -161,7 +159,6 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved model", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -179,7 +176,6 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 204, description = "Success")
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -201,7 +197,6 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the interceptor", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -224,7 +219,6 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved interceptor", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -242,7 +236,6 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 204, description = "Success")
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -264,7 +257,6 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the role", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -287,7 +279,6 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved role", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -305,7 +296,6 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 204, description = "Success")
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -327,7 +317,6 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the key", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -350,7 +339,6 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved key", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -368,7 +356,6 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 204, description = "Success")
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -390,7 +377,6 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the route", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -413,7 +399,6 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved route", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -431,7 +416,6 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 204, description = "Success")
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -454,7 +438,6 @@ public class ConfigResourceController implements Controller {
                                     }
                             )
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -477,7 +460,6 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved schema", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -495,7 +477,6 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 204, description = "Success")
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -514,7 +495,6 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {GlobalSettings.class, EntityMetadata.class}))
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -537,7 +517,6 @@ public class ConfigResourceController implements Controller {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved settings", required = true)
                                     })
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
@@ -555,7 +534,6 @@ public class ConfigResourceController implements Controller {
                     responses = {
                             @ApiResponse(code = 204, description = "Success")
                     },
-                    responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL, 
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
                     }

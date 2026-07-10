@@ -13,10 +13,10 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
@@ -90,9 +90,16 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             },
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "CreateChatCompletionResponse"), contentTypes = {"application/json"}),
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "CreateChatCompletionStreamResponse"), contentTypes = {"text/event-stream"})
-            },
-            responseProfile = ResponseProfile.RESPONSES_API)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "CreateChatCompletionStreamResponse"), contentTypes = {"text/event-stream"}),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 415),
+                    @ApiResponse(code = 429, description = "Rate limit exceeded", body = @ApiSchema(implementation = ErrorData.class)),
+                    @ApiResponse(code = 500),
+                    @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
+                    @ApiResponse(code = 503)
+            })
     @ApiOperation(
             method = "POST",
             path = "/openai/deployments/{deployment_name}/chat/completions",
@@ -113,11 +120,17 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                             description = OpenApiDescriptions.UPSTREAM_ID)
             },
             responses = {
-
                     @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "CreateChatCompletionResponse")),
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "CreateChatCompletionStreamResponse"), contentTypes = {"text/event-stream"})
-            },
-            responseProfile = ResponseProfile.RESPONSES_API)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "CreateChatCompletionStreamResponse"), contentTypes = {"text/event-stream"}),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 415),
+                    @ApiResponse(code = 429, description = "Rate limit exceeded", body = @ApiSchema(implementation = ErrorData.class)),
+                    @ApiResponse(code = 500),
+                    @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
+                    @ApiResponse(code = 503)
+            })
     @ApiOperation(
             method = "POST",
             path = "/openai/deployments/{deployment_name}/embeddings",
@@ -133,9 +146,16 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                             description = "Must be application/json")
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "EmbeddingResponse"))
-            },
-            responseProfile = ResponseProfile.RESPONSES_API)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "EmbeddingResponse")),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 415),
+                    @ApiResponse(code = 429, description = "Rate limit exceeded", body = @ApiSchema(implementation = ErrorData.class)),
+                    @ApiResponse(code = 500),
+                    @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
+                    @ApiResponse(code = 503)
+            })
     public Future<?> handle(String deploymentId) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
         if (!Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {

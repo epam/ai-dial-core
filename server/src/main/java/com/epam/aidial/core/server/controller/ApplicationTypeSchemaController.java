@@ -7,7 +7,6 @@ import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -48,9 +47,9 @@ public class ApplicationTypeSchemaController {
             operationId = "getMetaSchemaOfCustomApplicationSchema",
             tags = {"Applications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
-            },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> handleGetMetaSchema() {
         return taskExecutor.submit(MetaSchemaHolder::getCustomApplicationMetaSchema)
@@ -108,9 +107,11 @@ public class ApplicationTypeSchemaController {
                     @ApiParameter(name = "id", in = ParameterIn.QUERY, required = true, description = OpenApiDescriptions.SCHEMA_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
-            },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> handleGetSchema() {
         return taskExecutor.submit(this::getSchema)
@@ -169,9 +170,9 @@ public class ApplicationTypeSchemaController {
             operationId = "listCustomApplicationSchemas",
             tags = {"Applications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
-            },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> handleListSchemas() {
         return taskExecutor.submit(this::listSchemas)

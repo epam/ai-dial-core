@@ -23,7 +23,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ExternalServiceCredentialsRequest;
@@ -79,9 +78,13 @@ public class ExternalServiceCredentialsController {
             tags = {"External Services"},
             responses = {
                     @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
-                            body = @ApiSchema(implementation = Boolean.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                            body = @ApiSchema(implementation = Boolean.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> signIn() {
         if (context.getApiKeyData().getPerRequestKey() != null) {
@@ -134,9 +137,13 @@ public class ExternalServiceCredentialsController {
             tags = {"External Services"},
             responses = {
                     @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
-                            body = @ApiSchema(implementation = Boolean.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                            body = @ApiSchema(implementation = Boolean.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> signOut() {
         if (context.getApiKeyData().getPerRequestKey() != null) {
@@ -176,9 +183,13 @@ public class ExternalServiceCredentialsController {
             tags = {"External Services"},
             responses = {
                     @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
-                            body = @ApiSchema(implementation = ExternalServiceCredentialsResponse.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                            body = @ApiSchema(implementation = ExternalServiceCredentialsResponse.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> getCredentials() {
         if (context.getApiKeyData().getPerRequestKey() == null) {

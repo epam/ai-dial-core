@@ -6,7 +6,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Invitation;
@@ -45,9 +44,9 @@ public class InvitationController {
             operationId = "getInvitations",
             tags = {"Sharing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = InvitationCollection.class))
-            },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = InvitationCollection.class)),
+                    @ApiResponse(code = 500)
+            })
     public Future<?> getInvitations() {
         proxy.getTaskExecutor()
                 .submit(() -> {
@@ -71,9 +70,11 @@ public class InvitationController {
                     @ApiParameter(name = "accept", in = ParameterIn.QUERY, description = OpenApiDescriptions.INVITATION_ACCEPT, schema = Boolean.class)
             },
             responses = {
-                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Invitation.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Invitation.class)),
+                @ApiResponse(code = 400),
+                @ApiResponse(code = 404),
+                @ApiResponse(code = 500)
+            }
     )
     public Future<?> getOrAcceptInvitation(String invitationId) {
         boolean accept = Boolean.parseBoolean(context.getRequest().getParam("accept"));
@@ -117,9 +118,11 @@ public class InvitationController {
                             description = OpenApiDescriptions.INVITATION_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION)
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            })
     public Future<?> deleteInvitation(String invitationId) {
         proxy.getTaskExecutor()
                 .submit(() -> {

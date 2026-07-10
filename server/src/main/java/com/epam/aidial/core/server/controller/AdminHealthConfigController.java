@@ -4,7 +4,6 @@ import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
 import com.epam.aidial.core.server.config.MergedConfigStore;
@@ -45,9 +44,9 @@ public class AdminHealthConfigController implements Controller {
             operationId = "getConfigHealth",
             tags = {"Admin"},
             responses = {
-                    @ApiResponse(code = 200, description = "Configuration health status", body = @ApiSchema(implementation = HealthResponse.class))
+                    @ApiResponse(code = 200, description = "Configuration health status", body = @ApiSchema(implementation = HealthResponse.class)),
+                    @ApiResponse(code = 403)
             },
-            responseProfile = ResponseProfile.ADMIN_READ_ONLY,
             extensions = {
                     @ApiExtension(name = "x-preview", value = "true")
             }

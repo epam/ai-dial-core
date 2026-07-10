@@ -14,7 +14,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.extraction.ApplicationDeploymentExtractor;
@@ -85,9 +84,12 @@ public class ApplicationController {
                             description = OpenApiDescriptions.APPLICATION_NAME)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ApplicationData.class))
-            },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ApplicationData.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> getApplication(String applicationId) {
         taskExecutor.submit(() -> {
@@ -118,9 +120,12 @@ public class ApplicationController {
             operationId = "getApplications",
             tags = {"Deployment listing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ListData.class, typeArguments = {ApplicationData.class}))
-            },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ListData.class, typeArguments = {ApplicationData.class})),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> getApplications() {
         log.debug("Start applications listing");
@@ -153,9 +158,12 @@ public class ApplicationController {
             requestBody = @ApiSchema(implementation = ResourceLink.class),
             tags = {"Applications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> deployApplication() {
         context.getRequest()
@@ -179,9 +187,12 @@ public class ApplicationController {
             requestBody = @ApiSchema(implementation = ResourceLink.class),
             tags = {"Applications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> undeployApplication() {
         context.getRequest()
@@ -205,9 +216,12 @@ public class ApplicationController {
             requestBody = @ApiSchema(implementation = ResourceLink.class),
             tags = {"Applications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> redeployApplication() {
         context.getRequest()
@@ -231,9 +245,12 @@ public class ApplicationController {
             requestBody = @ApiSchema(implementation = ResourceLink.class),
             tags = {"Applications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.Logs.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.Logs.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> getApplicationLogs() {
         context.getRequest()

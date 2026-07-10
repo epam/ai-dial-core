@@ -6,7 +6,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.AccessService;
@@ -53,9 +52,12 @@ public class FileMetadataController extends AccessControlBaseController {
                     @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.QUERY_PERMISSIONS, schema = Boolean.class)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
-            },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         boolean recursive = Boolean.parseBoolean(context.getRequest().getParam("recursive", "false"));

@@ -10,7 +10,6 @@ import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ResponseMapping;
@@ -71,9 +70,12 @@ public class ResponseItemController implements Controller {
                     },
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse")),
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse"), contentTypes = {"text/event-stream"})
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse"), contentTypes = {"text/event-stream"}),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 503)
                     },
-                    responseProfile = ResponseProfile.RESPONSE_ITEM_PROXY,
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }
@@ -88,9 +90,12 @@ public class ResponseItemController implements Controller {
                                     description = "The ID of the response to cancel")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse"))
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse")),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 503)
                     },
-                    responseProfile = ResponseProfile.RESPONSE_ITEM_PROXY,
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }
@@ -105,9 +110,12 @@ public class ResponseItemController implements Controller {
                                     description = "The ID of the response to delete")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse"))
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse")),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 503)
                     },
-                    responseProfile = ResponseProfile.RESPONSE_ITEM_PROXY,
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }

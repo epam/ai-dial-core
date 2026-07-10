@@ -7,7 +7,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.jsonrpc.domain.ErrorMessage;
@@ -76,9 +75,11 @@ public class ClientChannelController {
                     @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = String.class), contentTypes = {"text/event-stream"},
                             headers = {
                                     @ApiHeader(name = Proxy.HEADER_CLIENT_CHANNEL_ID, description = "Channel ID for reconnection", required = true)
-                            })
-            },
-            responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST
+                            }),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> subscribe() {
         HttpServerResponse response = context.getResponse();
@@ -121,9 +122,11 @@ public class ClientChannelController {
                             description = OpenApiDescriptions.CLIENT_CHANNEL_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
-            },
-            responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> report() {
         String channelId = context.getRequest().getHeader(Proxy.HEADER_CLIENT_CHANNEL_ID);
@@ -155,9 +158,12 @@ public class ClientChannelController {
                             description = OpenApiDescriptions.CLIENT_CHANNEL_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
-            },
-            responseProfile = ResponseProfile.LIMIT_WITH_NOT_FOUND
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> unsubscribe() {
         String channelId = context.getRequest().getHeader(Proxy.HEADER_CLIENT_CHANNEL_ID);
@@ -192,9 +198,11 @@ public class ClientChannelController {
                             description = OpenApiDescriptions.CLIENT_CHANNEL_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", contentTypes = "text/event-stream", body = @ApiSchema(implementation = String.class))
-            },
-            responseProfile = ResponseProfile.OPS_WITH_BAD_REQUEST
+                    @ApiResponse(code = 200, description = "Success", contentTypes = "text/event-stream", body = @ApiSchema(implementation = String.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> interact() {
         HttpServerResponse response = context.getResponse();

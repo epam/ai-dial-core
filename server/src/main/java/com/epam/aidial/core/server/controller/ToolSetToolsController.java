@@ -16,7 +16,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -118,9 +117,14 @@ public class ToolSetToolsController implements Controller {
                             description = OpenApiDescriptions.TOOLSET_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ToolSetToolsResponse"))
-            },
-            responseProfile = ResponseProfile.TOOLSET_TOOLS)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ToolSetToolsResponse")),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500),
+                    @ApiResponse(code = 502)
+            })
     @ApiOperation(
             method = "GET",
             path = "/v1/toolset/{toolset_name}/allowed-tools",
@@ -131,9 +135,14 @@ public class ToolSetToolsController implements Controller {
                             description = OpenApiDescriptions.TOOLSET_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "AllowedToolsResponse"))
-            },
-            responseProfile = ResponseProfile.TOOLSET_TOOLS)
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "AllowedToolsResponse")),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500),
+                    @ApiResponse(code = 502)
+            })
     public Future<?> handle() {
         return taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);

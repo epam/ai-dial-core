@@ -9,7 +9,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ToolSetData;
@@ -55,9 +54,12 @@ public class ToolSetController {
                             description = OpenApiDescriptions.TOOLSET_NAME)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ToolSetData.class))
-            },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ToolSetData.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> getToolSet(String toolSetId) {
         taskExecutor.submit(() -> {
@@ -80,9 +82,12 @@ public class ToolSetController {
             operationId = "getToolSets",
             tags = {"Deployment listing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ListData.class, typeArguments = {ToolSetData.class}))
-            },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ListData.class, typeArguments = {ToolSetData.class})),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> getToolSets() {
         Config config = context.getConfig();

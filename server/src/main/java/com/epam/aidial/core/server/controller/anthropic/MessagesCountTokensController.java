@@ -8,9 +8,9 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -45,10 +45,15 @@ public class MessagesCountTokensController extends MessagesBaseController {
                                     body = @ApiSchema(schemaRef = "ProxyResponse"),
                                     headers = {
                                             @ApiHeader(name = Proxy.HEADER_UPSTREAM_ATTEMPTS, description = "Number of upstream attempts performed before returning the response")
-                                    }
-                                 )
-                    },
-                    responseProfile = ResponseProfile.RESPONSES_API
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 415),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
+                            @ApiResponse(code = 503)
+                    }
             )
     })
     @Override

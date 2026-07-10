@@ -4,7 +4,6 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.CopySharedAccessRequest;
@@ -62,9 +61,11 @@ public class ShareController {
             requestBody = @ApiSchema(implementation = ShareResourcesRequest.class),
             tags = {"Sharing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = InvitationLink.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = InvitationLink.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
     )
     @ApiOperation(
             method = "POST",
@@ -73,9 +74,11 @@ public class ShareController {
             requestBody = @ApiSchema(implementation = ListSharedResourcesRequest.class),
             tags = {"Sharing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = SharedResourcesResponse.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = SharedResourcesResponse.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
     )
     @ApiOperation(
             method = "POST",
@@ -84,9 +87,11 @@ public class ShareController {
             requestBody = @ApiSchema(implementation = RevokeResourcesRequest.class),
             tags = {"Sharing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
-            },
-                    responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
     )
     @ApiOperation(
             method = "POST",
@@ -95,9 +100,11 @@ public class ShareController {
             requestBody = @ApiSchema(implementation = ResourceLinkCollection.class),
             tags = {"Sharing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
     )
     @ApiOperation(
             method = "POST",
@@ -106,9 +113,11 @@ public class ShareController {
             requestBody = @ApiSchema(implementation = CopySharedAccessRequest.class),
             tags = {"Sharing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> handle(Operation operation) {
         if (context.getApiKeyData().getPerRequestKey() != null) {

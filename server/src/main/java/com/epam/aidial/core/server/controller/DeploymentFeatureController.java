@@ -10,7 +10,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -66,9 +65,13 @@ public class DeploymentFeatureController {
                             description = OpenApiDescriptions.DEPLOYMENT_NAME)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse"))
-            },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse")),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 422),
+                    @ApiResponse(code = 500),
+                    @ApiResponse(code = 502)
+            }
     )
     @ApiOperation(
             method = "POST",
@@ -81,9 +84,13 @@ public class DeploymentFeatureController {
             },
             requestBody = @ApiSchema(schemaRef = "TokenizeRequest"),
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "TokenizeResponse"))
-            },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "TokenizeResponse")),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 422),
+                    @ApiResponse(code = 500),
+                    @ApiResponse(code = 502)
+            }
     )
     @ApiOperation(
             method = "POST",
@@ -96,9 +103,13 @@ public class DeploymentFeatureController {
             },
             requestBody = @ApiSchema(schemaRef = "TruncatePromptRequest"),
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "TruncatePromptResponse"))
-            },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "TruncatePromptResponse")),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 422),
+                    @ApiResponse(code = 500),
+                    @ApiResponse(code = 502)
+            }
     )
     public Future<?> handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
         // make sure request.body() called before request.resume()

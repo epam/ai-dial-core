@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.DeleteNotificationRequest;
@@ -35,9 +34,11 @@ public class NotificationController {
             operationId = "getNotifications",
             tags = {"Notifications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Notifications.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Notifications.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> listNotifications() {
         taskExecutor.submit(() -> service.listNotification(context))
@@ -54,9 +55,11 @@ public class NotificationController {
             requestBody = @ApiSchema(implementation = DeleteNotificationRequest.class),
             tags = {"Notifications"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> deleteNotification() {
         context.getRequest()

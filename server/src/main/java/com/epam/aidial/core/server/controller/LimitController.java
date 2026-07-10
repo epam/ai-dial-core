@@ -6,7 +6,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.LimitStats;
@@ -34,9 +33,11 @@ public class LimitController {
             operationId = "getDeploymentLimits",
             tags = {"Limits"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = LimitStats.class))
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = LimitStats.class)),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
             },
-            responseProfile = ResponseProfile.LIMIT_WITH_NOT_FOUND,
             parameters = {
                     @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
                             description = OpenApiDescriptions.DEPLOYMENT_NAME)

@@ -1,5 +1,10 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.AccessService;
@@ -29,6 +34,27 @@ public class ToolSetRepairController implements Controller {
         this.resource = resource;
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/toolset/{bucket}/{path}/repair",
+            operationId = "repairToolSet",
+            tags = {"Toolsets"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true,
+                            description = "The bucket identifier where the toolset is stored"),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
+                            description = "The path to the toolset within the bucket")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "ToolSet successfully repaired: new client_id issued, all credentials cleared",
+                            body = @ApiSchema(implementation = RepairResponse.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 424),
+                    @ApiResponse(code = 500)
+            }
+    )
     @Override
     public Future<?> handle() {
         return taskExecutor.submit(() -> {
@@ -44,7 +70,7 @@ public class ToolSetRepairController implements Controller {
         .onFailure(this::respondError);
     }
 
-    record RepairResponse(String result, String message) {}
+    public record RepairResponse(String result, String message) {}
 
     private void respondError(Throwable error) {
         HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;

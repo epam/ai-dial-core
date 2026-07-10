@@ -6,7 +6,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteRequest;
 import com.epam.aidial.core.server.data.codeinterpreter.CodeInterpreterExecuteResponse;
@@ -63,9 +62,12 @@ public class CodeInterpreterController {
             requestBody = @ApiSchema(implementation = CodeInterpreterSessionId.class),
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterSession.class))
-            },
-            responseProfile = ResponseProfile.CODE_INTERPRETER
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterSession.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     Future<?> openSession() {
         context.getRequest()
@@ -88,9 +90,12 @@ public class CodeInterpreterController {
             requestBody = @ApiSchema(implementation = CodeInterpreterSessionId.class),
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterSession.class))
-            },
-            responseProfile = ResponseProfile.CODE_INTERPRETER
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterSession.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     Future<?> closeSession() {
         context.getRequest()
@@ -112,9 +117,12 @@ public class CodeInterpreterController {
             requestBody = @ApiSchema(implementation = CodeInterpreterSessionId.class),
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterSession.class))
-            },
-            responseProfile = ResponseProfile.CODE_INTERPRETER
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterSession.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     Future<?> getSession() {
         context.getRequest()
@@ -136,9 +144,12 @@ public class CodeInterpreterController {
             requestBody = @ApiSchema(implementation = CodeInterpreterExecuteRequest.class),
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterExecuteResponse.class))
-            },
-            responseProfile = ResponseProfile.CODE_INTERPRETER
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterExecuteResponse.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     Future<?> executeCode() {
         context.getRequest()
@@ -170,9 +181,12 @@ public class CodeInterpreterController {
                     )
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterFile.class))
-            },
-            responseProfile = ResponseProfile.CODE_INTERPRETER
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterFile.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     Future<?> uploadFile() {
         context.getRequest()
@@ -214,8 +228,11 @@ public class CodeInterpreterController {
             responses = {
                     @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
                         body = @ApiSchema(implementation = byte[].class), contentTypes = {"application/octet-stream"}),
-            },
-            responseProfile = ResponseProfile.CODE_INTERPRETER
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     Future<?> downloadFile() {
         context.getRequest().body()
@@ -250,9 +267,12 @@ public class CodeInterpreterController {
             requestBody = @ApiSchema(implementation = CodeInterpreterSessionId.class),
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterFiles.class))
-            },
-            responseProfile = ResponseProfile.CODE_INTERPRETER
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterFiles.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     Future<?> listFiles() {
         context.getRequest()
@@ -274,9 +294,12 @@ public class CodeInterpreterController {
             requestBody = @ApiSchema(implementation = CodeInterpreterInputFile.class),
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterFile.class))
-            },
-            responseProfile = ResponseProfile.CODE_INTERPRETER
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterFile.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     Future<?> transferInputFile() {
         context.getRequest()
@@ -298,9 +321,12 @@ public class CodeInterpreterController {
             requestBody = @ApiSchema(implementation = CodeInterpreterOutputFile.class),
             tags = {"Code interpreter"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = FileMetadata.class))
-            },
-            responseProfile = ResponseProfile.CODE_INTERPRETER
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = FileMetadata.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     Future<?> transferOutputFile() {
         context.getRequest()

@@ -13,7 +13,6 @@ import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.data.EntityMetadata;
@@ -77,9 +76,12 @@ public class FileConfigController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "List of file-sourced models",
                                     body = @ApiSchema(implementation = ItemsResponse.class,
-                                            typeArguments = {NamedEntity.class}))
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }
@@ -93,9 +95,12 @@ public class FileConfigController implements Controller {
                             @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Model name")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Model.class, EntityMetadata.class}))
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Model.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }
@@ -108,9 +113,12 @@ public class FileConfigController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "List of file-sourced interceptors",
                                     body = @ApiSchema(implementation = ItemsResponse.class,
-                                            typeArguments = {NamedEntity.class}))
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }
@@ -124,9 +132,12 @@ public class FileConfigController implements Controller {
                             @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Interceptor name")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Interceptor.class, EntityMetadata.class}))
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Interceptor.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }
@@ -139,9 +150,12 @@ public class FileConfigController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "List of file-sourced roles",
                                     body = @ApiSchema(implementation = ItemsResponse.class,
-                                            typeArguments = {NamedEntity.class}))
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }
@@ -155,9 +169,12 @@ public class FileConfigController implements Controller {
                             @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Role name")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Role.class, EntityMetadata.class}))
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Role.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }
@@ -170,9 +187,12 @@ public class FileConfigController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "List of file-sourced routes",
                                     body = @ApiSchema(implementation = ItemsResponse.class,
-                                            typeArguments = {NamedEntity.class}))
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }
@@ -186,9 +206,12 @@ public class FileConfigController implements Controller {
                             @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Route name")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Route.class, EntityMetadata.class}))
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Route.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }
@@ -201,9 +224,12 @@ public class FileConfigController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "List of file-sourced application type schemas",
                                     body = @ApiSchema(implementation = ItemsResponse.class,
-                                            typeArguments = {NamedEntity.class}))
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }
@@ -217,9 +243,12 @@ public class FileConfigController implements Controller {
                             @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Schema name")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"ProxyResponse"}, allOf = {EntityMetadata.class}))
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"ProxyResponse"}, allOf = {EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }
@@ -232,9 +261,12 @@ public class FileConfigController implements Controller {
                     responses = {
                             @ApiResponse(code = 200, description = "List of file-sourced settings (singleton)",
                                     body = @ApiSchema(implementation = ItemsResponse.class,
-                                            typeArguments = {NamedEntity.class}))
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }
@@ -248,9 +280,12 @@ public class FileConfigController implements Controller {
                             @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Must be 'global'")
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {GlobalSettings.class, EntityMetadata.class}))
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {GlobalSettings.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
                     },
-                    responseProfile = ResponseProfile.ADMIN_READ_ONLY,
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
                     }

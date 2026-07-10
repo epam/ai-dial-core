@@ -4,7 +4,6 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
@@ -25,9 +24,10 @@ public class ConfigController implements Controller {
             operationId = "reloadConfig",
             tags = {"Config"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Config.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Config.class)),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
     )
     @Override
     public Future<?> handle() throws Exception {

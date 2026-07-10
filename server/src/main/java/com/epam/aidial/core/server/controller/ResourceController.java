@@ -15,7 +15,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
@@ -110,9 +109,15 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved application", required = true)
-                                    })
-                    },
-                    responseProfile = ResponseProfile.CONDITIONAL_WRITE_EXTENDED
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 413),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 502),
+                            @ApiResponse(code = 504)
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -125,12 +130,17 @@ public class ResourceController extends AccessControlBaseController {
                                     description = OpenApiDescriptions.APPLICATION_PATH)
                     },
                 responses = {
-                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class),
-                            headers = {
-                                    @ApiHeader(name = "ETag", description = "Entity tag for the application", required = true)
-                            })
-                },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the application", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 502),
+                            @ApiResponse(code = 504)
+                    }
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -143,10 +153,14 @@ public class ResourceController extends AccessControlBaseController {
                                     description = OpenApiDescriptions.APPLICATION_PATH),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_APPLICATION)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success")
-                },
-                responseProfile = ResponseProfile.CONDITIONAL_WRITE
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -161,10 +175,13 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
                             @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_PERMISSIONS_APPLICATIONS, schema = Boolean.class)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
-                },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500)
+                    }
             ),
             // Conversations
             @ApiOperation(
@@ -180,13 +197,17 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_CONVERSATION),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_CONVERSATION)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
-                            headers = {
-                                    @ApiHeader(name = "ETag", description = "Entity tag for the saved conversation", required = true)
-                            })
-                },
-                responseProfile = ResponseProfile.CONDITIONAL_WRITE
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved conversation", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 413),
+                            @ApiResponse(code = 500)
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -198,13 +219,18 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "conversation_path", in = ParameterIn.PATH, required = true,
                                     description = OpenApiDescriptions.CONVERSATION_PATH)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Conversation.class),
-                            headers = {
-                                    @ApiHeader(name = "ETag", description = "Entity tag for the conversation", required = true)
-                            })
-                },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Conversation.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the conversation", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 502),
+                            @ApiResponse(code = 504)
+                    }
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -217,10 +243,14 @@ public class ResourceController extends AccessControlBaseController {
                                     description = OpenApiDescriptions.CONVERSATION_PATH),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_CONVERSATION)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success")
-                },
-                responseProfile = ResponseProfile.CONDITIONAL_WRITE
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -236,10 +266,13 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_PERMISSIONS_CONVERSATIONS,
                                 schema = Boolean.class)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
-                },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500)
+                    }
             ),
             // Prompts
             @ApiOperation(
@@ -254,13 +287,17 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_PROMPT),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_PROMPT)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
-                            headers = {
-                                    @ApiHeader(name = "ETag", description = "Entity tag for the saved prompt", required = true)
-                            })
-                },
-                responseProfile = ResponseProfile.CONDITIONAL_WRITE
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved prompt", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 413),
+                            @ApiResponse(code = 500)
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -271,13 +308,18 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Prompt.class),
-                            headers = {
-                                    @ApiHeader(name = "ETag", description = "Entity tag for the prompt", required = true)
-                            })
-                },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Prompt.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the prompt", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 502),
+                            @ApiResponse(code = 504)
+                    }
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -289,10 +331,14 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_PROMPT)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success")
-                },
-                responseProfile = ResponseProfile.CONDITIONAL_WRITE
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -307,10 +353,13 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
                             @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_PERMISSIONS_PROMPTS, schema = Boolean.class)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
-                },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500)
+                    }
             ),
             // Toolsets
             @ApiOperation(
@@ -325,13 +374,17 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_TOOLSET),
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_TOOLSET)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
-                            headers = {
-                                    @ApiHeader(name = "ETag", description = "Entity tag for the saved toolset", required = true)
-                            })
-                },
-                responseProfile = ResponseProfile.CONDITIONAL_WRITE
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved toolset", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 413),
+                            @ApiResponse(code = 500)
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -342,13 +395,18 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ToolSet.class),
-                            headers = {
-                                    @ApiHeader(name = "ETag", description = "Entity tag for the toolset", required = true)
-                            })
-                },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ToolSet.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the toolset", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 502),
+                            @ApiResponse(code = 504)
+                    }
             ),
             @ApiOperation(
                     method = "DELETE",
@@ -360,10 +418,14 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_TOOLSET)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success")
-                },
-                responseProfile = ResponseProfile.CONDITIONAL_WRITE
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    }
             ),
             @ApiOperation(
                     method = "GET",
@@ -378,10 +440,13 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
                             @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_PERMISSIONS_TOOLSETS, schema = Boolean.class)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
-                },
-                responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500)
+                    }
             ),
             // Files (delete only - upload/download handled by UploadFileController/DownloadFileController)
             @ApiOperation(
@@ -394,10 +459,14 @@ public class ResourceController extends AccessControlBaseController {
                             @ApiParameter(name = "file_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.FILE_PATH),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_FILE)
                     },
-                responses = {
-                    @ApiResponse(code = 200, description = "Success")
-                },
-                responseProfile = ResponseProfile.CONDITIONAL_WRITE
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    }
             )
     })
     protected Future<?> handle(ResourceDescriptor descriptor, boolean hasWriteAccess) {

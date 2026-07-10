@@ -13,7 +13,6 @@ import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.EntityChange;
@@ -128,9 +127,11 @@ public class AdminApplyController {
             requestBody = @ApiSchema(implementation = AdminApplyRequest.class),
             responses = {
                     @ApiResponse(code = 200, description = "Application successful", body = @ApiSchema(implementation = AdminApplyResponse.class)),
-                    @ApiResponse(code = 422, description = "Precheck failed", body = @ApiSchema(implementation = AdminApplyResponse.class))
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 422, description = "Precheck failed", body = @ApiSchema(implementation = AdminApplyResponse.class)),
+                    @ApiResponse(code = 500)
             },
-            responseProfile = ResponseProfile.ADMIN_BATCH,
             extensions = {
                     @ApiExtension(name = "x-preview", value = "true")
             }

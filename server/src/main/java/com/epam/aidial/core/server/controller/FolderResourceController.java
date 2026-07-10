@@ -7,7 +7,6 @@ import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
@@ -114,9 +113,11 @@ public class FolderResourceController extends AccessControlBaseController {
                                     @ApiHeader(name = "ETag", description = "The ETag of the uploaded resource version")
                             }),
                     @ApiResponse(code = 400, description = "Bad request - invalid content type or malformed request"),
-                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch")
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch"),
+                    @ApiResponse(code = 500)
             },
-            responseProfile = ResponseProfile.CONDITIONAL_AUTHORIZED_WRITE,
             extensions = {
                     @ApiExtension(name = "x-preview", value = "true")
             }
@@ -175,9 +176,11 @@ public class FolderResourceController extends AccessControlBaseController {
                                     @ApiHeader(name = "ETag", description = "The ETag of the resource version"),
                                     @ApiHeader(name = "Content-Length", description = "Size of the ZIP archive in bytes", schema = Integer.class)
                             }),
-                    @ApiResponse(code = 404, description = "Folder resource not found")
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404, description = "Folder resource not found"),
+                    @ApiResponse(code = 500)
             },
-            responseProfile = ResponseProfile.CONFIG_RESOURCE_FULL,
             extensions = {
                     @ApiExtension(name = "x-preview", value = "true")
             }
@@ -211,10 +214,12 @@ public class FolderResourceController extends AccessControlBaseController {
             },
             responses = {
                     @ApiResponse(code = 200, description = "Folder resource deleted successfully"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
                     @ApiResponse(code = 404, description = "Folder resource not found"),
-                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch")
+                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch"),
+                    @ApiResponse(code = 500)
             },
-            responseProfile = ResponseProfile.CONDITIONAL_AUTHORIZED_WRITE,
             extensions = {
                     @ApiExtension(name = "x-preview", value = "true")
             }
@@ -253,9 +258,11 @@ public class FolderResourceController extends AccessControlBaseController {
                                     @ApiHeader(name = "ETag", description = "The new ETag of the skill after file upload")
                             }),
                     @ApiResponse(code = 400, description = "Bad request - invalid content type or malformed request"),
-                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch")
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch"),
+                    @ApiResponse(code = 500)
             },
-            responseProfile = ResponseProfile.CONDITIONAL_AUTHORIZED_WRITE,
             extensions = {
                     @ApiExtension(name = "x-preview", value = "true")
             }
@@ -326,9 +333,10 @@ public class FolderResourceController extends AccessControlBaseController {
                                     @ApiHeader(name = "Content-Type", description = "MIME type of the file"),
                                     @ApiHeader(name = "Content-Length", description = "Size of the file in bytes", schema = Long.class)
                             }),
-                    @ApiResponse(code = 404, description = "File or skill not found")
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404, description = "File or skill not found"),
+                    @ApiResponse(code = 500)
             },
-            responseProfile = ResponseProfile.AUTHORIZED_READ,
             extensions = {
                     @ApiExtension(name = "x-preview", value = "true")
             }
@@ -366,10 +374,12 @@ public class FolderResourceController extends AccessControlBaseController {
                             headers = {
                                     @ApiHeader(name = "ETag", description = "The new ETag of the skill after file deletion")
                             }),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
                     @ApiResponse(code = 404, description = "File or skill not found"),
-                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch")
+                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch"),
+                    @ApiResponse(code = 500)
             },
-            responseProfile = ResponseProfile.CONDITIONAL_AUTHORIZED_WRITE,
             extensions = {
                     @ApiExtension(name = "x-preview", value = "true")
             }

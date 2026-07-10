@@ -6,7 +6,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.consent.AcceptConsentRequest;
@@ -36,9 +35,11 @@ public class ConsentController {
                             description = OpenApiDescriptions.DEPLOYMENT_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ReviewConsentResponse.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ReviewConsentResponse.class)),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> requestConsent(String deploymentId) {
         proxy.getTaskExecutor().submit(() -> proxy.getConsentService().buildConsent(context, deploymentId)).onSuccess(consent -> {
@@ -58,9 +59,12 @@ public class ConsentController {
                             description = OpenApiDescriptions.DEPLOYMENT_ID)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success")
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> acceptConsent(String deploymentId) {
         context.getRequest()

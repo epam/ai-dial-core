@@ -7,7 +7,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
@@ -79,12 +78,15 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
             },
             responses = {
+                @ApiResponse(code = 400),
+                @ApiResponse(code = 403),
+                @ApiResponse(code = 404),
                 @ApiResponse(code = 405, description = "Metadata listing is not supported for Global Settings",
                     headers = {
                         @ApiHeader(name = "Allow", description = "Supported HTTP methods", schema = String.class)
-                    })
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                    }),
+                @ApiResponse(code = 500)
+            }
     )
     @ApiOperation(
             method = "GET",
@@ -99,9 +101,12 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
             },
             responses = {
-                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                @ApiResponse(code = 400),
+                @ApiResponse(code = 403),
+                @ApiResponse(code = 404),
+                @ApiResponse(code = 500)
+            }
             )
     @ApiOperation(
             method = "GET",
@@ -116,9 +121,12 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
             },
             responses = {
-                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                @ApiResponse(code = 400),
+                @ApiResponse(code = 403),
+                @ApiResponse(code = 404),
+                @ApiResponse(code = 500)
+            }
     )
     @ApiOperation(
             method = "GET",
@@ -133,9 +141,12 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
             },
             responses = {
-                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                @ApiResponse(code = 400),
+                @ApiResponse(code = 403),
+                @ApiResponse(code = 404),
+                @ApiResponse(code = 500)
+            }
             )
     @ApiOperation(
             method = "GET",
@@ -150,9 +161,12 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
             },
             responses = {
-                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                @ApiResponse(code = 400),
+                @ApiResponse(code = 403),
+                @ApiResponse(code = 404),
+                @ApiResponse(code = 500)
+            }
         )
     @ApiOperation(
             method = "GET",
@@ -167,9 +181,12 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
             },
             responses = {
-                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                @ApiResponse(code = 400),
+                @ApiResponse(code = 403),
+                @ApiResponse(code = 404),
+                @ApiResponse(code = 500)
+            }
         )
     @ApiOperation(
             method = "GET",
@@ -184,9 +201,12 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
             },
             responses = {
-                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class))
-            },
-            responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                @ApiResponse(code = 400),
+                @ApiResponse(code = 403),
+                @ApiResponse(code = 404),
+                @ApiResponse(code = 500)
+            }
         )
     @Override
     public Future<?> handle() throws Exception {

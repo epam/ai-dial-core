@@ -14,7 +14,6 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.extraction.ApplicationDeploymentExtractor;
@@ -78,9 +77,10 @@ public class DeploymentController {
                             description = OpenApiDescriptions.DEPLOYMENT_NAME)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = DeploymentData.class))
-            },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = DeploymentData.class)),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404)
+            }
     )
     public Future<?> getDeployment(String deploymentId) {
         Config config = context.getConfig();
@@ -105,9 +105,9 @@ public class DeploymentController {
             operationId = "getDeployments",
             tags = {"Deployment listing"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ListData.class, typeArguments = {DeploymentData.class}))
-            },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ListData.class, typeArguments = {DeploymentData.class})),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> getDeployments() {
         getModels(List.of()).onSuccess(deployments -> {
@@ -133,9 +133,10 @@ public class DeploymentController {
                             allowableValues = {"chat", "embedding", "mcp", "custom_ui", "all"})
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = List.class, typeArguments = {DeploymentData.class}))
-            },
-            responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = List.class, typeArguments = {DeploymentData.class})),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 500)
+            }
     )
     public Future<?> listDeployments() {
         String[] interfaces = getDeploymentInterfaces();
