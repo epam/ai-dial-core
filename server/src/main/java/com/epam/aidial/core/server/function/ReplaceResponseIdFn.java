@@ -72,7 +72,7 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
                     if (!context.isBackgroundJob()) {
                         return Future.succeededFuture();
                     }
-                    return proxy.getBackgroundJobService().saveJob(context);
+                    return proxy.getBackgroundJobScheduler().saveJob(context);
                 })
                 .map(tree);
     }

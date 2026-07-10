@@ -136,7 +136,7 @@ public class ResponseItemController implements Controller {
         if (operation != Operation.DELETE) {
             return Future.succeededFuture(mapping);
         }
-        return proxy.getBackgroundJobService().isJobActive(context.getDialResponseId())
+        return proxy.getBackgroundJobScheduler().isJobActive(context.getDialResponseId())
                 .compose(active -> active
                         ? Future.failedFuture(new HttpException(HttpStatus.CONFLICT, "Cannot delete response while background job is in progress"))
                         : Future.succeededFuture(mapping));
@@ -200,7 +200,7 @@ public class ResponseItemController implements Controller {
                                 }
                                 if (operation == Operation.GET) {
                                     ResponsesApiClient.TerminalResult terminalResult = tryParseTerminalResult(rewritten);
-                                    proxy.getBackgroundJobService()
+                                    proxy.getBackgroundJobScheduler()
                                             .tryCompleteOnGet(context.getDialResponseId(), mapping, terminalResult)
                                             .onFailure(e -> log.warn("Failed to complete background job on GET {}", context.getDialResponseId(), e));
                                 }

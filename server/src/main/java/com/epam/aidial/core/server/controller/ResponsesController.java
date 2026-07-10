@@ -191,7 +191,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         ProxyUtil.processChain(request, enhancementFunctions);
         // Enhancement functions update the api key, and it should be saved after that
         if (request.isBackground()) {
-            Duration jobTtl = Duration.ofMillis(proxy.getBackgroundJobService().getJobTtlMs());
+            Duration jobTtl = Duration.ofMillis(proxy.getBackgroundJobScheduler().getJobTtlMs());
             proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData, jobTtl);
         } else {
             proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
@@ -303,7 +303,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                     response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
 
                     if (context.isBackgroundJob() && context.getDialResponseId() != null) {
-                        return proxy.getBackgroundJobService().saveJob(context)
+                        return proxy.getBackgroundJobScheduler().saveJob(context)
                                 .onComplete(result -> {
                                     if (result.failed()) {
                                         log.warn("Failed to save background job record", result.cause());
@@ -379,7 +379,7 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         Future<Void> completionFuture;
         if (context.isBackgroundJob() && context.getDialResponseId() != null) {
-            completionFuture = proxy.getBackgroundJobService().finishStreamingJob(context.getDialResponseId())
+            completionFuture = proxy.getBackgroundJobScheduler().finishStreamingJob(context.getDialResponseId())
                     .compose(deleted -> deleted ? collectTokenUsage(responseBody) : Future.succeededFuture());
         } else {
             completionFuture = collectTokenUsage(responseBody);

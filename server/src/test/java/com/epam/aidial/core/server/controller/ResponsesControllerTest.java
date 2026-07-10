@@ -669,7 +669,7 @@ public class ResponsesControllerTest {
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(context.getUserId()).thenReturn("test-user");
         when(proxy.getResponseMappingService().saveMapping(any(), any())).thenReturn(expectedDialId);
-        when(proxy.getBackgroundJobService().finishStreamingJob(anyString())).thenReturn(Future.succeededFuture(Boolean.TRUE));
+        when(proxy.getBackgroundJobScheduler().finishStreamingJob(anyString())).thenReturn(Future.succeededFuture(Boolean.TRUE));
 
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getTokenStatsTracker().getTokenStats(context))
@@ -805,7 +805,7 @@ public class ResponsesControllerTest {
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getResponseMappingService().saveMapping(any(), any())).thenReturn(expectedDialId);
         when(context.getUserId()).thenReturn("test-user");
-        when(proxy.getBackgroundJobService().saveJob(any())).thenAnswer(invocation -> {
+        when(proxy.getBackgroundJobScheduler().saveJob(any())).thenAnswer(invocation -> {
             textContext.completeNow();
             return Future.<Void>succeededFuture();
         });
