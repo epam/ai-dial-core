@@ -188,13 +188,13 @@ public class GfLogStoreTest {
     @SneakyThrows
     @Test
     public void testAppendHeadersRegexBlacklistDropsFamily() {
-        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
-        headers.add("X-Stainless-Lang", "python");
-        headers.add("X-Stainless-OS", "Linux");
-        headers.add("traceparent", "00-abc-def-01");
-        headers.add("User-Agent", "AsyncAzureOpenAI/Python");
+        Map<String, List<String>> headers = new java.util.LinkedHashMap<>();
+        headers.put("X-Stainless-Lang", List.of("python"));
+        headers.put("X-Stainless-OS", List.of("Linux"));
+        headers.put("traceparent", List.of("00-abc-def-01"));
+        headers.put("User-Agent", List.of("AsyncAzureOpenAI/Python"));
 
-        ProxyContext context = mockRequest(headers);
+        AnalyticsLogContext context = mockHeaders(headers);
 
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
@@ -211,13 +211,13 @@ public class GfLogStoreTest {
     @SneakyThrows
     @Test
     public void testAppendHeadersAllowlistCollectsOnlyMatching() {
-        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
-        headers.add("traceparent", "00-abc-def-01");
-        headers.add("User-Agent", "AsyncAzureOpenAI/Python");
-        headers.add("X-Stainless-Lang", "python");
-        headers.add("Accept", "application/json");
+        Map<String, List<String>> headers = new java.util.LinkedHashMap<>();
+        headers.put("traceparent", List.of("00-abc-def-01"));
+        headers.put("User-Agent", List.of("AsyncAzureOpenAI/Python"));
+        headers.put("X-Stainless-Lang", List.of("python"));
+        headers.put("Accept", List.of("application/json"));
 
-        ProxyContext context = mockRequest(headers);
+        AnalyticsLogContext context = mockHeaders(headers);
 
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
@@ -234,11 +234,11 @@ public class GfLogStoreTest {
     @SneakyThrows
     @Test
     public void testAppendHeadersBlacklistWinsOverAllowlist() {
-        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
-        headers.add("Authorization", "Bearer secret");
-        headers.add("traceparent", "00-abc-def-01");
+        Map<String, List<String>> headers = new java.util.LinkedHashMap<>();
+        headers.put("Authorization", List.of("Bearer secret"));
+        headers.put("traceparent", List.of("00-abc-def-01"));
 
-        ProxyContext context = mockRequest(headers);
+        AnalyticsLogContext context = mockHeaders(headers);
 
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
@@ -251,11 +251,9 @@ public class GfLogStoreTest {
         assertEquals("00-abc-def-01", headerNode.get("traceparent").asText());
     }
 
-    private static ProxyContext mockRequest(MultiMap headers) {
-        HttpServerRequest request = mock(HttpServerRequest.class);
-        when(request.headers()).thenReturn(headers);
-        ProxyContext context = mock(ProxyContext.class);
-        when(context.getRequest()).thenReturn(request);
+    private static AnalyticsLogContext mockHeaders(Map<String, List<String>> headers) {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRequestHeaders()).thenReturn(headers);
         return context;
     }
 
