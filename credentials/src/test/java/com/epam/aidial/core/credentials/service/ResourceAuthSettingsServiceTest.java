@@ -325,6 +325,38 @@ class ResourceAuthSettingsServiceTest {
     }
 
     @Test
+    void testProcessResourceAuthSettings_DcrToolsetUpdate_WithClientIdButNoSecret_PreservesDynamicallyRegistered() {
+        // Frontend echoes back client_id (returned by GET) but no client_secret (never returned).
+        // dynamically_registered must NOT be reset to false — the toolset is still DCR.
+        ToolSet updatedToolSet = createOauthToolSet("dcr-client-id", null);
+        ToolSet existingToolSet = createOauthToolSet("dcr-client-id", "encrypted-client-secret");
+        existingToolSet.getAuthSettings().setDynamicallyRegistered(true);
+
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+
+        assertEquals(Boolean.TRUE, updatedToolSet.getAuthSettings().getDynamicallyRegistered());
+        verify(resourceRegistrationService, never()).register(any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_DcrToolsetConvertedToStatic_SetsDynamicallyRegisteredFalse() {
+        // Admin explicitly provides both client_id and client_secret → converting DCR to static.
+        // dynamically_registered must be set to false.
+        ToolSet updatedToolSet = createOauthToolSet("static-client-id", "static-client-secret");
+        ToolSet existingToolSet = createOauthToolSet("dcr-client-id", "encrypted-dcr-secret");
+        existingToolSet.getAuthSettings().setDynamicallyRegistered(true);
+
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+
+        assertEquals(Boolean.FALSE, updatedToolSet.getAuthSettings().getDynamicallyRegistered());
+        verify(resourceRegistrationService, never()).register(any(), any(), any(), anyBoolean());
+    }
+
+    @Test
     void testProcessResourceAuthSettings_OauthUpdate_TokenEndpointAuthMethodNull_PreservesExisting() {
         ToolSet updatedToolSet = createOauthToolSetWithTokenEndpointAuthMethod("clientId", "clientSecret", null);
         ToolSet existingToolSet = createOauthToolSetWithTokenEndpointAuthMethod("clientId", "clientSecret",
