@@ -284,7 +284,7 @@ public class ResponseItemControllerTest {
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
-        when(proxy.getBackgroundJobScheduler().isJobActive(anyString())).thenReturn(Future.succeededFuture(false));
+        when(proxy.getBackgroundJobService().isJobActive(anyString())).thenReturn(Future.succeededFuture(false));
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
@@ -324,7 +324,7 @@ public class ResponseItemControllerTest {
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
-        when(proxy.getBackgroundJobScheduler().isJobActive(anyString())).thenReturn(Future.succeededFuture(false));
+        when(proxy.getBackgroundJobService().isJobActive(anyString())).thenReturn(Future.succeededFuture(false));
         when(proxy.getDeploymentService().findDeployment(context, "test-deployment")).thenReturn(deployment);
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), eq("endpoint"))).thenReturn(upstreamRoute);
         when(upstreamRoute.next()).thenReturn(upstream);
@@ -358,7 +358,7 @@ public class ResponseItemControllerTest {
                 .build();
 
         when(proxy.getResponseMappingService().getMapping(anyString())).thenReturn(mapping);
-        when(proxy.getBackgroundJobScheduler().isJobActive(anyString())).thenReturn(Future.succeededFuture(true));
+        when(proxy.getBackgroundJobService().isJobActive(anyString())).thenReturn(Future.succeededFuture(true));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(context.getUserId()).thenReturn("test-user");
         when(context.getResponse()).thenReturn(response);

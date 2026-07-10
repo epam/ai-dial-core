@@ -36,7 +36,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith({MockitoExtension.class, VertxExtension.class})
-class BackgroundJobServiceTest {
+class BackgroundJobPollerTest {
 
     private static final String DEPLOYMENT_NAME = "test-model";
     private static final String UPSTREAM_KEY = "upstream-key";
@@ -65,9 +65,10 @@ class BackgroundJobServiceTest {
     @BeforeEach
     void setUp() {
         ResponsesApiClient responsesApiClient = new ResponsesApiClient(httpClient, new HttpClientOptions());
-        poller = new BackgroundJobService(null, null,
+        poller = new BackgroundJobService(null, null, null,
+                null, null, null,
                 configStore, null, null, null, upstreamRouteProvider, responsesApiClient,
-                new BackgroundJobScheduler.Settings(), encryptionService);
+                null, encryptionService, new BackgroundJobService.Settings());
     }
 
     @Test
@@ -75,7 +76,7 @@ class BackgroundJobServiceTest {
         setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
         setupDeploymentMocks();
 
-        poller.pollMapping(buildMapping())
+        poller.poll(buildMapping())
                 .onSuccess(usage -> ctx.verify(() -> {
                     assertNotNull(usage);
                     ctx.completeNow();
@@ -89,7 +90,7 @@ class BackgroundJobServiceTest {
         setupHttpMocks("{\"status\":\"in_progress\"}");
         setupDeploymentMocks();
 
-        poller.pollMapping(buildMapping())
+        poller.poll(buildMapping())
                 .onSuccess(usage -> ctx.verify(() -> {
                     assertNull(usage);
                     ctx.completeNow();
@@ -103,7 +104,7 @@ class BackgroundJobServiceTest {
         setupHttpMocks("{\"status\":\"queued\"}");
         setupDeploymentMocks();
 
-        poller.pollMapping(buildMapping())
+        poller.poll(buildMapping())
                 .onSuccess(usage -> ctx.verify(() -> {
                     assertNull(usage);
                     ctx.completeNow();
@@ -118,7 +119,7 @@ class BackgroundJobServiceTest {
         when(configStore.get()).thenReturn(config);
         when(config.selectDeployment(anyString())).thenReturn(null);
 
-        poller.pollMapping(buildMapping())
+        poller.poll(buildMapping())
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("not found"));
@@ -135,7 +136,7 @@ class BackgroundJobServiceTest {
         when(httpRequest.send()).thenReturn(Future.succeededFuture(httpResponse));
         when(httpResponse.statusCode()).thenReturn(500);
 
-        poller.pollMapping(buildMapping())
+        poller.poll(buildMapping())
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("500"));
@@ -149,7 +150,7 @@ class BackgroundJobServiceTest {
         setupDeploymentMocks();
         setupHttpMocks("not valid json {{{}");
 
-        poller.pollMapping(buildMapping())
+        poller.poll(buildMapping())
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.completeNow());
         await(ctx);
@@ -160,7 +161,7 @@ class BackgroundJobServiceTest {
         setupDeploymentMocks();
         setupHttpMocks("[1, 2, 3]");
 
-        poller.pollMapping(buildMapping())
+        poller.poll(buildMapping())
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("not a JSON object"));
@@ -179,7 +180,7 @@ class BackgroundJobServiceTest {
         when(upstreamRouteProvider.get(any(), any(), anyString()))
                 .thenThrow(new RuntimeException("No available upstream"));
 
-        poller.pollMapping(buildMapping())
+        poller.poll(buildMapping())
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("Failed to get upstream"));
@@ -197,7 +198,7 @@ class BackgroundJobServiceTest {
         when(deployment.getResponsesEndpoint()).thenReturn(null);
         when(deployment.getName()).thenReturn(DEPLOYMENT_NAME);
 
-        poller.pollMapping(buildMapping())
+        poller.poll(buildMapping())
                 .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
                 .onFailure(error -> ctx.verify(() -> {
                     assertTrue(error.getMessage().contains("responses endpoint"));
