@@ -599,6 +599,7 @@ public class DeploymentPostControllerTest {
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
         when(request.uri()).thenReturn("/test");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
         when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
@@ -629,6 +630,7 @@ public class DeploymentPostControllerTest {
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
         when(request.uri()).thenReturn("/test");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
         when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
