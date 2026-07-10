@@ -70,6 +70,12 @@ public class ResourceAuthSettingsService {
                 && existingResource.getAuthSettings() != null) {
             ResourceAuthSettings existingResourceAuthSettings = existingResource.getAuthSettings();
 
+            // Capture before clientSecret is filled in from existing: only a PUT that explicitly
+            // supplies both clientId and clientSecret signals intentional DCR→static conversion.
+            // GET never returns clientSecret, so an update without it must preserve the flag.
+            boolean explicitlyConvertingToStatic = resourceAuthSettings.getClientId() != null
+                    && resourceAuthSettings.getClientSecret() != null;
+
             // do not re-write clientSecret with null values
             if (resourceAuthSettings.getClientSecret() == null) {
                 resourceAuthSettings.setClientSecret(existingResourceAuthSettings.getClientSecret());
@@ -82,8 +88,7 @@ public class ResourceAuthSettingsService {
 
             resolveCodeChallengeSettings(resourceAuthSettings, existingResourceAuthSettings);
 
-            // Preserve dynamicallyRegistered; re-derive to false when update explicitly supplies clientId
-            if (!requiresDynamicClientRegistration && Boolean.TRUE.equals(existingResourceAuthSettings.getDynamicallyRegistered())) {
+            if (explicitlyConvertingToStatic && Boolean.TRUE.equals(existingResourceAuthSettings.getDynamicallyRegistered())) {
                 resourceAuthSettings.setDynamicallyRegistered(false);
             } else {
                 resourceAuthSettings.setDynamicallyRegistered(existingResourceAuthSettings.getDynamicallyRegistered());
