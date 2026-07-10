@@ -336,13 +336,13 @@ public class ApplicationService {
             fileReplacementLinks = Map.of();
         }
 
-        // Admin-managed governance fields never travel through a copy/move — otherwise a user could self-grant them
-        // by copying a public app they can read. They are settable only via the config file / admin-apply.
-        application.setAppIdentity(null);
-        application.setAllowUserExternalServices(false);
-
         resourceService.computeResource(destination, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
+
+            // Same governance rule as putApplication: the source's admin-managed fields never travel through a
+            // copy/move (a user could self-grant them by copying a public app), while an overwrite keeps whatever
+            // an admin granted to the destination itself.
+            prepareAdminManagedFields(application, existing, AdminManagedFieldsWriteMode.INHERIT_ONLY);
 
             verifySchemaRichApp(application, existing);
 

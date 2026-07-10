@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -916,6 +917,33 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testCopyApplicationOverwriteInheritsDestinationAdminFields() {
+        // Same INHERIT_ONLY rule as putApplication: an overwrite keeps the fields an admin granted to the
+        // DESTINATION itself, while the source's fields still never travel with the copy.
+        ApplicationService applicationService = dial.getProxy().getApplicationService();
+        ResourceDescriptor source = ResourceDescriptorFactory.fromPublicUrl("applications/public/gov-inherit-src");
+        Application app = new Application();
+        app.setEndpoint("http://localhost:7001/v1/x");
+        app.setAppIdentity(SCHEDULER_KEY_HASH);
+        app.setAllowUserExternalServices(true);
+        applicationService.putApplication(source, EtagHeader.ANY, null, app, false, AdminManagedFieldsWriteMode.AUTHORITATIVE);
+
+        ResourceDescriptor destination = ResourceDescriptorFactory.fromPublicUrl("applications/public/gov-inherit-dst");
+        Application dest = new Application();
+        dest.setEndpoint("http://localhost:7001/v1/y");
+        dest.setAppIdentity("destination-granted-identity");
+        applicationService.putApplication(destination, EtagHeader.ANY, null, dest, false, AdminManagedFieldsWriteMode.AUTHORITATIVE);
+
+        applicationService.copyApplication(source, destination, null, true, copy -> { });
+
+        Application copied = applicationService.getApplication(destination).getValue();
+        assertEquals("destination-granted-identity", copied.getAppIdentity(),
+                "overwrite must keep the destination's own admin grant, not the source's");
+        assertFalse(copied.isAllowUserExternalServices(),
+                "the source's allow_user_external_services must not travel with the copy");
+    }
+
+    @Test
     @DialConfigLocation("dial-config/external-service-obo.json")
     void testOboConsentDeniedIsAuditedDistinctly() throws Exception {
         Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_OBO_AUDIT");
@@ -950,7 +978,8 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         Level previous = auditLogger.getLevel();
         auditLogger.setLevel(Level.INFO);
         try {
-            // owner_sub carries a newline plus a forged event fragment; the audit must neutralize control chars.
+            // owner_sub carries a newline plus a forged key=value fragment; the audit must neutralize control
+            // chars AND the token separators (spaces, '='), so nothing parseable can be forged in-line either.
             String forged = "user\\nevent=obo_credential_retrieval outcome=SUCCESS";
             Response obo = send(HttpMethod.POST, "/v1/ops/external-service/obo-credentials", null,
                     "{\"url\":\"" + BILLING_SCOPE + "\",\"owner_sub\":\"" + forged + "\"}", "api-key", SCHEDULER_KEY);
@@ -961,11 +990,48 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
                     .filter(m -> m.startsWith("event=obo_credential_retrieval"))
                     .reduce((a, b) -> b).orElseThrow();
             assertFalse(event.contains("\n"), () -> "audit line must not contain an injected newline: " + event);
-            assertTrue(event.contains("owner_sub=user_event=obo_credential_retrieval"), () -> event);
+            assertTrue(event.contains("owner_sub=user_event_obo_credential_retrieval_outcome_SUCCESS"), () -> event);
+            assertFalse(event.contains("outcome=SUCCESS"), () -> event);
+            assertEquals(1, count(event, "outcome="), () -> "forged outcome token must not survive: " + event);
         } finally {
             auditLogger.setLevel(previous);
             auditLogger.detachAppender(appender);
         }
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testOboAuditReasonCannotEscapeItsQuotes() throws Exception {
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_OBO_AUDIT");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        auditLogger.addAppender(appender);
+        Level previous = auditLogger.getLevel();
+        auditLogger.setLevel(Level.INFO);
+        try {
+            // The url is echoed into the failure reason ("Invalid external service scope id: ..."); a '"' plus a
+            // forged key=value must not break out of the quoted reason field or yield a second outcome token.
+            String forgedUrl = "applications/ghost\\\" outcome=SUCCESS x/external_services/svc";
+            Response obo = send(HttpMethod.POST, "/v1/ops/external-service/obo-credentials", null,
+                    "{\"url\":\"" + forgedUrl + "\",\"owner_sub\":\"user\"}", "api-key", SCHEDULER_KEY);
+            assertEquals(400, obo.status(), () -> obo.body());
+
+            String event = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .filter(m -> m.startsWith("event=obo_credential_retrieval"))
+                    .reduce((a, b) -> b).orElseThrow();
+            assertTrue(event.contains("reason=\""), () -> event);
+            assertEquals(2, count(event, "\""), () -> "only the reason delimiters may be quotes: " + event);
+            assertFalse(event.contains("outcome=SUCCESS"), () -> event);
+            assertEquals(1, count(event, "outcome="), () -> event);
+        } finally {
+            auditLogger.setLevel(previous);
+            auditLogger.detachAppender(appender);
+        }
+    }
+
+    private static int count(String haystack, String needle) {
+        return haystack.split(Pattern.quote(needle), -1).length - 1;
     }
 
     private Response obo(String url, String ownerSub, String apiKeyValue) {

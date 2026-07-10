@@ -9,6 +9,8 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.regex.Pattern;
+
 /**
  * Distinct audit stream for on-behalf-of external-service events. Kept separate from the downstream
  * credential-resolution logs so operators can route/retain it independently. Each event records both identities
@@ -17,6 +19,13 @@ import org.slf4j.LoggerFactory;
 public final class ExternalServiceAuditLog {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("DIAL_OBO_AUDIT");
+
+    // \p{Cntrl} is ASCII-only, so Unicode line breaks (NEL, LS, PS) are listed explicitly — some log viewers
+    // treat them as line terminators. Tokens additionally forbid whitespace, '=' and '"' so a caller-supplied
+    // value can't forge key=value pairs within the line; reason keeps spaces (it is quoted) but drops '=' and
+    // '"' so it can neither escape its quotes nor carry a parseable forged token.
+    private static final Pattern TOKEN_UNSAFE = Pattern.compile("[\\p{Cntrl}\\s=\"\\u0085\\u2028\\u2029]");
+    private static final Pattern REASON_UNSAFE = Pattern.compile("[\\p{Cntrl}=\"\\u0085\\u2028\\u2029]");
 
     private ExternalServiceAuditLog() {
     }
@@ -32,13 +41,11 @@ public final class ExternalServiceAuditLog {
             default -> "ERROR";
         };
         // reason echoes only the exception message, never a response body or secret — keep it that way.
-        // All interpolated values are sanitized: caller-supplied ids/messages must not inject newlines that
-        // would forge extra audit lines to a line-based log reader.
         AUDIT.info("event=obo_credential_retrieval outcome={} actor={} owner_sub={} application_id={} "
                         + "external_service_id={} trace_id={}{}",
-                outcome, actorEvidence(context), sanitize(ownerSub), sanitize(applicationId),
-                sanitize(externalServiceId), context.getTraceId(),
-                error == null ? "" : " reason=\"%s\"".formatted(sanitize(error.getMessage())));
+                outcome, actorEvidence(context), sanitizeToken(ownerSub), sanitizeToken(applicationId),
+                sanitizeToken(externalServiceId), context.getTraceId(),
+                error == null ? "" : " reason=\"%s\"".formatted(sanitizeReason(error.getMessage())));
     }
 
     // Non-secret evidence of the calling actor: the DIAL key's project and/or the workload JWT's azp. Both are
@@ -47,8 +54,8 @@ public final class ExternalServiceAuditLog {
         Key key = context.getKey();
         ExtractedClaims claims = context.getExtractedClaims();
         String azp = claims == null ? null : claims.authorizedParty();
-        String project = key == null ? null : "project:" + sanitize(key.getProject());
-        String authorizedParty = azp == null ? null : "azp:" + sanitize(azp);
+        String project = key == null ? null : "project:" + sanitizeToken(key.getProject());
+        String authorizedParty = azp == null ? null : "azp:" + sanitizeToken(azp);
         if (project != null && authorizedParty != null) {
             return project + " " + authorizedParty;
         }
@@ -58,8 +65,11 @@ public final class ExternalServiceAuditLog {
         return authorizedParty == null ? "unknown" : authorizedParty;
     }
 
-    private static String sanitize(String value) {
-        // Replace ISO control characters (CR/LF included) so a value can't break out of its audit field.
-        return value == null ? null : value.replaceAll("\\p{Cntrl}", "_");
+    private static String sanitizeToken(String value) {
+        return value == null ? null : TOKEN_UNSAFE.matcher(value).replaceAll("_");
+    }
+
+    private static String sanitizeReason(String value) {
+        return value == null ? null : REASON_UNSAFE.matcher(value).replaceAll("_");
     }
 }
