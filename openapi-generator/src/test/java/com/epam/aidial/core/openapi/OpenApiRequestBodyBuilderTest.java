@@ -3,7 +3,6 @@ package com.epam.aidial.core.openapi;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.data.ResourceLink;
 import io.swagger.v3.core.util.Yaml;
 import io.swagger.v3.oas.models.Operation;
@@ -30,7 +29,6 @@ class OpenApiRequestBodyBuilderTest {
                 "multipart/form-data",  // contentType
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.CONDITIONAL_WRITE,
                 new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
@@ -66,7 +64,6 @@ class OpenApiRequestBodyBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.NONE,
                 new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
@@ -91,7 +88,6 @@ class OpenApiRequestBodyBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.NONE,
                 new ApiExtension[0]
         );
 
@@ -109,7 +105,6 @@ class OpenApiRequestBodyBuilderTest {
                 "multipart/form-data",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.CONDITIONAL_WRITE,
                 new ApiExtension[0]
         );
 
@@ -135,7 +130,6 @@ class OpenApiRequestBodyBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.NONE,
                 new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
@@ -160,7 +154,6 @@ class OpenApiRequestBodyBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.NONE,
                 new ApiExtension[0]
         );
 
@@ -183,7 +176,6 @@ class OpenApiRequestBodyBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.NONE,
                 new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
@@ -209,7 +201,6 @@ class OpenApiRequestBodyBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.NONE,
                 new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();

@@ -18,6 +18,5 @@ public @interface ApiOperation {
     String contentType() default "application/json";
     ApiParameter[] parameters() default {};
     ApiResponse[] responses() default {};
-    ResponseProfile responseProfile() default ResponseProfile.NONE;
     ApiExtension[] extensions() default {};
 }

@@ -178,6 +178,54 @@ Use Java DTOs for:
 
 ---
 
+
+
+### Proxy Endpoints
+
+For proxy endpoints, prefer referencing the original upstream request and response schemas using `schemaRef` instead of creating duplicate Java DTOs.
+
+```java
+@ApiOperation(
+    requestBody = @ApiSchema(schemaRef = "CreateEmbeddingRequest"),
+    responses = {
+        @ApiResponse(
+            code = 200,
+            body = @ApiSchema(schemaRef = "CreateEmbeddingResponse")
+        )
+    }
+)
+```
+
+If the proxied endpoint accepts or returns arbitrary JSON without a documented contract, use the generic proxy schemas.
+
+```java
+@ApiOperation(
+    requestBody = @ApiSchema(schemaRef = "ProxyRequest"),
+    responses = {
+        @ApiResponse(
+            code = 200,
+            body = @ApiSchema(schemaRef = "ProxyResponse")
+        )
+    }
+)
+```
+
+This approach is recommended because it preserves the upstream API contract while avoiding duplicate Java DTOs.
+
+> **Note**
+>
+> For most media types, no additional configuration is required. The referenced schema is emitted unchanged.
+>
+> The generator has dedicated processing only for:
+>
+> - `multipart/form-data`
+> - `text/event-stream`
+>
+> If you need to document another media type, first export its request or response schema into a YAML file and reference it using `schemaRef`. Generator changes are only required when the media type needs custom OpenAPI generation behavior similar to `multipart/form-data` or `text/event-stream`.
+
+
+---
+
 ## 4. Union Types (oneOf)
 
 Use when request/response can be **one of** several types.
@@ -215,8 +263,8 @@ oneOf:
 
 ```java
 @ApiSchema(
-    oneOf = {User.class, Guest.class},
-    oneOfSchemaRefs = {"ExternalUser", "LegacyUser"}
+        oneOf = {User.class, Guest.class},
+        oneOfSchemaRefs = {"ExternalUser", "LegacyUser"}
 )
 ```
 
@@ -252,8 +300,8 @@ allOf:
 
 ```java
 @ApiSchema(
-    allOfSchemaRefs = {"ProxyResponse"},
-    allOf = {EntityMetadata.class, AuditInfo.class}
+        allOfSchemaRefs = {"ProxyResponse"},
+        allOf = {EntityMetadata.class, AuditInfo.class}
 )
 ```
 
@@ -285,18 +333,17 @@ Use `byte[].class` with `contentType = "multipart/form-data"` for file uploads:
 
 ```java
 @ApiOperation(
-    method = "PUT",
-    path = "/v1/files/{bucket}/{path}",
-    contentType = "multipart/form-data",
-    requestBody = @ApiSchema(implementation = byte[].class),
-    parameters = {
-        @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true),
-        @ApiParameter(name = "path", in = ParameterIn.PATH, required = true)
-    },
-    responses = {
-        @ApiResponse(code = 200, body = @ApiSchema(implementation = FileMetadata.class))
-    },
-    responseProfile = ResponseProfile.CONDITIONAL_WRITE
+        method = "PUT",
+        path = "/v1/files/{bucket}/{path}",
+        contentType = "multipart/form-data",
+        requestBody = @ApiSchema(implementation = byte[].class),
+        parameters = {
+                @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true),
+                @ApiParameter(name = "path", in = ParameterIn.PATH, required = true)
+        },
+        responses = {
+                @ApiResponse(code = 200, body = @ApiSchema(implementation = FileMetadata.class))
+        },
 )
 ```
 
@@ -324,10 +371,10 @@ Use `contentTypes = {"text/event-stream"}` for Server-Sent Events:
 
 ```java
 @ApiResponse(
-    code = 200,
-    description = "Streaming response",
-    body = @ApiSchema(schemaRef = "CreateChatCompletionStreamResponse"),
-    contentTypes = {"text/event-stream"}
+        code = 200,
+        description = "Streaming response",
+        body = @ApiSchema(schemaRef = "CreateChatCompletionStreamResponse"),
+        contentTypes = {"text/event-stream"}
 )
 ```
 
@@ -371,11 +418,11 @@ For DTOs with subtypes, annotate the parent class with `@ApiSubTypes`:
 
 ```java
 @ApiSubTypes(
-    discriminatorProperty = "type",
-    value = {
-        @ApiSubType(discriminatorValue = "user", type = UserAccount.class),
-        @ApiSubType(discriminatorValue = "service", type = ServiceAccount.class)
-    }
+        discriminatorProperty = "type",
+        value = {
+                @ApiSubType(discriminatorValue = "user", type = UserAccount.class),
+                @ApiSubType(discriminatorValue = "service", type = ServiceAccount.class)
+        }
 )
 public interface Account { }
 ```
@@ -436,15 +483,15 @@ Account:
 
 ```java
 @ApiResponse(
-    code = 200,
-    body = @ApiSchema(
-        implementation = ItemsResponse.class,
-        typeArguments = {DeploymentData.class}
-    ),
-    headers = {
-        @ApiHeader(name = "X-Total-Count", schema = Integer.class),
-        @ApiHeader(name = "X-Page", schema = Integer.class)
-    }
+        code = 200,
+        body = @ApiSchema(
+                implementation = ItemsResponse.class,
+                typeArguments = {DeploymentData.class}
+        ),
+        headers = {
+                @ApiHeader(name = "X-Total-Count", schema = Integer.class),
+                @ApiHeader(name = "X-Page", schema = Integer.class)
+        }
 )
 ```
 
@@ -452,8 +499,8 @@ Account:
 
 ```java
 @ApiOperation(
-    requestBody = @ApiSchema(oneOf = {RpcRequest.class, RpcRequest[].class}),
-    ...
+        requestBody = @ApiSchema(oneOf = {RpcRequest.class, RpcRequest[].class}),
+        ...
 )
 ```
 
@@ -461,8 +508,8 @@ Account:
 
 ```java
 @ApiResponse(
-    code = 200,
-    body = @ApiSchema(allOf = {Model.class, EntityMetadata.class})
+        code = 200,
+        body = @ApiSchema(allOf = {Model.class, EntityMetadata.class})
 )
 ```
 
@@ -470,13 +517,13 @@ Account:
 
 ```java
 @ApiOperation(
-    requestBody = @ApiSchema(schemaRef = "CreateChatCompletionRequest"),
-    responses = {
-        @ApiResponse(
-            code = 200,
-            body = @ApiSchema(schemaRef = "CreateChatCompletionResponse")
-        )
-    },
-    ...
+        requestBody = @ApiSchema(schemaRef = "CreateChatCompletionRequest"),
+        responses = {
+                @ApiResponse(
+                        code = 200,
+                        body = @ApiSchema(schemaRef = "CreateChatCompletionResponse")
+                )
+        },
+        ...
 )
 ```

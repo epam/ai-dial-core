@@ -204,6 +204,13 @@ public final class OpenApiDescriptions {
 
     public static final String EXTERNAL_SERVICE_ID =
             "The external service ID defined in the application's external_services configuration.";
+    public static final String RESPONSE_PAYLOAD_TOO_LARGE = "Payload Too Large";
+    public static final String RESPONSE_UNSUPPORTED_MEDIA_TYPE = "Unsupported Media Type";
+    public static final String RESPONSE_UNPROCESSABLE_ENTITY = "Unprocessable Entity";
+    public static final String RESPONSE_FAILED_DEPENDENCY = "Failed Dependency";
+    public static final String RESPONSE_NOT_MODIFIED = "Not Modified";
+    public static final String RESPONSE_METHOD_NOT_ALLOWED = "Method Not Allowed";
+    public static final String RESPONSE_GATEWAY_TIMEOUT = "Gateway Timeout";
 
     private OpenApiDescriptions() {
     }

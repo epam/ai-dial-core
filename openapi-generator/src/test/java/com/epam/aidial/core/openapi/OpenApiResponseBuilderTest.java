@@ -6,7 +6,6 @@ import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.ResourceLink;
 import io.swagger.v3.core.util.Yaml;
@@ -73,7 +72,6 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 responses,
-                ResponseProfile.RESPONSES_API,
                 new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
@@ -190,26 +188,6 @@ class OpenApiResponseBuilderTest {
     }
 
     @Test
-    void explicitResponsesAddedToResponseProfile() throws Exception {
-        ApiResponse[] responses = responsesFromMethod("annotatedResponses");
-        EndpointMetadata.Endpoint endpoint = new EndpointMetadata.Endpoint(
-                "POST",
-                "/openai/deployments/{deployment_name}/chat/completions",
-                "createChatCompletion",
-                null,  // requestBody
-                new String[]{"LLM"},
-                "application/json",
-                new ApiParameter[0],
-                responses,
-                ResponseProfile.RESPONSES_API,
-                new ApiExtension[0]
-        );
-
-        ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, new DtoSchemaGenerator());
-        assertEquals(9, apiResponses.size());
-    }
-
-    @Test
     void singleExplicitResponseReplacesFallback() throws Exception {
         ApiResponse[] responses = responsesFromMethod("singleResponse");
         EndpointMetadata.Endpoint endpoint = endpointWithResponses(responses);
@@ -234,80 +212,6 @@ class OpenApiResponseBuilderTest {
     }
 
     @Test
-    void standardResponseSetExpandsMissingResponseCodes() {
-        EndpointMetadata.Endpoint endpoint = new EndpointMetadata.Endpoint(
-                "POST",
-                "/openai/deployments/{deployment_name}/completions",
-                "createCompletion",
-                null,  // requestBody
-                new String[]{"LLM"},
-                "application/json",
-                new ApiParameter[0],
-                new ApiResponse[0],
-                ResponseProfile.RESPONSES_API,
-                new ApiExtension[0]
-        );
-        DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
-        OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
-
-        ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, schemaGenerator);
-
-        assertTrue(apiResponses.containsKey("404"));
-        assertFalse(apiResponses.containsKey("412"));
-        assertTrue(apiResponses.containsKey("403"));
-        assertTrue(apiResponses.containsKey("415"));
-        assertTrue(apiResponses.containsKey("502"));
-        assertTrue(apiResponses.containsKey("503"));
-    }
-
-    @Test
-    void schemaReadPresetIncludes401() {
-        EndpointMetadata.Endpoint endpoint = new EndpointMetadata.Endpoint(
-                "GET",
-                "/v1/application_type_schemas/schema",
-                "getCustomApplicationSchema",
-                null,  // requestBody
-                new String[]{"Applications"},
-                "application/json",
-                new ApiParameter[0],
-                new ApiResponse[0],
-                ResponseProfile.AUTHENTICATED_OPERATION,
-                new ApiExtension[0]
-        );
-
-        ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, new DtoSchemaGenerator());
-
-        assertTrue(apiResponses.containsKey("400"));
-        assertTrue(apiResponses.containsKey("401"));
-        assertTrue(apiResponses.containsKey("500"));
-    }
-
-    @Test
-    void applicationOpsPresetIncludesAllRuntimeErrorCodes() throws Exception {
-        ApiResponse[] responses = responsesFromMethod("applicationLogsResponses");
-        EndpointMetadata.Endpoint endpoint = new EndpointMetadata.Endpoint(
-                "POST",
-                "/v1/ops/application/deploy",
-                "deployApplication",
-                ApiSchemaBuilder.forImplementation(ResourceLink.class),
-                new String[]{"Applications"},
-                "application/json",
-                new ApiParameter[0],
-                responses,
-                ResponseProfile.APPLICATION_OPS,
-                new ApiExtension[0]
-        );
-        DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
-        OpenApiResponseBuilder.registerResponseSchemas(endpoint, schemaGenerator);
-
-        ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, schemaGenerator);
-
-        assertEquals(List.of("200", "400", "401", "403", "404", "409", "500"), List.copyOf(apiResponses.keySet()));
-        assertEquals("#/components/schemas/ApplicationLogs",
-                apiResponses.get("200").getContent().get("application/json").getSchema().get$ref());
-    }
-
-    @Test
     void applicationLogsPresetIncludesLogsResponseBody() throws Exception {
         ApiResponse[] responses = responsesFromMethod("applicationLogsResponses");
         EndpointMetadata.Endpoint endpoint = new EndpointMetadata.Endpoint(
@@ -319,7 +223,6 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 responses,
-                ResponseProfile.APPLICATION_OPS,
                 new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
@@ -343,7 +246,6 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new ApiParameter[0],
                 responses,
-                ResponseProfile.AUTHORIZED_OPERATION,
                 new ApiExtension[0]
         );
         DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
@@ -355,27 +257,6 @@ class OpenApiResponseBuilderTest {
         assertEquals("boolean", schema.getType());
         assertNull(schema.get$ref());
         assertFalse(schemaGenerator.getSchemas().containsKey("Boolean"));
-    }
-
-    @Test
-    void conditionalWritePresetIncludes412() {
-        EndpointMetadata.Endpoint endpoint = new EndpointMetadata.Endpoint(
-                "PUT",
-                "/v1/files/{bucket}/{file_path}",
-                "uploadFile",
-                null, // requestBody
-                new String[]{"Files"},
-                "application/json",
-                new ApiParameter[0],
-                new ApiResponse[0],
-                ResponseProfile.CONDITIONAL_WRITE,
-                new ApiExtension[0]
-        );
-
-        ApiResponses apiResponses = OpenApiResponseBuilder.buildResponses(endpoint, new DtoSchemaGenerator());
-
-        assertTrue(apiResponses.containsKey("412"));
-        assertTrue(apiResponses.containsKey("401"));
     }
 
     @Test
@@ -503,7 +384,6 @@ class OpenApiResponseBuilderTest {
                 "application/json",
                 new com.epam.aidial.core.openapi.annotations.ApiParameter[0],
                 responses,
-                ResponseProfile.NONE,
                 new ApiExtension[0]
         );
     }

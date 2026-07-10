@@ -182,7 +182,6 @@ public final class AnnotationEndpointCollector {
                 op.contentType(),
                 parameters,
                 responses,
-                op.responseProfile(),
                 op.extensions()
         );
     }

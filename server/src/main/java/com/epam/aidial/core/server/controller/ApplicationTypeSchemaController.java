@@ -48,6 +48,10 @@ public class ApplicationTypeSchemaController {
             tags = {"Applications"},
             responses = {
                     @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
                     @ApiResponse(code = 500)
             }
     )
@@ -109,6 +113,8 @@ public class ApplicationTypeSchemaController {
             responses = {
                     @ApiResponse(code = 200, description = "Success"),
                     @ApiResponse(code = 400),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 403),
                     @ApiResponse(code = 404),
                     @ApiResponse(code = 500)
             }
@@ -171,6 +177,10 @@ public class ApplicationTypeSchemaController {
             tags = {"Applications"},
             responses = {
                     @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
                     @ApiResponse(code = 500)
             }
     )

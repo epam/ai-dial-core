@@ -12,70 +12,28 @@ public final class StandardResponses {
     private StandardResponses() {
     }
 
-    public static ApiResponse badRequest(DtoSchemaGenerator schemaGenerator) {
-        return withErrorBody(OpenApiDescriptions.RESPONSE_BAD_REQUEST, schemaGenerator);
-    }
-
-    public static ApiResponse unauthorized(DtoSchemaGenerator schemaGenerator) {
-        return withErrorBody(OpenApiDescriptions.RESPONSE_INVALID_AUTHENTICATION, schemaGenerator);
-    }
-
-    public static ApiResponse forbidden(DtoSchemaGenerator schemaGenerator) {
-        return withErrorBody(OpenApiDescriptions.RESPONSE_FORBIDDEN, schemaGenerator);
-    }
-
-    public static ApiResponse notFound(String description, DtoSchemaGenerator schemaGenerator) {
-        return withErrorBody(description, schemaGenerator);
-    }
-
-    public static ApiResponse conflict(DtoSchemaGenerator schemaGenerator) {
-        return withErrorBody(OpenApiDescriptions.RESPONSE_CONFLICT, schemaGenerator);
-    }
-
-    public static ApiResponse preconditionFailed() {
-        ApiResponse response = new ApiResponse();
-        response.setDescription(OpenApiDescriptions.RESPONSE_PRECONDITION_FAILED);
-        return response;
-    }
-
-    public static ApiResponse rateLimited(DtoSchemaGenerator schemaGenerator) {
-        return withErrorBody(OpenApiDescriptions.RESPONSE_RATE_LIMIT, schemaGenerator);
-    }
-
-    public static ApiResponse internalServerError(DtoSchemaGenerator schemaGenerator) {
-        return withErrorBody(OpenApiDescriptions.RESPONSE_SERVER_ERROR, schemaGenerator);
-    }
-
-    public static ApiResponse upstreamError(DtoSchemaGenerator schemaGenerator) {
-        return withErrorBody(OpenApiDescriptions.RESPONSE_UPSTREAM_ERROR, schemaGenerator);
-    }
-
-    public static ApiResponse overloaded(DtoSchemaGenerator schemaGenerator) {
-        return withErrorBody(OpenApiDescriptions.RESPONSE_OVERLOADED, schemaGenerator);
-    }
-
-    public static ApiResponse notModified() {
-        ApiResponse response = new ApiResponse();
-        response.setDescription("Not Modified");
-        return response;
-    }
-
-    public static ApiResponse methodNotAllowed() {
-        ApiResponse response = new ApiResponse();
-        response.setDescription("Method Not Allowed");
-        return response;
-    }
-
-    public static ApiResponse unsupportedMediaType(DtoSchemaGenerator schemaGenerator) {
-        return withErrorBody("Unsupported Media Type", schemaGenerator);
-    }
-
-    public static ApiResponse unprocessableEntity(DtoSchemaGenerator schemaGenerator) {
-        return withErrorBody("Unprocessable Entity", schemaGenerator);
-    }
-
-    public static ApiResponse payloadTooLarge(DtoSchemaGenerator schemaGenerator) {
-        return withErrorBody("Payload Too Large", schemaGenerator);
+    public static ApiResponse byStatus(int code, DtoSchemaGenerator generator) {
+        return switch (code) {
+            case 200 -> responseWithDescription(OpenApiDescriptions.RESPONSE_SUCCESS);
+            case 304 -> responseWithDescription(OpenApiDescriptions.RESPONSE_NOT_MODIFIED);
+            case 400 -> withErrorBody(OpenApiDescriptions.RESPONSE_BAD_REQUEST, generator);
+            case 401 -> withErrorBody(OpenApiDescriptions.RESPONSE_INVALID_AUTHENTICATION, generator);
+            case 403 -> withErrorBody(OpenApiDescriptions.RESPONSE_FORBIDDEN, generator);
+            case 404 -> withErrorBody(OpenApiDescriptions.RESPONSE_NOT_FOUND, generator);
+            case 405 -> responseWithDescription(OpenApiDescriptions.RESPONSE_METHOD_NOT_ALLOWED);
+            case 409 -> withErrorBody(OpenApiDescriptions.RESPONSE_CONFLICT, generator);
+            case 412 -> responseWithDescription(OpenApiDescriptions.RESPONSE_PRECONDITION_FAILED);
+            case 413 -> withErrorBody(OpenApiDescriptions.RESPONSE_PAYLOAD_TOO_LARGE, generator);
+            case 415 -> withErrorBody(OpenApiDescriptions.RESPONSE_UNSUPPORTED_MEDIA_TYPE, generator);
+            case 422 -> withErrorBody(OpenApiDescriptions.RESPONSE_UNPROCESSABLE_ENTITY, generator);
+            case 424 -> withErrorBody(OpenApiDescriptions.RESPONSE_FAILED_DEPENDENCY, generator);
+            case 429 -> withErrorBody(OpenApiDescriptions.RESPONSE_RATE_LIMIT, generator);
+            case 500 -> withErrorBody(OpenApiDescriptions.RESPONSE_SERVER_ERROR, generator);
+            case 502 -> withErrorBody(OpenApiDescriptions.RESPONSE_UPSTREAM_ERROR, generator);
+            case 503 -> withErrorBody(OpenApiDescriptions.RESPONSE_OVERLOADED, generator);
+            case 504 -> withErrorBody(OpenApiDescriptions.RESPONSE_GATEWAY_TIMEOUT, generator);
+            default -> throw new IllegalArgumentException("Unsupported response code: " + code + ". Add support in StandardResponses.");
+        };
     }
 
     private static ApiResponse withErrorBody(String description, DtoSchemaGenerator schemaGenerator) {
@@ -86,6 +44,12 @@ public final class StandardResponses {
                 ApiSchemaBuilder.forImplementation(ErrorData.class),
                 schemaGenerator
         ));
+        return response;
+    }
+
+    private static ApiResponse responseWithDescription(String description) {
+        ApiResponse response = new ApiResponse();
+        response.setDescription(description);
         return response;
     }
 }

@@ -1,7 +1,6 @@
 package com.epam.aidial.core.openapi;
 
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import io.swagger.v3.oas.models.headers.Header;
 import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.responses.ApiResponses;
@@ -16,9 +15,6 @@ public final class OpenApiResponseBuilder {
 
     public static ApiResponses buildResponses(EndpointMetadata.Endpoint endpoint, DtoSchemaGenerator schemaGenerator) {
         ApiResponses responses = buildExplicitResponses(endpoint, schemaGenerator);
-        if (endpoint.responseProfile() != ResponseProfile.NONE) {
-            ResponseProfileBuilder.addProfileResponses(responses, endpoint.responseProfile(), schemaGenerator);
-        }
         return sortResponses(responses);
     }
 
@@ -63,10 +59,18 @@ public final class OpenApiResponseBuilder {
         TreeMap<Integer, io.swagger.v3.oas.models.responses.ApiResponse> sorted = new TreeMap<>();
         for (ApiResponse annotation : endpoint.responses()) {
             io.swagger.v3.oas.models.responses.ApiResponse response = sorted.computeIfAbsent(annotation.code(), code -> {
-                io.swagger.v3.oas.models.responses.ApiResponse r = new io.swagger.v3.oas.models.responses.ApiResponse();
-                r.setDescription(annotation.description());
+                io.swagger.v3.oas.models.responses.ApiResponse r;
+                if (annotation.description().isBlank()) {
+                    r = StandardResponses.byStatus(code, schemaGenerator);
 
-                // Process headers
+                    if (r == null) {
+                        r = new io.swagger.v3.oas.models.responses.ApiResponse();
+                    }
+                } else {
+                    r = new io.swagger.v3.oas.models.responses.ApiResponse();
+                    r.setDescription(annotation.description());
+                }
+
                 Map<String, Header> headers = OpenApiHeaderBuilder.buildHeaders(annotation.headers());
                 if (!headers.isEmpty()) {
                     headers.forEach(r::addHeaderObject);
@@ -94,10 +98,6 @@ public final class OpenApiResponseBuilder {
             for (ApiResponse response : endpoint.responses()) {
                 ResponseSchemaFactory.registerSchema(response.body(), schemaGenerator);
             }
-        }
-        // Register schemas from ResponseProfile (e.g., ErrorData for error responses)
-        if (endpoint.responseProfile() != ResponseProfile.NONE) {
-            ResponseProfileBuilder.registerProfileSchemas(endpoint.responseProfile(), schemaGenerator);
         }
     }
 

@@ -135,7 +135,14 @@ public class ConfigResourceController implements Controller {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Model.class, EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the model", required = true)
-                                    })
+                                    }),
+                            @ApiResponse(code = 304),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -157,7 +164,14 @@ public class ConfigResourceController implements Controller {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved model", required = true)
-                                    })
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 422),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -174,7 +188,13 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 204, description = "Success")
+                            @ApiResponse(code = 204, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -195,7 +215,14 @@ public class ConfigResourceController implements Controller {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Interceptor.class, EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the interceptor", required = true)
-                                    })
+                                    }),
+                            @ApiResponse(code = 304),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -217,7 +244,14 @@ public class ConfigResourceController implements Controller {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved interceptor", required = true)
-                                    })
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 422),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -234,7 +268,13 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 204, description = "Success")
+                            @ApiResponse(code = 204, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -255,7 +295,14 @@ public class ConfigResourceController implements Controller {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Role.class, EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the role", required = true)
-                                    })
+                                    }),
+                            @ApiResponse(code = 304),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -277,7 +324,14 @@ public class ConfigResourceController implements Controller {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved role", required = true)
-                                    })
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 422),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -294,7 +348,13 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 204, description = "Success")
+                            @ApiResponse(code = 204, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -315,7 +375,14 @@ public class ConfigResourceController implements Controller {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Key.class, EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the key", required = true)
-                                    })
+                                    }),
+                            @ApiResponse(code = 304),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -337,7 +404,14 @@ public class ConfigResourceController implements Controller {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved key", required = true)
-                                    })
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 422),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -354,7 +428,13 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 204, description = "Success")
+                            @ApiResponse(code = 204, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -375,7 +455,14 @@ public class ConfigResourceController implements Controller {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Route.class, EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the route", required = true)
-                                    })
+                                    }),
+                            @ApiResponse(code = 304),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -397,7 +484,14 @@ public class ConfigResourceController implements Controller {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved route", required = true)
-                                    })
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 422),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -414,7 +508,13 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 204, description = "Success")
+                            @ApiResponse(code = 204, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -436,7 +536,14 @@ public class ConfigResourceController implements Controller {
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the schema", required = true)
                                     }
-                            )
+                            ),
+                            @ApiResponse(code = 304),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -458,7 +565,14 @@ public class ConfigResourceController implements Controller {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved schema", required = true)
-                                    })
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 422),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -475,7 +589,13 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 204, description = "Success")
+                            @ApiResponse(code = 204, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -493,7 +613,14 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {GlobalSettings.class, EntityMetadata.class}))
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {GlobalSettings.class, EntityMetadata.class})),
+                            @ApiResponse(code = 304),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -515,7 +642,14 @@ public class ConfigResourceController implements Controller {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved settings", required = true)
-                                    })
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 422),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
@@ -532,7 +666,13 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 204, description = "Success")
+                            @ApiResponse(code = 204, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 

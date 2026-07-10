@@ -15,7 +15,6 @@ Declares an API endpoint on a controller method.
     operationId = "updateResource",     // Unique identifier (used by client generators)
     tags = {"Resources"},               // Documentation category
     responses = {...},                  // Response definitions (at least one required)
-    responseProfile = ResponseProfile.AUTHORIZED_OPERATION  // Standard error preset
 )
 ```
 
@@ -46,36 +45,10 @@ Use `@ApiOperation` on every controller method that should appear in the OpenAPI
     requestBody = @ApiSchema(implementation = CreateUserRequest.class),
     responses = {
         @ApiResponse(code = 201, body = @ApiSchema(implementation = User.class))
-    },
-    responseProfile = ResponseProfile.AUTHORIZED_OPERATION
+    }
 )
 public Future<?> createUser() { }
 ```
-
-### ResponseProfile
-
-Pre-defined error response sets to avoid repetition:
-
-| Profile | Status Codes | Use For |
-|---|---|---|
-| `AUTHENTICATED_READ_EXTENDED` | 400, 401, 404, 500 | Protected read with not-found |
-| `AUTHENTICATED_OPERATION` | 400, 401, 500 | Protected operations with validation |
-| `AUTHORIZED_OPERATION` | 400, 401, 403, 404, 500 | Protected operations requiring authorization |
-| `CONDITIONAL_WRITE` | 401, 412 | Write with ETag/If-Match headers |
-| `CONDITIONAL_WRITE_EXTENDED` | 400, 401, 404, 412, 413, 500 | Conditional writes with validation |
-| `OPS_WITH_BAD_REQUEST` | 400, 401, 404, 422, 429, 500, 502 | MCP proxy operations |
-| `APPLICATION_OPS` | 400, 401, 403, 404, 409, 500 | Application lifecycle operations |
-| `CODE_INTERPRETER` | 400, 401, 403, 404, 500 | Code interpreter operations |
-| `LIMIT_WITH_NOT_FOUND` | 401, 404 | Limit retrieval operations |
-| `TOOLSET_TOOLS` | 401, 403, 404, 500, 502 | Toolset tool operations |
-| `CONFIG_RESOURCE_FULL` | 304, 400, 401, 403, 404, 405, 412, 422, 500 | Config resource CRUD with ETag |
-| `ADMIN_BATCH` | 400, 401, 403, 422, 500 | Admin batch operations |
-| `RESPONSES_API` | 400, 401, 403, 404, 415, 500, 502, 503 | Responses API endpoints |
-| `ADMIN_READ_ONLY` | 403, 404, 405, 500 | Admin read-only endpoints |
-| `METADATA_LISTING` | 400, 403, 404, 405, 500 | Metadata listing endpoints |
-| `RESPONSE_ITEM_PROXY` | 403, 404, 500, 503 | Response item proxy operations |
-
-See `ResponseProfile.java` for complete profile definitions.
 
 ---
 
@@ -156,7 +129,7 @@ Defines a response for a specific HTTP status code.
 
 ### When to Use
 
-Define at least one success response (2xx). Error responses are handled by `responseProfile`.
+Define all responses returned by the operation using @ApiResponse. Success and error responses are documented explicitly.
 
 ### Examples
 
@@ -348,7 +321,6 @@ Generates:
 ### DO
 
 - Use clear, descriptive `operationId` values (`getUser`, not `get1`)
-- Always set `responseProfile` (never use `NONE` unless truly necessary)
 - Document all parameters with `description` fields
 - Use `required = true` for mandatory parameters
 - Import annotations from `com.epam.aidial.core.openapi.annotations`
@@ -356,7 +328,6 @@ Generates:
 ### DON'T
 
 - Mix multiple strategies in `@ApiSchema` (use exactly one)
-- Skip error responses (always use appropriate `responseProfile`)
 - Use generic tag names (be specific: `Users` not `API`)
 - Forget to mark path parameters as `required = true`
 - Invent custom extension names without team consensus

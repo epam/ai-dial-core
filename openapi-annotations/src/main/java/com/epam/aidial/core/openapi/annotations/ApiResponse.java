@@ -13,7 +13,7 @@ public @interface ApiResponse {
 
     int code();
 
-    String description();
+    String description() default "";
 
     ApiSchema body() default @ApiSchema;
 

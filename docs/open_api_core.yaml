@@ -137,6 +137,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
           content:
@@ -275,6 +281,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
@@ -334,6 +346,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -502,6 +520,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -997,6 +1021,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
@@ -1070,6 +1100,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1153,6 +1189,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2025,6 +2067,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
@@ -2067,6 +2115,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2150,6 +2204,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
@@ -2182,6 +2242,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExternalServiceData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
@@ -2232,6 +2298,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExternalServiceData"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
@@ -2417,6 +2489,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
@@ -2425,6 +2503,18 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "504":
+          description: Gateway Timeout
           content:
             application/json:
               schema:
@@ -2508,6 +2598,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
@@ -2524,6 +2620,18 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "504":
+          description: Gateway Timeout
           content:
             application/json:
               schema:
@@ -2600,14 +2708,38 @@ paths:
       responses:
         "200":
           description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "412":
           description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/bucket:
     get:
       tags:
@@ -2818,6 +2950,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
@@ -2826,6 +2964,18 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "504":
+          description: Gateway Timeout
           content:
             application/json:
               schema:
@@ -2890,14 +3040,38 @@ paths:
               required: true
               schema:
                 type: string
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "412":
           description: Precondition Failed - ETag mismatch
+        "413":
+          description: Payload Too Large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
     delete:
       tags:
       - Conversations
@@ -2929,14 +3103,38 @@ paths:
       responses:
         "200":
           description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "412":
           description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
       x-codeSamples:
       - lang: cURL
         label: CURL
@@ -3098,14 +3296,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
           content:
             application/json:
               schema:
@@ -3173,8 +3389,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Limit not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -3217,6 +3445,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -3281,14 +3515,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
           content:
             application/json:
               schema:
@@ -3331,14 +3583,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
           content:
             application/json:
               schema:
@@ -3449,14 +3719,44 @@ paths:
                     nodeType: ITEM
                     contentLength: 128630
                     contentType: image/png
+          headers:
+            ETag:
+              description: Entity tag for the uploaded file
+              required: true
+              schema:
+                type: string
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "412":
           description: Precondition Failed - ETag mismatch
+        "413":
+          description: Payload Too Large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
     delete:
       tags:
       - Files
@@ -3487,14 +3787,38 @@ paths:
       responses:
         "200":
           description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "412":
           description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
       x-codeSamples:
       - lang: cURL
         label: CURL
@@ -4309,6 +4633,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
@@ -4418,6 +4748,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
@@ -4493,6 +4829,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -4793,6 +5135,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -5166,6 +5514,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -5683,6 +6037,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
@@ -5748,6 +6108,12 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -5838,6 +6204,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
@@ -5889,14 +6261,32 @@ paths:
       responses:
         "200":
           description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Limit not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
           content:
             application/json:
               schema:
@@ -8111,6 +8501,62 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/ops/toolset/{bucket}/{path}/repair:
+    post:
+      tags:
+      - Toolsets
+      summary: "/v1/ops/toolset/{bucket}/{path}/repair"
+      operationId: repairToolSet
+      parameters:
+      - name: bucket
+        in: path
+        description: The bucket identifier where the toolset is stored
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The path to the toolset within the bucket
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: "ToolSet successfully repaired: new client_id issued, all credentials cleared"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolSetRepairControllerRepairResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "424":
+          description: Failed Dependency
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/prompts/{bucket}/{prompt_path}:
     get:
       tags:
@@ -8163,6 +8609,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
@@ -8171,6 +8623,18 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "504":
+          description: Gateway Timeout
           content:
             application/json:
               schema:
@@ -8250,14 +8714,38 @@ paths:
               required: true
               schema:
                 type: string
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "412":
           description: Precondition Failed - ETag mismatch
+        "413":
+          description: Payload Too Large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
       x-codeSamples:
       - lang: cURL
         label: CURL
@@ -8291,14 +8779,38 @@ paths:
       responses:
         "200":
           description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "412":
           description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
       x-codeSamples:
       - lang: cURL
         label: CURL
@@ -9298,6 +9810,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AllowedToolsResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
@@ -9388,6 +9906,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
@@ -9466,6 +9990,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ToolSetToolsResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
@@ -9637,6 +10167,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
@@ -9645,6 +10181,18 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "504":
+          description: Gateway Timeout
           content:
             application/json:
               schema:
@@ -9770,14 +10318,38 @@ paths:
               required: true
               schema:
                 type: string
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "412":
           description: Precondition Failed - ETag mismatch
+        "413":
+          description: Payload Too Large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
       x-codeSamples:
       - lang: cURL
         label: CURL
@@ -9810,14 +10382,38 @@ paths:
       responses:
         "200":
           description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "412":
           description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
     x-codeSamples:
     - lang: cURL
       label: CURL
@@ -9889,14 +10485,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "404":
           description: Not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
           content:
             application/json:
               schema:
@@ -12428,6 +13042,8 @@ components:
           type: string
         user_level_auth_status:
           $ref: "#/components/schemas/ResourceAuthStatus"
+        dynamically_registered:
+          type: boolean
     ResourceAuthSettingsData:
       type: object
       properties:
@@ -13292,6 +13908,13 @@ components:
         provider:
           type: string
         intro:
+          type: string
+    ToolSetRepairControllerRepairResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        result:
           type: string
     ToolSetToolsResponse:
       type: object

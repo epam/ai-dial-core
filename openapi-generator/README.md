@@ -24,8 +24,7 @@ Annotate a controller method:
     },
     responses = {
         @ApiResponse(code = 200, body = @ApiSchema(implementation = User.class))
-    },
-    responseProfile = ResponseProfile.AUTHENTICATED_READ_EXTENDED
+    }
 )
 public Future<?> getUser(String id) { }
 ```

@@ -4,7 +4,6 @@ import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
-import com.epam.aidial.core.openapi.annotations.ResponseProfile;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -86,7 +85,6 @@ class EndpointValidatorTest {
                 "",
                 new ApiParameter[0],
                 new ApiResponse[0],
-                ResponseProfile.AUTHENTICATED_OPERATION,
                 new ApiExtension[0]
         );
     }
