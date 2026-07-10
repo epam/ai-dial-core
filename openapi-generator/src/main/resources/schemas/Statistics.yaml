@@ -1,0 +1,10 @@
+type: object
+properties:
+  usage_per_model:
+    type: array
+    items:
+      $ref: '#/components/schemas/UsagePerModel'
+  discarded_messages:
+    type: array
+    items:
+      type: integer

@@ -52,7 +52,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         assertEquals(3, parsed.get("applied").asInt(), () -> "Body: " + response.body());
         assertEquals(0, parsed.get("failed").asInt());
         for (JsonNode r : parsed.get("results")) {
-            assertEquals("applied", r.get("status").asText(), () -> "Body: " + response.body());
+            assertEquals("APPLIED", r.get("status").asText(), () -> "Body: " + response.body());
         }
         verify(send(HttpMethod.GET, "/v1/interceptors/platform/apply-int-1", null, "",
                 "authorization", "admin"), 200);
@@ -126,7 +126,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
             String status = r.get("status").asText();
             if ("FAILED".equals(status)) {
                 failed++;
-            } else if ("skipped".equals(status)) {
+            } else if ("SKIPPED".equals(status)) {
                 skipped++;
             }
         }
@@ -516,7 +516,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
             verify(response, 200);
             JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
             assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
-            assertEquals("applied_invalid", parsed.get("results").get(0).get("status").asText());
+            assertEquals("APPLIED_INVALID", parsed.get("results").get(0).get("status").asText());
 
             // Wait for rebuild to surface the invalid record.
             JsonNode found = null;

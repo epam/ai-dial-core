@@ -1,0 +1,11 @@
+type: object
+required:
+  - index
+properties:
+  index:
+    type: integer
+  delta:
+    $ref: "#/components/schemas/ChatCompletionDelta"
+  finish_reason:
+    type: string
+    nullable: true

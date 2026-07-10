@@ -1,0 +1,7 @@
+type: object
+additionalProperties: true
+required: [type, static_function]
+properties:
+  type: { type: string, enum: [static_function] }
+  static_function:
+    $ref: '#/components/schemas/StaticFunction'

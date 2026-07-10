@@ -7,6 +7,14 @@ import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
+import com.epam.aidial.core.openapi.annotations.ApiHeader;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiOperations;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
@@ -85,6 +93,385 @@ public class ResourceController extends AccessControlBaseController {
     }
 
     @Override
+    @ApiOperations({
+            // Applications
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/applications/{bucket}/{application_path}",
+                    operationId = "saveCustomApplication",
+                    requestBody = @ApiSchema(implementation = Application.class),
+                    tags = {"Applications"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "application_path", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.APPLICATION_PATH_SAVE),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_APPLICATION),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_APPLICATION)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved application", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 413),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 502),
+                            @ApiResponse(code = 504)
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/applications/{bucket}/{application_path}",
+                    operationId = "getCustomApplication",
+                    tags = {"Applications"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "application_path", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.APPLICATION_PATH)
+                    },
+                responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the application", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 502),
+                            @ApiResponse(code = 504)
+                    }
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/applications/{bucket}/{application_path}",
+                    operationId = "deleteCustomApplication",
+                    tags = {"Applications"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "application_path", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.APPLICATION_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_APPLICATION)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/metadata/applications/{bucket}/{path}",
+                    operationId = "getApplicationMetadata",
+                    tags = {"Applications"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_APPLICATIONS),
+                            @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
+                            @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
+                            @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
+                            @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_PERMISSIONS_APPLICATIONS, schema = Boolean.class)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500)
+                    }
+            ),
+            // Conversations
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/conversations/{bucket}/{conversation_path}",
+                    operationId = "saveConversation",
+                    requestBody = @ApiSchema(implementation = Conversation.class),
+                    tags = {"Conversations"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "conversation_path", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.CONVERSATION_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_CONVERSATION),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_CONVERSATION)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved conversation", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 413),
+                            @ApiResponse(code = 500)
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/conversations/{bucket}/{conversation_path}",
+                    operationId = "getConversation",
+                    tags = {"Conversations"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "conversation_path", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.CONVERSATION_PATH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Conversation.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the conversation", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 502),
+                            @ApiResponse(code = 504)
+                    }
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/conversations/{bucket}/{conversation_path}",
+                    operationId = "deleteConversation",
+                    tags = {"Conversations"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "conversation_path", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.CONVERSATION_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_CONVERSATION)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/metadata/conversations/{bucket}/{path}",
+                    operationId = "getConversationMetadata",
+                    tags = {"Conversations"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_CONVERSATIONS),
+                            @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
+                            @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
+                            @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
+                            @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_PERMISSIONS_CONVERSATIONS,
+                                schema = Boolean.class)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500)
+                    }
+            ),
+            // Prompts
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/prompts/{bucket}/{prompt_path}",
+                    operationId = "savePrompt",
+                    requestBody = @ApiSchema(implementation = Prompt.class),
+                    tags = {"Prompts"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_PROMPT),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_PROMPT)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved prompt", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 413),
+                            @ApiResponse(code = 500)
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/prompts/{bucket}/{prompt_path}",
+                    operationId = "getPrompt",
+                    tags = {"Prompts"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Prompt.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the prompt", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 502),
+                            @ApiResponse(code = 504)
+                    }
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/prompts/{bucket}/{prompt_path}",
+                    operationId = "deletePrompt",
+                    tags = {"Prompts"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "prompt_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.PROMPT_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_PROMPT)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/metadata/prompts/{bucket}/{path}",
+                    operationId = "getPromptMetadata",
+                    tags = {"Prompts"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_PROMPTS),
+                            @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
+                            @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
+                            @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
+                            @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_PERMISSIONS_PROMPTS, schema = Boolean.class)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500)
+                    }
+            ),
+            // Toolsets
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/toolsets/{bucket}/{toolset_path}",
+                    operationId = "saveToolSet",
+                    requestBody = @ApiSchema(implementation = ToolSet.class),
+                    tags = {"Toolsets"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_UPLOAD_TOOLSET),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH_UPLOAD_TOOLSET)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceItemMetadata.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved toolset", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 413),
+                            @ApiResponse(code = 500)
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/toolsets/{bucket}/{toolset_path}",
+                    operationId = "getCustomToolSet",
+                    tags = {"Toolsets"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ToolSet.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the toolset", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500),
+                            @ApiResponse(code = 502),
+                            @ApiResponse(code = 504)
+                    }
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/toolsets/{bucket}/{toolset_path}",
+                    operationId = "deleteToolSet",
+                    tags = {"Toolsets"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "toolset_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.TOOLSET_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_TOOLSET)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/metadata/toolsets/{bucket}/{path}",
+                    operationId = "getToolSetMetadata",
+                    tags = {"Toolsets"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_TOOLSETS),
+                            @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
+                            @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
+                            @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
+                            @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_PERMISSIONS_TOOLSETS, schema = Boolean.class)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 500)
+                    }
+            ),
+            // Files (delete only - upload/download handled by UploadFileController/DownloadFileController)
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/files/{bucket}/{file_path}",
+                    operationId = "deleteFile",
+                    tags = {"Files"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "file_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.FILE_PATH),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH_DELETE_FILE)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    }
+            )
+    })
     protected Future<?> handle(ResourceDescriptor descriptor, boolean hasWriteAccess) {
         if (context.getRequest().method() == HttpMethod.GET) {
             return metadata ? getMetadata(descriptor) : getResource(descriptor, hasWriteAccess);

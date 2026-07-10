@@ -1,6 +1,8 @@
 package com.epam.aidial.core.storage.data;
 
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.openapi.annotations.ApiSubType;
+import com.epam.aidial.core.openapi.annotations.ApiSubTypes;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -17,6 +19,19 @@ import java.util.Set;
 @Data
 @NoArgsConstructor
 @Accessors(chain = true)
+@ApiSubTypes(
+        discriminatorProperty = "nodeType",
+        value = {
+            @ApiSubType(
+                discriminatorValue = "FOLDER",
+                type = ResourceFolderMetadata.class
+                ),
+            @ApiSubType(
+                discriminatorValue = "ITEM",
+                type = ResourceItemMetadata.class
+                )
+        }
+)
 public abstract class MetadataBase {
     public static final String MIME_TYPE = "application/vnd.dial.metadata+json";
 

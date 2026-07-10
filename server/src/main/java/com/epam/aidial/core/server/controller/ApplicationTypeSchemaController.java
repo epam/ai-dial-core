@@ -2,6 +2,11 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -36,6 +41,20 @@ public class ApplicationTypeSchemaController {
         this.applicationSchemaService = context.getProxy().getApplicationSchemaService();
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/application_type_schemas/meta_schema",
+            operationId = "getMetaSchemaOfCustomApplicationSchema",
+            tags = {"Applications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> handleGetMetaSchema() {
         return taskExecutor.submit(MetaSchemaHolder::getCustomApplicationMetaSchema)
                 .onSuccess(metaSchema -> context.respond(HttpStatus.OK, metaSchema))
@@ -83,6 +102,23 @@ public class ApplicationTypeSchemaController {
         return schemaNode;
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/application_type_schemas/schema",
+            operationId = "getCustomApplicationSchema",
+            tags = {"Applications"},
+            parameters = {
+                    @ApiParameter(name = "id", in = ParameterIn.QUERY, required = true, description = OpenApiDescriptions.SCHEMA_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> handleGetSchema() {
         return taskExecutor.submit(this::getSchema)
                 .onSuccess(schemaNode -> context.respond(HttpStatus.OK, schemaNode))
@@ -134,6 +170,20 @@ public class ApplicationTypeSchemaController {
         return filteredSchemas;
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/application_type_schemas/schemas",
+            operationId = "listCustomApplicationSchemas",
+            tags = {"Applications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> handleListSchemas() {
         return taskExecutor.submit(this::listSchemas)
                 .onSuccess(schemas -> context.respond(HttpStatus.OK, schemas))

@@ -29,6 +29,7 @@ public class ResourceAuthSettingsData {
     private ResourceAuthStatus appLevelAuthStatus;
     private ResourceAuthStatus userLevelAuthStatus;
     private List<String> scopesSupported;
+    private Boolean dynamicallyRegistered;
 
     @JsonIgnore
     public static ResourceAuthSettingsData toData(ResourceAuthSettings toolsetAuthSettings) {
@@ -44,6 +45,7 @@ public class ResourceAuthSettingsData {
             .appLevelAuthStatus(toolsetAuthSettings.getAppLevelAuthStatus())
             .userLevelAuthStatus(toolsetAuthSettings.getUserLevelAuthStatus())
             .scopesSupported(toolsetAuthSettings.getScopesSupported())
+            .dynamicallyRegistered(toolsetAuthSettings.getDynamicallyRegistered())
             .build();
     }
 }

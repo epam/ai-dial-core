@@ -42,7 +42,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
         assertEquals(0, parsed.get("failed").asInt());
-        assertEquals("valid", parsed.get("results").get(0).get("status").asText());
+        assertEquals("VALID", parsed.get("results").get(0).get("status").asText());
         verify(send(HttpMethod.GET, "/v1/models/platform/validate-happy-model", null, "",
                 "authorization", "admin"), 404);
     }
@@ -114,7 +114,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         assertEquals(9, parsed.get("valid").asInt(), () -> "Body: " + response.body());
         assertEquals(0, parsed.get("failed").asInt());
         for (JsonNode r : parsed.get("results")) {
-            assertEquals("valid", r.get("status").asText(), () -> "Body: " + response.body());
+            assertEquals("VALID", r.get("status").asText(), () -> "Body: " + response.body());
         }
         // None of these were written.
         verify(send(HttpMethod.GET, "/v1/schemas/platform/validate-schema", null, "",
@@ -198,7 +198,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         boolean sawSkipped = false;
         boolean sawFailed = false;
         for (JsonNode r : results) {
-            if ("skipped".equals(r.get("status").asText())) {
+            if ("SKIPPED".equals(r.get("status").asText())) {
                 sawSkipped = true;
             } else if ("FAILED".equals(r.get("status").asText())) {
                 sawFailed = true;
@@ -449,6 +449,8 @@ public class AdminValidateApiTest extends ResourceBaseTest {
 
         Response get = send(HttpMethod.GET, "/v1/settings/platform/global", null, "",
                 "authorization", "admin");
+        System.out.println(get.status());
+        System.out.println(get.body());
         verify(get, 404);
 
         // File-config view: the sentinel must not be present in file/default-sourced values.
@@ -502,7 +504,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
             JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
             assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
             assertEquals(0, parsed.get("failed").asInt());
-            assertEquals("valid", parsed.get("results").get(0).get("status").asText());
+            assertEquals("VALID", parsed.get("results").get(0).get("status").asText());
             verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-mode", null, "",
                     "authorization", "admin"), 404);
         }

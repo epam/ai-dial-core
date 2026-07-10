@@ -4,6 +4,12 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -49,6 +55,62 @@ public class DeploymentFeatureController {
         this.context = context;
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/deployments/{deployment_name}/configuration",
+            operationId = "configurationDeployment",
+            tags = {"Deployment Feature"},
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "ProxyResponse")),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 422),
+                    @ApiResponse(code = 500),
+                    @ApiResponse(code = 502)
+            }
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/deployments/{deployment_name}/tokenize",
+            operationId = "tokenize",
+            tags = {"Deployment Feature"},
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME)
+            },
+            requestBody = @ApiSchema(schemaRef = "TokenizeRequest"),
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "TokenizeResponse")),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 422),
+                    @ApiResponse(code = 500),
+                    @ApiResponse(code = 502)
+            }
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/deployments/{deployment_name}/truncate_prompt",
+            operationId = "truncatePrompt",
+            tags = {"Deployment Feature"},
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME)
+            },
+            requestBody = @ApiSchema(schemaRef = "TruncatePromptRequest"),
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "TruncatePromptResponse")),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 422),
+                    @ApiResponse(code = 500),
+                    @ApiResponse(code = 502)
+            }
+    )
     public Future<?> handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
         // make sure request.body() called before request.resume()
         return proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId)).map(dep -> {

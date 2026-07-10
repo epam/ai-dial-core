@@ -1,0 +1,13 @@
+type: object
+required:
+  - status
+  - discarded_messages
+properties:
+  status:
+    type: string
+    enum:
+      - success
+  discarded_messages:
+    type: array
+    items:
+      type: integer

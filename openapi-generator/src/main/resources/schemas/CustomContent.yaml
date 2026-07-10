@@ -1,0 +1,16 @@
+type: object
+additionalProperties: true
+properties:
+  stages:
+    type: array
+    items:
+      $ref: '#/components/schemas/Stage'
+  attachments:
+    type: array
+    items:
+      $ref: '#/components/schemas/Attachment'
+  state:
+    type: object
+    additionalProperties: true
+  form_value: {}
+  form_schema: {}

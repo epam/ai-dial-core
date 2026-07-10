@@ -1,6 +1,10 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.CopyResourcesRequest;
@@ -58,6 +62,19 @@ public class ResourceOperationController {
         this.heartbeatService = proxy.getHeartbeatService();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/move",
+            operationId = "moveResource",
+            requestBody = @ApiSchema(implementation = MoveResourcesRequest.class),
+            tags = {"Files", "Conversations", "Prompts", "Applications", "Toolsets"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> move() {
         context.getRequest()
                 .body()
@@ -115,6 +132,19 @@ public class ResourceOperationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/copy",
+            operationId = "copyResource",
+            requestBody = @ApiSchema(implementation = CopyResourcesRequest.class),
+            tags = {"Files", "Conversations", "Prompts", "Applications", "Toolsets"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> copy() {
         context.getRequest()
                 .body()
@@ -176,6 +206,21 @@ public class ResourceOperationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/subscribe",
+            operationId = "subscribeToResources",
+            requestBody = @ApiSchema(implementation = SubscribeResourcesRequest.class),
+            contentType = "text/event-stream",
+            tags = {"Notifications"},
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = ResourceEvent.class), contentTypes = {"text/event-stream"}),
+                    @ApiResponse(code = 400, description = OpenApiDescriptions.RESPONSE_BAD_REQUEST),
+                    @ApiResponse(code = 401, description = OpenApiDescriptions.RESPONSE_UNAUTHORIZED),
+                    @ApiResponse(code = 500, description = OpenApiDescriptions.RESPONSE_SERVER_ERROR)
+            }
+    )
     public Future<?> subscribe() {
         HttpServerResponse response = context.getResponse();
         Consumer<ResourceEvent> subscriber = this::sendSubscriptionEvent;

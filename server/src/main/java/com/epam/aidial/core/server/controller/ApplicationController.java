@@ -8,6 +8,12 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.extraction.ApplicationDeploymentExtractor;
@@ -71,6 +77,23 @@ public class ApplicationController {
         this.taskExecutor = context.getProxy().getTaskExecutor();
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/openai/applications/{application_name}",
+            operationId = "getApplication",
+            tags = {"Deployment listing"},
+            parameters = {
+                    @ApiParameter(name = "application_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.APPLICATION_NAME)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ApplicationData.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> getApplication(String applicationId) {
         taskExecutor.submit(() -> {
             if (!(deploymentService.findDeployment(context, applicationId) instanceof Application application)) {
@@ -96,8 +119,19 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
-
-
+    @ApiOperation(
+            method = "GET",
+            path = "/openai/applications",
+            operationId = "getApplications",
+            tags = {"Deployment listing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ListData.class, typeArguments = {ApplicationData.class})),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> getApplications() {
         log.debug("Start applications listing");
         Config config = context.getConfig();
@@ -122,6 +156,20 @@ public class ApplicationController {
         }).onFailure(this::respondError);
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/application/deploy",
+            operationId = "deployApplication",
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
+            tags = {"Applications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> deployApplication() {
         context.getRequest()
                 .body()
@@ -137,6 +185,20 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/application/undeploy",
+            operationId = "undeployApplication",
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
+            tags = {"Applications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> undeployApplication() {
         context.getRequest()
                 .body()
@@ -152,6 +214,20 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/application/redeploy",
+            operationId = "redeployApplication",
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
+            tags = {"Applications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> redeployApplication() {
         context.getRequest()
                 .body()
@@ -167,6 +243,20 @@ public class ApplicationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/application/logs",
+            operationId = "getApplicationLogs",
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
+            tags = {"Applications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Application.Logs.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> getApplicationLogs() {
         context.getRequest()
                 .body()
@@ -265,6 +355,7 @@ public class ApplicationController {
         data.setDisplayVersion(application.getDisplayVersion());
         data.setIconUrl(application.getIconUrl());
         data.setDescription(application.getDescription());
+        data.setIntro(application.getIntro());
         FeaturesData featuresData = FeaturesData.createFeatures(application.getFeatures());
         featuresData.setMcp(application.getMcp() != null);
         featuresData.setChatCompletion(application.getEndpoint() != null);

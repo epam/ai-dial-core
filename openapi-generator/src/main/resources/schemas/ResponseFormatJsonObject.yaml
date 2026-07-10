@@ -1,0 +1,5 @@
+type: object
+additionalProperties: true
+required: [type]
+properties:
+  type: { type: string, enum: [json_object] }

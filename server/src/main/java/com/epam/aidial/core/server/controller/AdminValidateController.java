@@ -1,17 +1,24 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.data.AdminApplyRequest;
+import com.epam.aidial.core.server.data.AdminManifest;
+import com.epam.aidial.core.server.data.AdminValidateResponse;
+import com.epam.aidial.core.server.data.ValidationResult;
+import com.epam.aidial.core.server.data.ValidationStatus;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 
@@ -46,6 +53,23 @@ public class AdminValidateController implements Controller {
     }
 
     @Override
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/admin/validate",
+            operationId = "validateConfigManifests",
+            tags = {"Admin"},
+            requestBody = @ApiSchema(implementation = AdminApplyRequest.class),
+            responses = {
+                    @ApiResponse(code = 200, description = "Validation successful", body = @ApiSchema(implementation = AdminValidateResponse.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 422, description = "Validation failed", body = @ApiSchema(implementation = AdminValidateResponse.class)),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     public Future<?> handle() {
         if (!authorizationService.isAdmin(context)) {
             context.respond(HttpStatus.FORBIDDEN, "Forbidden");
@@ -59,47 +83,36 @@ public class AdminValidateController implements Controller {
     }
 
     private void process(Buffer body) {
-        JsonNode envelope;
+        AdminApplyRequest request;
         try {
             String text = body == null ? "" : body.toString(StandardCharsets.UTF_8);
-            envelope = ProxyUtil.MAPPER.readTree(text.isEmpty() ? "{}" : text);
+            request = ProxyUtil.MAPPER.readValue(text.isEmpty() ? "{}" : text, AdminApplyRequest.class);
         } catch (JsonProcessingException e) {
             // getOriginalMessage() echoes the offending token verbatim, which can leak submitted
             // secrets back into responses and logs — surface only the parse location.
             context.respond(HttpStatus.BAD_REQUEST, "Invalid JSON at " + locationOf(e));
             return;
         }
-        if (!envelope.isObject()) {
-            context.respond(HttpStatus.BAD_REQUEST, "Request body must be a JSON object");
-            return;
-        }
-        JsonNode manifestsNode = envelope.get("manifests");
-        if (manifestsNode == null || !manifestsNode.isArray()) {
+
+        if (request.manifests() == null) {
             context.respond(HttpStatus.BAD_REQUEST, "Missing or invalid 'manifests' array");
             return;
         }
-        boolean precheck = !envelope.has("precheck") || envelope.get("precheck").asBoolean(true);
 
-        List<AdminApplyController.ManifestEntry> entries = new ArrayList<>();
-        for (int i = 0; i < manifestsNode.size(); i++) {
-            JsonNode entryNode = manifestsNode.get(i);
-            if (!entryNode.isObject()) {
-                context.respond(HttpStatus.BAD_REQUEST, "manifests[" + i + "] must be a JSON object");
-                return;
-            }
-            JsonNode kindNode = entryNode.get("kind");
-            if (kindNode == null || !kindNode.isTextual()) {
+        // Treat missing precheck value as true
+        boolean precheck = request.precheck() == null || request.precheck();
+
+        List<AdminManifest> entries = request.manifests();
+        for (int i = 0; i < entries.size(); i++) {
+            AdminManifest entry = entries.get(i);
+            if (entry.kind() == null) {
                 context.respond(HttpStatus.BAD_REQUEST, "manifests[" + i + "].kind must be a string");
                 return;
             }
-            String kind = kindNode.asText();
-            if ("Bundle".equals(kind)) {
+            if ("Bundle".equals(entry.kind())) {
                 context.respond(HttpStatus.BAD_REQUEST, "Bundle kind is not allowed in /v1/admin/validate");
                 return;
             }
-            String name = entryNode.hasNonNull("name") ? entryNode.get("name").asText() : null;
-            JsonNode spec = entryNode.get("spec");
-            entries.add(new AdminApplyController.ManifestEntry(kind, name, spec));
         }
 
         taskExecutor.submit(() -> validateBatch(precheck, entries))
@@ -114,17 +127,17 @@ public class AdminValidateController implements Controller {
     }
 
     private ValidateResponse validateBatch(boolean precheck,
-                                           List<AdminApplyController.ManifestEntry> rawEntries) {
-        List<AdminApplyController.ManifestEntry> entries = new ArrayList<>(rawEntries);
+                                           List<AdminManifest> rawEntries) {
+        List<AdminManifest> entries = new ArrayList<>(rawEntries);
         entries.sort(Comparator.comparingInt(
                 e -> AdminApplyController.DEPENDENCY_ORDER.getOrDefault(e.kind(), 99)));
 
         boolean softValidation = mergedConfigStore.isSoftValidation();
         Config scratch = AdminApplyController.newScratch(mergedConfigStore);
-        List<AdminApplyController.EntityResult> results = new ArrayList<>();
+        List<ValidationResult> results = new ArrayList<>();
         boolean anyFailure = false;
 
-        for (AdminApplyController.ManifestEntry entry : entries) {
+        for (AdminManifest entry : entries) {
             String entityId = AdminApplyController.entityId(entry);
             String error = null;
             // Unknown kinds FAIL on both surfaces: validateOnly returns FAILED (apply precheck
@@ -133,26 +146,26 @@ public class AdminValidateController implements Controller {
             if (!AdminApplyController.KIND_URL_SEGMENT.containsKey(entry.kind())) {
                 error = "Unknown kind: " + entry.kind();
             } else {
-                AdminApplyController.EntityResult validation =
+                ValidationResult validation =
                         AdminApplyController.validateOnly(entry, scratch, softValidation);
-                if (!"valid".equals(validation.status())) {
+                if (!ValidationStatus.VALID.equals(validation.status())) {
                     error = validation.error();
                 }
             }
             if (error == null) {
                 AdminApplyController.mutateScratch(scratch, entry);
-                results.add(new AdminApplyController.EntityResult(entityId, "valid", null));
+                results.add(new ValidationResult(entityId, ValidationStatus.VALID, null));
             } else {
                 anyFailure = true;
-                results.add(new AdminApplyController.EntityResult(entityId, "FAILED", error));
+                results.add(new ValidationResult(entityId, ValidationStatus.FAILED, error));
             }
         }
 
         if (precheck && anyFailure) {
-            List<AdminApplyController.EntityResult> finalResults = new ArrayList<>(results.size());
-            for (AdminApplyController.EntityResult r : results) {
-                if ("valid".equals(r.status())) {
-                    finalResults.add(new AdminApplyController.EntityResult(r.entityId(), "skipped", null));
+            List<ValidationResult> finalResults = new ArrayList<>(results.size());
+            for (ValidationResult r : results) {
+                if (ValidationStatus.VALID.equals(r.status())) {
+                    finalResults.add(new ValidationResult(r.entityId(), ValidationStatus.SKIPPED, null));
                 } else {
                     finalResults.add(r);
                 }
@@ -163,29 +176,17 @@ public class AdminValidateController implements Controller {
     }
 
     private ValidateResponse buildValidateResponse(HttpStatus status,
-                                                   List<AdminApplyController.EntityResult> results) {
+                                                   List<ValidationResult> results) {
         int valid = 0;
         int failed = 0;
-        for (AdminApplyController.EntityResult r : results) {
-            if ("valid".equals(r.status())) {
+        for (ValidationResult r : results) {
+            if (ValidationStatus.VALID.equals(r.status())) {
                 valid++;
-            } else if ("FAILED".equals(r.status())) {
+            } else if (ValidationStatus.FAILED.equals(r.status())) {
                 failed++;
             }
         }
-        ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
-        body.put("valid", valid);
-        body.put("failed", failed);
-        ArrayNode arr = body.putArray("results");
-        for (AdminApplyController.EntityResult r : results) {
-            ObjectNode n = arr.addObject();
-            n.put("entityId", r.entityId());
-            n.put("status", r.status());
-            if (r.error() != null) {
-                n.put("error", r.error());
-            }
-        }
-        return new ValidateResponse(status, body);
+        return new ValidateResponse(status, new AdminValidateResponse(valid, failed, results));
     }
 
     private static String locationOf(JsonProcessingException e) {
@@ -194,5 +195,6 @@ public class AdminValidateController implements Controller {
                 : "line " + e.getLocation().getLineNr() + ", column " + e.getLocation().getColumnNr();
     }
 
-    private record ValidateResponse(HttpStatus status, ObjectNode body) {}
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record ValidateResponse(HttpStatus status, AdminValidateResponse body) {}
 }

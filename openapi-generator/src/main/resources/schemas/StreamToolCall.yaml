@@ -1,0 +1,12 @@
+type: object
+properties:
+  index:
+    type: integer
+  id:
+    type: string
+  type:
+    type: string
+    enum:
+      - function
+  function:
+    $ref: '#/components/schemas/FunctionCall'

@@ -1,5 +1,8 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Bucket;
@@ -17,6 +20,14 @@ public class BucketController {
     private final Proxy proxy;
     private final ProxyContext context;
 
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/bucket",
+            operationId = "getUserBucket",
+            tags = {"Files", "Conversations", "Prompts", "Applications", "Toolsets"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Bucket.class))
+            })
     public Future<?> getBucket() {
         EncryptionService encryptionService = proxy.getEncryptionService();
         String bucketLocation = BucketBuilder.buildUserBucket(context);

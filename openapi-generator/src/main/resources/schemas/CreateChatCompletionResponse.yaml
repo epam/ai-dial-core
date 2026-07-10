@@ -1,0 +1,25 @@
+type: object
+required:
+  - id
+  - object
+  - created
+  - model
+  - choices
+properties:
+  id:
+    type: string
+  object:
+    type: string
+    enum:
+      - chat.completion
+  created:
+    type: integer
+    format: int64
+  model:
+    type: string
+  choices:
+    type: array
+    items:
+      $ref: "#/components/schemas/ChatCompletionChoice"
+  usage:
+    $ref: "#/components/schemas/CompletionUsage"

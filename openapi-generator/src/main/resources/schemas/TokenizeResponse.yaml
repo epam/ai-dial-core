@@ -1,0 +1,12 @@
+type: object
+required:
+  - outputs
+properties:
+  outputs:
+    type: array
+    items:
+      oneOf:
+        - $ref: '#/components/schemas/TokenizeSuccess'
+        - $ref: '#/components/schemas/TokenizeError'
+      discriminator:
+        propertyName: status

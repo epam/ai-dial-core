@@ -10,8 +10,9 @@ import io.vertx.core.http.HttpServerRequest;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -308,7 +309,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(true, false, Set.of()).appendClaims(context, entry);
+        new GfLogStore(true, false, List.of(), null).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
         assertEquals("user-1", claims.get("user_id").asText());
@@ -328,7 +329,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(true, false, Set.of()).appendClaims(context, entry);
+        new GfLogStore(true, false, List.of(), null).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
         assertEquals("user-1", claims.get("user_id").asText());
@@ -354,7 +355,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(false, true, Set.of("authorization", "api-key")).appendHeaders(context, entry);
+        new GfLogStore(false, true, patterns("authorization", "api-key"), null).appendHeaders(context, entry);
 
         JsonNode headerNode = parseWrapped(buffer.toString());
         assertFalse(headerNode.has("Authorization"));
@@ -380,7 +381,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        GfLogStore store = new GfLogStore(true, true, Set.of("authorization"));
+        GfLogStore store = new GfLogStore(true, true, patterns("authorization"), null);
         // mirror the order/position used by the real log line: both sections follow a preceding object member
         store.appendClaims(context, entry);
         store.appendHeaders(context, entry);
@@ -390,6 +391,86 @@ public class GfLogStoreTest {
         assertEquals("admin", root.get("claims").get("roles").get(0).asText());
         assertFalse(root.get("headers").has("Authorization"));
         assertEquals("conv-1", root.get("headers").get("X-Conversation-Id").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendHeadersRegexBlacklistDropsFamily() {
+        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+        headers.add("X-Stainless-Lang", "python");
+        headers.add("X-Stainless-OS", "Linux");
+        headers.add("traceparent", "00-abc-def-01");
+        headers.add("User-Agent", "AsyncAzureOpenAI/Python");
+
+        ProxyContext context = mockRequest(headers);
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        new GfLogStore(false, true, patterns("x-stainless-.*"), null).appendHeaders(context, entry);
+
+        JsonNode headerNode = parseWrapped(buffer.toString());
+        assertFalse(headerNode.has("X-Stainless-Lang"));
+        assertFalse(headerNode.has("X-Stainless-OS"));
+        assertEquals("00-abc-def-01", headerNode.get("traceparent").asText());
+        assertEquals("AsyncAzureOpenAI/Python", headerNode.get("User-Agent").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendHeadersAllowlistCollectsOnlyMatching() {
+        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+        headers.add("traceparent", "00-abc-def-01");
+        headers.add("User-Agent", "AsyncAzureOpenAI/Python");
+        headers.add("X-Stainless-Lang", "python");
+        headers.add("Accept", "application/json");
+
+        ProxyContext context = mockRequest(headers);
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        new GfLogStore(false, true, List.of(), patterns("traceparent", "user-agent")).appendHeaders(context, entry);
+
+        JsonNode headerNode = parseWrapped(buffer.toString());
+        assertEquals("00-abc-def-01", headerNode.get("traceparent").asText());
+        assertEquals("AsyncAzureOpenAI/Python", headerNode.get("User-Agent").asText());
+        assertFalse(headerNode.has("X-Stainless-Lang"));
+        assertFalse(headerNode.has("Accept"));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendHeadersBlacklistWinsOverAllowlist() {
+        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+        headers.add("Authorization", "Bearer secret");
+        headers.add("traceparent", "00-abc-def-01");
+
+        ProxyContext context = mockRequest(headers);
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        // "authorization" matches both lists; the blacklist must win
+        new GfLogStore(false, true, patterns("authorization"), patterns(".*")).appendHeaders(context, entry);
+
+        JsonNode headerNode = parseWrapped(buffer.toString());
+        assertFalse(headerNode.has("Authorization"));
+        assertEquals("00-abc-def-01", headerNode.get("traceparent").asText());
+    }
+
+    private static ProxyContext mockRequest(MultiMap headers) {
+        HttpServerRequest request = mock(HttpServerRequest.class);
+        when(request.headers()).thenReturn(headers);
+        ProxyContext context = mock(ProxyContext.class);
+        when(context.getRequest()).thenReturn(request);
+        return context;
+    }
+
+    private static List<Pattern> patterns(String... regexes) {
+        return Arrays.stream(regexes)
+                .map(regex -> Pattern.compile(regex, Pattern.CASE_INSENSITIVE))
+                .toList();
     }
 
     private static LogEntry capturingEntry(StringBuilder buffer) {

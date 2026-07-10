@@ -1,0 +1,8 @@
+oneOf:
+  - $ref: '#/components/schemas/MessageContentTextPart'
+  - $ref: '#/components/schemas/MessageContentImagePart'
+  - $ref: '#/components/schemas/MessageContentFilePart'
+  - $ref: '#/components/schemas/MessageContentAudioPart'
+  - $ref: '#/components/schemas/MessageContentRefusalPart'
+discriminator:
+  propertyName: type

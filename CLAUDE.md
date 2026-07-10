@@ -41,12 +41,15 @@ AI DIAL Core is an **HTTP reverse proxy / API gateway** for LLMs built on **Java
 
 ### Gradle Modules
 
-| Module | Root Package | Responsibility |
-|---|---|---|
-| `config` | `com.epam.aidial.core.config` | POJOs for the dynamic config (`Config`, `Model`, `Application`, `Key`, `Role`, `Route`, `Interceptor`, `ToolSet`, `Upstream`, `Limit`, …) + JSON validation |
-| `storage` | `com.epam.aidial.core.storage` | Blob storage abstraction via Apache JClouds (S3, GCS, Azure Blob, filesystem), Redis-backed resource service, resource descriptors, locking |
-| `credentials` | `com.epam.aidial.core.credentials` | OAuth2 token management, AES credential encryption, KMS integration (AWS/Azure/GCP) |
-| `server` | `com.epam.aidial.core.server` | Entry point (`AiDial.java`), HTTP proxy engine (`Proxy.java`), all controllers, services, security, rate limiting, upstream load balancing, telemetry |
+| Module                 | Root Package                                | Responsibility                                                                                                                                                                                              |
+|------------------------|---------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `config`               | `com.epam.aidial.core.config`               | POJOs for the dynamic config (`Config`, `Model`, `Application`, `Key`, `Role`, `Route`, `Interceptor`, `ToolSet`, `Upstream`, `Limit`, …) + JSON validation                                                 |
+| `storage`              | `com.epam.aidial.core.storage`              | Blob storage abstraction via Apache JClouds (S3, GCS, Azure Blob, filesystem), Redis-backed resource service, resource descriptors, locking                                                                 |
+| `credentials`          | `com.epam.aidial.core.credentials`          | OAuth2 token management, AES credential encryption, KMS integration (AWS/Azure/GCP)                                                                                                                         |
+| `server`               | `com.epam.aidial.core.server`               | Entry point (`AiDial.java`), HTTP proxy engine (`Proxy.java`), all controllers, services, security, rate limiting, upstream load balancing, telemetry                                                       |
+| `openapi-annotations`  | `com.epam.aidial.core.openapi.annotations`  | Custom annotations for describing OpenAPI operations, schemas, parameters, responses, headers, extensions, and reusable response profiles.                                                                  |
+| `openapi-generator`    | `com.epam.aidial.core.openapi`              | Generates and validates the OpenAPI 3.0 specification from controller annotations, builds schemas and responses, assembles the specification, and merges it with the manually maintained OpenAPI document.  |
+
 
 ### Key Server Sub-packages
 

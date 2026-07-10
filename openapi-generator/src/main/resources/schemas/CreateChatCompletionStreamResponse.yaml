@@ -1,0 +1,23 @@
+type: object
+properties:
+  id:
+    type: string
+  model:
+    type: string
+  created:
+    type: integer
+    format: int64
+  object:
+    type: string
+    enum:
+      - chat.completion.chunk
+  choices:
+    type: array
+    items:
+      $ref: '#/components/schemas/CreateChatCompletionStreamChoice'
+  usage:
+    $ref: '#/components/schemas/Usage'
+    nullable: true
+  statistics:
+    $ref: '#/components/schemas/Statistics'
+    nullable: true
