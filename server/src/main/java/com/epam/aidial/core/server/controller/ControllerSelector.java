@@ -241,8 +241,7 @@ public class ControllerSelector {
         })));
         get(RouteTemplate.LLM_RESPONSES_API_BY_ID, (proxy, context, pathMatcher) -> {
             String id = UrlUtil.decodePath(pathMatcher.group("id"));
-            context.setDialResponseId(id);
-            return new ResponseItemController(proxy, context, ResponseItemController.Operation.GET);
+            return new ResponseItemController(proxy, context, id, ResponseItemController.Operation.GET);
         });
 
         // POST routes
@@ -270,8 +269,7 @@ public class ControllerSelector {
         });
         post(RouteTemplate.LLM_RESPONSES_API_CANCEL, (proxy, context, pathMatcher) -> {
             String id = UrlUtil.decodePath(pathMatcher.group("id"));
-            context.setDialResponseId(id);
-            return new ResponseItemController(proxy, context, ResponseItemController.Operation.CANCEL);
+            return new ResponseItemController(proxy, context, id, ResponseItemController.Operation.CANCEL);
         });
         post(RouteTemplate.RATE_RESPONSE, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
@@ -502,8 +500,7 @@ public class ControllerSelector {
         }));
         delete(RouteTemplate.LLM_RESPONSES_API_BY_ID, (proxy, context, pathMatcher) -> {
             String id = UrlUtil.decodePath(pathMatcher.group("id"));
-            context.setDialResponseId(id);
-            return new ResponseItemController(proxy, context, ResponseItemController.Operation.DELETE);
+            return new ResponseItemController(proxy, context, id, ResponseItemController.Operation.DELETE);
         });
         // PUT routes
         put(RouteTemplate.FILES, (proxy, context, pathMatcher) -> {

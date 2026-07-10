@@ -97,9 +97,8 @@ public class BackgroundJobService {
         scheduler.init();
     }
 
-    public Future<Void> saveJob(ProxyContext context) {
-        String dialId = context.getDialResponseId();
-        return saveJobRecord(context)
+    public Future<Void> saveJob(String dialId, ProxyContext context) {
+        return saveJobRecord(dialId, context)
                 .onSuccess(ignore -> scheduler.schedule(dialId, System.currentTimeMillis() + settings.getInitialPollIntervalMs()));
     }
 
@@ -146,8 +145,7 @@ public class BackgroundJobService {
         return settings.getJobTtlMs();
     }
 
-    private Future<Void> saveJobRecord(ProxyContext context) {
-        String dialId = context.getDialResponseId();
+    private Future<Void> saveJobRecord(String dialId, ProxyContext context) {
         ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(dialId);
         BackgroundJobRecord record = BackgroundJobRecord.from(context, key -> encryptKey(descriptor, key));
         String json = ProxyUtil.convertToString(record);

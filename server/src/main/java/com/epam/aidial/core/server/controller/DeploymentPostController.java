@@ -30,7 +30,6 @@ import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
-import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -436,7 +435,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
         String assembledStreamingResponse = null;
         if (isEventStreamResponse(context.getProxyResponse())) {
-            assembledStreamingResponse = GfLogStore.assembleStreamingChatCompletionsResponse(context.getResponseBody());
+            assembledStreamingResponse = AnalyticsLogContext.assembleStreamingChatCompletionsResponse(context.getResponseBody());
         }
         proxy.getLogStore().save(AnalyticsLogContext.from(context, assembledStreamingResponse));
         Upstream currentUpstream = context.getUpstreamRoute().get();

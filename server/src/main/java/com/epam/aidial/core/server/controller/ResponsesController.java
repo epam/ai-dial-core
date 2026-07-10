@@ -48,10 +48,12 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 public class ResponsesController extends BaseDeploymentPostController {
@@ -273,9 +275,9 @@ public class ResponsesController extends BaseDeploymentPostController {
         }
 
         ExtractTerminalResponseFn extractFn = new ExtractTerminalResponseFn(proxy, context);
+        ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context);
         BufferingReadStream responseStream = createResponseStream(proxyResponse, () -> {
             CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-            ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context);
             return new ResponsesSseListener(List.of(attachmentsFn, replaceIdFn, extractFn));
         });
 
@@ -287,13 +289,15 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .endOnFailure(false)
                 .endOnSuccess(false)
                 .to(response)
-                .onSuccess(ignored -> handleStreamingResponse(responseStream, extractFn.getAssembledStreamingResponse()))
+                .onSuccess(ignored -> handleStreamingResponse(responseStream, replaceIdFn.getDialId(), extractFn.getAssembledStreamingResponse()))
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
     private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
         return rewriteResponseId(proxyResponse, body)
-                .compose(rewritten -> {
+                .compose(pair -> {
+                    String dialId = pair.getKey();
+                    Buffer rewritten = pair.getValue();
                     context.setResponseBody(rewritten);
                     context.setResponseBodyTimestamp(System.currentTimeMillis());
                     HttpServerResponse response = context.getResponse();
@@ -302,8 +306,8 @@ public class ResponsesController extends BaseDeploymentPostController {
                     response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
                     response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
 
-                    if (context.isBackgroundJob() && context.getDialResponseId() != null) {
-                        return proxy.getBackgroundJobService().saveJob(context)
+                    if (context.isBackgroundJob() && dialId != null) {
+                        return proxy.getBackgroundJobService().saveJob(dialId, context)
                                 .onComplete(result -> {
                                     if (result.failed()) {
                                         log.warn("Failed to save background job record", result.cause());
@@ -329,31 +333,30 @@ public class ResponsesController extends BaseDeploymentPostController {
                 });
     }
 
-    private Future<Buffer> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
+    private Future<Pair<String, Buffer>> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
         if (proxyResponse.statusCode() != 200) {
-            return Future.succeededFuture(body);
+            return Future.succeededFuture(Pair.of(null, body));
         }
         JsonNode tree = JsonUtil.tryParse(body.getBytes());
         if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
             log.warn("Response body is not a JSON object, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
                     context.getDeployment().getResponsesEndpoint());
-            return Future.succeededFuture(body);
+            return Future.succeededFuture(Pair.of(null, body));
         }
         JsonNode idNode = object.path("id");
         if (!idNode.isTextual()) {
             log.info("Response body doesn't contain 'id' field, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
                     context.getDeployment().getResponsesEndpoint());
-            return Future.succeededFuture(body);
+            return Future.succeededFuture(Pair.of(null, body));
         }
 
         String upstreamId = idNode.asText();
         if (!context.isStoreResponse()) {
             String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
-            context.setDialResponseId(dialId);
             object.put("id", dialId);
-            return Future.succeededFuture(Buffer.buffer(JsonUtil.serialize(object)));
+            return Future.succeededFuture(Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object))));
         }
         Upstream upstream = context.getUpstreamRoute().get();
         ResponseMapping mapping = ResponseMapping.builder()
@@ -365,21 +368,19 @@ public class ResponsesController extends BaseDeploymentPostController {
         return proxy.getTaskExecutor()
                 .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
                 .map(dialId -> {
-                    context.setDialResponseId(dialId);
                     object.put("id", dialId);
-                    return Buffer.buffer(JsonUtil.serialize(object));
+                    return Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object)));
                 });
-
     }
 
-    private void handleStreamingResponse(BufferingReadStream responseStream, String assembledStreamingResponse) {
+    private void handleStreamingResponse(BufferingReadStream responseStream, String dialId, String assembledStreamingResponse) {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
 
         Future<Void> completionFuture;
-        if (context.isBackgroundJob() && context.getDialResponseId() != null) {
-            completionFuture = proxy.getBackgroundJobService().deleteJob(context.getDialResponseId())
+        if (context.isBackgroundJob() && dialId != null) {
+            completionFuture = proxy.getBackgroundJobService().deleteJob(dialId)
                     .compose(deleted -> deleted ? collectTokenUsage(responseBody) : Future.succeededFuture());
         } else {
             completionFuture = collectTokenUsage(responseBody);
@@ -425,5 +426,4 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         sendRequest(); // try next
     }
-
 }

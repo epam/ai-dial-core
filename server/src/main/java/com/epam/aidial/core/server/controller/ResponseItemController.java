@@ -47,6 +47,7 @@ public class ResponseItemController implements Controller {
 
     private final Proxy proxy;
     private final ProxyContext context;
+    private final String dialResponseId;
     private final Operation operation;
 
     /**
@@ -136,16 +137,16 @@ public class ResponseItemController implements Controller {
         if (operation != Operation.DELETE) {
             return Future.succeededFuture(mapping);
         }
-        return proxy.getBackgroundJobService().isJobActive(context.getDialResponseId())
+        return proxy.getBackgroundJobService().isJobActive(dialResponseId)
                 .compose(active -> active
                         ? Future.failedFuture(new HttpException(HttpStatus.CONFLICT, "Cannot delete response while background job is in progress"))
                         : Future.succeededFuture(mapping));
     }
 
     private ResponseMapping loadMapping() {
-        ResponseMapping mapping = proxy.getResponseMappingService().getMapping(context.getDialResponseId());
+        ResponseMapping mapping = proxy.getResponseMappingService().getMapping(dialResponseId);
         if (mapping == null) {
-            throw notFoundException(context.getDialResponseId());
+            throw notFoundException(dialResponseId);
         }
         String currentBucket = BucketBuilder.buildInitiatorBucket(context);
         if (!currentBucket.equals(mapping.getInitiatorBucket())) {
@@ -194,7 +195,7 @@ public class ResponseItemController implements Controller {
                             .compose(rewritten -> {
                                 if (operation == Operation.DELETE) {
                                     return proxy.getTaskExecutor().submit(() -> {
-                                        proxy.getResponseMappingService().deleteMapping(context.getDialResponseId());
+                                        proxy.getResponseMappingService().deleteMapping(dialResponseId);
                                         return null;
                                     }).compose(ignored -> sendResponse(proxyResponse, rewritten));
                                 }
@@ -202,8 +203,8 @@ public class ResponseItemController implements Controller {
                                     ResponsesApiClient.TerminalResult terminalResult = tryParseTerminalResult(rewritten);
                                     if (terminalResult != null) {
                                         proxy.getBackgroundJobService()
-                                                .tryComplete(context.getDialResponseId(), mapping, terminalResult)
-                                                .onFailure(e -> log.warn("Failed to complete background job on GET {}", context.getDialResponseId(), e));
+                                                .tryComplete(dialResponseId, mapping, terminalResult)
+                                                .onFailure(e -> log.warn("Failed to complete background job on GET {}", dialResponseId, e));
                                     }
                                 }
                                 return sendResponse(proxyResponse, rewritten);
@@ -232,7 +233,7 @@ public class ResponseItemController implements Controller {
         }
         JsonNode idNode = object.path("id");
         if (idNode.isTextual() && upstreamResponseId.equals(idNode.asText())) {
-            object.put("id", context.getDialResponseId());
+            object.put("id", dialResponseId);
         }
         return Buffer.buffer(JsonUtil.serialize(object));
     }
@@ -241,14 +242,14 @@ public class ResponseItemController implements Controller {
         try {
             return ResponsesApiClient.parseTerminalBody(body);
         } catch (Exception e) {
-            log.warn("Failed to extract terminal result for background job {} on GET", context.getDialResponseId(), e);
+            log.warn("Failed to extract terminal result for background job {} on GET", dialResponseId, e);
             return null;
         }
     }
 
     private Future<Void> collectAndForwardStreaming(HttpClientResponse proxyResponse, String upstreamResponseId) {
         CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-        ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context, upstreamResponseId);
+        ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context, dialResponseId, upstreamResponseId);
         BufferingReadStream responseStream = new BufferingReadStream(
                 proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024),

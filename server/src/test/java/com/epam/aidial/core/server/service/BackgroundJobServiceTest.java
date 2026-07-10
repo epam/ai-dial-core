@@ -170,7 +170,6 @@ class BackgroundJobServiceTest {
                 upstreamRouteProvider, responsesApiClient, logStore, encryptionService, settings));
         service.init();
 
-        lenient().when(proxyContext.getDialResponseId()).thenReturn(JOB_ID);
         lenient().when(proxyContext.getProxyApiKeyData().getPerRequestKey()).thenReturn("test-per-request-key");
         lenient().when(proxyContext.getRequest().version()).thenReturn(HttpVersion.HTTP_1_1);
         lenient().when(proxyContext.getRequest().method()).thenReturn(HttpMethod.POST);
@@ -187,7 +186,7 @@ class BackgroundJobServiceTest {
 
     @Test
     void isJobActiveReturnsTrueWhenRecordExists(VertxTestContext ctx) throws Throwable {
-        service.saveJob(proxyContext)
+        service.saveJob(JOB_ID, proxyContext)
                 .compose(ignored -> service.isJobActive(JOB_ID))
                 .onSuccess(active -> ctx.verify(() -> {
                     assertTrue(active);
@@ -210,7 +209,7 @@ class BackgroundJobServiceTest {
 
     @Test
     void deleteJobDeletesRecord(VertxTestContext ctx) throws Throwable {
-        service.saveJob(proxyContext)
+        service.saveJob(JOB_ID, proxyContext)
                 .compose(ignored -> service.deleteJob(JOB_ID))
                 .compose(deleted -> service.isJobActive(JOB_ID)
                         .onSuccess(active -> ctx.verify(() -> {
@@ -246,7 +245,7 @@ class BackgroundJobServiceTest {
                     return Future.succeededFuture(true);
                 });
 
-        service.saveJob(proxyContext).onFailure(ctx::failNow);
+        service.saveJob(JOB_ID, proxyContext).onFailure(ctx::failNow);
 
         await(ctx);
         verify(apiKeyStore).invalidatePerRequestApiKey(any());
@@ -267,7 +266,7 @@ class BackgroundJobServiceTest {
                     return Future.succeededFuture(true);
                 });
 
-        service.saveJob(proxyContext).onFailure(ctx::failNow);
+        service.saveJob(JOB_ID, proxyContext).onFailure(ctx::failNow);
 
         await(ctx);
         verify(service, times(3)).poll(any());
@@ -286,7 +285,7 @@ class BackgroundJobServiceTest {
                 });
 
         bundle.service().init();
-        bundle.service().saveJob(proxyContext).onFailure(ctx::failNow);
+        bundle.service().saveJob(JOB_ID, proxyContext).onFailure(ctx::failNow);
 
         await(ctx);
         verify(bundle.service(), times(3)).poll(any());
@@ -313,7 +312,7 @@ class BackgroundJobServiceTest {
                 });
 
         bundle.service().init();
-        bundle.service().saveJob(proxyContext).onFailure(ctx::failNow);
+        bundle.service().saveJob(JOB_ID, proxyContext).onFailure(ctx::failNow);
 
         await(ctx);
         verify(bundle.service(), times(6)).poll(any());
@@ -330,7 +329,7 @@ class BackgroundJobServiceTest {
                     return Future.succeededFuture(true);
                 });
 
-        service.saveJob(proxyContext)
+        service.saveJob(JOB_ID, proxyContext)
                 .compose(ignored -> service.tryComplete(
                         JOB_ID, mapping, new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())))
                 .onFailure(ctx::failNow);

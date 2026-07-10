@@ -693,8 +693,6 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).isStreamingRequest();
         doCallRealMethod().when(context).setStoreResponse(anyBoolean());
         doCallRealMethod().when(context).isStoreResponse();
-        doCallRealMethod().when(context).setDialResponseId(anyString());
-        doCallRealMethod().when(context).getDialResponseId();
 
         controller.handle();
 
@@ -805,7 +803,7 @@ public class ResponsesControllerTest {
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getResponseMappingService().saveMapping(any(), any())).thenReturn(expectedDialId);
         when(context.getUserId()).thenReturn("test-user");
-        when(proxy.getBackgroundJobService().saveJob(any())).thenAnswer(invocation -> {
+        when(proxy.getBackgroundJobService().saveJob(anyString(), any())).thenAnswer(invocation -> {
             textContext.completeNow();
             return Future.<Void>succeededFuture();
         });
@@ -821,8 +819,6 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).isStoreResponse();
         doCallRealMethod().when(context).setBackgroundJob(anyBoolean());
         doCallRealMethod().when(context).isBackgroundJob();
-        doCallRealMethod().when(context).setDialResponseId(anyString());
-        doCallRealMethod().when(context).getDialResponseId();
 
         controller.handle();
 
