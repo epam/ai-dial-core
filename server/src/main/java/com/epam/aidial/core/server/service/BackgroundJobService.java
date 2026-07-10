@@ -126,13 +126,13 @@ public class BackgroundJobService {
 
     public Future<Void> tryComplete(String dialId, ResponseMapping mapping, ResponsesApiClient.TerminalResult result) {
         return taskExecutor.submit(() -> {
-                    BackgroundJobRecord record = loadJobRecord(dialId);
-                    if (record == null) {
-                        return null;
-                    }
-                    boolean deleted = resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId), EtagHeader.ANY);
-                    return deleted ? record : null;
-                })
+            BackgroundJobRecord record = loadJobRecord(dialId);
+            if (record == null) {
+                return null;
+            }
+            boolean deleted = resourceService.deleteResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId), EtagHeader.ANY);
+            return deleted ? record : null;
+        })
                 .compose(record -> {
                     if (record == null) {
                         return Future.succeededFuture();

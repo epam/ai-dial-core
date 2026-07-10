@@ -18,19 +18,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 import org.apache.commons.lang3.mutable.MutableBoolean;
 
-import javax.annotation.Nullable;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.Map;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
+import javax.annotation.Nullable;
 
 @Slf4j
 public class GfLogStore implements LogStore {
