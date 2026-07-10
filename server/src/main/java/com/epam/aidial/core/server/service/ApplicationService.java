@@ -336,6 +336,11 @@ public class ApplicationService {
             fileReplacementLinks = Map.of();
         }
 
+        // Admin-managed governance fields never travel through a copy/move — otherwise a user could self-grant them
+        // by copying a public app they can read. They are settable only via the config file / admin-apply.
+        application.setAppIdentity(null);
+        application.setAllowUserExternalServices(false);
+
         resourceService.computeResource(destination, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
 

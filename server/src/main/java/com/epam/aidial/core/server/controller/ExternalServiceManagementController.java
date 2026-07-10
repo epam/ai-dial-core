@@ -92,13 +92,12 @@ public class ExternalServiceManagementController {
         if (inline && resolved.application.getExternalServices() != null) {
             services.putAll(resolved.application.getExternalServices());
         }
+        if (!inline) {
+            requireUserAuthoringAllowed(resolved);
+        }
         // Overlay user-authored services only for a real user (mirrors the read-overlay guards); writes reject null owners.
-        if (resolved.application.isAllowUserExternalServices()) {
-            if (context.getUserId() != null) {
-                userExternalServiceService.list(context.getUserId(), appId).forEach(services::putIfAbsent);
-            }
-        } else if (!inline) {
-            throw new PermissionDeniedException("This application does not allow user-authored external services");
+        if (resolved.application.isAllowUserExternalServices() && context.getUserId() != null) {
+            userExternalServiceService.list(context.getUserId(), appId).forEach(services::putIfAbsent);
         }
         return services;
     }
@@ -170,10 +169,15 @@ public class ExternalServiceManagementController {
     }
 
     private void purgeCredentials(String appId, String serviceId, CredentialsLevel level) {
-        String scopeId = CredentialsLocatorFactory.APPLICATIONS_PREFIX + appId
-                + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId;
-        CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
+        CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId(appId, serviceId), context);
         resourceCredentialsService.deleteResourceCredentialsAtLevel(locator, level);
+    }
+
+    // appId/serviceId arrive already url-decoded (ControllerSelector); re-encode so fromExternalServiceScope's
+    // single decode round-trips them exactly, instead of decoding a decoded value a second time.
+    private static String scopeId(String appId, String serviceId) {
+        return CredentialsLocatorFactory.APPLICATIONS_PREFIX + UrlUtil.encodePath(appId)
+                + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + UrlUtil.encodePath(serviceId);
     }
 
     private ResolvedApp resolveApp(String appId) {
@@ -203,7 +207,16 @@ public class ExternalServiceManagementController {
         return accessService.hasAdminAccess(context) || accessService.hasWriteAccess(resolved.descriptor, context);
     }
 
+    // A non-inline caller may manage user-authored services only on an app it can at least read, and only when the
+    // app opts in. Read access is checked first so a caller with no access can't tell the flag's state (or manage
+    // services on an app it can't even see) — a uniform 403 instead of a 200/403-vs-flag oracle.
     private void requireUserAuthoringAllowed(ResolvedApp resolved) {
+        boolean readable = resolved.staticApp
+                ? resolved.application.hasAccess(context.getUserRoles())
+                : accessService.hasReadAccess(resolved.descriptor, context);
+        if (!readable) {
+            throw new PermissionDeniedException("No read access to application");
+        }
         if (!resolved.application.isAllowUserExternalServices()) {
             throw new PermissionDeniedException("This application does not allow user-authored external services");
         }
@@ -221,9 +234,7 @@ public class ExternalServiceManagementController {
         // Responses must never expose client_secret/code_verifier (encrypted or not).
         ResourceAuthSettings safe = authSettings == null ? null : authSettings.withoutSecrets();
         if (withStatus && safe != null) {
-            String scopeId = CredentialsLocatorFactory.APPLICATIONS_PREFIX + appId
-                    + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId;
-            CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
+            CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId(appId, serviceId), context);
             resourceAuthSettingsService.setExternalServiceAuthStatuses(locator, safe, context.getUserId());
         }
         return new ExternalServiceData()

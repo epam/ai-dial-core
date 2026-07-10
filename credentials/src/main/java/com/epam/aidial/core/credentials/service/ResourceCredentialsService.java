@@ -262,9 +262,13 @@ public class ResourceCredentialsService {
         }
 
         ResourceCredentials userCredentials = getAndRefreshCredentials(userDescriptor, authSettings);
+        // Re-check consent on the freshly re-read credential: if the owner revoked it concurrently with this
+        // refresh, don't serve the rotated token. (The refresh itself may still have rotated once in that narrow
+        // window — accepted, since revocation via sign-out normally deletes the credential outright.)
         if (userCredentials != null
                 && userCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
-                && Objects.equals(ownerSub, userCredentials.getUserId())) {
+                && Objects.equals(ownerSub, userCredentials.getUserId())
+                && userCredentials.isOfflineUsageConsent()) {
             return userCredentials;
         }
 

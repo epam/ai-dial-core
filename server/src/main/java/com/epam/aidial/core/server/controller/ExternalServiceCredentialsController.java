@@ -26,6 +26,7 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AppIdentityMatcher;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.ConsentRequiredException;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.UserExternalServiceService;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -228,7 +229,7 @@ public class ExternalServiceCredentialsController {
                             throw new ResourceNotFoundException("Credentials for %s not found".formatted(request.getUrl()));
                         }
                         if (!credentials.isOfflineUsageConsent()) {
-                            throw new PermissionDeniedException("Offline usage consent required for on-behalf-of retrieval");
+                            throw new ConsentRequiredException("Offline usage consent required for on-behalf-of retrieval");
                         }
 
                         ExternalServiceCredentialsResponse response = toCredentialsResponse(credentials, request.getUrl());

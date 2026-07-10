@@ -4,8 +4,14 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
+import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
@@ -18,6 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -866,6 +873,95 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
             assertTrue(denied.contains("outcome=DENIED"), () -> denied);
             assertTrue(denied.contains("actor=project:EPM-OTHER"), () -> denied);
             assertTrue(denied.contains("reason="), () -> denied);
+        } finally {
+            auditLogger.setLevel(previous);
+            auditLogger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testUserAuthoringDeniedWithoutAppReadAccess() {
+        // restricted-user-services-app opts into user authoring but is restricted to a role "user" lacks: a caller
+        // with no read access to the app must not be able to manage (or probe) its user-authored services.
+        String svc = "/v1/applications/restricted-user-services-app/external-services/myapi";
+        assertEquals(403, send(HttpMethod.PUT, svc, null, USER_SVC_BODY, "authorization", "user").status());
+        assertEquals(403, send(HttpMethod.GET, svc, null, "", "authorization", "user").status());
+        assertEquals(403, send(HttpMethod.DELETE, svc, null, "", "authorization", "user").status());
+        assertEquals(403, send(HttpMethod.GET, "/v1/applications/restricted-user-services-app/external-services",
+                null, "", "authorization", "user").status());
+    }
+
+    @Test
+    void testCopyApplicationStripsAdminManagedFields() {
+        // Governance fields set authoritatively on the source (as admin-apply would) must NOT survive a
+        // copy/move — otherwise a user could self-grant them by copying a public app they can read.
+        ApplicationService applicationService = dial.getProxy().getApplicationService();
+        ResourceDescriptor source = ResourceDescriptorFactory.fromPublicUrl("applications/public/gov-copy-src");
+        Application app = new Application();
+        app.setEndpoint("http://localhost:7001/v1/x");
+        app.setAppIdentity(SCHEDULER_KEY_HASH);
+        app.setAllowUserExternalServices(true);
+        applicationService.putApplication(source, EtagHeader.ANY, null, app, false, AdminManagedFieldsWriteMode.AUTHORITATIVE);
+        Application stored = applicationService.getApplication(source).getValue();
+        assertEquals(SCHEDULER_KEY_HASH, stored.getAppIdentity());
+        assertTrue(stored.isAllowUserExternalServices());
+
+        ResourceDescriptor destination = ResourceDescriptorFactory.fromPublicUrl("applications/public/gov-copy-dst");
+        applicationService.copyApplication(source, destination, null, true, copy -> { });
+
+        Application copied = applicationService.getApplication(destination).getValue();
+        assertNull(copied.getAppIdentity(), "copy must strip app_identity");
+        assertFalse(copied.isAllowUserExternalServices(), "copy must strip allow_user_external_services");
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testOboConsentDeniedIsAuditedDistinctly() throws Exception {
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_OBO_AUDIT");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        auditLogger.addAppender(appender);
+        Level previous = auditLogger.getLevel();
+        auditLogger.setLevel(Level.INFO);
+        try {
+            verify(signInUserBilling("user-billing-key", false), 200, "true");   // signed in WITHOUT consent
+            assertEquals(403, obo(BILLING_SCOPE, "user", SCHEDULER_KEY).status());   // trusted actor, not consented
+
+            String event = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .filter(m -> m.startsWith("event=obo_credential_retrieval"))
+                    .reduce((a, b) -> b).orElseThrow();
+            // A not-yet-consented denial is distinct from an identity-mismatch DENIED — separable for abuse triage.
+            assertTrue(event.contains("outcome=CONSENT_REQUIRED"), () -> event);
+        } finally {
+            auditLogger.setLevel(previous);
+            auditLogger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testOboAuditDoesNotAllowLogInjection() throws Exception {
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_OBO_AUDIT");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        auditLogger.addAppender(appender);
+        Level previous = auditLogger.getLevel();
+        auditLogger.setLevel(Level.INFO);
+        try {
+            // owner_sub carries a newline plus a forged event fragment; the audit must neutralize control chars.
+            String forged = "user\\nevent=obo_credential_retrieval outcome=SUCCESS";
+            Response obo = send(HttpMethod.POST, "/v1/ops/external-service/obo-credentials", null,
+                    "{\"url\":\"" + BILLING_SCOPE + "\",\"owner_sub\":\"" + forged + "\"}", "api-key", SCHEDULER_KEY);
+            assertEquals(404, obo.status(), () -> obo.body());
+
+            String event = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .filter(m -> m.startsWith("event=obo_credential_retrieval"))
+                    .reduce((a, b) -> b).orElseThrow();
+            assertFalse(event.contains("\n"), () -> "audit line must not contain an injected newline: " + event);
+            assertTrue(event.contains("owner_sub=user_event=obo_credential_retrieval"), () -> event);
         } finally {
             auditLogger.setLevel(previous);
             auditLogger.detachAppender(appender);
