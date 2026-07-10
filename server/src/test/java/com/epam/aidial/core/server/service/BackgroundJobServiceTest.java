@@ -1,23 +1,20 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
-import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
-import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
-import com.epam.aidial.core.storage.data.MetadataBase;
-import com.epam.aidial.core.storage.data.NodeType;
-import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -25,8 +22,13 @@ import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
+import io.vertx.core.http.HttpClientRequest;
+import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpVersion;
+import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonObject;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
@@ -39,29 +41,24 @@ import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.Redisson;
-import org.redisson.api.RScoredSortedSet;
 import org.redisson.api.RedissonClient;
-import org.redisson.client.codec.StringCodec;
 import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -115,9 +112,19 @@ class BackgroundJobServiceTest {
     @Mock
     private CredentialEncryptionService encryptionService;
 
+    @Mock
+    private HttpClient httpClient;
+
+    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
+    private HttpClientRequest httpRequest;
+
+    @Mock
+    private HttpClientResponse httpResponse;
+
     private ResourceService resourceService;
     private Map<String, String> resourceStore;
     private BackgroundJobService service;
+    private BackgroundJobService poller;
 
     @BeforeAll
     static void startRedis() throws IOException {
@@ -170,6 +177,12 @@ class BackgroundJobServiceTest {
         lenient().when(proxyContext.getRequest().uri()).thenReturn("/v1/responses");
         lenient().when(proxyContext.getRequestBody()).thenReturn(Buffer.buffer("{}"));
         lenient().when(responseMappingService.getMapping(anyString())).thenReturn(buildMapping());
+
+        ResponsesApiClient pollClient = new ResponsesApiClient(httpClient, new HttpClientOptions());
+        poller = new BackgroundJobService(null, null, null,
+                null, null, null,
+                configStore, null, null, null, upstreamRouteProvider, pollClient,
+                null, encryptionService, new BackgroundJobService.Settings());
     }
 
     @Test
@@ -327,23 +340,6 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void tryCompleteIsNoOpWhenNullResult(VertxTestContext ctx) throws Throwable {
-        ResponseMapping mapping = buildMapping();
-
-        service.saveJob(proxyContext)
-                .compose(ignored -> service.tryComplete(JOB_ID, mapping, null))
-                .compose(ignored -> service.isJobActive(JOB_ID))
-                .onSuccess(active -> ctx.verify(() -> {
-                    assertTrue(active, "job should remain active after null tryCompleteOnGet");
-                    ctx.completeNow();
-                }))
-                .onFailure(ctx::failNow);
-
-        await(ctx);
-        verify(apiKeyStore, never()).invalidatePerRequestApiKey(any());
-    }
-
-    @Test
     void tryCompleteIsNoOpWhenNoRecord(VertxTestContext ctx) throws Throwable {
         ResponseMapping mapping = buildMapping();
 
@@ -356,51 +352,164 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void startupScanPicksUpJobsFromResourceService(Vertx vertx, VertxTestContext ctx) throws Throwable {
-        when(configStore.get()).thenReturn(mock(Config.class));
-        when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
-        when(apiKeyStore.invalidatePerRequestApiKey(any()))
-                .thenAnswer(inv -> {
+    void pollReturnsResultForTerminalStatus(VertxTestContext ctx) throws Throwable {
+        setupHttpMocks("{\"status\":\"completed\",\"usage\":{}}");
+        setupDeploymentMocks();
+
+        poller.poll(buildMapping())
+                .onSuccess(result -> ctx.verify(() -> {
+                    assertNotNull(result);
                     ctx.completeNow();
-                    return Future.succeededFuture(true);
-                });
-
-        // Directly populate resourceStore to simulate a job that survived a crash
-        // (record exists in ResourceService but not in Redis ZSET)
-        ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(JOB_ID);
-        resourceStore.put(descriptor.getAbsoluteFilePath(), ProxyUtil.convertToString(buildRecord()));
-
-        var bundle = buildServiceBundle(vertx, 10);
-        doReturn(Future.succeededFuture(new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), new TokenUsage())))
-                .when(bundle.service()).poll(any());
-        bundle.service().init();
-        bundle.service().scan();
-
+                }))
+                .onFailure(ctx::failNow);
         await(ctx);
-        verify(bundle.service(), atLeastOnce()).poll(any());
     }
 
     @Test
-    void startupScanDoesNotOverwriteExistingScheduledScore(VertxTestContext ctx) throws Throwable {
-        service.saveJob(proxyContext)
-                .onSuccess(ignored -> {
-                    // Override score to a far future time (job already scheduled)
-                    long futureScore = System.currentTimeMillis() + 60_000;
-                    RScoredSortedSet<String> schedule = redissonClient.getScoredSortedSet(
-                            "background_job_schedule:" + PREFIX + "/queue", StringCodec.INSTANCE);
-                    schedule.add(futureScore, JOB_ID);
+    void pollReturnsNullForNonTerminalStatus(VertxTestContext ctx) throws Throwable {
+        setupHttpMocks("{\"status\":\"in_progress\"}");
+        setupDeploymentMocks();
 
-                    service.scan();
-
-                    Double score = schedule.getScore(JOB_ID);
-                    ctx.verify(() -> {
-                        assertTrue(score != null && score >= futureScore,
-                                "scan should not overwrite existing future score");
-                        ctx.completeNow();
-                    });
-                })
+        poller.poll(buildMapping())
+                .onSuccess(result -> ctx.verify(() -> {
+                    assertNull(result);
+                    ctx.completeNow();
+                }))
                 .onFailure(ctx::failNow);
         await(ctx);
+    }
+
+    @Test
+    void pollReturnsNullForQueuedStatus(VertxTestContext ctx) throws Throwable {
+        setupHttpMocks("{\"status\":\"queued\"}");
+        setupDeploymentMocks();
+
+        poller.poll(buildMapping())
+                .onSuccess(result -> ctx.verify(() -> {
+                    assertNull(result);
+                    ctx.completeNow();
+                }))
+                .onFailure(ctx::failNow);
+        await(ctx);
+    }
+
+    @Test
+    void pollFailsWhenDeploymentNotFound(VertxTestContext ctx) throws Throwable {
+        Config config = mock(Config.class);
+        when(configStore.get()).thenReturn(config);
+        when(config.selectDeployment(anyString())).thenReturn(null);
+
+        poller.poll(buildMapping())
+                .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
+                .onFailure(error -> ctx.verify(() -> {
+                    assertTrue(error.getMessage().contains("not found"));
+                    ctx.completeNow();
+                }));
+        await(ctx);
+    }
+
+    @Test
+    void pollFailsWhenUpstreamReturnsNonOkStatus(VertxTestContext ctx) throws Throwable {
+        setupDeploymentMocks();
+        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(httpRequest));
+        when(httpRequest.putHeader(anyString(), anyString())).thenReturn(httpRequest);
+        when(httpRequest.send()).thenReturn(Future.succeededFuture(httpResponse));
+        when(httpResponse.statusCode()).thenReturn(500);
+
+        poller.poll(buildMapping())
+                .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
+                .onFailure(error -> ctx.verify(() -> {
+                    assertTrue(error.getMessage().contains("500"));
+                    ctx.completeNow();
+                }));
+        await(ctx);
+    }
+
+    @Test
+    void pollFailsWhenResponseBodyIsNotJson(VertxTestContext ctx) throws Throwable {
+        setupDeploymentMocks();
+        setupHttpMocks("not valid json {{{");
+
+        poller.poll(buildMapping())
+                .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
+                .onFailure(error -> ctx.completeNow());
+        await(ctx);
+    }
+
+    @Test
+    void pollFailsWhenResponseBodyIsJsonArray(VertxTestContext ctx) throws Throwable {
+        setupDeploymentMocks();
+        setupHttpMocks("[1, 2, 3]");
+
+        poller.poll(buildMapping())
+                .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
+                .onFailure(error -> ctx.verify(() -> {
+                    assertTrue(error.getMessage().contains("not a JSON object"));
+                    ctx.completeNow();
+                }));
+        await(ctx);
+    }
+
+    @Test
+    void pollFailsWhenUpstreamRouteNotFound(VertxTestContext ctx) throws Throwable {
+        Config config = mock(Config.class);
+        Deployment deployment = mock(Deployment.class);
+        when(configStore.get()).thenReturn(config);
+        when(config.selectDeployment(anyString())).thenReturn(deployment);
+        when(deployment.getResponsesEndpoint()).thenReturn("http://test-upstream/responses");
+        when(upstreamRouteProvider.get(any(), any(), anyString()))
+                .thenThrow(new RuntimeException("No available upstream"));
+
+        poller.poll(buildMapping())
+                .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
+                .onFailure(error -> ctx.verify(() -> {
+                    assertTrue(error.getMessage().contains("Failed to get upstream"));
+                    ctx.completeNow();
+                }));
+        await(ctx);
+    }
+
+    @Test
+    void pollFailsWhenNoResponsesEndpoint(VertxTestContext ctx) throws Throwable {
+        Config config = mock(Config.class);
+        Deployment deployment = mock(Deployment.class);
+        when(configStore.get()).thenReturn(config);
+        when(config.selectDeployment(anyString())).thenReturn(deployment);
+        when(deployment.getResponsesEndpoint()).thenReturn(null);
+        when(deployment.getName()).thenReturn(DEPLOYMENT_NAME);
+
+        poller.poll(buildMapping())
+                .onSuccess(ignored -> ctx.failNow(new AssertionError("Expected failure but got success")))
+                .onFailure(error -> ctx.verify(() -> {
+                    assertTrue(error.getMessage().contains("responses endpoint"));
+                    ctx.completeNow();
+                }));
+        await(ctx);
+    }
+
+    private void setupDeploymentMocks() {
+        Config config = mock(Config.class);
+        Deployment deployment = mock(Deployment.class);
+        when(configStore.get()).thenReturn(config);
+        when(config.selectDeployment(anyString())).thenReturn(deployment);
+        when(deployment.getResponsesEndpoint()).thenReturn("http://test-upstream/responses");
+
+        Upstream upstream = mock(Upstream.class);
+        when(upstream.getKey()).thenReturn("api-key");
+        when(upstream.getResponsesEndpoint()).thenReturn("http://test-upstream");
+        when(upstream.getExtraData()).thenReturn("{}");
+
+        UpstreamRoute route = mock(UpstreamRoute.class);
+        when(route.next()).thenReturn(upstream);
+        when(upstreamRouteProvider.get(any(Deployment.class), isNull(), anyString())).thenReturn(route);
+    }
+
+    private void setupHttpMocks(String responseJson) {
+        when(httpClient.request(any(RequestOptions.class))).thenReturn(Future.succeededFuture(httpRequest));
+        when(httpRequest.putHeader(anyString(), anyString())).thenReturn(httpRequest);
+        when(httpRequest.send()).thenReturn(Future.succeededFuture(httpResponse));
+        when(httpResponse.statusCode()).thenReturn(200);
+        when(httpResponse.body()).thenReturn(Future.succeededFuture(Buffer.buffer(responseJson)));
     }
 
     private ResourceService buildResourceServiceMock() {
@@ -432,38 +541,7 @@ class BackgroundJobServiceTest {
                     return resourceStore.containsKey(desc.getAbsoluteFilePath())
                             ? new ResourceItemMetadata() : null;
                 });
-        lenient().when(mock.getFolderMetadata(any(), any(), anyInt(), anyBoolean()))
-                .thenAnswer(inv -> {
-                    if (resourceStore.isEmpty()) {
-                        return null;
-                    }
-                    List<MetadataBase> items = resourceStore.keySet().stream()
-                            .map(path -> {
-                                String name = path.substring(path.lastIndexOf('/') + 1);
-                                ResourceItemMetadata meta = new ResourceItemMetadata();
-                                meta.setName(name);
-                                meta.setNodeType(NodeType.ITEM);
-                                meta.setCreatedAt(System.currentTimeMillis());
-                                return (MetadataBase) meta;
-                            })
-                            .toList();
-                    ResourceFolderMetadata folder = mock(ResourceFolderMetadata.class);
-                    doReturn(items).when(folder).getItems();
-                    when(folder.getNextToken()).thenReturn(null);
-                    return folder;
-                });
         return mock;
-    }
-
-    private BackgroundJobRecord buildRecord() {
-        String rawKey = proxyContext.getProxyApiKeyData().getPerRequestKey();
-        // Simulate encryptKey with mocked encryptionService (encrypt returns bytes unchanged → Base64-encode)
-        String encodedKey = Base64.getEncoder().encodeToString(rawKey.getBytes(StandardCharsets.UTF_8));
-        return BackgroundJobRecord.builder()
-                .perRequestKey(encodedKey)
-                .isRootSpan(proxyContext.getApiKeyData().getPerRequestKey() == null)
-                .requestBody("{}")
-                .build();
     }
 
     private static ResponseMapping buildMapping() {

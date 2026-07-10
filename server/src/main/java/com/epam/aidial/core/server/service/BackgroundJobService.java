@@ -146,11 +146,6 @@ public class BackgroundJobService {
         return settings.getJobTtlMs();
     }
 
-    @VisibleForTesting
-    Void scan() {
-        return scheduler.scan();
-    }
-
     private Future<Void> saveJobRecord(ProxyContext context) {
         String dialId = context.getDialResponseId();
         ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(dialId);
