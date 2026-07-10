@@ -98,6 +98,9 @@ The generator validates that:
 - `@ApiSchema` uses a single schema definition strategy;
 - every `@ApiOperation(method, path)` matches a registered route in `ControllerSelector`;
 - every `operationId` is unique.
+- the path field must follow the standard OpenAPI path template syntax. Only path parameters enclosed in curly braces ({}) are supported. Regular expressions and other custom path patterns are rejected during validation.
+
+Path values must follow the standard OpenAPI path template syntax (for example, `/v1/users/{id}`). Regular expressions and custom path patterns are not supported.
 
 If validation fails:
 

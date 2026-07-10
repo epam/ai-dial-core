@@ -53,6 +53,7 @@ public final class EndpointValidator {
      */
     public static void validate(List<EndpointMetadata.Endpoint> endpoints) {
         validateRequiredFields(endpoints);
+        validatePathFormat(endpoints);
         validateUniqueEndpoints(endpoints);
         validatePathParameters(endpoints);
         validateResponseCodes(endpoints);
@@ -374,6 +375,56 @@ public final class EndpointValidator {
     }
 
     /**
+     * Validates that endpoint paths use the standard OpenAPI path template syntax.
+     * Supported examples:
+     *   /v1/users/{id}
+     *   /v1/deployments/{deployment_name}
+     * Unsupported examples:
+     *   /v1/users/{id:[0-9]+}
+     *   /v1/{path:.+}
+     *   /v1/users/*
+     *   /v1/**
+     */
+    private static void validatePathFormat(List<EndpointMetadata.Endpoint> endpoints) {
+        List<String> errors = new ArrayList<>();
+
+        for (EndpointMetadata.Endpoint endpoint : endpoints) {
+            String path = endpoint.path();
+
+            if (path == null || path.isBlank()) {
+                continue;
+            }
+
+            // Wildcards are not part of the OpenAPI path template syntax
+            if (path.contains("*")) {
+                errors.add(endpoint.method() + " " + path
+                        + ": wildcard path patterns are not supported");
+            }
+
+            // Validate parameter names inside {...}
+            Matcher matcher = PATH_PARAM_PATTERN.matcher(path);
+            while (matcher.find()) {
+                String parameter = matcher.group(1);
+
+                if (!parameter.matches("[A-Za-z][A-Za-z0-9_-]*")) {
+                    errors.add(endpoint.method() + " " + path
+                            + ": invalid path parameter '" + parameter + "'");
+                }
+            }
+        }
+
+        if (!errors.isEmpty()) {
+            throw new IllegalStateException(
+                    "OpenAPI spec generation failed: Invalid path template syntax:\n  "
+                            + String.join("\n  ", errors)
+                            + "\n\nOnly standard OpenAPI path templates are supported "
+                            + "(for example, /v1/users/{id}). "
+                            + "Regular expressions, wildcards, and other custom path patterns are not supported."
+            );
+        }
+    }
+
+    /**
      * Endpoints handled in {@link Proxy} before {@link ControllerSelector} (health, version, OAuth metadata).
      */
     private static boolean isProxyHandledEndpoint(EndpointMetadata.Endpoint endpoint) {
@@ -399,7 +450,6 @@ public final class EndpointValidator {
         try {
             Field routesField = ControllerSelector.class.getDeclaredField("ROUTES");
             routesField.setAccessible(true);
-            @SuppressWarnings("unchecked")
             List<?> routes = (List<?>) routesField.get(null);
 
             List<RouteInfo> routeInfos = new ArrayList<>();
