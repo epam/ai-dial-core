@@ -7,9 +7,16 @@ import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
@@ -46,6 +53,9 @@ import org.apache.commons.lang3.Strings;
 import java.util.List;
 import java.util.function.Supplier;
 
+import static com.epam.aidial.core.server.Proxy.HEADER_CACHE_POLICY;
+import static com.epam.aidial.core.server.Proxy.HEADER_UPSTREAM_ID;
+
 @Slf4j
 public class DeploymentPostController extends BaseDeploymentPostController {
     private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
@@ -60,6 +70,92 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 new CollectDeploymentsFn(proxy, context));
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/openai/deployments/{deployment_name}/completions",
+            operationId = "createCompletion",
+            tags = {"LLM"},
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME),
+                    @ApiParameter(name = "api-version", in = ParameterIn.QUERY, required = true,
+                            description = OpenApiDescriptions.API_VERSION, example = "2024-10-21"),
+                    @ApiParameter(name = "Content-Type", in = ParameterIn.HEADER, required = true,
+                            description = "Must be application/json", schema = String.class),
+                    @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
+                            description = OpenApiDescriptions.CACHE_POLICY,
+                            allowableValues = {"availability-priority", "cache-priority"}),
+                    @ApiParameter(name = HEADER_UPSTREAM_ID, in = ParameterIn.HEADER,
+                            description = OpenApiDescriptions.UPSTREAM_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "CreateChatCompletionResponse"), contentTypes = {"application/json"}),
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "CreateChatCompletionStreamResponse"), contentTypes = {"text/event-stream"}),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 415),
+                    @ApiResponse(code = 429, description = "Rate limit exceeded", body = @ApiSchema(implementation = ErrorData.class)),
+                    @ApiResponse(code = 500),
+                    @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
+                    @ApiResponse(code = 503)
+            })
+    @ApiOperation(
+            method = "POST",
+            path = "/openai/deployments/{deployment_name}/chat/completions",
+            operationId = "sendChatCompletionRequest",
+            tags = {"LLM"},
+            requestBody = @ApiSchema(schemaRef = "ChatCompletionRequest"),
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME),
+                    @ApiParameter(name = "api-version", in = ParameterIn.QUERY, required = true,
+                            description = OpenApiDescriptions.API_VERSION, example = "2024-10-21"),
+                    @ApiParameter(name = "Content-Type", in = ParameterIn.HEADER, required = true,
+                            description = "Must be application/json"),
+                    @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
+                            description = OpenApiDescriptions.CACHE_POLICY,
+                            allowableValues = {"availability-priority", "cache-priority"}),
+                    @ApiParameter(name = HEADER_UPSTREAM_ID, in = ParameterIn.HEADER,
+                            description = OpenApiDescriptions.UPSTREAM_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "CreateChatCompletionResponse")),
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "CreateChatCompletionStreamResponse"), contentTypes = {"text/event-stream"}),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 415),
+                    @ApiResponse(code = 429, description = "Rate limit exceeded", body = @ApiSchema(implementation = ErrorData.class)),
+                    @ApiResponse(code = 500),
+                    @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
+                    @ApiResponse(code = 503)
+            })
+    @ApiOperation(
+            method = "POST",
+            path = "/openai/deployments/{deployment_name}/embeddings",
+            operationId = "createEmbedding",
+            tags = {"LLM"},
+            requestBody = @ApiSchema(schemaRef = "EmbeddingsRequest"),
+            parameters = {
+                    @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_NAME),
+                    @ApiParameter(name = "api-version", in = ParameterIn.QUERY, required = true,
+                            description = OpenApiDescriptions.API_VERSION, example = "2023-12-01-preview"),
+                    @ApiParameter(name = "Content-Type", in = ParameterIn.HEADER, required = true,
+                            description = "Must be application/json")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(schemaRef = "EmbeddingResponse")),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 415),
+                    @ApiResponse(code = 429, description = "Rate limit exceeded", body = @ApiSchema(implementation = ErrorData.class)),
+                    @ApiResponse(code = 500),
+                    @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
+                    @ApiResponse(code = 503)
+            })
     public Future<?> handle(String deploymentId) {
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
         if (!Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
@@ -236,7 +332,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             return;
         }
 
-        String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
+        String upstreamId = context.getRequest().headers().get(HEADER_UPSTREAM_ID);
         UpstreamRoute upstreamRoute;
         try {
             upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext(),

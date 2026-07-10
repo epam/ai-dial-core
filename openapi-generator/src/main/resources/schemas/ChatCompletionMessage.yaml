@@ -1,0 +1,17 @@
+type: object
+required:
+  - role
+properties:
+  role:
+    type: string
+    enum:
+      - system
+      - user
+      - assistant
+      - tool
+  content:
+    type: string
+    nullable: true
+  refusal:
+    type: string
+    nullable: true

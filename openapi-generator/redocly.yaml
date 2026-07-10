@@ -1,0 +1,6 @@
+extends:
+  - recommended
+
+rules:
+  tag-description: off
+  no-empty-servers: off

@@ -1,0 +1,7 @@
+type: object
+additionalProperties: true
+required: [type, file]
+properties:
+  type: { type: string, enum: [file] }
+  file:
+    $ref: '#/components/schemas/InputFile'

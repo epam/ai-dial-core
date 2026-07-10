@@ -1,0 +1,8 @@
+type: object
+required:
+  - inputs
+properties:
+  inputs:
+    type: array
+    items:
+      $ref: '#/components/schemas/ChatCompletionRequest'

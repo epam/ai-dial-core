@@ -1,5 +1,12 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiHeader;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.jsonrpc.domain.ErrorMessage;
@@ -54,6 +61,26 @@ public class ClientChannelController {
         this.heartbeatService = proxy.getHeartbeatService();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/client-channel/subscribe",
+            operationId = "subscribeClientChannel",
+            contentType = "text/event-stream",
+            tags = {"Client channel"},
+            parameters = {
+                    @ApiParameter(name = Proxy.HEADER_CLIENT_CHANNEL_ID, in = ParameterIn.HEADER,
+                            description = OpenApiDescriptions.CLIENT_CHANNEL_ID_RECONNECT)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = String.class), contentTypes = {"text/event-stream"},
+                            headers = {
+                                    @ApiHeader(name = Proxy.HEADER_CLIENT_CHANNEL_ID, description = "Channel ID for reconnection", required = true)
+                            }),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> subscribe() {
         HttpServerResponse response = context.getResponse();
         Consumer<RpcRequest> subscriber = rpcRequest -> sendMessage(response, rpcRequest);
@@ -84,6 +111,23 @@ public class ClientChannelController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/client-channel/report",
+            operationId = "reportClientChannel",
+            requestBody = @ApiSchema(implementation = RpcResponse.class),
+            tags = {"Client channel"},
+            parameters = {
+                    @ApiParameter(name = Proxy.HEADER_CLIENT_CHANNEL_ID, in = ParameterIn.HEADER, required = true,
+                            description = OpenApiDescriptions.CLIENT_CHANNEL_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> report() {
         String channelId = context.getRequest().getHeader(Proxy.HEADER_CLIENT_CHANNEL_ID);
         if (channelId == null) {
@@ -104,6 +148,23 @@ public class ClientChannelController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/client-channel/unsubscribe",
+            operationId = "unsubscribeClientChannel",
+            tags = {"Client channel"},
+            parameters = {
+                    @ApiParameter(name = Proxy.HEADER_CLIENT_CHANNEL_ID, in = ParameterIn.HEADER, required = true,
+                            description = OpenApiDescriptions.CLIENT_CHANNEL_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> unsubscribe() {
         String channelId = context.getRequest().getHeader(Proxy.HEADER_CLIENT_CHANNEL_ID);
         if (channelId == null) {
@@ -124,6 +185,25 @@ public class ClientChannelController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/client-channel/interact",
+            operationId = "interactClientChannel",
+            requestBody = @ApiSchema(oneOf = {RpcRequest.class, RpcRequest[].class}),
+            contentType = "application/json",
+
+            tags = {"Client channel"},
+            parameters = {
+                    @ApiParameter(name = Proxy.HEADER_CLIENT_CHANNEL_ID, in = ParameterIn.HEADER, required = true,
+                            description = OpenApiDescriptions.CLIENT_CHANNEL_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", contentTypes = "text/event-stream", body = @ApiSchema(implementation = String.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> interact() {
         HttpServerResponse response = context.getResponse();
         setupEventStreamResponse(response);

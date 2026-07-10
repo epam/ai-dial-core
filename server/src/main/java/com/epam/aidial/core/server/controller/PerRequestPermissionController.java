@@ -1,10 +1,15 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.permission.ListPermissionRequest;
 import com.epam.aidial.core.server.data.permission.PerRequestReceiver;
+import com.epam.aidial.core.server.data.permission.PerRequestReceiverList;
 import com.epam.aidial.core.server.data.permission.ResourcePermission;
+import com.epam.aidial.core.server.data.permission.ResourcePermissionList;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
@@ -36,6 +41,48 @@ public class PerRequestPermissionController {
         this.encryptionService = proxy.getEncryptionService();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/per-request-permissions/grant",
+            operationId = "grantPerRequestPermissions",
+            requestBody = @ApiSchema(implementation = PerRequestReceiver.class),
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/per-request-permissions/revoke",
+            operationId = "revokePerRequestPermissions",
+            requestBody = @ApiSchema(implementation = PerRequestReceiver.class),
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/per-request-permissions/list",
+            operationId = "getPerRequestPermissions",
+            requestBody = @ApiSchema(implementation = ListPermissionRequest.class),
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(oneOf = {ResourcePermissionList.class, PerRequestReceiverList.class})),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<Void> handle(String operation) {
         Future<Void> result = Future.succeededFuture();
         if (context.getApiKeyData().getPerRequestKey() == null) {

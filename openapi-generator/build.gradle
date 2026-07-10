@@ -1,0 +1,116 @@
+dependencies {
+    implementation project(':openapi-annotations')
+    implementation project(':server')
+    implementation project(':config')
+    implementation project(':storage')
+    implementation project(':credentials')
+
+    implementation("com.github.victools:jsonschema-generator:${jsonschema_generator_version}")
+    implementation("com.github.victools:jsonschema-module-jackson:${jsonschema_generator_version}")
+    implementation("io.swagger.core.v3:swagger-core-jakarta:${swagger_core_version}")
+    implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${jackson_core_version}")
+
+    testImplementation("org.junit.jupiter:junit-jupiter-api:${junit_version}")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:${junit_version}")
+}
+
+test {
+    testLogging {
+        events "passed", "skipped", "failed", "standardOut", "standardError"
+        exceptionFormat = "full"
+    }
+    useJUnitPlatform()
+}
+
+def generatedDir = "${layout.buildDirectory.get()}/generated"
+
+def skeletonFile = "${generatedDir}/openapi-skeleton.yaml"
+def mergedFile = "${generatedDir}/openapi-merged.yaml"
+def targetSpec = "${rootDir}/docs/open_api_core.yaml"
+def backupDir = "${rootDir}/openapi-generator/resources/bak"
+
+tasks.register('generateOpenApiSkeleton', JavaExec) {
+    dependsOn classes
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.epam.aidial.core.openapi.OpenApiSkeletonGenerator'
+    args = [skeletonFile, "${project.version}"]
+}
+
+tasks.register('lintOpenApiSkeleton', Exec) {
+    dependsOn generateOpenApiSkeleton
+
+    if (System.getProperty("os.name").toLowerCase().contains("windows")) {
+        commandLine "cmd", "/c", "npx", "@redocly/cli", "lint", skeletonFile
+    } else {
+        commandLine "npx", "@redocly/cli", "lint", skeletonFile
+    }
+}
+
+tasks.register('mergeOpenApiSpec', JavaExec) {
+    dependsOn lintOpenApiSkeleton
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.epam.aidial.core.openapi.SpecMerger'
+    args = [
+        skeletonFile,
+        targetSpec,
+        mergedFile
+    ]
+}
+
+tasks.register('replaceSpec') {
+    dependsOn lintMergedOpenApi
+
+    doLast {
+        copy {
+            from file(mergedFile)
+            into file(targetSpec).parentFile
+            rename { "open_api_core.yaml" }
+        }
+    }
+}
+
+tasks.register('lintMergedOpenApi', Exec) {
+    dependsOn mergeOpenApiSpec
+
+    if (System.getProperty("os.name").toLowerCase().contains("windows")) {
+        commandLine "cmd", "/c", "npx", "@redocly/cli", "lint", mergedFile
+    } else {
+        commandLine "npx", "@redocly/cli", "lint", mergedFile
+    }
+}
+
+tasks.register('checkOpenApiDiff') {
+    dependsOn lintMergedOpenApi
+
+    doLast {
+        def currentSpec = file(targetSpec)
+        def generatedSpec = file(mergedFile)
+
+        if (!currentSpec.exists()) {
+            throw new GradleException("Current OpenAPI spec not found: ${targetSpec}")
+        }
+
+        if (!java.util.Arrays.equals(currentSpec.bytes, generatedSpec.bytes)) {
+            throw new GradleException("""
+============================================================
+OpenAPI specification differs from committed version.
+
+Current:
+${targetSpec}
+
+Generated:
+${mergedFile}
+
+Run replaceSpec or review changes manually.
+============================================================
+""")
+        }
+
+        logger.lifecycle("OpenAPI specification is up to date.")
+    }
+}
+
+tasks.register('validateOpenApiSpec') {
+    dependsOn checkOpenApiDiff
+}

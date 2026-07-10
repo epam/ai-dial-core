@@ -1,5 +1,8 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.DeleteNotificationRequest;
@@ -10,7 +13,6 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -26,6 +28,18 @@ public class NotificationController {
         this.taskExecutor = proxy.getTaskExecutor();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/notification/list",
+            operationId = "getNotifications",
+            tags = {"Notifications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Notifications.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> listNotifications() {
         taskExecutor.submit(() -> service.listNotification(context))
                 .onSuccess(notifications -> context.respond(HttpStatus.OK, new Notifications(notifications)))
@@ -34,6 +48,19 @@ public class NotificationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/notification/delete",
+            operationId = "deleteNotifications",
+            requestBody = @ApiSchema(implementation = DeleteNotificationRequest.class),
+            tags = {"Notifications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> deleteNotification() {
         context.getRequest()
                 .body()

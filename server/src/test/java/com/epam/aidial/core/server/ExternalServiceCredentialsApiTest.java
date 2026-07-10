@@ -815,7 +815,7 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
                     """.formatted(plaintextSecret);
             Response applyResp = send(HttpMethod.POST, "/v1/admin/apply", null, apply, "authorization", "admin");
             assertEquals(200, applyResp.status(), () -> applyResp.body());
-            assertEquals("applied",
+            assertEquals("APPLIED",
                     ProxyUtil.MAPPER.readTree(applyResp.body()).get("results").get(0).get("status").asText());
 
             // The raw resource GET strips secret material (mirrors toolset clearAuthSettings), so neither

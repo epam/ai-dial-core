@@ -1,0 +1,30 @@
+  type: object
+  properties:
+    name:
+      type: string
+
+    title:
+      type: string
+
+    description:
+      type: string
+
+    inputSchema:
+      type: object
+      description: JSON Schema describing tool input parameters.
+      additionalProperties: true
+
+    outputSchema:
+      type: object
+      description: JSON Schema describing tool output.
+      additionalProperties: true
+
+    annotations:
+      $ref: '#/components/schemas/ToolAnnotations'
+
+    _meta:
+      type: object
+      additionalProperties: true
+
+  required:
+    - name

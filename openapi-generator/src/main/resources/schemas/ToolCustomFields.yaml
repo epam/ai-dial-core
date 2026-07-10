@@ -1,0 +1,5 @@
+type: object
+additionalProperties: true
+properties:
+  cache_breakpoint:
+    $ref: '#/components/schemas/CacheBreakpoint'

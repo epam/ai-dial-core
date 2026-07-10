@@ -1,0 +1,7 @@
+type: object
+additionalProperties: true
+required: [type, image_url]
+properties:
+  type: { type: string, enum: [image_url] }
+  image_url:
+    $ref: '#/components/schemas/ImageURL'

@@ -1,0 +1,12 @@
+type: object
+additionalProperties: true
+required: [name, status]
+properties:
+  name: { type: string }
+  status:
+    $ref: '#/components/schemas/Status'
+  content: { type: string }
+  attachments:
+    type: array
+    items:
+      $ref: '#/components/schemas/Attachment'

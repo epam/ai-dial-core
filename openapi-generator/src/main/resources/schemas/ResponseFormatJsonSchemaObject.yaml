@@ -1,0 +1,10 @@
+type: object
+additionalProperties: true
+required: [name, schema]
+properties:
+  description: { type: string }
+  name: { type: string }
+  schema:
+    type: object
+    additionalProperties: true
+  strict: { type: boolean, default: false }

@@ -1,0 +1,12 @@
+type: object
+required:
+  - index
+  - message
+properties:
+  index:
+    type: integer
+  message:
+    $ref: "#/components/schemas/ChatCompletionMessage"
+  finish_reason:
+    type: string
+    nullable: true

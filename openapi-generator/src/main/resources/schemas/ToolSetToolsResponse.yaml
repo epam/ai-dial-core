@@ -1,0 +1,13 @@
+type: object
+properties:
+  tools:
+    type: array
+    items:
+      $ref: '#/components/schemas/McpTool'
+
+  nextCursor:
+    type: string
+    description: Cursor for retrieving the next page of tools.
+
+required:
+  - tool

@@ -1,0 +1,11 @@
+type: object
+required: [data,model,usage]
+properties:
+  data:
+    type: array
+    items:
+      $ref: '#/components/schemas/Embedding'
+  model: {type: string}
+  object: {type: string, enum: [list]}
+  usage:
+    $ref: '#/components/schemas/Usage'

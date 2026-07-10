@@ -1,5 +1,10 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListPublishedResourcesRequest;
@@ -29,6 +34,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collection;
+import java.util.List;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -52,6 +58,20 @@ public class PublicationController {
         this.context = context;
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/publication/list",
+            operationId = "getPublications",
+            tags = {"Publications"},
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
+            responses = {
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = List.class, typeArguments = {Publication.class})),
+                @ApiResponse(code = 400),
+                @ApiResponse(code = 403),
+                @ApiResponse(code = 404),
+                @ApiResponse(code = 500)
+            }
+    )
     public Future<?> listPublications() {
         context.getRequest()
                 .body()
@@ -67,6 +87,20 @@ public class PublicationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/publication/get",
+            operationId = "getPublication",
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
+            tags = {"Publications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Publication.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> getPublication() {
         context.getRequest()
                 .body()
@@ -82,6 +116,20 @@ public class PublicationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/publication/create",
+            operationId = "createPublication",
+            requestBody = @ApiSchema(implementation = Publication.class),
+            tags = {"Publications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Publication.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> createPublication() {
         context.getRequest()
                 .body()
@@ -95,6 +143,20 @@ public class PublicationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/publication/delete",
+            operationId = "deletePublication",
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
+            tags = {"Publications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> deletePublication() {
         context.getRequest()
                 .body()
@@ -110,6 +172,20 @@ public class PublicationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/publication/update",
+            operationId = "updatePublication",
+            requestBody = @ApiSchema(implementation = Publication.class),
+            tags = {"Publications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Publication.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> updatePublication() {
         context.getRequest()
                 .body()
@@ -126,6 +202,20 @@ public class PublicationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/publication/approve",
+            operationId = "approvePublication",
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
+            tags = {"Publications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Publication.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> approvePublication() {
         context.getRequest()
                 .body()
@@ -143,6 +233,20 @@ public class PublicationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/publication/reject",
+            operationId = "rejectPublication",
+            requestBody = @ApiSchema(implementation = RejectPublicationRequest.class),
+            tags = {"Publications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Publication.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> rejectPublication() {
         context.getRequest()
                 .body()
@@ -159,6 +263,20 @@ public class PublicationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/publication/rule/list",
+            operationId = "getPublicationRules",
+            requestBody = @ApiSchema(implementation = ResourceLink.class),
+            tags = {"Publications"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Rules.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> listRules() {
         context.getRequest()
                 .body()
@@ -174,6 +292,23 @@ public class PublicationController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/publication/resource/list",
+            operationId = "listPublishedResources",
+            requestBody = @ApiSchema(implementation = ListPublishedResourcesRequest.class),
+            tags = {"Publications"},
+            parameters = {
+                    @ApiParameter(name = "permissions", in = ParameterIn.QUERY)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = Collection.class, typeArguments = {MetadataBase.class})),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> listPublishedResources() {
         context.getRequest()
                 .body()

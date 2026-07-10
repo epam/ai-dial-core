@@ -1,0 +1,8 @@
+type: object
+additionalProperties: true
+required: [url]
+properties:
+  url: { type: string }
+  detail:
+    type: string
+    enum: [auto, low, high]
