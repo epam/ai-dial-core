@@ -11111,6 +11111,10 @@ components:
           $ref: "#/components/schemas/MapStringDeploymentInterface"
         intro:
           type: string
+        allow_user_external_services:
+          type: boolean
+        app_identity:
+          type: string
     ApplicationData:
       type: object
       properties:
@@ -13209,6 +13213,8 @@ components:
           type: string
         url:
           type: string
+        offlineUsageConsent:
+          type: boolean
     ResourceSignOutRequest:
       type: object
       properties:
@@ -13269,6 +13275,7 @@ components:
       - USER_CONSENT
       - TOOL_SET
       - CREDENTIALS
+      - EXTERNAL_SERVICE
       - ENCRYPTION_KEYS
       - CLIENT_CHANNEL
       - MODEL
