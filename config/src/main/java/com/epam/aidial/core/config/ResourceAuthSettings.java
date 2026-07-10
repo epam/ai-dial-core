@@ -71,4 +71,7 @@ public class ResourceAuthSettings {
 
     @JsonAlias({"tokenEndpointAuthMethod", "token_endpoint_auth_method"})
     private String tokenEndpointAuthMethod;
+
+    @JsonAlias({"dynamicallyRegistered", "dynamically_registered"})
+    private Boolean dynamicallyRegistered;
 }

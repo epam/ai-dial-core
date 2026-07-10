@@ -20,6 +20,7 @@ public enum HttpStatus {
     REQUEST_ENTITY_TOO_LARGE(413),
     UNSUPPORTED_MEDIA_TYPE(415),
     UNPROCESSABLE_ENTITY(422),
+    FAILED_DEPENDENCY(424),
     TOO_MANY_REQUESTS(429),
     INTERNAL_SERVER_ERROR(500),
     BAD_GATEWAY(502),
@@ -56,6 +57,7 @@ public enum HttpStatus {
             case 413 -> REQUEST_ENTITY_TOO_LARGE;
             case 415 -> UNSUPPORTED_MEDIA_TYPE;
             case 422 -> UNPROCESSABLE_ENTITY;
+            case 424 -> FAILED_DEPENDENCY;
             case 429 -> TOO_MANY_REQUESTS;
             case 500 -> INTERNAL_SERVER_ERROR;
             case 502 -> BAD_GATEWAY;
