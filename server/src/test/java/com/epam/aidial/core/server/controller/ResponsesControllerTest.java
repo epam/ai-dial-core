@@ -788,7 +788,6 @@ public class ResponsesControllerTest {
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
-        when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
         when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
         when(proxy.getRateLimiter().limit(context, deployment))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
