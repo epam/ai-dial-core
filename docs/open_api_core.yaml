@@ -10570,6 +10570,134 @@ paths:
             schema:
               $ref: "#/components/schemas/RateRequest"
         required: true
+  /v2/metadata/skills/{bucket}/{path}:
+    get:
+      tags:
+      - Skills
+      summary: "/v2/metadata/skills/{bucket}/{path}"
+      operationId: listSkillMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The grouping folder path within the bucket; empty lists the bucket root.
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: Continuation token from a previous page; omit for the first page.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: "Maximum number of items per page (0-1000, default 100)."
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, lists the whole subtree; otherwise only immediate children."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: The complex resources and grouping folders at this level
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request - limit out of range
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Grouping folder not found
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v2/metadata/skills/{bucket}/{path}/files/{filePath}:
+    get:
+      tags:
+      - Skills
+      summary: "/v2/metadata/skills/{bucket}/{path}/files/{filePath}"
+      operationId: listSkillFileMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The resource path within the bucket.
+        required: true
+        schema:
+          type: string
+      - name: filePath
+        in: path
+        description: The relative path of a subfolder inside the resource to scope the listing.
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: Continuation token from a previous page; omit for the first page.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: "Maximum number of items per page (0-1000, default 100)."
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, lists all files of the current version; otherwise only immediate entries."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: The files of the resource's current version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request - limit out of range
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Resource not found
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v2/skills/{bucket}/{path}:
     get:
       tags:
@@ -10779,6 +10907,141 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "404":
           description: Folder resource not found
+        "412":
+          description: Precondition failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v2/skills/{bucket}/{path}/:
+    get:
+      tags:
+      - Skills
+      summary: "/v2/skills/{bucket}/{path}/"
+      operationId: downloadSkillGroupingFolder
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The grouping folder path within the bucket.
+        required: true
+        schema:
+          type: string
+      responses:
+        "400":
+          description: Path is a folder; use metadata listing
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Skills
+      summary: "/v2/skills/{bucket}/{path}/"
+      operationId: createSkillGroupingFolder
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The grouping folder path within the bucket.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Grouping folder created successfully
+          headers:
+            ETag:
+              description: The ETag of the created grouping folder
+              required: false
+              schema:
+                type: string
+        "400":
+          description: Bad request - the folder already exists or a resource/folder name collision was detected
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Skills
+      summary: "/v2/skills/{bucket}/{path}/"
+      operationId: deleteSkillGroupingFolder
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: The grouping folder path within the bucket.
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag of the folder to delete. Use * to delete regardless of the current ETag.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Grouping folder deleted successfully
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Grouping folder not found
+        "409":
+          description: Conflict - the folder is not empty
         "412":
           description: Precondition failed - ETag mismatch
         "500":

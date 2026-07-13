@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
@@ -14,8 +16,10 @@ import org.junit.jupiter.api.Test;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -149,10 +153,12 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testTrailingSlashRejectedByRouting() {
-        // The v2 route addresses a resource by name without a trailing slash.
-        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
-        assertNotEquals(200, uploadSkill("/trailing/", files).status());
+    void testTrailingSlashAddressesFolder() {
+        // A whole-resource upload addresses a resource by name (no trailing slash); a trailing slash now
+        // addresses a DIAL grouping folder, so a multipart PUT there creates a folder (the body is ignored).
+        verify(createFolder("/trailing/"), 200);
+        // the whole-resource GET (no slash) on that folder is rejected
+        assertEquals(400, downloadSkill("/trailing").status());
     }
 
     @Test
@@ -345,6 +351,187 @@ public class SkillResourceApiTest extends ResourceBaseTest {
         assertEquals(404, getSkillFile("/file-after-delete", "SKILL.md").status());
         verify(putSkillFile("/file-after-delete", "a.txt", "x".getBytes(StandardCharsets.UTF_8)), 404);
         verify(deleteSkillFile("/file-after-delete", "a.txt"), 404);
+    }
+
+    @Test
+    void testMetadataListingClassifiesChildren() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        // deep PUT auto-vivifies the "cat" grouping folder
+        verify(uploadSkill("/cat/skill-a", files), 200);
+        verify(uploadSkill("/cat/skill-b", files), 200);
+        verify(createFolder("/cat/sub/"), 200);
+
+        // a DIAL resource is reported as ITEM, a grouping folder as FOLDER, classified from the marker file
+        Response listing = listMetadata("cat");
+        verify(listing, 200);
+        Map<String, String> nodeTypes = childNodeTypes(listing);
+        assertEquals(Set.of("skill-a", "skill-b", "sub"), nodeTypes.keySet());
+        assertEquals("ITEM", nodeTypes.get("skill-a"));
+        assertEquals("ITEM", nodeTypes.get("skill-b"));
+        assertEquals("FOLDER", nodeTypes.get("sub"));
+    }
+
+    @Test
+    void testMetadataListingRecursive() {
+        Map<String, byte[]> files = new LinkedHashMap<>();
+        files.put("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        files.put("scripts/run.sh", "echo hi".getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/tree/skill-a", files), 200);
+        verify(uploadSkill("/tree/sub/nested", files), 200);
+
+        // non-recursive: only the immediate children (a resource and a grouping folder)
+        assertEquals(Set.of("skill-a", "sub"), childNodeTypes(listMetadata("tree")).keySet());
+
+        // recursive: every DIAL resource/folder in the subtree, and never the files inside a resource
+        Set<String> urls = childUrls(send(HttpMethod.GET,
+                "/v2/metadata/skills/" + bucket + "/tree", "recursive=true", ""));
+        assertTrue(urls.contains("skills/" + bucket + "/tree/skill-a/"), urls.toString());
+        assertTrue(urls.contains("skills/" + bucket + "/tree/sub/"), urls.toString());
+        assertTrue(urls.contains("skills/" + bucket + "/tree/sub/nested/"), urls.toString());
+        // resource files (SKILL.md, scripts/run.sh) and the internal v/ version tree must be excluded
+        assertTrue(urls.stream().noneMatch(u -> u.contains("SKILL.md") || u.contains("/v/") || u.contains("run.sh")),
+                urls.toString());
+    }
+
+    @Test
+    void testMetadataListingOmitsDeletedResources() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/grp/keep", files), 200);
+        verify(uploadSkill("/grp/gone", files), 200);
+        verify(deleteSkill("/grp/gone"), 200);
+
+        assertEquals(Set.of("keep"), childNodeTypes(listMetadata("grp")).keySet());
+    }
+
+    @Test
+    void testMetadataFilesListing() {
+        Map<String, byte[]> files = new LinkedHashMap<>();
+        files.put("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        files.put("scripts/run.sh", "echo hi".getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/files-skill", files), 200);
+
+        // non-recursive: immediate entries of the version, under a clean .../files/ url (version prefix hidden)
+        Set<String> immediate = childUrls(listSkillFiles("/files-skill"));
+        assertTrue(immediate.contains("skills/" + bucket + "/files-skill/files/SKILL.md"), immediate.toString());
+        assertTrue(immediate.contains("skills/" + bucket + "/files-skill/files/scripts/"), immediate.toString());
+
+        // recursive: all files flattened
+        Set<String> all = childUrls(send(HttpMethod.GET,
+                "/v2/metadata/skills/" + bucket + "/files-skill/files", "recursive=true", ""));
+        assertTrue(all.contains("skills/" + bucket + "/files-skill/files/SKILL.md"), all.toString());
+        assertTrue(all.contains("skills/" + bucket + "/files-skill/files/scripts/run.sh"), all.toString());
+
+        // files listing of an absent resource -> 404
+        assertEquals(404, listSkillFiles("/no-such-skill").status());
+    }
+
+    @Test
+    void testAutoVivifyIntermediateFolders() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/a/b/deep", files), 200);
+
+        assertEquals("FOLDER", childNodeTypes(listMetadata("a")).get("b"));
+        assertEquals("ITEM", childNodeTypes(listMetadata("a/b")).get("deep"));
+
+        // a second deep PUT reuses the vivified folders
+        verify(uploadSkill("/a/b/deep2", files), 200);
+        assertEquals(Set.of("deep", "deep2"), childNodeTypes(listMetadata("a/b")).keySet());
+    }
+
+    @Test
+    void testRejectResourceInsideResource() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/outer", files), 200);
+        // a resource must never be created inside another resource
+        verify(uploadSkill("/outer/inner", files), 400);
+    }
+
+    @Test
+    void testRejectNameCollisions() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+
+        // skill exists -> folder create at the same path is rejected
+        verify(uploadSkill("/collide-a", files), 200);
+        verify(createFolder("/collide-a/"), 400);
+
+        // folder exists -> skill PUT at the same path is rejected
+        verify(createFolder("/collide-b/"), 200);
+        verify(uploadSkill("/collide-b", files), 400);
+
+        // folder exists -> a second folder create is rejected
+        verify(createFolder("/collide-b/"), 400);
+    }
+
+    @Test
+    void testDeleteEmptyFolder() {
+        verify(createFolder("/empty/"), 200);
+        verify(deleteFolder("/empty/"), 200);
+        // gone from the parent listing (root)
+        assertFalse(childNodeTypes(listMetadata("")).containsKey("empty"));
+    }
+
+    @Test
+    void testDeleteNonEmptyFolderRejected() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/parent/child", files), 200);
+
+        // the folder holds a child resource -> 409, and the child is untouched (no cascade)
+        verify(deleteFolder("/parent/"), 409);
+        assertEquals(200, downloadSkill("/parent/child").status());
+    }
+
+    @Test
+    void testDeleteFolderIfMatch() {
+        Response created = createFolder("/etag-folder/");
+        verify(created, 200);
+        String etag = created.headers().get("etag");
+        assertNotNull(etag);
+
+        verify(deleteFolder("/etag-folder/", "if-match", "\"wrong\""), 412);
+        verify(deleteFolder("/etag-folder/", "if-match", etag), 200);
+    }
+
+    @Test
+    void testGetOnFolderRejected() {
+        verify(createFolder("/as-folder/"), 200);
+        // whole-resource GET (no trailing slash) on a folder -> 400
+        assertEquals(400, downloadSkill("/as-folder").status());
+        // trailing-slash GET -> 400
+        assertEquals(400, send(HttpMethod.GET, "/v2/skills/" + bucket + "/as-folder/", null, "").status());
+    }
+
+    private Response listMetadata(String relativePath, String... headers) {
+        return send(HttpMethod.GET, "/v2/metadata/skills/" + bucket + "/" + relativePath, null, "", headers);
+    }
+
+    private Response listSkillFiles(String skillPath, String... headers) {
+        return send(HttpMethod.GET, "/v2/metadata/skills/" + bucket + skillPath + "/files", null, "", headers);
+    }
+
+    private Response createFolder(String folderPath, String... headers) {
+        return send(HttpMethod.PUT, "/v2/skills/" + bucket + folderPath, null, "", headers);
+    }
+
+    private Response deleteFolder(String folderPath, String... headers) {
+        return send(HttpMethod.DELETE, "/v2/skills/" + bucket + folderPath, null, "", headers);
+    }
+
+    @SneakyThrows
+    private static Map<String, String> childNodeTypes(Response listing) {
+        Map<String, String> result = new HashMap<>();
+        for (JsonNode item : ProxyUtil.MAPPER.readTree(listing.body()).get("items")) {
+            result.put(item.get("name").asText(), item.get("nodeType").asText());
+        }
+        return result;
+    }
+
+    @SneakyThrows
+    private static Set<String> childUrls(Response listing) {
+        Set<String> urls = new HashSet<>();
+        for (JsonNode item : ProxyUtil.MAPPER.readTree(listing.body()).get("items")) {
+            urls.add(item.get("url").asText());
+        }
+        return urls;
     }
 
     @SneakyThrows

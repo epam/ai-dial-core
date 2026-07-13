@@ -41,7 +41,7 @@ import com.epam.aidial.core.server.service.UserExternalServiceService;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.clientchannel.ClientChannelService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
-import com.epam.aidial.core.server.service.folder.FolderResourceService;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
@@ -171,7 +171,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AsyncTaskExecutor taskExecutor;
     private final String version;
     private final ResponseMappingService responseMappingService;
-    private final FolderResourceService folderResourceService;
+    private final ComplexResourceService complexResourceService;
     // Generates the unique portion of a DIAL response ID
     private final Supplier<String> generator;
 
