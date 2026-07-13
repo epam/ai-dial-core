@@ -12,6 +12,8 @@ import com.epam.aidial.core.server.controller.route.GlobalRouteController;
 import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -340,6 +342,14 @@ public class ControllerSelector {
             };
         });
 
+        post(RouteTemplate.TOOL_SET_REPAIR, (proxy, context, pathMatcher) -> {
+            String bucket = pathMatcher.group("bucket");
+            String path = pathMatcher.group("path");
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(
+                    "toolsets/" + bucket + "/" + path, proxy.getEncryptionService());
+            return new ToolSetRepairController(proxy, context, resource)::handle;
+        });
+
         post(RouteTemplate.TOOL_SET_CREDENTIALS, (proxy, context, pathMatcher) -> {
             String operation = pathMatcher.group(1);
             ResourceCredentialsController controller = new ResourceCredentialsController(proxy, context);
@@ -425,6 +435,11 @@ public class ControllerSelector {
                     proxy.getToolSetService(),
                     proxy.getLockService());
             return controller::handle;
+        });
+        get(RouteTemplate.CONFIG_HEALTH, (proxy, context, pathMatcher) -> {
+            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+            return new AdminHealthConfigController(context, authService, mergedConfigStore);
         });
         post(RouteTemplate.CONFIG, (proxy, context, pathMatcher) -> new ConfigController(context));
         post(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {

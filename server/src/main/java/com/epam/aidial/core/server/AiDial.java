@@ -61,6 +61,7 @@ import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.ShareService;
+import com.epam.aidial.core.server.service.ToolSetRepairService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.service.VertxTimerService;
@@ -114,7 +115,6 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RedissonClient;
 
 import java.io.FileInputStream;
@@ -123,9 +123,8 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Duration;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
@@ -137,7 +136,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 @Slf4j
 @Setter
@@ -191,8 +191,9 @@ public class AiDial {
             boolean collectClaims = analyticsSettings.getBoolean("collectClaims", false);
             boolean collectHeaders = analyticsSettings.getBoolean("collectHeaders", false);
             // default is defined in the bundled aidial.settings.json and always merged in
-            Set<String> headersBlacklist = parseHeadersBlacklist(analyticsSettings.getString("headersBlacklist"));
-            LogStore logStore = new GfLogStore(collectClaims, collectHeaders, headersBlacklist);
+            List<Pattern> headersBlacklist = parseHeaderPatterns(analyticsSettings.getJsonArray("headersBlacklist"));
+            List<Pattern> headersAllowlist = parseHeaderPatterns(analyticsSettings.getJsonArray("headersAllowlist"));
+            LogStore logStore = new GfLogStore(collectClaims, collectHeaders, headersBlacklist, headersAllowlist);
 
             if (accessTokenValidator == null) {
                 String claimsLogLevel = settings.getString("claimsLogLevel", "DEBUG");
@@ -237,10 +238,12 @@ public class AiDial {
             TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);
             ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient(httpProxySelector);
             List<String> allowedRedirectUris = getAllowedRedirectUris();
+            TokenService tokenService = new TokenService(resourceAuthorizationClient, allowedRedirectUris);
+            ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient, allowedRedirectUris);
             ResourceCredentialsService resourceCredentialsService = getResourceCredentialsService(
-                    tokenRefreshStrategyFactory, resourceAuthorizationClient, credentialEncryptionService, timeProvider, allowedRedirectUris);
+                    tokenRefreshStrategyFactory, credentialEncryptionService, timeProvider, tokenService);
             ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
-                    resourceCredentialsService, tokenRefreshStrategyFactory, resourceAuthorizationClient, allowedRedirectUris);
+                    resourceCredentialsService, tokenRefreshStrategyFactory, resourceRegistrationService);
             AuthorizationHeaderProvider authorizationHeaderProvider = new AuthorizationHeaderProvider(resourceCredentialsService);
             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
                     credentialEncryptionService);
@@ -248,6 +251,9 @@ public class AiDial {
                     encryptionService, resourceAuthSettingsEncryptionService);
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
                     resourceAuthSettingsEncryptionService, resourceCredentialsService);
+            ToolSetRepairService toolSetRepairService = new ToolSetRepairService(resourceService,
+                    resourceAuthSettingsEncryptionService, resourceCredentialsService,
+                    resourceRegistrationService, resourceAuthSettingsService);
 
             ExternalServiceService externalServiceService = new ExternalServiceService(
                     resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService);
@@ -304,7 +310,7 @@ public class AiDial {
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, externalServiceService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
-                    toolSetService, applicationSchemaService, authorizationHeaderProvider, resourceAuthSettingsService, resourceCredentialsService,
+                    toolSetService, toolSetRepairService, applicationSchemaService, authorizationHeaderProvider, resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
                     responseMappingService, complexResourceService, generator);
 
@@ -378,11 +384,9 @@ public class AiDial {
     }
 
     private ResourceCredentialsService getResourceCredentialsService(TokenRefreshStrategyFactory tokenRefreshStrategyFactory,
-                                                                     ResourceAuthorizationClient resourceAuthorizationClient,
                                                                      CredentialEncryptionService credentialEncryptionService,
                                                                      TimeProvider timeProvider,
-                                                                     List<String> allowedRedirectUris) {
-        TokenService tokenService = new TokenService(resourceAuthorizationClient, allowedRedirectUris);
+                                                                     TokenService tokenService) {
         ResourceCredentialsFactoryProvider resourceCredentialsFactoryProvider = new ResourceCredentialsFactoryProvider(tokenService);
         return new ResourceCredentialsService(resourceService, credentialEncryptionService, resourceCredentialsFactoryProvider,
                 tokenService, tokenRefreshStrategyFactory, timeProvider);
@@ -390,9 +394,7 @@ public class AiDial {
 
     private ResourceAuthSettingsService getResourceAuthSettingsService(ResourceCredentialsService resourceCredentialsService,
                                                                        TokenRefreshStrategyFactory tokenRefreshStrategyFactory,
-                                                                       ResourceAuthorizationClient resourceAuthorizationClient,
-                                                                       List<String> allowedRedirectUris) {
-        ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient, allowedRedirectUris);
+                                                                       ResourceRegistrationService resourceRegistrationService) {
         AuthSettingsValidatorFactory authSettingsValidatorFactory = new AuthSettingsValidatorFactory();
         return new ResourceAuthSettingsService(resourceRegistrationService, resourceCredentialsService,
                 tokenRefreshStrategyFactory, authSettingsValidatorFactory);
@@ -619,15 +621,22 @@ public class AiDial {
         vertxOptions.setTracingOptions(otelOpts);
     }
 
-    private static Set<String> parseHeadersBlacklist(String value) {
-        if (StringUtils.isBlank(value)) {
-            return Set.of();
+    private static List<Pattern> parseHeaderPatterns(JsonArray value) {
+        if (value == null) {
+            return null;
         }
-        return Arrays.stream(value.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .map(s -> s.toLowerCase(Locale.ROOT))
-                .collect(Collectors.toUnmodifiableSet());
+        List<Pattern> patterns = new ArrayList<>();
+        for (Object item : value) {
+            if (!(item instanceof String s) || s.isBlank()) {
+                continue;
+            }
+            try {
+                patterns.add(Pattern.compile(s.trim(), Pattern.CASE_INSENSITIVE));
+            } catch (PatternSyntaxException e) {
+                log.warn("Ignoring invalid analytics header pattern '{}': {}", s, e.getMessage());
+            }
+        }
+        return patterns;
     }
 
     private static String getOtlSetting(String envVar, String systemProperty) {

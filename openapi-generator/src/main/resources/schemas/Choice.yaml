@@ -1,0 +1,12 @@
+type: object
+required: [index]
+properties:
+  index: {type: integer}
+  finish_reason:
+    oneOf:
+      - $ref: '#/components/schemas/FinishReason'
+      - type: 'null'
+  delta:
+    $ref: '#/components/schemas/ChoiceDelta'
+  message:
+    $ref: '#/components/schemas/ChoiceDelta'

@@ -1,14 +1,19 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.CopySharedAccessRequest;
+import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.server.data.ResourceLinkCollection;
 import com.epam.aidial.core.server.data.RevokeResourcesRequest;
 import com.epam.aidial.core.server.data.ShareResourcesRequest;
 import com.epam.aidial.core.server.data.SharedResource;
+import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.ShareService;
@@ -49,6 +54,71 @@ public class ShareController {
         this.invitationService = proxy.getInvitationService();
     }
 
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/share/create",
+            operationId = "shareResource",
+            requestBody = @ApiSchema(implementation = ShareResourcesRequest.class),
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = InvitationLink.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/share/list",
+            operationId = "getSharedResources",
+            requestBody = @ApiSchema(implementation = ListSharedResourcesRequest.class),
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = SharedResourcesResponse.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/share/revoke",
+            operationId = "revokeSharedResources",
+            requestBody = @ApiSchema(implementation = RevokeResourcesRequest.class),
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/share/discard",
+            operationId = "discardSharedResources",
+            requestBody = @ApiSchema(implementation = ResourceLinkCollection.class),
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
+    )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/share/copy",
+            operationId = "copySharedResources",
+            requestBody = @ApiSchema(implementation = CopySharedAccessRequest.class),
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> handle(Operation operation) {
         if (context.getApiKeyData().getPerRequestKey() != null) {
             context.respond(HttpStatus.FORBIDDEN, "The Share API is not allowed for per-request keys");

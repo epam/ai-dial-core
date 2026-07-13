@@ -1,0 +1,18 @@
+type: object
+properties:
+    roles:
+      type: array
+      description: List of user or API key authorization roles
+      items:
+        type: string
+    project:
+      type: string
+      description: Present only if authenticated via an API Key. Represents the target project scope.
+    userClaims:
+      type: object
+      description: Normalized token claims. Present only for user-based session authentication.
+      additionalProperties:
+        type: array
+        description: Array representation of a specific claim value (normalized for backward compatibility)
+        items:
+          type: string

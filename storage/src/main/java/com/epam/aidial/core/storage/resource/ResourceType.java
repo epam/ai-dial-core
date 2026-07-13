@@ -1,5 +1,12 @@
 package com.epam.aidial.core.storage.resource;
 
+import com.epam.aidial.core.openapi.annotations.ApiSubType;
+import com.epam.aidial.core.openapi.annotations.ApiSubTypes;
+
+@ApiSubTypes(
+        discriminatorProperty = "type",
+        value = @ApiSubType(type = ResourceTypes.class, discriminatorValue = "DEFAULT")
+)
 public interface ResourceType {
     String name();
 

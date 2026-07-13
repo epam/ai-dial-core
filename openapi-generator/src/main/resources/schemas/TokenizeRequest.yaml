@@ -1,0 +1,12 @@
+type: object
+required:
+  - inputs
+properties:
+  inputs:
+    type: array
+    items:
+      oneOf:
+        - $ref: '#/components/schemas/TokenizeInputRequest'
+        - $ref: '#/components/schemas/TokenizeInputString'
+      discriminator:
+        propertyName: type

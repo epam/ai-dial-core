@@ -3,6 +3,12 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ListData;
 import com.epam.aidial.core.server.data.ToolSetData;
@@ -38,6 +44,23 @@ public class ToolSetController {
         this.toolSetService = context.getProxy().getToolSetService();
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/openai/toolsets/{toolset_name}",
+            operationId = "getToolset",
+            tags = {"Deployment listing"},
+            parameters = {
+                    @ApiParameter(name = "toolset_name", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.TOOLSET_NAME)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ToolSetData.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> getToolSet(String toolSetId) {
         taskExecutor.submit(() -> {
             Deployment deployment = deploymentService.findDeployment(context, toolSetId);
@@ -53,6 +76,19 @@ public class ToolSetController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/openai/toolsets",
+            operationId = "getToolSets",
+            tags = {"Deployment listing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ListData.class, typeArguments = {ToolSetData.class})),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> getToolSets() {
         Config config = context.getConfig();
         return taskExecutor.submit(this::getResourceToolSets)

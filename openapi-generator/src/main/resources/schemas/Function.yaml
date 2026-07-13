@@ -1,0 +1,10 @@
+type: object
+additionalProperties: true
+required: [name]
+properties:
+  name: { type: string }
+  strict: { type: boolean, default: false }
+  description: { type: string }
+  parameters:
+    type: object
+    additionalProperties: true

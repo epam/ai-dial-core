@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server.data;
 
+import com.epam.aidial.core.openapi.annotations.ApiSubType;
+import com.epam.aidial.core.openapi.annotations.ApiSubTypes;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -11,6 +13,23 @@ import java.util.Map;
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+@ApiSubTypes(
+        discriminatorProperty = "object",
+        value = {
+            @ApiSubType(
+                discriminatorValue = "model",
+                type = ModelData.class
+                ),
+            @ApiSubType(
+                discriminatorValue = "application",
+                type = ApplicationData.class
+                ),
+            @ApiSubType(
+                discriminatorValue = "toolset",
+                type = ToolSetData.class
+                )
+        }
+)
 public class DeploymentData {
     private String id;
     private String model;
@@ -20,6 +39,7 @@ public class DeploymentData {
     private String displayVersion;
     private String iconUrl;
     private String description;
+    private String intro;
     private String reference;
     private String owner = "organization-owner";
     private String object = "deployment";

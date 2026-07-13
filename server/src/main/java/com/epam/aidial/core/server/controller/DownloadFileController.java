@@ -1,5 +1,11 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -20,6 +26,22 @@ public class DownloadFileController extends AccessControlBaseController {
     }
 
     @Override
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/files/{bucket}/{file_path}",
+            operationId = "downloadFile",
+            contentType = "application/octet-stream",
+            tags = {"Files"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                    @ApiParameter(name = "file_path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.FILE_PATH)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = byte[].class), contentTypes = {"application/octet-stream"}),
+                    @ApiResponse(code = 401, description = OpenApiDescriptions.RESPONSE_INVALID_AUTHENTICATION)
+            }
+    )
     protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         if (resource.isFolder()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Can't download a folder");

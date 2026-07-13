@@ -1,0 +1,12 @@
+type: object
+required:
+  - outputs
+properties:
+  outputs:
+    type: array
+    items:
+      oneOf:
+        - $ref: '#/components/schemas/TruncatePromptSuccess'
+        - $ref: '#/components/schemas/TruncatePromptError'
+      discriminator:
+        propertyName: status

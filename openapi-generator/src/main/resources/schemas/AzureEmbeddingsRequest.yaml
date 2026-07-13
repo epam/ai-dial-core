@@ -1,0 +1,13 @@
+type: object
+required: [input]
+properties:
+  model: {type: string}
+  input:
+    oneOf:
+      - type: string
+      - type: array
+  encoding_format:
+    type: string
+    enum: [float, base64]
+  dimensions: {type: integer}
+  user: {type: string}

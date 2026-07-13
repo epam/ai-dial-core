@@ -1,0 +1,11 @@
+type: object
+required:
+  - status
+  - token_count
+properties:
+  status:
+    type: string
+    enum:
+      - success
+  token_count:
+    type: integer

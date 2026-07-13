@@ -1,0 +1,9 @@
+type: object
+additionalProperties: true
+required: [name]
+properties:
+  name: { type: string }
+  description: { type: string }
+  configuration:
+    type: object
+    additionalProperties: true

@@ -1,0 +1,6 @@
+allOf:
+  - $ref: '#/components/schemas/AzureEmbeddingsRequest'
+type: object
+properties:
+  custom_fields:
+    $ref: '#/components/schemas/EmbeddingsRequestCustomFields'

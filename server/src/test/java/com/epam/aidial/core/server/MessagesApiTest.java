@@ -167,7 +167,7 @@ public class MessagesApiTest extends ResourceBaseTest {
     }
 
     @Test
-    public void testExplicitUpstreamSendsKeyButNoEndpointHeader() throws IOException {
+    public void testExplicitUpstreamSendsKeyAndEndpointHeader() throws IOException {
         AtomicReference<RecordedRequest> captured = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
             server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
@@ -178,8 +178,8 @@ public class MessagesApiTest extends ResourceBaseTest {
             Response response = post(client, MESSAGES_PATH, requestBody("claude-upstream", false), "api-key", "proxyKey1");
 
             assertEquals(200, response.status());
-            // adapters route by interfaces.base_url + ingress path; no per-upstream Messages API endpoint yet
-            assertNull(captured.get().getHeader("X-UPSTREAM-ENDPOINT"));
+            // the upstream endpoint is propagated to the adapter (as for chat completions / responses)
+            assertEquals("http://messages-upstream/v1/messages", captured.get().getHeader("X-UPSTREAM-ENDPOINT"));
             assertEquals("modelKey", captured.get().getHeader("X-UPSTREAM-KEY"));
         }
     }

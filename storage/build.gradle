@@ -1,6 +1,7 @@
 dependencies {
     // Project dependencies (internal modules)
     implementation project(':config')
+    implementation project(':openapi-annotations')
 
     // External dependencies
     implementation platform("software.amazon.awssdk:bom:${aws_sdk_v2_version}")

@@ -1,0 +1,12 @@
+type: object
+required:
+  - index
+  - delta
+properties:
+  index:
+    type: integer
+  finish_reason:
+    $ref: '#/components/schemas/FinishReason'
+    nullable: true
+  delta:
+    $ref: '#/components/schemas/CreateChatCompletionStreamDelta'
