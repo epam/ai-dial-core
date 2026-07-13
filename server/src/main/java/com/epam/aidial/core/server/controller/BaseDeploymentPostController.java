@@ -269,9 +269,19 @@ public class BaseDeploymentPostController {
             });
         }
 
+        enrichProxyRequestHeaders(proxyRequest);
+
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(context.getRequestBody().length()));
 
         return proxyRequest.send(context.getRequestBody());
+    }
+
+    /**
+     * Hook for route-specific headers. Invoked after the client headers have been copied, so anything set
+     * here replaces the value a client may have sent under the same name.
+     */
+    protected void enrichProxyRequestHeaders(HttpClientRequest proxyRequest) {
+        // no additional headers by default
     }
 
     protected boolean isRetriableError(int statusCode) {

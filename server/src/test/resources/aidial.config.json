@@ -209,6 +209,11 @@
         {"endpoint": "http://messages-upstream/v1/messages", "key": "modelKey", "id": "messages-upstream"}
       ]
     },
+    "claude-override": {
+      "type": "chat",
+      "overrideName": "claude-sonnet-4-5-20250929",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} }
+    },
     "claude-no-iface": {
       "type": "chat",
       "endpoint": "http://localhost:4848/v1/chat/completions"
@@ -299,6 +304,7 @@
         "claude-xapikey": {"minute": "100000", "day": "10000000"},
         "claude-limited": {"minute": "10", "day": "10"},
         "claude-upstream": {"minute": "100000", "day": "10000000"},
+        "claude-override": {"minute": "100000", "day": "10000000"},
         "claude-no-iface": {"minute": "100000", "day": "10000000"}
       }
     },
