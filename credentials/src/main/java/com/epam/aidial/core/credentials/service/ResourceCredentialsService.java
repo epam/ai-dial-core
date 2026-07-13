@@ -55,6 +55,8 @@ public class ResourceCredentialsService {
 
         if (resourceSignInRequest.getCredentialsLevel().equals(CredentialsLevel.USER)) {
             resourceCredentials.setUserId(userId);
+            // Offline-usage consent is per-user; record it so the on-behalf-of retrieval path can gate on it.
+            resourceCredentials.setOfflineUsageConsent(resourceSignInRequest.isOfflineUsageConsent());
         }
 
         byte[] encryptedBody = encrypt(credentialsDescriptor, resourceCredentials);
@@ -218,6 +220,56 @@ public class ResourceCredentialsService {
             if (credentials != null && level.equals(credentials.getCredentialsLevel())) {
                 return credentials;
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolves the owner's USER-level credential only, with auto-refresh — and <b>no fallback</b> to
+     * GLOBAL/APPLICATION levels. Used by the on-behalf-of (OBO) retrieval path, which must fail closed
+     * rather than silently serve a shared/app-level identity. Returns {@code null} when the owner has no
+     * USER-level credential for the scope (the locator must carry only a USER bucket, but the userSub
+     * match is enforced defensively here too).
+     *
+     * <p>When a credential exists but the owner did not grant offline-usage consent, it is returned <b>as
+     * stored, un-refreshed</b> (the refresh token is deliberately not rotated) so the caller can reject on
+     * consent rather than mistake it for a missing credential.
+     */
+    @Nullable
+    public ResourceCredentials getRefreshedUserCredentials(CredentialsLocator credentialsLocator,
+                                                           ResourceAuthSettings authSettings,
+                                                           String ownerSub) {
+        if (authSettings.getAuthenticationType() == AuthenticationType.NONE) {
+            return null;
+        }
+
+        CredentialsDescriptor userDescriptor = credentialsLocator.getCredentialsDescriptors().get(CredentialsLevel.USER);
+        if (userDescriptor == null) {
+            return null;
+        }
+
+        ResourceCredentials stored = getResourceCredentials(userDescriptor);
+        if (stored == null
+                || !stored.getCredentialsLevel().equals(CredentialsLevel.USER)
+                || !Objects.equals(ownerSub, stored.getUserId())) {
+            return null;
+        }
+        // Gate consent BEFORE refreshing: an OBO probe against a non-consented credential must not rotate the
+        // owner's refresh token. Return the stored (un-refreshed) credential so the caller can reject on consent.
+        if (!stored.isOfflineUsageConsent()) {
+            return stored;
+        }
+
+        ResourceCredentials userCredentials = getAndRefreshCredentials(userDescriptor, authSettings);
+        // Re-check consent on the freshly re-read credential: if the owner revoked it concurrently with this
+        // refresh, don't serve the rotated token. (The refresh itself may still have rotated once in that narrow
+        // window — accepted, since revocation via sign-out normally deletes the credential outright.)
+        if (userCredentials != null
+                && userCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
+                && Objects.equals(ownerSub, userCredentials.getUserId())
+                && userCredentials.isOfflineUsageConsent()) {
+            return userCredentials;
         }
 
         return null;

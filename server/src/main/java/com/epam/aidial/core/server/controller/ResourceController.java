@@ -20,6 +20,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
 import com.epam.aidial.core.server.data.Prompt;
 import com.epam.aidial.core.server.security.AccessService;
+import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -52,8 +53,10 @@ import org.apache.commons.lang3.tuple.Pair;
 import java.net.ConnectException;
 import java.net.http.HttpConnectTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_GATEWAY;
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
@@ -553,9 +556,12 @@ public class ResourceController extends AccessControlBaseController {
             ResourceItemMetadata meta = result.getKey();
 
             Application application = result.getValue();
-            // Mirror the toolset raw GET (getToolsetData): enrich status, then strip secrets.
+            overlayUserAuthoredServices(descriptor, application);
             enrichExternalServiceStatuses(descriptor, application);
             clearExternalServiceSecrets(application);
+            // app_identity is admin-managed and immutable once set — it never needs to be read back, so strip it
+            // on every read (the write-access branch would otherwise return the raw app, leaking it).
+            application.setAppIdentity(null);
             String body = hasWriteAccess
                     ? ProxyUtil.convertToString(application)
                     : ProxyUtil.convertToString(clearApplicationProperties(application));
@@ -563,6 +569,18 @@ public class ResourceController extends AccessControlBaseController {
             return Pair.of(meta, body);
 
         });
+    }
+
+    // Inline (admin-authored) definitions take precedence — see overlay(). Secrets are stripped downstream by
+    // clearExternalServiceSecrets, so the decrypted user-authored secret never leaks (identity shaper here).
+    private void overlayUserAuthoredServices(ResourceDescriptor descriptor, Application application) {
+        if (!application.isAllowUserExternalServices() || context.getUserId() == null) {
+            return;
+        }
+        String appPart = descriptor.getDecodedUrl().substring(CredentialsLocatorFactory.APPLICATIONS_PREFIX.length());
+        Map<String, ExternalService> merged = proxy.getUserExternalServiceService()
+                .overlay(application.getExternalServices(), context.getUserId(), appPart, Function.identity());
+        application.setExternalServices(merged);
     }
 
     private void enrichExternalServiceStatuses(ResourceDescriptor descriptor, Application application) {
@@ -592,14 +610,14 @@ public class ResourceController extends AccessControlBaseController {
         }
         for (ExternalService service : services.values()) {
             if (service != null && service.getAuthSettings() != null) {
-                service.getAuthSettings().setClientSecret(null);
-                service.getAuthSettings().setCodeVerifier(null);
+                service.setAuthSettings(service.getAuthSettings().withoutSecrets());
             }
         }
     }
 
     private Application clearApplicationProperties(Application application) {
         application.setEndpoint(null);
+        application.setAppIdentity(null);
         Features features = application.getFeatures();
         if (features != null) {
             features.setConfigurationEndpoint(null);
@@ -759,7 +777,7 @@ public class ResourceController extends AccessControlBaseController {
                 return taskExecutor.submit(() -> {
                     validateCustomApplication(application);
                     return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite,
-                            externalServicesWriteMode).getKey();
+                            AdminManagedFieldsWriteMode.INHERIT_ONLY, externalServicesWriteMode).getKey();
                 });
             });
         } else if (descriptor.getType() == ResourceTypes.TOOL_SET) {

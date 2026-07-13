@@ -18,7 +18,7 @@ import java.util.Map;
 public class CredentialsLocatorFactory {
 
     public static final String EXTERNAL_SERVICES_SEPARATOR = "/external_services/";
-    private static final String APPLICATIONS_PREFIX = "applications/";
+    public static final String APPLICATIONS_PREFIX = "applications/";
     private static final String CONFIG_SEGMENT = "config/";
 
     /**
@@ -31,40 +31,19 @@ public class CredentialsLocatorFactory {
      * </ul>
      *
      * <p>For static apps the resource id is normalized to
-     * {@code applications/config/{appName}/external_services/{id}} (per §6.3 of the design doc)
-     * and the APPLICATION bucket is the public bucket. For dynamic apps the resource id is
-     * preserved and the APPLICATION bucket is the owning application's bucket.
+     * {@code applications/config/{appName}/external_services/{id}} and the APPLICATION bucket is the public
+     * bucket. For dynamic apps the resource id is preserved and the APPLICATION bucket is the owning
+     * application's bucket.
      */
     public static CredentialsLocator fromExternalServiceScope(String scopeId, ProxyContext proxyContext) {
-        String decoded;
-        try {
-            decoded = UrlUtil.decodePath(scopeId);
-        } catch (RuntimeException e) {
-            throw new IllegalArgumentException("Invalid external service scope id: " + scopeId);
-        }
-        // Service ids never contain '/', so the LAST '/external_services/' is the unambiguous delimiter even when
-        // the application path itself contains an 'external_services' segment.
-        int separatorIdx = decoded.lastIndexOf(EXTERNAL_SERVICES_SEPARATOR);
-        if (separatorIdx <= 0 || !decoded.startsWith(APPLICATIONS_PREFIX)) {
-            throw new IllegalArgumentException("Invalid external service scope id: " + scopeId);
-        }
+        String[] parts = parseExternalServiceScope(scopeId);
+        String appPart = parts[0];
+        String externalServiceId = parts[1];
 
-        String appPart = decoded.substring(APPLICATIONS_PREFIX.length(), separatorIdx);
-        String externalServiceId = decoded.substring(separatorIdx + EXTERNAL_SERVICES_SEPARATOR.length());
-        if (appPart.isEmpty() || externalServiceId.isEmpty() || externalServiceId.contains("/")) {
-            throw new IllegalArgumentException("Invalid external service scope id: " + scopeId);
-        }
-
+        boolean configApp = proxyContext.getConfig().isDeploymentExists(appPart);
         Map<CredentialsLevel, BucketInfo> bucketInfo = new EnumMap<>(CredentialsLevel.class);
         bucketInfo.put(CredentialsLevel.USER, CredentialsDescriptorFactory.getUserBucketInfo(proxyContext));
-
-        String resourceId;
-        if (proxyContext.getConfig().isDeploymentExists(appPart)) {
-            // Static-config app: normalize storage path to applications/config/{appName}/external_services/{id}
-            resourceId = APPLICATIONS_PREFIX + CONFIG_SEGMENT
-                    + UrlUtil.encodePath(appPart)
-                    + EXTERNAL_SERVICES_SEPARATOR
-                    + UrlUtil.encodePath(externalServiceId);
+        if (configApp) {
             bucketInfo.put(CredentialsLevel.APPLICATION, CredentialsDescriptorFactory.getPublicBucketInfo());
         } else {
             // Dynamic app: resolve owning bucket from the application URL prefix.
@@ -75,14 +54,35 @@ public class CredentialsLocatorFactory {
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException("Invalid external service scope id: " + scopeId, e);
             }
-            resourceId = APPLICATIONS_PREFIX
-                    + UrlUtil.encodePath(appPart)
-                    + EXTERNAL_SERVICES_SEPARATOR
-                    + UrlUtil.encodePath(externalServiceId);
             bucketInfo.put(CredentialsLevel.APPLICATION,
                     new BucketInfo(appDescriptor.getBucketName(), appDescriptor.getBucketLocation()));
         }
 
+        String resourceId = normalizeResourceId(configApp, appPart, externalServiceId);
+        return new CredentialsLocator(resourceId, bucketInfo);
+    }
+
+    // Storage path a credential is read from / written to. Static-config apps normalize to
+    // applications/config/{appName}/...; dynamic apps preserve the app path.
+    private static String normalizeResourceId(boolean configApp, String appPart, String externalServiceId) {
+        String prefix = configApp ? APPLICATIONS_PREFIX + CONFIG_SEGMENT : APPLICATIONS_PREFIX;
+        return prefix + UrlUtil.encodePath(appPart) + EXTERNAL_SERVICES_SEPARATOR + UrlUtil.encodePath(externalServiceId);
+    }
+
+    /**
+     * Builds a USER-only {@link CredentialsLocator} for an external-service scope, resolving the USER
+     * bucket from the given {@code ownerSub} rather than the caller. Used by the on-behalf-of (OBO)
+     * retrieval path, where the actor (caller) differs from the credential owner. The resource id is
+     * normalized identically to {@link #fromExternalServiceScope} so it reads exactly where sign-in wrote.
+     * Carries only the USER level, so no APPLICATION/GLOBAL fallback is structurally possible (fail-closed).
+     */
+    public static CredentialsLocator fromExternalServiceScopeForOwner(String scopeId, String ownerSub, ProxyContext proxyContext) {
+        String[] parts = parseExternalServiceScope(scopeId);
+        boolean configApp = proxyContext.getConfig().isDeploymentExists(parts[0]);
+
+        Map<CredentialsLevel, BucketInfo> bucketInfo = new EnumMap<>(CredentialsLevel.class);
+        bucketInfo.put(CredentialsLevel.USER, CredentialsDescriptorFactory.getUserBucketInfoForUser(proxyContext, ownerSub));
+        String resourceId = normalizeResourceId(configApp, parts[0], parts[1]);
         return new CredentialsLocator(resourceId, bucketInfo);
     }
 

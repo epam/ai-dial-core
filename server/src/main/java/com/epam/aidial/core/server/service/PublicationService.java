@@ -325,9 +325,8 @@ public class PublicationService {
                         // once; getApplication() returns them still encrypted, which would double-encrypt.
                         Application app = applicationService.getApplicationWithDecryptedSecrets(to).getValue();
                         app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
-                        // Publication-approval is conservative: continue stripping forwardAuthToken.
-                        // The originating user-bucket write already stripped it; this is defense in depth.
-                        applicationService.putApplication(to, EtagHeader.ANY, null, app, false);
+                        applicationService.putApplication(to, EtagHeader.ANY, null, app, false,
+                                AdminManagedFieldsWriteMode.INHERIT_ONLY);
                     }
                 }
             }
