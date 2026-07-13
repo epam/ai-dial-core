@@ -185,6 +185,61 @@ public class MessagesApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testDeploymentIdHeaderCarriesRequestedModel() throws IOException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE, "Content-Type", "application/json");
+            });
+
+            // a client-supplied value must not survive: the header is set by the core, not forwarded
+            Response response = post(client, MESSAGES_PATH, requestBody("claude-ns", false),
+                    "api-key", "proxyKey1", "X-DIAL-DEPLOYMENT-ID", "spoofed");
+
+            assertEquals(200, response.status());
+            assertEquals("claude-ns", captured.get().getHeader("X-DIAL-DEPLOYMENT-ID"));
+        }
+    }
+
+    @Test
+    public void testDeploymentIdHeaderKeepsRequestedModelWhenOverrideNameApplied() throws IOException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE, "Content-Type", "application/json");
+            });
+
+            Response response = post(client, MESSAGES_PATH, requestBody("claude-override", false), "api-key", "proxyKey1");
+
+            assertEquals(200, response.status());
+            RecordedRequest upstream = captured.get();
+            // the header keeps the DIAL deployment id ...
+            assertEquals("claude-override", upstream.getHeader("X-DIAL-DEPLOYMENT-ID"));
+            // ... while the body model is rewritten to the provider-side name
+            assertTrue(upstream.getBody().readUtf8().contains("\"model\":\"claude-sonnet-4-5-20250929\""));
+            assertEquals("claude-sonnet-4-5-20250929", upstream.getHeader("X-DIAL-OVERRIDE-NAME"));
+        }
+    }
+
+    @Test
+    public void testCountTokensSendsDeploymentIdHeader() throws IOException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, COUNT_TOKENS_PATH, request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, "{\"input_tokens\":5}", "Content-Type", "application/json");
+            });
+
+            Response response = post(client, COUNT_TOKENS_PATH, requestBody("claude-count", false), "api-key", "proxyKey1");
+
+            assertEquals(200, response.status());
+            assertEquals("claude-count", captured.get().getHeader("X-DIAL-DEPLOYMENT-ID"));
+        }
+    }
+
+    @Test
     public void testUnsupportedInterfaceReturns503() throws IOException {
         try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
             Response response = post(client, MESSAGES_PATH, requestBody("claude-no-iface", false), "api-key", "proxyKey1");
