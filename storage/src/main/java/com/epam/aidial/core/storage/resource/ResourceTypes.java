@@ -21,6 +21,7 @@ public enum ResourceTypes implements ResourceType {
     USER_CONSENT("user_consent", true, TimeUnit.MINUTES.toMillis(5)),
     TOOL_SET("toolsets", true, TimeUnit.DAYS.toMillis(30)),
     CREDENTIALS("credentials", true, TimeUnit.MINUTES.toMillis(5)),
+    EXTERNAL_SERVICE("external_services", true, TimeUnit.MINUTES.toMillis(5)),
     ENCRYPTION_KEYS("encryption_keys", true, TimeUnit.MINUTES.toMillis(5)),
     CLIENT_CHANNEL("client_channels", true, TimeUnit.HOURS.toMillis(24)),
     MODEL("models", true, TimeUnit.DAYS.toMillis(30)),

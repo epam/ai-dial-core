@@ -75,4 +75,13 @@ public class ResourceAuthSettings {
 
     @JsonAlias({"dynamicallyRegistered", "dynamically_registered"})
     private Boolean dynamicallyRegistered;
+
+    /**
+     * Returns a copy with credential material ({@code clientSecret}, {@code codeVerifier}) removed — the single
+     * place read responses strip secrets, so a newly added secret field only has to be cleared here. The
+     * receiver is left unchanged.
+     */
+    public ResourceAuthSettings withoutSecrets() {
+        return toBuilder().clientSecret(null).codeVerifier(null).build();
+    }
 }

@@ -63,6 +63,16 @@ public class CredentialsDescriptorFactory {
         return new BucketInfo(authBucket.getUserBucket(), authBucket.getUserBucketLocation());
     }
 
+    /**
+     * Builds the USER bucket for an arbitrary owner sub (not the caller). Used by the on-behalf-of (OBO)
+     * path, where the actor (caller) and the credential owner differ.
+     */
+    public static BucketInfo getUserBucketInfoForUser(ProxyContext proxyContext, String ownerSub) {
+        String location = BucketBuilder.USER_BUCKET_PATTERN.formatted(ownerSub);
+        String name = proxyContext.getProxy().getEncryptionService().encrypt(location);
+        return new BucketInfo(name, location);
+    }
+
     public static BucketInfo getPublicBucketInfo() {
         return new BucketInfo(ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION);
     }

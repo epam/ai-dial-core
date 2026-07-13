@@ -224,12 +224,12 @@ public enum RouteTemplate {
     ),
 
     EXTERNAL_SERVICE_CREDENTIALS(
-        "^/v1/ops/external-service/(signin|signout|credentials)$",
+        "^/v1/ops/external-service/(signin|signout|credentials|obo-credentials)$",
         "/v1/ops/external-service/{operation}"
     ),
 
-    // External-service definition management (admin/app-owner). Hyphenated path per design §13.2;
-    // appId is a lazy group (static app name or dynamic {bucket}/{path}) per §13.1.
+    // External-service definition management (admin/app-owner). appId is a lazy group: static app name
+    // or dynamic {bucket}/{path}.
     EXTERNAL_SERVICES_MANAGEMENT(
         "^/v1/applications/(?<appId>.+?)/external-services$",
         "/v1/applications/{appId}/external-services"

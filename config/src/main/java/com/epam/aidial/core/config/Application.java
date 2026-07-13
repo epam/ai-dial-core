@@ -43,6 +43,17 @@ public class Application extends Deployment {
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     private Map<String, ExternalService> externalServices = new LinkedHashMap<>();
 
+    // The app's own actor identity for OBO credential retrieval: SHA-256 hex of its DIAL key, or its workload
+    // client_id (azp). The caller's derived identity must equal it. Absent ⇒ OBO off.
+    @JsonAlias({"appIdentity", "app_identity"})
+    private String appIdentity;
+
+    // Governance: when true, regular users (not just admins/owners) may author external services on this
+    // app. Admin-set, default false ⇒ today's admin-only authoring is preserved.
+    @JsonAlias({"allowUserExternalServices", "allow_user_external_services"})
+    @JsonInclude(JsonInclude.Include.NON_DEFAULT)
+    private boolean allowUserExternalServices;
+
     // maintain the order of routes defined in the app config
     private LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
 
@@ -184,5 +195,7 @@ public class Application extends Deployment {
         this.setRoutes(source.getRoutes());
         this.setMcp(source.getMcp());
         this.setExternalServices(source.getExternalServices());
+        this.setAppIdentity(source.getAppIdentity());
+        this.setAllowUserExternalServices(source.isAllowUserExternalServices());
     }
 }
