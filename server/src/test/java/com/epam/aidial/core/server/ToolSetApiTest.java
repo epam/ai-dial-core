@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -2605,6 +2606,96 @@ public class ToolSetApiTest extends ResourceBaseTest {
             assertEquals(403, resp.status());
             assertTrue(resp.body().contains("Please sign in to the toolset"), resp.body());
         }
+    }
+
+    private static final String API_KEY_TOOLSET_URL = "toolsets/4X25dj1mja51jykqxsXnCH/api-key-toolset@";
+
+    private void createApiKeyToolSet() {
+        Response response = send(HttpMethod.PUT, "/v1/" + API_KEY_TOOLSET_URL, null, """
+                {
+                    "endpoint": "http://localhost:9876",
+                    "transport": "HTTP",
+                    "allowedTools": [],
+                    "auth_settings": {
+                        "authentication_type": "API_KEY",
+                        "api_key_header": "Authorization"
+                    }
+                }
+                """, "authorization", "admin");
+        verifyNotExact(response, 200, "\"url\":\"" + API_KEY_TOOLSET_URL + "\"");
+    }
+
+    private Response signInWithApiKey(String apiKey) {
+        return send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                {
+                    "url": "%s",
+                    "credentialsLevel": "GLOBAL",
+                    "authenticationType": "API_KEY",
+                    "api_key": "%s"
+                }
+                """.formatted(API_KEY_TOOLSET_URL, apiKey), "authorization", "admin");
+    }
+
+    // MCP server rejects the key during sign-in validation -> credentials must not be stored (#1698)
+    @Test
+    void testSignInWithInvalidApiKey() {
+        createApiKeyToolSet();
+
+        try (TestWebServer ignore = new TestWebServer(9876, mcpAuthErrorHandler(401))) {
+            Response response = signInWithApiKey("invalid-key");
+            assertEquals(400, response.status());
+            assertTrue(response.body().contains("MCP server rejected the provided API key"), response.body());
+        }
+
+        Response response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""), response.body());
+    }
+
+    @Test
+    void testSignInWithValidApiKey() {
+        createApiKeyToolSet();
+
+        String mcpToolsListResponse = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 2,
+                   "result": {
+                     "tools": [
+                       {"name": "branch", "description": "Manage branches"}
+                     ]
+                   }
+                 }
+                """;
+        AtomicReference<String> sentApiKey = new AtomicReference<>();
+        TestWebServer.Handler toolsHandler = mcpToolsHandler(mcpToolsListResponse);
+        TestWebServer.Handler handler = request -> {
+            sentApiKey.set(request.getHeader("Authorization"));
+            return toolsHandler.map(request);
+        };
+
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response response = signInWithApiKey("valid-key");
+            verify(response, 200, "true");
+            assertEquals("valid-key", sentApiKey.get());
+        }
+
+        Response response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_IN\""), response.body());
+    }
+
+    // Validation is best-effort: an unreachable MCP server must not block sign-in (#1698)
+    @Test
+    void testSignInWithApiKeyWhenMcpServerUnreachable() {
+        createApiKeyToolSet();
+
+        Response response = signInWithApiKey("some-key");
+        verify(response, 200, "true");
+
+        response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_IN\""), response.body());
     }
 
     @Test

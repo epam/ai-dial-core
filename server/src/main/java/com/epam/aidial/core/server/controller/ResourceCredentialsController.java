@@ -7,7 +7,6 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.SecuredResource;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
-import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
@@ -23,6 +22,7 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -52,6 +52,7 @@ public class ResourceCredentialsController {
     private final EncryptionService encryptionService;
     private final DeploymentService deploymentService;
     private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
+    private final ToolSetService toolSetService;
 
     public ResourceCredentialsController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -61,6 +62,7 @@ public class ResourceCredentialsController {
         this.deploymentService = proxy.getDeploymentService();
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.resourceAuthSettingsEncryptionService = proxy.getResourceAuthSettingsEncryptionService();
+        this.toolSetService = proxy.getToolSetService();
     }
 
     @ApiOperation(
@@ -96,11 +98,8 @@ public class ResourceCredentialsController {
                                 verifyAccess(encodedResourceUrl, credentialsLevel);
                                 decryptAuthSettings(encodedResourceUrl, resourceAuthSettings);
                             }
-                            
-                            CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceUrl, context, ResourceTypes.TOOL_SET);
-                            CredentialsDescriptor credentialsDescriptor = credentialsLocator.getCredentialsDescriptors().get(resourceSignInRequest.getCredentialsLevel());
-                            resourceCredentialsService.addResourceCredentials(credentialsDescriptor, resourceAuthSettings,
-                                    resourceSignInRequest, context.getInitiatorId());
+
+                            toolSetService.signIn(context, securedResource, resourceAuthSettings, resourceSignInRequest);
                             return true;
                         }
                         throw new ResourceNotFoundException("Resource is not found: " + resourceId);
