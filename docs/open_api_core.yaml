@@ -13610,6 +13610,7 @@ components:
       - GLOBAL_SETTINGS
       - RESPONSE_MAPPING
       - SKILL
+      - BACKGROUND_JOB
     ResponseFormatJsonObject:
       required:
       - type
