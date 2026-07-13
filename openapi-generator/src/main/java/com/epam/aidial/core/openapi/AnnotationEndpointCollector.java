@@ -13,6 +13,8 @@ import com.epam.aidial.core.server.controller.ApplicationTypeSchemaController;
 import com.epam.aidial.core.server.controller.BucketController;
 import com.epam.aidial.core.server.controller.ClientChannelController;
 import com.epam.aidial.core.server.controller.CodeInterpreterController;
+import com.epam.aidial.core.server.controller.ComplexResourceController;
+import com.epam.aidial.core.server.controller.ComplexResourceMetadataController;
 import com.epam.aidial.core.server.controller.ConfigController;
 import com.epam.aidial.core.server.controller.ConfigResourceController;
 import com.epam.aidial.core.server.controller.ConfigResourceMetadataController;
@@ -25,7 +27,6 @@ import com.epam.aidial.core.server.controller.ExternalServiceCredentialsControll
 import com.epam.aidial.core.server.controller.ExternalServiceManagementController;
 import com.epam.aidial.core.server.controller.FileConfigController;
 import com.epam.aidial.core.server.controller.FileMetadataController;
-import com.epam.aidial.core.server.controller.FolderResourceController;
 import com.epam.aidial.core.server.controller.InvitationController;
 import com.epam.aidial.core.server.controller.LimitController;
 import com.epam.aidial.core.server.controller.ModelController;
@@ -79,7 +80,8 @@ public final class AnnotationEndpointCollector {
             ExternalServiceManagementController.class,
             FileConfigController.class,
             FileMetadataController.class,
-            FolderResourceController.class,
+            ComplexResourceController.class,
+            ComplexResourceMetadataController.class,
             InvitationController.class,
             LimitController.class,
             MessagesController.class,
