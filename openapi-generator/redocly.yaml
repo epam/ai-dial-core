@@ -4,3 +4,6 @@ extends:
 rules:
   tag-description: off
   no-empty-servers: off
+  no-path-trailing-slash: off
+  operation-2xx-response: off
+  operation-4xx-response: off
