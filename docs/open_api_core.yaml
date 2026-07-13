@@ -2241,7 +2241,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExternalServiceData"
+                $ref: "#/components/schemas/ListExternalServiceData"
         "400":
           description: Bad request
           content:
@@ -12481,6 +12481,10 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/DeploymentData"
+    ListExternalServiceData:
+      type: array
+      items:
+        $ref: "#/components/schemas/ExternalServiceData"
     ListPermissionRequest:
       type: object
       properties:

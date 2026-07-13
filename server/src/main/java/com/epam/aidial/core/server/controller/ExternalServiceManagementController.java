@@ -79,7 +79,7 @@ public class ExternalServiceManagementController {
             },
             responses = {
                     @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
-                            body = @ApiSchema(implementation = ExternalServiceData.class)),
+                            body = @ApiSchema(implementation = List.class, typeArguments = {ExternalServiceData.class})),
                     @ApiResponse(code = 400),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 404),
