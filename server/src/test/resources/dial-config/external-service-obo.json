@@ -1,0 +1,126 @@
+{
+  "applications": {
+    "app-with-services": {
+      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+      "displayName": "App With External Services",
+      "description": "Static app with external services and a trusted actor for OBO retrieval",
+      "external_services": {
+        "salesforce": {
+          "display_name": "Salesforce",
+          "auth_settings": {
+            "authentication_type": "OAUTH",
+            "client_id": "test-client-id",
+            "client_secret": "test-client-secret",
+            "authorization_endpoint": "http://localhost:9876/authorize",
+            "token_endpoint": "http://localhost:9876/token",
+            "redirect_uri": "http://localhost:3000/auth/signin"
+          }
+        },
+        "billing-api": {
+          "display_name": "Billing API",
+          "auth_settings": {
+            "authentication_type": "API_KEY",
+            "api_key_header": "X-API-Key"
+          }
+        }
+      },
+      "app_identity": "935cd3c27ffd8bd295f5933665f298aad638a289c0cfe3a9a3e8685dade379c7"
+    },
+    "other-app": {
+      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+      "displayName": "Other App",
+      "description": "App WITHOUT app_identity, for actor-gate / app-scope isolation",
+      "external_services": {
+        "billing-api": {
+          "display_name": "Other Billing",
+          "auth_settings": {
+            "authentication_type": "API_KEY",
+            "api_key_header": "X-API-Key"
+          }
+        }
+      }
+    },
+    "workload-app": {
+      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+      "displayName": "Workload App",
+      "description": "app_identity is an OAuth workload client_id (azp form)",
+      "external_services": {
+        "billing-api": {
+          "display_name": "Workload Billing",
+          "auth_settings": {
+            "authentication_type": "API_KEY",
+            "api_key_header": "X-API-Key"
+          }
+        }
+      },
+      "app_identity": "scheduler-client-id"
+    },
+    "user-services-app": {
+      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+      "displayName": "User Services App",
+      "description": "Admin opts in to user-authored external services; OBO-enabled",
+      "app_identity": "935cd3c27ffd8bd295f5933665f298aad638a289c0cfe3a9a3e8685dade379c7",
+      "allow_user_external_services": true
+    },
+    "restricted-user-services-app": {
+      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+      "displayName": "Restricted User Services App",
+      "description": "Enables user authoring but is restricted to a role ordinary users lack",
+      "userRoles": ["privileged"],
+      "app_identity": "935cd3c27ffd8bd295f5933665f298aad638a289c0cfe3a9a3e8685dade379c7",
+      "allow_user_external_services": true
+    },
+    "collision-app": {
+      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+      "displayName": "Collision App",
+      "description": "Inline service + user authoring both enabled, to assert inline wins on an id clash",
+      "app_identity": "935cd3c27ffd8bd295f5933665f298aad638a289c0cfe3a9a3e8685dade379c7",
+      "allow_user_external_services": true,
+      "external_services": {
+        "billing-api": {
+          "display_name": "Inline Billing",
+          "auth_settings": {
+            "authentication_type": "API_KEY",
+            "api_key_header": "X-Inline-Key"
+          }
+        }
+      }
+    }
+  },
+  "models": {
+    "chat-gpt-35-turbo": {
+      "type": "chat",
+      "endpoint": "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions"
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    },
+    "proxyKey2": {
+      "project": "EPM-RTC-RAIL",
+      "role": "default"
+    },
+    "scheduler-key": {
+      "project": "EPM-SCHEDULER",
+      "role": "default"
+    },
+    "untrusted-key": {
+      "project": "EPM-OTHER",
+      "role": "default"
+    }
+  },
+  "roles": {
+    "default": {
+      "limits": {
+        "app-with-services": {},
+        "other-app": {},
+        "workload-app": {},
+        "user-services-app": {},
+        "collision-app": {},
+        "chat-gpt-35-turbo": {}
+      }
+    }
+  }
+}

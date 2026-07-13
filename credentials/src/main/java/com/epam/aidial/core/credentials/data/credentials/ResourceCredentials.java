@@ -28,4 +28,7 @@ public class ResourceCredentials {
     private Long expiresInSeconds;
     @JsonAlias({"userSub", "userId"})
     private String userId;
+    // Owner's recorded consent to offline (on-behalf-of) use of this credential. Legacy blobs deserialize as false.
+    @JsonAlias({"offlineUsageConsent", "offline_usage_consent"})
+    private boolean offlineUsageConsent;
 }

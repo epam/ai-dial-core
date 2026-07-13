@@ -165,14 +165,17 @@ public class ApplicationService {
         return application;
     }
 
-    public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
-                                                                   Application application, boolean preserveForwardAuthToken) {
+    public void putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
+                               Application application, boolean preserveForwardAuthToken,
+                               AdminManagedFieldsWriteMode adminManagedFieldsWriteMode) {
         // In-memory callers (publication copy, admin apply) provide an authoritative application object.
-        return putApplication(resource, etag, author, application, preserveForwardAuthToken, ExternalServicesWriteMode.OVERRIDE);
+        putApplication(resource, etag, author, application, preserveForwardAuthToken, adminManagedFieldsWriteMode,
+                ExternalServicesWriteMode.OVERRIDE);
     }
 
     public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
                                                                    Application application, boolean preserveForwardAuthToken,
+                                                                   AdminManagedFieldsWriteMode adminManagedFieldsWriteMode,
                                                                    ExternalServicesWriteMode externalServicesWriteMode) {
         prepareApplication(resource, application, preserveForwardAuthToken);
 
@@ -181,6 +184,7 @@ public class ApplicationService {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
             verifySchemaRichApp(application, existing);
             prepareApplicationFunction(resource, application, existing);
+            prepareAdminManagedFields(application, existing, adminManagedFieldsWriteMode);
             List<String> externalServices = externalServiceService.processOnWrite(resource, application, existing, externalServicesWriteMode);
             removedExternalServices.setValue(externalServices);
             return ProxyUtil.convertToString(application);
@@ -190,6 +194,22 @@ public class ApplicationService {
         externalServiceService.purgeApplicationCredentials(resource, removedExternalServices.get());
 
         return Pair.of(meta, application);
+    }
+
+    // app_identity and allow_user_external_services are admin-managed. AUTHORITATIVE writes (config file /
+    // admin-apply) honor the incoming values; every other path inherits the stored values on update (so a
+    // read-modify-write can't wipe them) and strips on create.
+    private static void prepareAdminManagedFields(Application application, Application existing, AdminManagedFieldsWriteMode mode) {
+        if (mode == AdminManagedFieldsWriteMode.AUTHORITATIVE) {
+            return;
+        }
+        if (existing != null) {
+            application.setAppIdentity(existing.getAppIdentity());
+            application.setAllowUserExternalServices(existing.isAllowUserExternalServices());
+        } else {
+            application.setAppIdentity(null);
+            application.setAllowUserExternalServices(false);
+        }
     }
 
     private void prepareApplicationFunction(ResourceDescriptor resource, Application application, Application existing) {
@@ -318,6 +338,11 @@ public class ApplicationService {
 
         resourceService.computeResource(destination, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
+
+            // Same governance rule as putApplication: the source's admin-managed fields never travel through a
+            // copy/move (a user could self-grant them by copying a public app), while an overwrite keeps whatever
+            // an admin granted to the destination itself.
+            prepareAdminManagedFields(application, existing, AdminManagedFieldsWriteMode.INHERIT_ONLY);
 
             verifySchemaRichApp(application, existing);
 

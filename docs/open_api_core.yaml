@@ -2241,7 +2241,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExternalServiceData"
+                $ref: "#/components/schemas/ListExternalServiceData"
         "400":
           description: Bad request
           content:
@@ -6917,6 +6917,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/ops/external-service/obo-credentials:
+    post:
+      tags:
+      - External Services
+      summary: /v1/ops/external-service/obo-credentials
+      operationId: externalServiceGetOboCredentials
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OboCredentialsRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalServiceCredentialsResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/ops/external-service/signin:
     post:
       tags:
@@ -11111,6 +11160,10 @@ components:
           $ref: "#/components/schemas/MapStringDeploymentInterface"
         intro:
           type: string
+        allow_user_external_services:
+          type: boolean
+        app_identity:
+          type: string
     ApplicationData:
       type: object
       properties:
@@ -12428,6 +12481,10 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/DeploymentData"
+    ListExternalServiceData:
+      type: array
+      items:
+        $ref: "#/components/schemas/ExternalServiceData"
     ListPermissionRequest:
       type: object
       properties:
@@ -12869,6 +12926,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Notification"
+    OboCredentialsRequest:
+      type: object
+      properties:
+        ownerSub:
+          type: string
+        url:
+          type: string
     Pattern:
       type: object
     PerRequestReceiver:
@@ -13209,6 +13273,8 @@ components:
           type: string
         url:
           type: string
+        offlineUsageConsent:
+          type: boolean
     ResourceSignOutRequest:
       type: object
       properties:
@@ -13269,6 +13335,7 @@ components:
       - USER_CONSENT
       - TOOL_SET
       - CREDENTIALS
+      - EXTERNAL_SERVICE
       - ENCRYPTION_KEYS
       - CLIENT_CHANNEL
       - MODEL
