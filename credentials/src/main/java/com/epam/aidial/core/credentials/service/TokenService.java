@@ -16,6 +16,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.BiFunction;
 
@@ -117,8 +118,8 @@ public class TokenService {
                     try {
                         yield doTokenCall(tokenEndpoint, formData.apply(clientId, null), headers);
                     } catch (HttpException retryException) {
-                        log.warn("Token request retry with client_id in the body failed too: {}",
-                                retryException.getMessage());
+                        log.warn("Token request retry with client_id in the body failed too: {} {}",
+                                retryException.getMessage(), StringUtils.defaultString(retryException.getBody()));
                         throw e;
                     }
                 }
@@ -158,7 +159,7 @@ public class TokenService {
         if (!"invalid_grant".equals(error) && !"invalid_request".equals(error)) {
             return false;
         }
-        String description = String.valueOf(payload.get("error_description")).toLowerCase();
+        String description = String.valueOf(payload.get("error_description")).toLowerCase(Locale.ROOT);
         return description.contains("client_id") || description.contains("client id");
     }
 

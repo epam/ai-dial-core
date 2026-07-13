@@ -437,6 +437,21 @@ class TokenServiceTest {
     }
 
     @Test
+    void testGetToken_clientSecretBasic_retriesOnClientIdMentioningInvalidRequest() {
+        TokenService tokenService = new TokenService(resourceAuthorizationClient, List.of());
+
+        when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
+                .thenThrow(oauthError(HttpStatus.BAD_REQUEST, "invalid_request", "client_id is required"))
+                .thenReturn(new TokenResponse("access", "refresh", 3600L));
+
+        TokenResponse response = tokenService.getToken("resource-1", basicAuthSettings(),
+                ResourceSignInRequest.builder().code("auth-code").build());
+
+        assertEquals("access", response.getAccessToken());
+        verify(resourceAuthorizationClient, times(2)).executePost(any(), any(), any(), any(), any());
+    }
+
+    @Test
     void testGetToken_clientSecretBasic_doesNotRetryOnOrdinaryGrantError() {
         TokenService tokenService = new TokenService(resourceAuthorizationClient, List.of());
 
