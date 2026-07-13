@@ -73,6 +73,24 @@ public class ComplexResourceController extends AccessControlBaseController {
         this.folderOp = folderOp;
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/v2/skills/{bucket}/{path}/",
+            operationId = "downloadSkillGroupingFolder",
+            tags = {"Skills"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The grouping folder path within the bucket.", required = true)
+            },
+            responses = {
+                    @ApiResponse(code = 400, description = "Path is a folder; use metadata listing"),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     @Override
     protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         ComplexResourceHandler handler = HANDLERS.get(resource.getType());
@@ -183,6 +201,29 @@ public class ComplexResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "PUT",
+            path = "/v2/skills/{bucket}/{path}/",
+            operationId = "createSkillGroupingFolder",
+            tags = {"Skills"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The grouping folder path within the bucket.", required = true)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Grouping folder created successfully",
+                            headers = {
+                                    @ApiHeader(name = "ETag", description = "The ETag of the created grouping folder")
+                            }),
+                    @ApiResponse(code = 400, description = "Bad request - the folder already exists or a resource/folder name collision was detected"),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     private Future<?> putFolderCreate(ResourceDescriptor resource) {
         String author = context.getUserDisplayName();
         proxy.getTaskExecutor().submit(() -> complexResourceService.createDialFolder(resource, author))
@@ -197,6 +238,30 @@ public class ComplexResourceController extends AccessControlBaseController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "DELETE",
+            path = "/v2/skills/{bucket}/{path}/",
+            operationId = "deleteSkillGroupingFolder",
+            tags = {"Skills"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, description = "The grouping folder path within the bucket.", required = true),
+                    @ApiParameter(name = "If-Match", in = ParameterIn.HEADER,
+                            description = "ETag of the folder to delete. Use * to delete regardless of the current ETag.")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Grouping folder deleted successfully"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404, description = "Grouping folder not found"),
+                    @ApiResponse(code = 409, description = "Conflict - the folder is not empty"),
+                    @ApiResponse(code = 412, description = "Precondition failed - ETag mismatch"),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     private Future<?> deleteFolderTarget(ResourceDescriptor resource) {
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
         proxy.getTaskExecutor().submit(() -> {
