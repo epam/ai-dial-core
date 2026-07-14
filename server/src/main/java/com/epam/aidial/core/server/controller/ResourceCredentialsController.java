@@ -6,7 +6,9 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.SecuredResource;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
@@ -32,6 +34,7 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
@@ -99,7 +102,16 @@ public class ResourceCredentialsController {
                                 decryptAuthSettings(encodedResourceUrl, resourceAuthSettings);
                             }
 
-                            toolSetService.signIn(context, securedResource, resourceAuthSettings, resourceSignInRequest);
+                            if (securedResource instanceof ToolSet toolSet
+                                    && AuthenticationType.API_KEY.equals(resourceSignInRequest.getAuthenticationType())) {
+                                toolSetService.validateApiKey(toolSet, resourceAuthSettings, resourceSignInRequest.getApiKey());
+                            }
+
+                            ResourceType resourceType = resolveResourceType(securedResource);
+                            CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceUrl, context, resourceType);
+                            CredentialsDescriptor credentialsDescriptor = credentialsLocator.getCredentialsDescriptors().get(credentialsLevel);
+                            resourceCredentialsService.addResourceCredentials(credentialsDescriptor, resourceAuthSettings,
+                                    resourceSignInRequest, context.getInitiatorId());
                             return true;
                         }
                         throw new ResourceNotFoundException("Resource is not found: " + resourceId);
@@ -136,19 +148,19 @@ public class ResourceCredentialsController {
                     ValidationUtil.validate(resourceSignOutRequest);
 
                     Deployment deployment = deploymentService.findDeployment(context, resourceId);
-                    if (deployment instanceof SecuredResource securedResource) {
-                        ResourceAuthSettings resourceAuthSettings = securedResource.getAuthSettings();
-                        validateAuthType(resourceAuthSettings.getAuthenticationType(), resourceSignOutRequest.getAuthenticationType());
-                        if (context.getConfig().isDeploymentExists(encodedResourceId)) {
-                            verifyAccess(securedResource, credentialsLevel);
-                        } else {
-                            verifyAccess(encodedResourceId, credentialsLevel);
-                        }
-                    } else {
+                    if (!(deployment instanceof SecuredResource securedResource)) {
                         throw new ResourceNotFoundException("Resource is not found: " + encodedResourceId);
                     }
+                    ResourceAuthSettings resourceAuthSettings = securedResource.getAuthSettings();
+                    validateAuthType(resourceAuthSettings.getAuthenticationType(), resourceSignOutRequest.getAuthenticationType());
+                    if (context.getConfig().isDeploymentExists(encodedResourceId)) {
+                        verifyAccess(securedResource, credentialsLevel);
+                    } else {
+                        verifyAccess(encodedResourceId, credentialsLevel);
+                    }
 
-                    CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceId, context, ResourceTypes.TOOL_SET);
+                    ResourceType resourceType = resolveResourceType(securedResource);
+                    CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceId, context, resourceType);
                     return resourceCredentialsService.deleteResourceCredentials(
                             credentialsLocator,
                             resourceSignOutRequest,
@@ -200,6 +212,13 @@ public class ResourceCredentialsController {
             throw new IllegalArgumentException("Wrong authentication_type. Expected type: %s, provided: %s"
                     .formatted(resourceAuthenticationType, requestAuthenticationType));
         }
+    }
+
+    private ResourceType resolveResourceType(SecuredResource resource) {
+        if (resource instanceof ToolSet) {
+            return ResourceTypes.TOOL_SET;
+        }
+        throw new IllegalArgumentException("Unsupported secured resource type: " + resource.getClass().getSimpleName());
     }
 
     private void respondError(String message, Throwable error) {

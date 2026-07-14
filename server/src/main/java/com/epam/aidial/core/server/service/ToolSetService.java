@@ -1,15 +1,12 @@
 package com.epam.aidial.core.server.service;
 
-import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAuthSettings;
-import com.epam.aidial.core.config.SecuredResource;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
-import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
@@ -26,7 +23,6 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
@@ -225,39 +221,21 @@ public class ToolSetService {
         }
     }
 
-    public void signIn(ProxyContext context,
-                       SecuredResource securedResource,
-                       ResourceAuthSettings authSettings,
-                       ResourceSignInRequest request) {
-        if (AuthenticationType.API_KEY.equals(request.getAuthenticationType())) {
-            String apiKey = request.getApiKey();
-            if (StringUtils.isBlank(apiKey)) {
-                throw new HttpException(HttpStatus.BAD_REQUEST, "api_key must not be blank");
-            }
-            if (containsIllegalHeaderChars(apiKey)) {
-                throw new HttpException(HttpStatus.BAD_REQUEST, "api_key contains illegal control characters");
-            }
-            validateApiKey(securedResource, authSettings, apiKey);
-        }
-        CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
-                UrlUtil.encodePath(request.getUrl()), context, ResourceTypes.TOOL_SET);
-        CredentialsDescriptor credentialsDescriptor = credentialsLocator.getCredentialsDescriptors().get(request.getCredentialsLevel());
-        resourceCredentialsService.addResourceCredentials(credentialsDescriptor, authSettings, request, context.getInitiatorId());
-    }
-
-    // java.net.http rejects header values containing control characters other than HTAB
-    private static boolean containsIllegalHeaderChars(String value) {
-        return value.chars().anyMatch(c -> (c < 0x20 && c != '\t') || c == 0x7f);
-    }
-
     /**
-     * Probes the MCP server with the provided API key (initialize + tools/list) before the key is stored.
-     * Rejects only when the server explicitly refuses the request (HTTP 401/403 or a JSON-RPC error);
-     * connectivity issues are tolerated because the key may be provisioned before the MCP server
-     * is reachable (#1698).
+     * Validates an API key before it is stored at sign-in: rejects blank/malformed keys, then probes
+     * the MCP server (initialize + tools/list). Rejects only when the server explicitly refuses the
+     * request (HTTP 401/403 or a JSON-RPC error); connectivity issues are tolerated because the key
+     * may be provisioned before the MCP server is reachable (#1698).
      */
-    private void validateApiKey(SecuredResource securedResource, ResourceAuthSettings authSettings, String apiKey) {
-        String endpoint = securedResource.getEndpoint();
+    public void validateApiKey(ToolSet toolSet, ResourceAuthSettings authSettings, String apiKey) {
+        if (StringUtils.isBlank(apiKey)) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "api_key must not be blank");
+        }
+        if (containsIllegalHeaderChars(apiKey)) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "api_key contains illegal control characters");
+        }
+
+        String endpoint = toolSet.getEndpoint();
         String apiKeyHeader = authSettings.getApiKeyHeader();
         if (StringUtils.isBlank(endpoint) || StringUtils.isBlank(apiKeyHeader)) {
             return;
@@ -297,6 +275,11 @@ public class ToolSetService {
             }
             log.warn("Skipping API key validation for endpoint {}: {}", endpoint, e.getMessage());
         }
+    }
+
+    // java.net.http rejects header values containing control characters other than HTAB
+    private static boolean containsIllegalHeaderChars(String value) {
+        return value.chars().anyMatch(c -> (c < 0x20 && c != '\t') || c == 0x7f);
     }
 
     private void verifyCredentials(ProxyContext context, ResourceDescriptor resource,
