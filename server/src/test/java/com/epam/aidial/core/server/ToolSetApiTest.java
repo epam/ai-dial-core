@@ -87,6 +87,22 @@ public class ToolSetApiTest extends ResourceBaseTest {
         };
     }
 
+    // MCP server rejects the request at the JSON-RPC layer: HTTP 200 with an error object
+    private static TestWebServer.Handler mcpJsonRpcErrorHandler(String errorMessage) {
+        return request -> {
+            if ("GET".equals(request.getMethod())) {
+                return new MockResponse().setResponseCode(405);
+            }
+            String body = request.getBody().readString(StandardCharsets.UTF_8);
+            String id = extractJsonRpcId(body);
+            return new MockResponse()
+                    .setBody("""
+                            {"jsonrpc":"2.0","id":%s,"error":{"code":-32600,"message":"%s"}}
+                            """.formatted(id, errorMessage))
+                    .setHeader("Content-Type", "application/json");
+        };
+    }
+
     @SneakyThrows
     private Response sendNoRedirect(HttpMethod method, String path, String body) {
         try (CloseableHttpClient noRedirectClient = HttpClientBuilder.create()
@@ -2696,6 +2712,49 @@ public class ToolSetApiTest extends ResourceBaseTest {
         response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
         assertEquals(200, response.status());
         assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_IN\""), response.body());
+    }
+
+    @Test
+    void testSignInWithBlankApiKey() {
+        createApiKeyToolSet();
+
+        Response response = signInWithApiKey("");
+        assertEquals(400, response.status());
+        assertTrue(response.body().contains("api_key must not be blank"), response.body());
+
+        response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""), response.body());
+    }
+
+    // A key with control characters (e.g. a pasted trailing newline) can never be sent as an HTTP header
+    @Test
+    void testSignInWithApiKeyContainingControlCharacters() {
+        createApiKeyToolSet();
+
+        Response response = signInWithApiKey("key-with-newline\\n");
+        assertEquals(400, response.status());
+        assertTrue(response.body().contains("api_key contains illegal control characters"), response.body());
+
+        response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""), response.body());
+    }
+
+    // MCP servers doing auth at the application layer reject with HTTP 200 + JSON-RPC error, not 401 (#1698)
+    @Test
+    void testSignInWithApiKeyRejectedByJsonRpcError() {
+        createApiKeyToolSet();
+
+        try (TestWebServer ignore = new TestWebServer(9876, mcpJsonRpcErrorHandler("invalid api key"))) {
+            Response response = signInWithApiKey("invalid-key");
+            assertEquals(400, response.status());
+            assertTrue(response.body().contains("MCP server rejected the request"), response.body());
+        }
+
+        Response response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""), response.body());
     }
 
     @Test

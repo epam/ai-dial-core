@@ -80,7 +80,7 @@ class ResourceCredentialsControllerTest {
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
         when(proxy.getDeploymentService()).thenReturn(deploymentService);
         when(proxy.getResourceAuthSettingsEncryptionService()).thenReturn(resourceAuthSettingsEncryptionService);
-        when(proxy.getToolSetService()).thenReturn(new ToolSetService(null, null, null, resourceCredentialsService));
+        when(proxy.getToolSetService()).thenReturn(new ToolSetService(null, null, null, resourceCredentialsService, 1000));
 
         doAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);

@@ -31,6 +31,7 @@ import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.McpHttpClientTransportAuthorizationException;
+import io.modelcontextprotocol.spec.McpError;
 import io.modelcontextprotocol.spec.McpSchema;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +39,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
@@ -46,10 +48,14 @@ import javax.annotation.Nullable;
 @AllArgsConstructor
 public class ToolSetService {
 
+    // deliberately not the client idleTimeout (5 min in production) — sign-in is interactive
+    public static final long DEFAULT_MCP_PROBE_TIMEOUT_MILLIS = 20_000;
+
     private final ResourceService resourceService;
     private final ResourceAuthSettingsService resourceAuthSettingsService;
     private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
     private final ResourceCredentialsService resourceCredentialsService;
+    private final long mcpRequestTimeout;
 
     public Pair<ResourceItemMetadata, ToolSet> getToolSet(ResourceDescriptor resource) {
         return getToolSet(resource, EtagHeader.ANY);
@@ -225,7 +231,14 @@ public class ToolSetService {
                        ResourceAuthSettings authSettings,
                        ResourceSignInRequest request) {
         if (AuthenticationType.API_KEY.equals(request.getAuthenticationType())) {
-            validateApiKey(securedResource, authSettings, request.getApiKey());
+            String apiKey = request.getApiKey();
+            if (StringUtils.isBlank(apiKey)) {
+                throw new HttpException(HttpStatus.BAD_REQUEST, "api_key must not be blank");
+            }
+            if (containsIllegalHeaderChars(apiKey)) {
+                throw new HttpException(HttpStatus.BAD_REQUEST, "api_key contains illegal control characters");
+            }
+            validateApiKey(securedResource, authSettings, apiKey);
         }
         CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
                 UrlUtil.encodePath(request.getUrl()), context, ResourceTypes.TOOL_SET);
@@ -233,20 +246,28 @@ public class ToolSetService {
         resourceCredentialsService.addResourceCredentials(credentialsDescriptor, authSettings, request, context.getInitiatorId());
     }
 
+    // java.net.http rejects header values containing control characters other than HTAB
+    private static boolean containsIllegalHeaderChars(String value) {
+        return value.chars().anyMatch(c -> (c < 0x20 && c != '\t') || c == 0x7f);
+    }
+
     /**
      * Probes the MCP server with the provided API key (initialize + tools/list) before the key is stored.
-     * Rejects only when the server explicitly refuses the key; connectivity issues are tolerated because
-     * the key may be provisioned before the MCP server is reachable (#1698).
+     * Rejects only when the server explicitly refuses the request (HTTP 401/403 or a JSON-RPC error);
+     * connectivity issues are tolerated because the key may be provisioned before the MCP server
+     * is reachable (#1698).
      */
     private void validateApiKey(SecuredResource securedResource, ResourceAuthSettings authSettings, String apiKey) {
         String endpoint = securedResource.getEndpoint();
         String apiKeyHeader = authSettings.getApiKeyHeader();
-        if (StringUtils.isBlank(endpoint) || StringUtils.isBlank(apiKeyHeader) || StringUtils.isBlank(apiKey)) {
+        if (StringUtils.isBlank(endpoint) || StringUtils.isBlank(apiKeyHeader)) {
             return;
         }
 
+        Duration timeout = Duration.ofMillis(mcpRequestTimeout);
         HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
                 .builder(endpoint)
+                .connectTimeout(timeout)
                 .jsonMapper(McpClientUtils.MCP_JSON_MAPPER)
                 .httpRequestCustomizer((builder, method, uri, body, transportContext) ->
                         builder.header(apiKeyHeader, apiKey))
@@ -254,6 +275,8 @@ public class ToolSetService {
 
         try (McpSyncClient client = McpClient.sync(transport)
                 .clientInfo(new McpSchema.Implementation("DIAL", "1.0"))
+                .requestTimeout(timeout)
+                .initializationTimeout(timeout)
                 .jsonSchemaValidator(McpClientUtils.NOOP_SCHEMA_VALIDATOR)
                 .build()) {
             client.initialize();
@@ -266,6 +289,13 @@ public class ToolSetService {
                         endpoint, authError.getResponseInfo().statusCode());
                 throw new HttpException(HttpStatus.BAD_REQUEST,
                         "API key validation failed: MCP server rejected the provided API key");
+            }
+            McpError mcpError = ExceptionUtils.throwableOfType(e, McpError.class);
+            if (mcpError != null) {
+                log.warn("API key validation failed for endpoint {}: MCP server returned an error: {}",
+                        endpoint, mcpError.getMessage());
+                throw new HttpException(HttpStatus.BAD_REQUEST,
+                        "API key validation failed: MCP server rejected the request: " + mcpError.getMessage());
             }
             log.warn("Skipping API key validation for endpoint {}: {}", endpoint, e.getMessage());
         }
