@@ -99,10 +99,7 @@ public class ModelController {
         data.setIconUrl(model.getIconUrl());
         data.setDescription(model.getDescription());
         data.setIntro(model.getIntro());
-        FeaturesData featuresData = FeaturesData.createFeatures(model.getFeatures());
-        featuresData.setChatCompletion(model.getEndpoint() != null);
-        featuresData.setResponsesApi(model.getResponsesEndpoint() != null);
-        data.setFeatures(featuresData);
+        data.setFeatures(FeaturesData.createDeploymentFeatures(model));
         data.setInputAttachmentTypes(model.getInputAttachmentTypes());
         data.setMaxInputAttachments(model.getMaxInputAttachments());
         data.setReference(model.getName());
