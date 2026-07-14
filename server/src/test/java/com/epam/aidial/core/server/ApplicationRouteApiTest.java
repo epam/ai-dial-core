@@ -40,6 +40,44 @@ public class ApplicationRouteApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testRouteStillWorksAfterUpstreamsHiddenInList() throws Exception {
+        // Non-admin caller lists the statically-configured app-route application - upstreams must be hidden
+        Response response = send(HttpMethod.GET, "/openai/applications/app-route");
+        Assertions.assertEquals(200, response.status());
+        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+        JsonNode routes = body.get("routes");
+        Assertions.assertNotNull(routes, "routes must be present");
+        Assertions.assertTrue(routes.get("index-search").path("upstreams").isMissingNode(),
+                "upstreams must be hidden for non-admin caller");
+
+        // The live Route config must not be corrupted by the listing above - the actual route request must still work
+        String responseBody = """
+                {
+                 "content": "some result",
+                 "attachments": "file1"
+                }
+                """;
+        try (TestWebServer server = new TestWebServer(4848)) {
+            TestWebServer.Handler handler = request -> {
+                MockResponse mockResponse = new MockResponse();
+                mockResponse.setResponseCode(200);
+                mockResponse.setBody(responseBody);
+                return mockResponse;
+            };
+            server.map(HttpMethod.POST, "/v1/index/search", handler);
+
+            String requestBody = """
+                    {
+                     "payload": "some content"
+                    }
+                    """;
+            Response routeResponse = send(HttpMethod.POST, "/v1/deployments/app-route/route/v1/index/search", null, requestBody);
+
+            verify(routeResponse, 200, responseBody);
+        }
+    }
+
+    @Test
     public void testAppRoute() {
         Response response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20custom%20application", null, """
                 {
