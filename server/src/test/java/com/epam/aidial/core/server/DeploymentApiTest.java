@@ -12,6 +12,8 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class DeploymentApiTest extends ResourceBaseTest {
 
@@ -78,6 +80,43 @@ public class DeploymentApiTest extends ResourceBaseTest {
         verify(response, 200);
         body = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(1, body.size());
+    }
+
+    @DialConfigLocation("dial-config/deployment-interfaces-features.json")
+    @Test
+    public void testChatCompletionFeatureFollowsInterfaces() throws JsonProcessingException {
+        Map<String, JsonNode> deployments = collectFeatures(send(HttpMethod.GET, "/v1/deployments", null, null));
+        assertTrue(deployments.get("model-iface-only").get("chat_completion").asBoolean());
+        assertTrue(deployments.get("model-iface-only").get("responses_api").asBoolean());
+        assertTrue(deployments.get("app-iface-only").get("chat_completion").asBoolean());
+        assertTrue(deployments.get("app-legacy").get("chat_completion").asBoolean());
+        // anthropicMessages alone does not make the deployment an OpenAI chat-completions one
+        assertFalse(deployments.get("model-anthropic-only").get("chat_completion").asBoolean());
+
+        Map<String, JsonNode> models = collectFeatures(send(HttpMethod.GET, "/openai/models", null, null));
+        assertTrue(models.get("model-iface-only").get("chat_completion").asBoolean());
+        assertTrue(models.get("model-iface-only").get("responses_api").asBoolean());
+        assertFalse(models.get("model-anthropic-only").get("chat_completion").asBoolean());
+
+        Map<String, JsonNode> applications = collectFeatures(send(HttpMethod.GET, "/openai/applications", null, null));
+        assertTrue(applications.get("app-iface-only").get("chat_completion").asBoolean());
+        assertTrue(applications.get("app-legacy").get("chat_completion").asBoolean());
+    }
+
+    /**
+     * Maps deployment id to its {@code features} object. Handles both the bare array returned by
+     * {@code /v1/deployments} and the {@code {"data": [...]}} envelope of the legacy listings.
+     */
+    private static Map<String, JsonNode> collectFeatures(Response response) throws JsonProcessingException {
+        verify(response, 200);
+        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+        JsonNode deployments = body.isArray() ? body : body.get("data");
+
+        Map<String, JsonNode> result = new HashMap<>();
+        for (JsonNode deployment : deployments) {
+            result.put(deployment.get("id").asText(), deployment.get("features"));
+        }
+        return result;
     }
 
     private static Map<String, Set<String>> collectInterfaces(JsonNode body) {
