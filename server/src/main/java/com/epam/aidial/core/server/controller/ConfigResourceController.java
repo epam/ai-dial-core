@@ -726,7 +726,7 @@ public class ConfigResourceController implements Controller {
         return respondMethodNotAllowed();
     }
 
-    private Future<?> handleGet() throws JsonProcessingException {
+    private Future<?> handleGet() {
         Config config = context.getConfig();
         boolean admin = authorizationService.isAdmin(context);
         // Per-entity GET is blob-only (slice U.1): only canonical-ID lookups resolve here.
@@ -777,11 +777,12 @@ public class ConfigResourceController implements Controller {
             // client-supplied tag matches.
             final T matchedItem = item;
             final String matched = canonicalId();
-            return respondNotModifiedIfMatched(matched)
-                    .onSuccess(notModified -> {
-                        if (!notModified) {
-                            context.respond(HttpStatus.OK, projector.apply(matched, matchedItem));
+            return evaluateConditionalGet()
+                    .onSuccess(etag -> {
+                        if (etag != null) {
+                            context.putHeader(HttpHeaders.ETAG, etag).exposeHeaders();
                         }
+                        context.respond(HttpStatus.OK, projector.apply(matched, matchedItem));
                     })
                     .onFailure(this::handleWriteError);
         }
@@ -795,38 +796,25 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Emits a {@code 304 Not Modified} if the matched entity's stored blob has an ETag
-     * that matches the client's {@code If-None-Match} header. The blob-metadata fetch
-     * runs on the blocking executor to keep the Vert.x event loop unblocked; the response is
-     * written back on the event loop via the future-chain completion.
+     * Fetches blob metadata and evaluates RFC 7232 conditional headers, returning the blob-backed
+     * ETag (or {@code null} when no blob exists) for the caller to include on a 200 response.
+     * Throws {@link HttpException} (304 or 412) when a conditional header fires — the caller's
+     * {@code .onFailure} handler dispatches it via {@link #handleWriteError}.
+     * The metadata fetch runs on the blocking executor; response dispatch stays on the event loop.
      */
-    private Future<Boolean> respondNotModifiedIfMatched(String matchedKey) {
+    private Future<String> evaluateConditionalGet() {
         ResourceDescriptor descriptor = singleEntityDescriptor();
         if (descriptor == null) {
-            return Future.succeededFuture(false);
+            return Future.succeededFuture(null);
         }
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
-        return taskExecutor.<HttpException>submit(() -> {
+        return taskExecutor.submit(() -> {
             ResourceItemMetadata meta = resourceService.getResourceMetadata(descriptor);
             if (meta == null || meta.getEtag() == null) {
                 return null;
             }
-            try {
-                etag.validate(meta.getEtag());
-            } catch (HttpException e) {
-                if (e.getStatus() == HttpStatus.NOT_MODIFIED) {
-                    return e;
-                }
-                // Other status codes (e.g. If-Match failure) are not surfaced here — GET ignores
-                // If-Match per RFC 7232; only If-None-Match drives 304/200 on GET.
-            }
-            return null;
-        }).map(notModified -> {
-            if (notModified != null) {
-                context.respond(notModified);
-                return true;
-            }
-            return false;
+            etag.validate(meta.getEtag());
+            return meta.getEtag();
         });
     }
 
@@ -869,7 +857,7 @@ public class ConfigResourceController implements Controller {
         return entityType + "/" + bucket + "/" + path;
     }
 
-    private Future<?> handleSchemaGet(Config config, boolean admin) throws JsonProcessingException {
+    private Future<?> handleSchemaGet(Config config, boolean admin) {
         Map<String, String> schemas = config.getApplicationTypeSchemas();
         Map<String, InvalidEntityRecord> invalid = mergedConfigStore.getInvalidEntities()
                 .getOrDefault(ResourceTypes.APP_TYPE_SCHEMA, Map.of());
@@ -883,14 +871,15 @@ public class ConfigResourceController implements Controller {
         if (schemaJson != null) {
             final String matched = canonicalId();
             final String json = schemaJson;
-            return respondNotModifiedIfMatched(matched)
-                    .onSuccess(notModified -> {
-                        if (!notModified) {
-                            try {
-                                context.respond(HttpStatus.OK, projectSchemaItem(matched, json));
-                            } catch (JsonProcessingException e) {
-                                context.respond(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
-                            }
+            return evaluateConditionalGet()
+                    .onSuccess(etag -> {
+                        if (etag != null) {
+                            context.putHeader(HttpHeaders.ETAG, etag).exposeHeaders();
+                        }
+                        try {
+                            context.respond(HttpStatus.OK, projectSchemaItem(matched, json));
+                        } catch (JsonProcessingException e) {
+                            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
                         }
                     })
                     .onFailure(this::handleWriteError);
