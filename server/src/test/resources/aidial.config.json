@@ -182,6 +182,14 @@
         {"endpoint": "http://chat/completions", "responsesEndpoint": "http://responses", "key": "modelKey", "id": "responses-upstream"}
       ]
     },
+    "model-iface-only": {
+      "type": "chat",
+      "displayName": "Model configured via interfaces only",
+      "interfaces": {
+        "openaiChatCompletions": {"base_url": "http://localhost:4848"},
+        "openaiResponses": {"base_url": "http://localhost:4848"}
+      }
+    },
     "claude-ns": {
       "type": "chat",
       "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} }
