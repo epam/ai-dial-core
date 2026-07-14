@@ -2,15 +2,12 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
-import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
-import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -22,18 +19,15 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import org.apache.commons.lang3.tuple.Pair;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.net.InetAddress;
-import java.net.ServerSocket;
-import java.time.Duration;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -41,7 +35,6 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -62,19 +55,12 @@ class ToolSetServiceTest {
     @Mock
     private EncryptionService encryptionService;
     @Mock
-    private ResourceCredentialsService resourceCredentialsService;
-    @Mock
     private ProxyContext context;
     @Mock
     private Proxy proxy;
 
+    @InjectMocks
     private ToolSetService toolSetService;
-
-    @BeforeEach
-    void setup() {
-        toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
-                resourceAuthSettingsEncryptionService, resourceCredentialsService, 1000);
-    }
 
     @Test
     void testPutToolSet_ShouldEncryptAuthSettings() {
@@ -236,42 +222,6 @@ class ToolSetServiceTest {
         // Then - clientSecret and codeVerifier must be preserved after multiple calls
         assertEquals("clientSecret", toolSet.getAuthSettings().getClientSecret());
         assertEquals("codeVerifier", toolSet.getAuthSettings().getCodeVerifier());
-    }
-
-    // The sign-in probe must honor the configured timeout (SDK defaults are 20s) and fail open on it (#1698)
-    @Test
-    void testSignInApiKeyProbeHonorsConfiguredTimeout() throws Exception {
-        // the socket accepts TCP connections but never responds
-        try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            ToolSetService service = new ToolSetService(null, null, null, resourceCredentialsService, 300);
-
-            ToolSet toolSet = createToolSet();
-            toolSet.setEndpoint("http://127.0.0.1:" + server.getLocalPort());
-            ResourceAuthSettings authSettings = ResourceAuthSettings.builder()
-                    .authenticationType(AuthenticationType.API_KEY)
-                    .apiKeyHeader("Authorization")
-                    .build();
-
-            ResourceSignInRequest request = ResourceSignInRequest.builder()
-                    .url("toolsets/encrypted-user-bucket/toolset-1")
-                    .credentialsLevel(CredentialsLevel.GLOBAL)
-                    .authenticationType(AuthenticationType.API_KEY)
-                    .apiKey("some-key")
-                    .build();
-
-            when(context.getProxy()).thenReturn(proxy);
-            when(proxy.getEncryptionService()).thenReturn(encryptionService);
-            when(context.getConfig()).thenReturn(mock(Config.class));
-            when(encryptionService.decrypt("encrypted-user-bucket")).thenReturn("Users/userSub/");
-            when(context.getApiKeyData()).thenReturn(mock(ApiKeyData.class));
-            when(context.getUserId()).thenReturn("userSub");
-            when(context.getInitiatorId()).thenReturn("userSub");
-
-            assertTimeoutPreemptively(Duration.ofSeconds(10), () ->
-                    service.signIn(context, toolSet, authSettings, request));
-
-            verify(resourceCredentialsService).addResourceCredentials(any(), any(), any(), eq("userSub"));
-        }
     }
 
     private static ToolSet createToolSet() {

@@ -251,7 +251,7 @@ public class AiDial {
             AuthSettingsResolver authSettingsResolver = new AuthSettingsResolver(
                     encryptionService, resourceAuthSettingsEncryptionService);
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
-                    resourceAuthSettingsEncryptionService, resourceCredentialsService, ToolSetService.DEFAULT_MCP_PROBE_TIMEOUT_MILLIS);
+                    resourceAuthSettingsEncryptionService, resourceCredentialsService);
             ToolSetRepairService toolSetRepairService = new ToolSetRepairService(resourceService,
                     resourceAuthSettingsEncryptionService, resourceCredentialsService,
                     resourceRegistrationService, resourceAuthSettingsService);

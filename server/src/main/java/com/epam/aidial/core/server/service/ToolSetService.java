@@ -49,13 +49,12 @@ import javax.annotation.Nullable;
 public class ToolSetService {
 
     // deliberately not the client idleTimeout (5 min in production) — sign-in is interactive
-    public static final long DEFAULT_MCP_PROBE_TIMEOUT_MILLIS = 20_000;
+    private static final Duration MCP_PROBE_TIMEOUT = Duration.ofSeconds(20);
 
     private final ResourceService resourceService;
     private final ResourceAuthSettingsService resourceAuthSettingsService;
     private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
     private final ResourceCredentialsService resourceCredentialsService;
-    private final long mcpRequestTimeout;
 
     public Pair<ResourceItemMetadata, ToolSet> getToolSet(ResourceDescriptor resource) {
         return getToolSet(resource, EtagHeader.ANY);
@@ -264,10 +263,9 @@ public class ToolSetService {
             return;
         }
 
-        Duration timeout = Duration.ofMillis(mcpRequestTimeout);
         HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
                 .builder(endpoint)
-                .connectTimeout(timeout)
+                .connectTimeout(MCP_PROBE_TIMEOUT)
                 .jsonMapper(McpClientUtils.MCP_JSON_MAPPER)
                 .httpRequestCustomizer((builder, method, uri, body, transportContext) ->
                         builder.header(apiKeyHeader, apiKey))
@@ -275,8 +273,8 @@ public class ToolSetService {
 
         try (McpSyncClient client = McpClient.sync(transport)
                 .clientInfo(new McpSchema.Implementation("DIAL", "1.0"))
-                .requestTimeout(timeout)
-                .initializationTimeout(timeout)
+                .requestTimeout(MCP_PROBE_TIMEOUT)
+                .initializationTimeout(MCP_PROBE_TIMEOUT)
                 .jsonSchemaValidator(McpClientUtils.NOOP_SCHEMA_VALIDATOR)
                 .build()) {
             client.initialize();
