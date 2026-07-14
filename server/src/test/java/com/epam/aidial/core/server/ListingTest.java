@@ -135,6 +135,40 @@ public class ListingTest extends ResourceBaseTest {
                 """));
     }
 
+    @Test
+    void testFeaturesModelInterfacesOnly(Vertx vertx, VertxTestContext context) {
+        checkListing(vertx, context, "/openai/models", "model-iface-only", "features", new JsonObject("""
+                    { "rate": false, "tokenize": false, "truncate_prompt": false
+                    , "system_prompt": true, "tools": false, "seed": false
+                    , "url_attachments": false, "folder_attachments": false
+                    , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
+                    "content_parts": false, "temperature" : true, "cache" : false,
+                    "auto_caching" : false, "parallel_tool_calls": true,
+                    "assistant_attachments_in_request": false, "mcp" : false,
+                    "chat_completion": true, "responses_api": true,
+                    "max_tokens_supported": true, "max_completion_tokens_supported": false,
+                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    }
+                """));
+    }
+
+    @Test
+    void testFeaturesModelAnthropicInterfaceOnly(Vertx vertx, VertxTestContext context) {
+        checkListing(vertx, context, "/openai/models", "claude-ns", "features", new JsonObject("""
+                    { "rate": false, "tokenize": false, "truncate_prompt": false
+                    , "system_prompt": true, "tools": false, "seed": false
+                    , "url_attachments": false, "folder_attachments": false
+                    , "configuration": false, "allow_resume": true, "accessible_by_per_request_key": true,
+                    "content_parts": false, "temperature" : true, "cache" : false,
+                    "auto_caching" : false, "parallel_tool_calls": true,
+                    "assistant_attachments_in_request": false, "mcp" : false,
+                    "chat_completion": false, "responses_api": false,
+                    "max_tokens_supported": true, "max_completion_tokens_supported": false,
+                    "custom_temperature_supported": true, "reasoning_efforts": []
+                    }
+                """));
+    }
+
     void checkResponse(Vertx vertx, VertxTestContext context, String uri, Consumer<String> checker) {
         WebClient client = WebClient.create(vertx);
         client.get(serverPort, "localhost", uri)

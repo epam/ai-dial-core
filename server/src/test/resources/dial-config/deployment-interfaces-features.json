@@ -1,0 +1,35 @@
+{
+  "applications": {
+    "app-iface-only": {
+      "displayName": "App configured via interfaces only",
+      "interfaces": {
+        "openaiChatCompletions": {"base_url": "http://localhost:7001"}
+      }
+    },
+    "app-legacy": {
+      "endpoint": "http://localhost:7001/openai/deployments/app-legacy/chat/completions",
+      "displayName": "App configured via legacy endpoint"
+    }
+  },
+  "models": {
+    "model-iface-only": {
+      "type": "chat",
+      "interfaces": {
+        "openaiChatCompletions": {"base_url": "http://localhost:7001"},
+        "openaiResponses": {"base_url": "http://localhost:7001"}
+      }
+    },
+    "model-anthropic-only": {
+      "type": "chat",
+      "interfaces": {
+        "anthropicMessages": {"base_url": "http://localhost:7001"}
+      }
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    }
+  }
+}
