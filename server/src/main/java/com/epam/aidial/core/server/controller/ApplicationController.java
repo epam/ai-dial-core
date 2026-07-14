@@ -29,6 +29,7 @@ import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -232,8 +233,16 @@ public class ApplicationController {
         return accessService.hasAdminAccess(context);
     }
 
-    private static void clearUpstreams(Map<String, Route> routes) {
-        routes.forEach((name, route) -> route.setUpstreams(null));
+    // Routes may reference live Route instances shared with the Config (e.g. used for actual request routing),
+    // so upstreams must be cleared on copies rather than mutating the shared objects in place.
+    private static Map<String, Route> clearUpstreams(Map<String, Route> routes) {
+        Map<String, Route> copy = new LinkedHashMap<>();
+        routes.forEach((name, route) -> {
+            Route routeCopy = ProxyUtil.MAPPER.convertValue(route, Route.class);
+            routeCopy.setUpstreams(null);
+            copy.put(name, routeCopy);
+        });
+        return copy;
     }
 
     private ApplicationData mapApplication(Application application) {
@@ -285,7 +294,7 @@ public class ApplicationController {
             routes = application.getRoutes();
         }
         if (!hasWriteAccess(application) && routes != null) {
-            clearUpstreams(routes);
+            routes = clearUpstreams(routes);
         }
         data.setRoutes(routes);
         data.setViewerUrl(application.getViewerUrl());
