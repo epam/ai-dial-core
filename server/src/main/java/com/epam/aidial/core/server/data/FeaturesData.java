@@ -1,6 +1,8 @@
 package com.epam.aidial.core.server.data;
 
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.InterfaceType;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -38,6 +40,19 @@ public class FeaturesData {
     private boolean maxCompletionTokensSupported = false;
     private boolean customTemperatureSupported = true;
     private List<String> reasoningEfforts = List.of();
+
+    /**
+     * Features of a deployment: the configured {@link Features} plus the API-surface flags derived from the
+     * deployment itself. A deployment serves an API when it declares it either in the {@code interfaces} map
+     * or via a legacy endpoint, so both flavours must light up the corresponding feature flag.
+     */
+    @JsonIgnore
+    public static FeaturesData createDeploymentFeatures(Deployment deployment) {
+        FeaturesData data = createFeatures(deployment.getFeatures());
+        data.setChatCompletion(deployment.supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS));
+        data.setResponsesApi(deployment.supportsInterface(InterfaceType.OPENAI_RESPONSES));
+        return data;
+    }
 
     @JsonIgnore
     public static FeaturesData createFeatures(Features features) {

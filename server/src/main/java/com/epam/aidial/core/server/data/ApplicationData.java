@@ -70,7 +70,7 @@ public class ApplicationData extends DeploymentData {
         data.setIconUrl(application.getIconUrl());
         data.setDescription(application.getDescription());
         data.setIntro(application.getIntro());
-        data.setFeatures(FeaturesData.createFeatures(application.getFeatures()));
+        data.setFeatures(FeaturesData.createDeploymentFeatures(application));
         data.setInputAttachmentTypes(application.getInputAttachmentTypes());
         data.setMaxInputAttachments(application.getMaxInputAttachments());
         data.setDefaults(application.getDefaults());
