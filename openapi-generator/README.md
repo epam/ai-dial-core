@@ -63,18 +63,29 @@ See [Schema Guide](SCHEMAS.md) for modeling strategies.
 ## Gradle Tasks
 
 ```bash
-./gradlew mergeOpenApiSpec           # Generate spec
-./gradlew lintMergedOpenApi          # Lint spec
-./gradlew replaceSpec                # Update committed spec
-./gradlew :openapi-generator:test    # Run tests
+## Gradle Tasks
+
+```bash
+./gradlew mergeOpenApiSpec            # Generate merged specification
+./gradlew lintMergedOpenApi           # Generate and validate the specification
+./gradlew replaceSpec                 # Replace the committed specification (without Redocly linting)
+./gradlew replaceSpec -Plint          # Replace the committed specification with Redocly linting
+./gradlew :openapi-generator:test     # Run tests
 ```
 
 ## Workflow
 
 1. Annotate controller method.
-2. Run `./gradlew lintMergedOpenApi`.
+2. Run `./gradlew mergeOpenApiSpec`.
 3. Review `build/generated/openapi-merged.yaml`.
-4. Run `./gradlew replaceSpec`.
+4. Update the committed specification:
+   ```bash
+   ./gradlew replaceSpec
+   ```
+   Or, to validate it with Redocly before replacing:
+   ```bash
+   ./gradlew replaceSpec -Plint
+   ```
 5. Commit `docs/open_api_core.yaml`.
 
 `build/generated/openapi-merged.yaml` is a temporary build artifact generated during the build.

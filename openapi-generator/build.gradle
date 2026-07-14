@@ -37,6 +37,18 @@ tasks.register('generateOpenApiSkeleton', JavaExec) {
     args = [skeletonFile, "${project.version}"]
 }
 
+tasks.register('mergeOpenApiSpec', JavaExec) {
+    dependsOn generateOpenApiSkeleton
+
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.epam.aidial.core.openapi.SpecMerger'
+    args = [
+            skeletonFile,
+            targetSpec,
+            mergedFile
+    ]
+}
+
 tasks.register('lintOpenApiSkeleton', Exec) {
     dependsOn generateOpenApiSkeleton
 
@@ -47,19 +59,21 @@ tasks.register('lintOpenApiSkeleton', Exec) {
     }
 }
 
-tasks.register('mergeOpenApiSpec', JavaExec) {
+tasks.register('lintMergedOpenApi', Exec) {
     dependsOn lintOpenApiSkeleton
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.epam.aidial.core.openapi.SpecMerger'
-    args = [
-        skeletonFile,
-        targetSpec,
-        mergedFile
-    ]
+    dependsOn mergeOpenApiSpec
+
+    if (System.getProperty("os.name").toLowerCase().contains("windows")) {
+        commandLine "cmd", "/c", "npx", "@redocly/cli", "lint", mergedFile
+    } else {
+        commandLine "npx", "@redocly/cli", "lint", mergedFile
+    }
 }
 
 tasks.register('replaceSpec') {
-    dependsOn lintMergedOpenApi
+    dependsOn(project.hasProperty("lint")
+            ? "lintMergedOpenApi"
+            : "mergeOpenApiSpec")
 
     doLast {
         copy {
@@ -67,16 +81,6 @@ tasks.register('replaceSpec') {
             into file(targetSpec).parentFile
             rename { "open_api_core.yaml" }
         }
-    }
-}
-
-tasks.register('lintMergedOpenApi', Exec) {
-    dependsOn mergeOpenApiSpec
-
-    if (System.getProperty("os.name").toLowerCase().contains("windows")) {
-        commandLine "cmd", "/c", "npx", "@redocly/cli", "lint", mergedFile
-    } else {
-        commandLine "npx", "@redocly/cli", "lint", mergedFile
     }
 }
 
