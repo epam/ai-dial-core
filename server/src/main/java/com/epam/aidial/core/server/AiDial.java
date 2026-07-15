@@ -70,6 +70,7 @@ import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
 import com.epam.aidial.core.server.service.clientchannel.ClientChannelService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
+import com.epam.aidial.core.server.service.resource.ComplexResourceSweepService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -162,6 +163,7 @@ public class AiDial {
 
     private BlobStorage storage;
     private ResourceService resourceService;
+    private ComplexResourceSweepService complexResourceSweepService;
     private EncryptionService encryptionService;
 
     private LongSupplier clock = System::currentTimeMillis;
@@ -305,7 +307,11 @@ public class AiDial {
             responseMappingService.init(vertx, taskExecutor);
 
             ComplexResourceService complexResourceService = new ComplexResourceService(
-                    resourceService, lockService, shareService, invitationService);
+                    resourceService, lockService, shareService, invitationService, storage);
+            ComplexResourceSweepService.Settings complexResourceSweepSettings = Json.decodeValue(
+                    settings("complexResourceSweep").toBuffer(), ComplexResourceSweepService.Settings.class);
+            complexResourceSweepService = new ComplexResourceSweepService(timerService, storage, redis, lockService,
+                    complexResourceService, encryptionService, complexResourceSweepSettings);
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
@@ -409,6 +415,7 @@ public class AiDial {
             close(server, HttpServer::close);
             close(client, HttpClient::close);
             close(resourceService);
+            close(complexResourceSweepService);
             // Unhook from the global composite before vertx.close() so its shutdown metrics
             // stop flowing here; close the registries only after vertx has flushed its own.
             if (prometheusRegistry != null) {

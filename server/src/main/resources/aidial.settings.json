@@ -65,6 +65,12 @@
     "compressionMinSize": 256,
     "heartbeatPeriod": 60000
   },
+  "complexResourceSweep": {
+    "period": 10000,
+    "batch": 1000,
+    "activeBatches": 5,
+    "gracePeriod": 3600000
+  },
   "applications": {
     "includeCustomApps": true
   },

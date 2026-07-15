@@ -1,9 +1,11 @@
 package com.epam.aidial.core.server.service.resource;
 
+import com.epam.aidial.core.server.data.folder.ComplexResourceRef;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.MetadataBase;
@@ -21,7 +23,6 @@ import io.vertx.core.buffer.Buffer;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.mutable.MutableObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -55,13 +56,20 @@ public class ComplexResourceService {
 
     public static final String MARKER_NAME = ".dial-resource";
     public static final String FOLDER_MARKER_NAME = ".dial-folder";
+    /**
+     * Root-level (not bucket-scoped) prefix for the sweep-enumeration reference registry, sibling to the
+     * {@code .dial-tmp} temp-folder prefix. Manipulated via raw {@link BlobStorage} calls, not through
+     * {@link ResourceService}, since it is infrastructure bookkeeping rather than an access-controlled resource.
+     */
+    public static final String COMPLEX_RESOURCE_REFS_FOLDER = "complex_resource_refs";
 
     private static final String VERSION_PREFIX = "v";
     private static final String FILES_SEGMENT = "files";
     private static final String FOLDER_TYPE = "folder";
     private static final int SCHEMA_VERSION = 1;
     private static final String STATE_ACTIVE = "active";
-    private static final String STATE_DELETING = "deleting";
+    // Package-visible: ComplexResourceSweepService compares the raw marker state read via readMarkerForSweep.
+    static final String STATE_DELETING = "deleting";
     private static final int PAGE_SIZE = 1000;
     // A file inside a resource must not be named after a structural token.
     private static final Set<String> RESERVED_SEGMENTS = Set.of(VERSION_PREFIX, MARKER_NAME, FOLDER_MARKER_NAME);
@@ -72,13 +80,16 @@ public class ComplexResourceService {
     private final LockService lockService;
     private final ShareService shareService;
     private final InvitationService invitationService;
+    private final BlobStorage blobStorage;
 
     public ComplexResourceService(ResourceService resourceService, LockService lockService,
-                                 ShareService shareService, InvitationService invitationService) {
+                                 ShareService shareService, InvitationService invitationService,
+                                 BlobStorage blobStorage) {
         this.resourceService = resourceService;
         this.lockService = lockService;
         this.shareService = shareService;
         this.invitationService = invitationService;
+        this.blobStorage = blobStorage;
     }
 
     /**
@@ -88,8 +99,8 @@ public class ComplexResourceService {
      *
      * @param uploads relative path -> file content (as received from the multipart body)
      */
-    public String putFolder(ResourceDescriptor resource, ComplexResourceHandler handler,
-                            Map<String, Buffer> uploads, EtagHeader etag, String author) {
+    public String put(ResourceDescriptor resource, ComplexResourceHandler handler,
+                      Map<String, Buffer> uploads, EtagHeader etag, String author) {
         String name = resource.getName();
         if (name == null) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "Resource name is missing");
@@ -133,6 +144,11 @@ public class ComplexResourceService {
                         fileEtags.put(relativePath, written.getEtag());
                     }
                     FolderResourceMarker existing = readMarker(marker, false);
+                    if (existing == null) {
+                        // First creation only: an overwrite of an existing (even `deleting`) marker reuses
+                        // its reference, which is keyed by URL, not by version.
+                        writeReference(resource);
+                    }
                     return commitMarker(marker, resource, versionId, aggregateEtag(fileEtags),
                             handler.buildMarkerMetadata(files), fileEtags, existing, author);
                 } catch (Exception e) {
@@ -282,6 +298,18 @@ public class ComplexResourceService {
     }
 
     /**
+     * Writes a sweep-enumeration reference pointer for a newly created resource, before the marker commits
+     * (crash-safe: a resource can never exist without a reference). Written via a plain {@link BlobStorage}
+     * call, not through {@link ResourceService}, exactly like the existing {@code .dial-tmp} bookkeeping.
+     */
+    private void writeReference(ResourceDescriptor resource) {
+        String refId = UUID.randomUUID().toString().replace("-", "");
+        String path = COMPLEX_RESOURCE_REFS_FOLDER + ResourceDescriptor.PATH_SEPARATOR + refId + ".json";
+        String json = Objects.requireNonNull(ProxyUtil.convertToString(new ComplexResourceRef(resource.getUrl())));
+        blobStorage.store(path, "application/json", null, Map.of(), json.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
      * Aggregate etag derived from the per-file etags (relative path -> etag), sorted by path so the result
      * is deterministic regardless of insertion order.
      */
@@ -327,7 +355,7 @@ public class ComplexResourceService {
      * structural invariants (auto-vivifying intermediate folders), then rejects if a resource or folder
      * already exists at the target. Returns the folder's synthetic etag.
      */
-    public String createDialFolder(ResourceDescriptor resource, String author) {
+    public String createFolder(ResourceDescriptor resource, String author) {
         String name = resource.getName();
         if (name == null) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "Folder name is missing");
@@ -349,7 +377,7 @@ public class ComplexResourceService {
      * @throws HttpException NOT_FOUND if the folder is absent/deleting, PRECONDITION_FAILED on If-Match
      *                       mismatch, CONFLICT if the folder is not empty
      */
-    public void deleteDialFolder(ResourceDescriptor resource, EtagHeader etag) {
+    public void deleteFolder(ResourceDescriptor resource, EtagHeader etag) {
         ResourceDescriptor marker = folderMarkerDescriptor(resource);
         lockService.underBucketLock(resource.getBucketLocation(), () -> {
             FolderResourceMarker current = readMarker(marker, false);
@@ -366,10 +394,12 @@ public class ComplexResourceService {
     }
 
     /**
-     * Lists DIAL resources and grouping folders at a grouping level. A node is classified purely by the
-     * presence of its marker file ({@code .dial-resource} → {@code ITEM}, {@code .dial-folder} →
-     * {@code FOLDER}); the marker content is never read. Files that live inside a resource are excluded,
-     * so only resource/folder nodes are returned.
+     * Lists DIAL resources and grouping folders at a grouping level. A node is classified by the presence
+     * of its marker file ({@code .dial-resource} → {@code ITEM}, {@code .dial-folder} → {@code FOLDER}).
+     * A {@code .dial-resource} marker is additionally read to exclude a tombstoned ({@code deleting})
+     * resource: since the sweep (not this request path) reclaims it, its marker file can otherwise outlive
+     * the DELETE response. Files that live inside a resource are excluded, so only resource/folder nodes
+     * are returned.
      *
      * <p>When {@code recursive} is {@code true} the whole subtree is walked (as in the v1 metadata API);
      * otherwise only immediate children are returned. Pagination reuses the blob continuation token, so a
@@ -403,6 +433,11 @@ public class ComplexResourceService {
             // "v" can only be a version prefix (it is a reserved name), so a "v" segment means the marker
             // lives inside a resource's version tree and does not denote a nested node.
             if (isInsideVersionTree(relativePath)) {
+                continue;
+            }
+            // A folder marker has no tombstone lifecycle, but a resource marker does: its file can still
+            // exist in a `deleting` state until the sweep reclaims it, so presence alone isn't enough.
+            if (nodeType == NodeType.ITEM && !isActive(readMarker(item.getDescriptor(), false))) {
                 continue;
             }
             items.add(nodeMetadata(item.getDescriptor().getParent(), nodeType, (ResourceItemMetadata) item));
@@ -589,22 +624,22 @@ public class ComplexResourceService {
     }
 
     /**
-     * Tombstones the resource by flipping the {@code .dial-resource} marker to {@code state: deleting},
-     * then best-effort removes the version tree and marker. If the marker does not exist the method
-     * returns without doing anything (idempotent).
+     * Tombstones the resource by flipping the {@code .dial-resource} marker to {@code state: deleting} and
+     * stamping {@code deletedAt}, then (for a private resource) cleans up its invitation links and shares.
+     * The version tree, the marker file itself and its {@code complex_resource_refs} pointer are <b>not</b>
+     * touched here: they are reclaimed later, once {@code gracePeriod} has elapsed, by
+     * {@code ComplexResourceSweepService} via {@link #reclaimDeletingResource}.
      *
      * <p>The tombstone write (via {@link ResourceService#computeResource}) is the linearization point:
      * once committed, all read paths return 404 even if the version tree still physically exists.
      *
-     * @throws HttpException PRECONDITION_FAILED if the {@code If-Match} header does not match
+     * @throws HttpException NOT_FOUND if the resource does not exist or is already {@code deleting};
+     *                       PRECONDITION_FAILED if the {@code If-Match} header does not match
      */
-    public void deleteFolder(ResourceDescriptor resource, EtagHeader etag) {
+    public void delete(ResourceDescriptor resource, EtagHeader etag) {
         ResourceDescriptor marker = markerDescriptor(resource);
 
-        // DELETE is structural (it may affect ancestor-folder emptiness). Take the bucket lock so the
-        // tombstone commit and access-control cleanup happen atomically; the inner resource lock taken by
-        // computeResource is nested inside it (bucket-before-resource, the global order).
-        MutableObject<String> capturedVersion = new MutableObject<>();
+        // use bucket lock since the operation involves updating multiple resources
         lockService.underBucketLock(resource.getBucketLocation(), () -> {
             resourceService.computeResource(marker, json -> {
                 if (json == null) {
@@ -615,7 +650,6 @@ public class ComplexResourceService {
                     throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
                 }
                 etag.validate(current.getEtag());
-                capturedVersion.setValue(current.getCurrentVersion());
                 current.setState(STATE_DELETING);
                 current.setDeletedAt(System.currentTimeMillis());
                 return Objects.requireNonNull(ProxyUtil.convertToString(current));
@@ -629,11 +663,88 @@ public class ComplexResourceService {
             }
             return null;
         });
+    }
 
-        if (capturedVersion.get() != null) {
-            ResourceDescriptor folderVersion = versionFolder(resource, capturedVersion.get());
-            deleteVersion(folderVersion);
-            resourceService.deleteResource(marker, EtagHeader.ANY);
+    /**
+     * Reads the {@code .dial-resource} marker as-is, including a {@code deleting} state (unlike
+     * {@link #getMarker}, which treats it as absent). Package-visible: called only by
+     * {@code ComplexResourceSweepService} to decide how to treat a reference during the sweep.
+     */
+    @Nullable
+    FolderResourceMarker readMarkerForSweep(ResourceDescriptor resource) {
+        return readMarker(markerDescriptor(resource), false);
+    }
+
+    /**
+     * Reclaims a {@code deleting} resource: deletes its version tree and the marker itself, once
+     * {@code gracePeriodMs} has elapsed since the marker was tombstoned. Package-visible: called only by
+     * {@code ComplexResourceSweepService}, after the marker has been reclaimed the caller deletes the
+     * reference.
+     *
+     * @return {@code true} if the resource was reclaimed; {@code false} if the marker has since become
+     *         {@code active} again (a recreate raced ahead of the sweep) or is still inside the grace window
+     *         (the caller should retry on a later pass)
+     */
+    boolean reclaimDeletingResource(ResourceDescriptor resource, long gracePeriodMs) {
+        ResourceDescriptor marker = markerDescriptor(resource);
+        try (LockService.Lock ignore = resourceService.lockResource(marker)) {
+            FolderResourceMarker current = readMarker(marker, false);
+            if (current == null || !STATE_DELETING.equals(current.getState())) {
+                return false;
+            }
+            long deletedAt = current.getDeletedAt() == null ? 0L : current.getDeletedAt();
+            if (System.currentTimeMillis() - deletedAt < gracePeriodMs) {
+                return false;
+            }
+            deleteVersion(versionFolder(resource, current.getCurrentVersion()));
+            // Already holding the marker's resource lock (acquired above); deleteResource must not
+            // re-acquire it itself, or it deadlocks against the outstanding lock.
+            resourceService.deleteResource(marker, EtagHeader.ANY, false);
+            return true;
+        }
+    }
+
+    /**
+     * GCs {@code v/{versionId}} siblings of an {@code active} resource other than its current version, once
+     * {@code gracePeriodMs} has elapsed since the marker was last updated. Safety net for {@code copyOnWrite}'s
+     * inline old-version delete when that previously failed. Package-visible: called only by
+     * {@code ComplexResourceSweepService}.
+     *
+     * @return {@code true} if any orphan version was GC'd
+     */
+    boolean gcObsoleteVersions(ResourceDescriptor resource, long gracePeriodMs) {
+        ResourceDescriptor marker = markerDescriptor(resource);
+        try (LockService.Lock ignore = resourceService.lockResource(marker)) {
+            FolderResourceMarker current = readMarker(marker, false);
+            if (!isActive(current)) {
+                return false;
+            }
+            long updatedAt = current.getUpdatedAt() == null ? 0L : current.getUpdatedAt();
+            if (System.currentTimeMillis() - updatedAt < gracePeriodMs) {
+                return false;
+            }
+            String currentVersion = current.getCurrentVersion();
+            ResourceDescriptor versionsFolder = versionsFolder(resource);
+            boolean gced = false;
+            String token = null;
+            do {
+                ResourceFolderMetadata page = resourceService.getFolderMetadata(versionsFolder, token, PAGE_SIZE, false);
+                if (page == null) {
+                    break;
+                }
+                for (MetadataBase item : page.getItems()) {
+                    if (item.getNodeType() != NodeType.FOLDER) {
+                        continue;
+                    }
+                    ResourceDescriptor obsoleteVersion = versionsFolder.resolveByUrl(item.getUrl());
+                    if (!obsoleteVersion.getName().equals(currentVersion)) {
+                        deleteVersion(obsoleteVersion);
+                        gced = true;
+                    }
+                }
+                token = page.getNextToken();
+            } while (token != null);
+            return gced;
         }
     }
 
@@ -758,6 +869,14 @@ public class ComplexResourceService {
         parentFolders.add(resource.getName());
         parentFolders.add(VERSION_PREFIX);
         return new ResourceDescriptor(resource.getType(), versionId, parentFolders,
+                resource.getBucketName(), resource.getBucketLocation(), true);
+    }
+
+    /** Folder descriptor for the {@code v/} prefix itself, used to list all version-id siblings. */
+    private static ResourceDescriptor versionsFolder(ResourceDescriptor resource) {
+        List<String> parentFolders = new ArrayList<>(resource.getParentFolders());
+        parentFolders.add(resource.getName());
+        return new ResourceDescriptor(resource.getType(), VERSION_PREFIX, parentFolders,
                 resource.getBucketName(), resource.getBucketLocation(), true);
     }
 
