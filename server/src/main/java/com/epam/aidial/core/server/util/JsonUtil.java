@@ -28,7 +28,7 @@ import javax.annotation.Nullable;
 public class JsonUtil {
 
     private static final Configuration CONFIGURATION = Configuration.defaultConfiguration()
-            .jsonProvider(new JacksonJsonNodeJsonProvider()).addOptions(Option.DEFAULT_PATH_LEAF_TO_NULL);
+            .jsonProvider(new JacksonJsonNodeJsonProvider()).addOptions(Option.DEFAULT_PATH_LEAF_TO_NULL, Option.SUPPRESS_EXCEPTIONS);
 
     /**
      * Json node or null if required property is missed in the JSON path.
