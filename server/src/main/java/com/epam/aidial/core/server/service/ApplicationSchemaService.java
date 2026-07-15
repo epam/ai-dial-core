@@ -47,6 +47,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -81,7 +82,7 @@ public class ApplicationSchemaService {
             .defaultMetaSchemaIri(DIAL_META_SCHEMA.getIri())
             .build();
 
-    private static final TypeReference<Map<String, Route>> APP_ROUTE_TYPE_REF = new TypeReference<>() {
+    private static final TypeReference<LinkedHashMap<String, Route>> APP_ROUTE_TYPE_REF = new TypeReference<>() {
         @Override
         public Type getType() {
             return super.getType();
@@ -158,8 +159,8 @@ public class ApplicationSchemaService {
                     schemaCache.put(schemaId, result);
                     return result;
                 } catch (Exception e) {
-                    log.warn("Failed to download application schema", e);
-                    throw new ApplicationTypeSchemaProcessingException("Failed to download application schema", e);
+                    log.warn("Failed to download application schema: {}", url, e);
+                    throw new ApplicationTypeSchemaProcessingException("Failed to download application schema: " + url, e);
                 }
             } else {
                 return schemaCache.get(schemaId);
@@ -455,6 +456,11 @@ public class ApplicationSchemaService {
                 }
                 features.setAssistantAttachmentsInRequestSupported(assistantAttachmentsInRequest);
             }
+
+            LinkedHashMap<String, Route> routes = getRoutes(application);
+            if (routes != null) {
+                application.setRoutes(routes);
+            }
         } catch (ApplicationTypeSchemaProcessingException | ApplicationTypeResourceException | ApplicationTypeSchemaValidationException ex) {
             log.warn("Failed to modify application to fulfill schema's restrictions %s".formatted(application.getName()), ex);
             application.setApplicationProperties(null);
@@ -465,7 +471,7 @@ public class ApplicationSchemaService {
 
     @Nullable
     @SneakyThrows
-    public Map<String, Route> getRoutes(Application application) {
+    public LinkedHashMap<String, Route> getRoutes(Application application) {
         String customApplicationSchema = getCustomApplicationSchemaOrThrow(application, false);
         if (customApplicationSchema == null) {
             return null;
