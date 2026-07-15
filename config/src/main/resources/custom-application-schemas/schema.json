@@ -318,6 +318,13 @@
           "description": "Required to check resource existence in DIAL instance",
           "type": "boolean",
           "default": false
+        },
+        "acceptableResourceTypes": {
+          "description": "Optional list of DIAL resource types the referenced resource is allowed to be",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
