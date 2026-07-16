@@ -33,6 +33,7 @@ import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.service.RuleService;
+import com.epam.aidial.core.server.service.SecuredResourceService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetRepairService;
 import com.epam.aidial.core.server.service.ToolSetService;
@@ -159,6 +160,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final WellKnownResourceMetadataService resourceMetadataService;
     private final WellKnownResourceMetadataController resourceMetadataController;
     private final ToolSetService toolSetService;
+    private final SecuredResourceService securedResourceService;
     private final ToolSetRepairService toolSetRepairService;
     private final ApplicationSchemaService applicationSchemaService;
     private final AuthorizationHeaderProvider authorizationHeaderProvider;

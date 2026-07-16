@@ -386,6 +386,104 @@ public class ApplicationSchemaServiceTest {
     }
 
     @Test
+    public void modifySchemaRichApplication_setsRoutes_whenSchemaHasRoutes() {
+        when(configStore.get()).thenReturn(config);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        final String schemaWithRoutes = """
+                {
+                  "$schema" : "https://dial.epam.com/application_type_schemas/schema#",
+                  "$id" : "https://mydial.epam.com/custom_application_schemas/specific_application_type",
+                  "dial:applicationTypeCompletionEndpoint" : "http://specific_application_service/v1/completion",
+                  "dial:applicationTypeRoutes": {
+                    "data_sync": {
+                      "dial:paths": ["/v1/data"],
+                      "dial:rewritePath": true,
+                      "dial:methods": ["PUT"],
+                      "dial:upstreams": [{"dial:endpoint": "http://localhost:8080"}],
+                      "dial:order": 5
+                    }
+                  }
+                }""";
+        when(config.getCustomApplicationSchema(any())).thenReturn(schemaWithRoutes);
+
+        Application result = service.modifySchemaRichApplication(application, false);
+
+        Assertions.assertNotNull(result.getRoutes());
+        Assertions.assertEquals(1, result.getRoutes().size());
+        Route route = result.getRoutes().get("data_sync");
+        Assertions.assertNotNull(route);
+        Assertions.assertTrue(route.isRewritePath());
+        Assertions.assertEquals(Collections.singleton("PUT"), route.getMethods());
+        Assertions.assertEquals(5, route.getOrder());
+        Assertions.assertEquals(1, route.getUpstreams().size());
+        Assertions.assertEquals("http://localhost:8080", route.getUpstreams().get(0).getEndpoint());
+    }
+
+    @Test
+    public void modifySchemaRichApplication_withRoutesAndSchemaEndpoint() throws IOException, InterruptedException {
+        when(configStore.get()).thenReturn(config);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        String staticSchema = """
+                {
+                  "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+                  "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",
+                  "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/v1/completion",
+                  "dial:applicationTypeSchemaEndpoint": "http://mydial.epam.com/schema"
+                }""";
+        when(config.getCustomApplicationSchema(any())).thenReturn(staticSchema);
+        String downloadedSchema = """
+                {
+                  "dial:applicationTypeRoutes": {
+                    "data_sync": {
+                      "dial:paths": ["/v1/data"],
+                      "dial:rewritePath": true,
+                      "dial:methods": ["PUT"],
+                      "dial:upstreams": [{"dial:endpoint": "http://localhost:8080"}],
+                      "dial:order": 5
+                    }
+                  }
+                }""";
+        HttpResponse<String> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);
+        when(response.body()).thenReturn(downloadedSchema);
+        when(httpClient.send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString()))).thenReturn(response);
+
+        Application result = service.modifySchemaRichApplication(application, false);
+
+        Assertions.assertNull(result.getInvalid());
+        Assertions.assertNotNull(result.getRoutes());
+        Assertions.assertEquals(1, result.getRoutes().size());
+        Route route = result.getRoutes().get("data_sync");
+        Assertions.assertNotNull(route);
+        Assertions.assertTrue(route.isRewritePath());
+        Assertions.assertEquals(Collections.singleton("PUT"), route.getMethods());
+        Assertions.assertEquals(5, route.getOrder());
+        Assertions.assertEquals(1, route.getUpstreams().size());
+        Assertions.assertEquals("http://localhost:8080", route.getUpstreams().get(0).getEndpoint());
+    }
+
+    @Test
+    public void modifySchemaRichApplication_setsInvalid_whenSchemaLoadingFails() throws IOException, InterruptedException {
+        when(configStore.get()).thenReturn(config);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        String staticSchema = """
+                {
+                  "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+                  "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",
+                  "dial:applicationTypeCompletionEndpoint": "http://specific_application_service/v1/completion",
+                  "dial:applicationTypeSchemaEndpoint": "http://mydial.epam.com/schema"
+                }""";
+        when(config.getCustomApplicationSchema(any())).thenReturn(staticSchema);
+        when(httpClient.send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString())))
+                .thenThrow(new IOException("Connection refused"));
+
+        Application result = service.modifySchemaRichApplication(application, false);
+
+        Assertions.assertEquals(Boolean.TRUE, result.getInvalid());
+        Assertions.assertNull(result.getApplicationProperties());
+    }
+
+    @Test
     public void modifyEndpointForCustomApplication_setsCustomEndpoints_whenSchemaExists() {
         when(configStore.get()).thenReturn(config);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
