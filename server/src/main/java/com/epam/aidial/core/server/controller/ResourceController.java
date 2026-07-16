@@ -43,6 +43,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
@@ -771,8 +772,9 @@ public class ResourceController extends AccessControlBaseController {
                 if (application == null) {
                     throw new HttpException(BAD_REQUEST, "Application can't be empty");
                 }
+                JsonNode bodyJson = ProxyUtil.parseTree(pair.getValue());
                 ExternalServicesWriteMode externalServicesWriteMode =
-                        ProxyUtil.hasTopLevelField(pair.getValue(), "external_services", "externalServices")
+                        ProxyUtil.hasTopLevelField(bodyJson, "external_services", "externalServices")
                                 ? ExternalServicesWriteMode.OVERRIDE
                                 : ExternalServicesWriteMode.PRESERVE_IF_OMITTED;
                 // Admin writes to public/ are authoritative for the admin-managed governance fields, but only
@@ -780,8 +782,8 @@ public class ResourceController extends AccessControlBaseController {
                 // can't wipe a grant, while present-as-null explicitly clears it.
                 AdminManagedFieldsWrite adminManagedFieldsWrite = adminPublicWrite
                         ? new AdminManagedFieldsWrite(
-                                ProxyUtil.hasTopLevelField(pair.getValue(), "app_identity", "appIdentity"),
-                                ProxyUtil.hasTopLevelField(pair.getValue(), "allow_user_external_services", "allowUserExternalServices"))
+                                ProxyUtil.hasTopLevelField(bodyJson, "app_identity", "appIdentity"),
+                                ProxyUtil.hasTopLevelField(bodyJson, "allow_user_external_services", "allowUserExternalServices"))
                         : AdminManagedFieldsWrite.INHERIT_ONLY;
                 return taskExecutor.submit(() -> {
                     validateCustomApplication(application);
