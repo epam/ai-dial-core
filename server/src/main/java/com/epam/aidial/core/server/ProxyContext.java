@@ -10,7 +10,6 @@ import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.util.UrlUtil;
@@ -96,7 +95,8 @@ public class ProxyContext {
     private String userDisplayName;
     private CacheBreakpointContext cacheBreakpointContext;
     private ServerWebSocket serverWebSocket;
-    private boolean storeResponse;
+    private boolean isStoreResponse;
+    private boolean isBackgroundJob;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
@@ -279,5 +279,9 @@ public class ProxyContext {
 
     public ProxyContext copyWith(ApiKeyData newApiKeyData) {
         return new ProxyContext(proxy, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
+    }
+
+    public boolean isOriginalRequest() {
+        return apiKeyData.getPerRequestKey() == null;
     }
 }

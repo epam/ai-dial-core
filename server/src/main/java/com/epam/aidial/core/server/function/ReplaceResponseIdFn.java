@@ -9,11 +9,13 @@ import com.epam.aidial.core.server.util.ResponseIdUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
+import lombok.Getter;
 
 public class ReplaceResponseIdFn extends BaseResponseFunction {
 
-    private String dialId;
     private String upstreamId;
+    @Getter
+    private String dialId;
 
     public ReplaceResponseIdFn(Proxy proxy, ProxyContext context, String dialId, String upstreamId) {
         super(proxy, context);
@@ -33,7 +35,7 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
         }
 
         JsonNode idNode = response.path("id");
-        if (idNode.isNull()) {
+        if (!idNode.isTextual()) {
             return Future.succeededFuture(tree);
         }
 
@@ -66,10 +68,15 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
                 .build();
         return proxy.getTaskExecutor()
                 .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
-                .map(generatedDialId -> {
-                    dialId = generatedDialId;
-                    response.put("id", generatedDialId);
-                    return tree;
-                });
+                .compose(id -> {
+                    dialId = id;
+                    response.put("id", dialId);
+
+                    if (!context.isBackgroundJob()) {
+                        return Future.succeededFuture();
+                    }
+                    return proxy.getBackgroundJobService().saveJob(dialId, context);
+                })
+                .map(tree);
     }
 }

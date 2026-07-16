@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.token;
 
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -61,17 +60,20 @@ public class TokenStatsTracker {
         });
     }
 
+    public Future<Void> endSpan(String traceId) {
+        ResourceDescriptor resource = toResource(traceId);
+        return taskExecutor.submit(() -> {
+            resourceService.deleteResource(resource, EtagHeader.ANY);
+            return null;
+        });
+    }
+
     /**
      * Ends current span.
      */
     public Future<Void> endSpan(ProxyContext context) {
-        ApiKeyData apiKeyData = context.getApiKeyData();
-        if (apiKeyData.getPerRequestKey() == null) {
-            return taskExecutor.submit(() -> {
-                ResourceDescriptor resource = toResource(context.getTraceId());
-                resourceService.deleteResource(resource, EtagHeader.ANY);
-                return null;
-            });
+        if (context.isOriginalRequest()) {
+            return endSpan(context.getTraceId());
         } else {
             // we don't need to remove the span from trace context right now.
             // we can do it later when the initial span is completed
@@ -79,18 +81,18 @@ public class TokenStatsTracker {
         }
     }
 
-    public Future<TokenUsage> updateModelStats(ProxyContext context) {
-        ResourceDescriptor resource = toResource(context.getTraceId());
+    public Future<Void> updateModelStats(String traceId, String spanId, TokenUsage tokenUsage) {
+        ResourceDescriptor resource = toResource(traceId);
         return taskExecutor.submit(() -> {
             resourceService.computeResource(resource, json -> {
                 TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
                 if (traceContext == null) {
                     return null;
                 }
-                traceContext.updateStats(context.getSpanId(), context.getTokenUsage());
+                traceContext.updateStats(spanId, tokenUsage);
                 return ProxyUtil.convertToString(traceContext);
             });
-            return context.getTokenUsage();
+            return null;
         });
     }
 

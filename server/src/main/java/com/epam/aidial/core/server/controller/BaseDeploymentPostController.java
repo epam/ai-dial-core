@@ -11,9 +11,11 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -149,7 +151,7 @@ public class BaseDeploymentPostController {
                         context.setResponseBodyTimestamp(System.currentTimeMillis());
                         return collectTokenUsage(responseBody);
                     })
-                    .onSuccess(ignored -> proxy.getLogStore().save(context))
+                    .onSuccess(ignored -> proxy.getLogStore().save(AnalyticsLogContext.from(context, null)))
                     .onComplete(ignored -> finalizeRequest());
         } else {
             // drop connection to stop application responding
@@ -157,8 +159,8 @@ public class BaseDeploymentPostController {
         }
     }
 
-    protected Future<TokenUsage> collectTokenUsage(Buffer responseBody) {
-        Future<TokenUsage> tokenUsageFuture = Future.succeededFuture();
+    protected Future<Void> collectTokenUsage(Buffer responseBody) {
+        Future<Void> tokenUsageFuture = Future.succeededFuture();
         if (context.getDeployment() instanceof Model model) {
             if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
                 TokenUsage tokenUsage = parseTokenUsage(responseBody);
@@ -176,16 +178,26 @@ public class BaseDeploymentPostController {
                     tokenUsage = new TokenUsage();
                 }
                 context.setTokenUsage(tokenUsage);
-                tokenUsageFuture = proxy.getRateLimiter().increase(context, context.getDeployment())
+                String bucket = BucketBuilder.buildInitiatorBucket(context);
+                TokenUsage usage = context.getTokenUsage();
+                tokenUsageFuture = proxy.getRateLimiter().increase(
+                        context.getDeployment(), bucket, usage, context.getRequestBody(), context.getResponseBody())
                         .transform(result -> {
                             if (result.failed()) {
                                 log.warn("Failed to increase limit", result.cause());
                             }
-                            return proxy.getTokenStatsTracker().updateModelStats(context);
+                            String traceId = context.getTraceId();
+                            String spanId = context.getSpanId();
+                            if (traceId != null && spanId != null) {
+                                return proxy.getTokenStatsTracker().updateModelStats(traceId, spanId, usage);
+                            }
+                            return Future.succeededFuture();
                         });
             }
         } else {
-            tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context).andThen(result -> context.setTokenUsage(result.result()));
+            tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context)
+                    .andThen(result -> context.setTokenUsage(result.result()))
+                    .mapEmpty();
         }
         return tokenUsageFuture;
     }

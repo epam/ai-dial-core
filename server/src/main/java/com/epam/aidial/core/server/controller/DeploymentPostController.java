@@ -29,9 +29,9 @@ import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.sse.SseEvent;
-import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -412,7 +412,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
-        Future<TokenUsage> tokenUsageFuture = collectTokenUsage(responseBody);
+        Future<Void> tokenUsageFuture = collectTokenUsage(responseBody);
 
         Future<Void> handleResponseFuture = tokenUsageFuture.transform(result -> {
             if (result.failed()) {
@@ -433,7 +433,11 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         HttpServerResponse response = context.getResponse();
         responseStream.end(response);
 
-        proxy.getLogStore().save(context);
+        String assembledStreamingResponse = null;
+        if (isEventStreamResponse(context.getProxyResponse())) {
+            assembledStreamingResponse = AnalyticsLogContext.assembleStreamingChatCompletionsResponse(context.getResponseBody());
+        }
+        proxy.getLogStore().save(AnalyticsLogContext.from(context, assembledStreamingResponse));
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",

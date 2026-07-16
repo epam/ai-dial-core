@@ -104,5 +104,16 @@
     "collectClaims": false,
     "collectHeaders": false,
     "headersBlacklist": ["authorization", "api-key", "cookie", "proxy-authorization"]
+  },
+  "backgroundJob": {
+    "initialPollIntervalMs": 10000,
+    "maxPollIntervalMs": 300000,
+    "pollBackoffFactor": 2.0,
+    "maxSequentialPollFailures": 10,
+    "jobTtlMs": 86400000,
+    "leaseTimeoutMs": 300000,
+    "maxParallelJobs": 100,
+    "scanIntervalMs": 600000,
+    "schedulerTickIntervalMs": 5000
   }
 }

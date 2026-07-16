@@ -1,267 +1,64 @@
 package com.epam.aidial.core.server.log;
 
-import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.LogEntry;
 import com.fasterxml.jackson.databind.JsonNode;
-import io.vertx.core.MultiMap;
-import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpServerRequest;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyChar;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-@SuppressWarnings("checkstyle:LineLength")
 public class GfLogStoreTest {
 
     @Test
-    public void testIsStreamingResponse() {
-        String batchResponse = """
-                {
-                  "id": "chatcmpl-7VfMTgj3ljKdGKS2BEIwloII3IoO0",
-                  "object": "chat.completion",
-                  "created": 1687781517,
-                  "model": "gpt-35-turbo",
-                  "choices": [
-                    {
-                      "index": 0,
-                      "finish_reason": "stop",
-                      "message": {
-                        "role": "assistant",
-                        "content": "As an AI language model, I do not have emotions like humans. However, I am functioning well and ready to assist you. How can I help you today?"
-                      }
-                    }
-                  ],
-                  "usage" \t\r : \t\r {
-                    "junk_string": "junk",
-                    "junk_integer" : 1,
-                    "junk_float" : 1.0,
-                    "junk_null" : null,
-                    "junk_true" : true,
-                    "junk_false" : false,
-                    "completion_tokens": 33,
-                    "prompt_tokens": 19,
-                    "total_tokens": 52
-                  }
-                }
-                """;
-        assertFalse(GfLogStore.isStreamingResponse(Buffer.buffer(batchResponse)));
-        String streamingResponse = """
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"As"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":"stop","delta":{}}],
-                         "usage" \n\t\r : \n\t\r {
-                             "junk_string": "junk",
-                             "junk_integer" : 1,
-                             "junk_float" : 1.0,
-                             "junk_null" : null,
-                             "junk_true" : true,
-                             "junk_false" : false,
-                             "completion_tokens": 10,
-                             "prompt_tokens": 20,
-                             "total_tokens": 30
-                           }
-                       }
-                data: [DONE]
-                """;
-        assertTrue(GfLogStore.isStreamingResponse(Buffer.buffer(streamingResponse)));
-    }
-
-    @Test
-    public void testAssembleStreamingResponse() {
-        String streamingResponse = """
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant"}}],"usage":null}
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"As", "custom_content": {"attachments": [{"index": 1, "url": "url1"}]}}}],"usage":null}
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" an", "custom_content": {"attachments": [{"index": 0, "url": "url2"}]}}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" AI"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" language"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" model", "custom_content": {"stages": [{"index": 0, "name": "stage1", "status": "completed"}]}}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":","}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" I", "custom_content": {"stages": [{"index": 1, "name": "stage2", "status": "completed"}]}}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" don"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"'t"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" have", "custom_content": {"controls": [{"index": 0, "label": "label1"}]}}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" emotions"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":","}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" but", "custom_content": {"controls": [{"index": 1, "label": "label2"}]}}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" I", "custom_content": {"state": {"p1": 1}}}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"'m"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" functioning"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" perfectly"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" well","custom_content": {"state": {"p2": 1}}}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"."}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" How"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" can"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" I"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" assist"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" you"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":" today"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":null,"delta":{"content":"?"}}],"usage":null}
-                 
-                data: {"id":"chatcmpl-7VfCSOSOS1gYQbDFiEMyh71RJSy1m","object":"chat.completion.chunk","created":1687780896,"model":"gpt-35-turbo","choices":[{"index":0,"finish_reason":"stop","delta":{}}],
-                         "usage" \n\t\r : \n\t\r {
-                             "junk_string": "junk",
-                             "junk_integer" : 1,
-                             "junk_float" : 1.0,
-                             "junk_null" : null,
-                             "junk_true" : true,
-                             "junk_false" : false,
-                             "completion_tokens": 10,
-                             "prompt_tokens": 20,
-                             "total_tokens": 30
-                           }
-                       }
-                data:
-                       {
-                        "id": "1d84aa54-e476-405d-9713-386bdfc85993",
-                        "object": "chat.completion.chunk",
-                        "created": "1687222196",
-                        "statistics": {
-                          "usage_per_model": [
-                            {
-                              "index": 0,
-                              "name": "text-embedding-ada-002",
-                              "prompt_tokens": 23,
-                              "total_tokens": 23
-                            },
-                            {
-                              "index": 1,
-                              "name": "gpt-4",
-                              "prompt_tokens": 123,
-                              "completion_tokens": 17,
-                              "total_tokens": 140
-                            }
-                          ]
-                        }
-                       }
-                 
-                data: [DONE]
-                                
-                """;
-        String res = GfLogStore.assembleStreamingResponse(Buffer.buffer(streamingResponse));
-        assertNotNull(res);
-        String expected = """
-                {"id":"1d84aa54-e476-405d-9713-386bdfc85993","object":"chat.completion","created":"1687222196","model":"gpt-35-turbo","usage":{"junk_string":"junk","junk_integer":1,"junk_float":1.0,"junk_null":null,"junk_true":true,"junk_false":false,"completion_tokens":10,"prompt_tokens":20,"total_tokens":30},"statistics":{"usage_per_model":[{"name":"text-embedding-ada-002","prompt_tokens":23,"total_tokens":23},{"name":"gpt-4","prompt_tokens":123,"completion_tokens":17,"total_tokens":140}]},"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"As an AI language model, I don't have emotions, but I'm functioning perfectly well. How can I assist you today?","custom_content":{"attachments":[{"url":"url2"},{"url":"url1"}],"stages":[{"name":"stage1","status":"completed"},{"name":"stage2","status":"completed"}],"controls":[{"label":"label1"},{"label":"label2"}],"state":{"p1":1,"p2":1}}}}]}""";
-        assertEquals(expected, res);
-    }
-
-    @Test
-    public void testAssembleStreamingResponse2() {
-        String streamingResponse = """
-                data: {"choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant"}}],"usage":null,"id":"3c9c699a-d1ef-4ec2-82ff-47a07206fa99","created":1724242846,"object":"chat.completion.chunk"}
-                data: {"choices":[{"index":0,"finish_reason":null,"delta":{"custom_content":{"attachments":[{"index":0,"type":"text/markdown","title":"[0] 'Architecture'", "data":"data", "reference_url":"url1"}]}}}],"usage":null,"id":"3c9c699a-d1ef-4ec2-82ff-47a07206fa99","created":1724242846,"object":"chat.completion.chunk"}
-                data: {"choices":[{"index":0,"finish_reason":null,"delta":{"custom_content":{"attachments":[{"index":1,"type":"text/markdown","title":"[1] 'User Guide'", "data":"data", "reference_url":"url2"}]}}}],"usage":null,"id":"3c9c699a-d1ef-4ec2-82ff-47a07206fa99","created":1724242846,"object":"chat.completion.chunk"}
-                
-                data: {"choices":[{"index":0,"finish_reason":null,"delta":{"custom_content":{"attachments":[{"index":2,"type":"text/markdown","title":"[2] 'Knowledge Base'","data":"data","reference_url":"url3"}]}}}],"usage":null,"id":"3c9c699a-d1ef-4ec2-82ff-47a07206fa99","created":1724242846,"object":"chat.completion.chunk"}
-                
-                data: {"choices":[{"index":0,"finish_reason":null,"delta":{"custom_content":{"attachments":[{"index":3,"type":"text/markdown","title":"[3] 'Documentation'","data":"you can pick one of three formats to copy its data: CSV, Markdown or Text.\\n\\n","reference_url":"url4"}]}}}],"usage":null,"id":"3c9c699a-d1ef-4ec2-82ff-47a07206fa99","created":1724242846,"object":"chat.completion.chunk"}
-                
-                data: {"choices":[{"index":0,"finish_reason":null,"delta":{"content":"A"}}],"usage":null,"id":"3c9c699a-d1ef-4ec2-82ff-47a07206fa99","created":1724242846,"object":"chat.completion.chunk"}
-                
-                data: {"choices":[{"index":0,"finish_reason":null,"delta":{"content":" B"}}],"usage":null,"id":"3c9c699a-d1ef-4ec2-82ff-47a07206fa99","created":1724242846,"object":"chat.completion.chunk"}
-                
-                data: {"choices":[{"index":0,"finish_reason":null,"delta":{"content":" C"}}],"usage":null,"id":"3c9c699a-d1ef-4ec2-82ff-47a07206fa99","created":1724242846,"object":"chat.completion.chunk"}
-                data: [DONE]
-                """;
-
-        String res = GfLogStore.assembleStreamingResponse(Buffer.buffer(streamingResponse));
-        assertNotNull(res);
-        String expected = """
-                {"id":"3c9c699a-d1ef-4ec2-82ff-47a07206fa99","object":"chat.completion","created":1724242846,"model":null,"choices":[{"index":0,"finish_reason":null,"message":{"role":"assistant","custom_content":{"attachments":[{"type":"text/markdown","title":"[0] 'Architecture'","data":"data","reference_url":"url1"},{"type":"text/markdown","title":"[1] 'User Guide'","data":"data","reference_url":"url2"},{"type":"text/markdown","title":"[2] 'Knowledge Base'","data":"data","reference_url":"url3"},{"type":"text/markdown","title":"[3] 'Documentation'","data":"you can pick one of three formats to copy its data: CSV, Markdown or Text.\\n\\n","reference_url":"url4"}]},"content":"A B C"}}]}""";
-        assertEquals(expected, res);
-    }
-
-    @Test
     public void testGetParentDeployment_NoInterceptors() {
-        ProxyContext context = mock(ProxyContext.class);
-        // app calls model without interceptors
-        when(context.getInterceptors()).thenReturn(null);
-        when(context.getSourceDeployment()).thenReturn("app");
-
-        String result = GfLogStore.getParentDeployment(context);
+        String result = AnalyticsLogContext.getParentDeployment("app", null, null);
 
         assertEquals("app", result);
     }
 
     @Test
     public void testGetParentDeployment_DeploymentWithInterceptors1() {
-        ProxyContext context = mock(ProxyContext.class);
         // app calls model with interceptors
         List<String> interceptors = List.of("interceptor1", "interceptor2");
-        when(context.getInterceptors()).thenReturn(interceptors);
         List<String> executionPath = List.of("app", "interceptor1", "interceptor2", "model");
-        when(context.getExecutionPath()).thenReturn(executionPath);
 
-        String result = GfLogStore.getParentDeployment(context);
+        String result = AnalyticsLogContext.getParentDeployment(null, interceptors, executionPath);
 
         assertEquals("app", result);
     }
 
     @Test
     public void testGetParentDeployment_DeploymentWithInterceptors2() {
-        ProxyContext context = mock(ProxyContext.class);
         // chat calls model with interceptors
         List<String> interceptors = List.of("interceptor1", "interceptor2");
-        when(context.getInterceptors()).thenReturn(interceptors);
         List<String> executionPath = List.of("interceptor1", "interceptor2", "model");
-        when(context.getExecutionPath()).thenReturn(executionPath);
 
-        String result = GfLogStore.getParentDeployment(context);
+        String result = AnalyticsLogContext.getParentDeployment(null, interceptors, executionPath);
 
         assertNull(result);
     }
 
     @Test
     public void testGetParentDeployment_InterceptorPathMismatch() {
-        ProxyContext context = mock(ProxyContext.class);
         // app calls model with interceptors but interceptor1 calls some dep1 in the middle using the same per request key
         List<String> interceptors = List.of("interceptor1", "interceptor2");
-        when(context.getInterceptors()).thenReturn(interceptors);
         List<String> executionPath = List.of("app", "interceptor1", "dep1", "interceptor2", "model");
-        when(context.getExecutionPath()).thenReturn(executionPath);
 
-        String result = GfLogStore.getParentDeployment(context);
+        String result = AnalyticsLogContext.getParentDeployment(null, interceptors, executionPath);
 
         assertNull(result);
     }
@@ -301,7 +98,7 @@ public class GfLogStoreTest {
     @SneakyThrows
     @Test
     public void testAppendClaims() {
-        ProxyContext context = mock(ProxyContext.class);
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
         when(context.getUserId()).thenReturn("user-1");
         when(context.getUserRoles()).thenReturn(List.of("admin", "reader"));
         when(context.getUserDisplayName()).thenReturn("Jane \"Doe\"");
@@ -321,7 +118,7 @@ public class GfLogStoreTest {
     @SneakyThrows
     @Test
     public void testAppendClaimsSkipsNullFields() {
-        ProxyContext context = mock(ProxyContext.class);
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
         when(context.getUserId()).thenReturn("user-1");
         when(context.getUserRoles()).thenReturn(null);
         when(context.getUserDisplayName()).thenReturn(null);
@@ -340,17 +137,14 @@ public class GfLogStoreTest {
     @SneakyThrows
     @Test
     public void testAppendHeadersAppliesBlacklistAndJoinsMultiValues() {
-        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
-        headers.add("Authorization", "Bearer secret");
-        headers.add("API-KEY", "key-secret");
-        headers.add("X-Conversation-Id", "conv-1");
-        headers.add("Accept", "text/plain");
-        headers.add("Accept", "application/json");
+        Map<String, List<String>> headers = new java.util.LinkedHashMap<>();
+        headers.put("Authorization", List.of("Bearer secret"));
+        headers.put("API-KEY", List.of("key-secret"));
+        headers.put("X-Conversation-Id", List.of("conv-1"));
+        headers.put("Accept", List.of("text/plain", "application/json"));
 
-        HttpServerRequest request = mock(HttpServerRequest.class);
-        when(request.headers()).thenReturn(headers);
-        ProxyContext context = mock(ProxyContext.class);
-        when(context.getRequest()).thenReturn(request);
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRequestHeaders()).thenReturn(headers);
 
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
@@ -367,14 +161,12 @@ public class GfLogStoreTest {
     @SneakyThrows
     @Test
     public void testClaimsAndHeadersComposeIntoValidLogJson() {
-        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
-        headers.add("Authorization", "Bearer secret");
-        headers.add("X-Conversation-Id", "conv-1");
+        Map<String, List<String>> headers = new java.util.LinkedHashMap<>();
+        headers.put("Authorization", List.of("Bearer secret"));
+        headers.put("X-Conversation-Id", List.of("conv-1"));
 
-        HttpServerRequest request = mock(HttpServerRequest.class);
-        when(request.headers()).thenReturn(headers);
-        ProxyContext context = mock(ProxyContext.class);
-        when(context.getRequest()).thenReturn(request);
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRequestHeaders()).thenReturn(headers);
         when(context.getUserId()).thenReturn("user-1");
         when(context.getUserRoles()).thenReturn(List.of("admin"));
 
@@ -396,13 +188,13 @@ public class GfLogStoreTest {
     @SneakyThrows
     @Test
     public void testAppendHeadersRegexBlacklistDropsFamily() {
-        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
-        headers.add("X-Stainless-Lang", "python");
-        headers.add("X-Stainless-OS", "Linux");
-        headers.add("traceparent", "00-abc-def-01");
-        headers.add("User-Agent", "AsyncAzureOpenAI/Python");
+        Map<String, List<String>> headers = new java.util.LinkedHashMap<>();
+        headers.put("X-Stainless-Lang", List.of("python"));
+        headers.put("X-Stainless-OS", List.of("Linux"));
+        headers.put("traceparent", List.of("00-abc-def-01"));
+        headers.put("User-Agent", List.of("AsyncAzureOpenAI/Python"));
 
-        ProxyContext context = mockRequest(headers);
+        AnalyticsLogContext context = mockHeaders(headers);
 
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
@@ -419,13 +211,13 @@ public class GfLogStoreTest {
     @SneakyThrows
     @Test
     public void testAppendHeadersAllowlistCollectsOnlyMatching() {
-        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
-        headers.add("traceparent", "00-abc-def-01");
-        headers.add("User-Agent", "AsyncAzureOpenAI/Python");
-        headers.add("X-Stainless-Lang", "python");
-        headers.add("Accept", "application/json");
+        Map<String, List<String>> headers = new java.util.LinkedHashMap<>();
+        headers.put("traceparent", List.of("00-abc-def-01"));
+        headers.put("User-Agent", List.of("AsyncAzureOpenAI/Python"));
+        headers.put("X-Stainless-Lang", List.of("python"));
+        headers.put("Accept", List.of("application/json"));
 
-        ProxyContext context = mockRequest(headers);
+        AnalyticsLogContext context = mockHeaders(headers);
 
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
@@ -442,11 +234,11 @@ public class GfLogStoreTest {
     @SneakyThrows
     @Test
     public void testAppendHeadersBlacklistWinsOverAllowlist() {
-        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
-        headers.add("Authorization", "Bearer secret");
-        headers.add("traceparent", "00-abc-def-01");
+        Map<String, List<String>> headers = new java.util.LinkedHashMap<>();
+        headers.put("Authorization", List.of("Bearer secret"));
+        headers.put("traceparent", List.of("00-abc-def-01"));
 
-        ProxyContext context = mockRequest(headers);
+        AnalyticsLogContext context = mockHeaders(headers);
 
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
@@ -459,11 +251,9 @@ public class GfLogStoreTest {
         assertEquals("00-abc-def-01", headerNode.get("traceparent").asText());
     }
 
-    private static ProxyContext mockRequest(MultiMap headers) {
-        HttpServerRequest request = mock(HttpServerRequest.class);
-        when(request.headers()).thenReturn(headers);
-        ProxyContext context = mock(ProxyContext.class);
-        when(context.getRequest()).thenReturn(request);
+    private static AnalyticsLogContext mockHeaders(Map<String, List<String>> headers) {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRequestHeaders()).thenReturn(headers);
         return context;
     }
 

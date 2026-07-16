@@ -32,7 +32,8 @@ public enum ResourceTypes implements ResourceType {
     ROUTE("routes", true, TimeUnit.DAYS.toMillis(30)),
     GLOBAL_SETTINGS("settings", true, TimeUnit.DAYS.toMillis(30)),
     RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5)),
-    SKILL("skills", false, TimeUnit.MINUTES.toMillis(5));
+    SKILL("skills", false, TimeUnit.MINUTES.toMillis(5)),
+    BACKGROUND_JOB("background_jobs", true, TimeUnit.MINUTES.toMillis(5));
 
     private final String group;
     private final String urlSegment;

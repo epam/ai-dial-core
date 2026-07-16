@@ -48,6 +48,8 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.BackgroundJobService;
+import com.epam.aidial.core.server.service.BackgroundJobService.Settings;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.ExternalServiceService;
@@ -59,6 +61,7 @@ import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.PublicationUtil;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.ResponseMappingService;
+import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.SecuredResourceService;
 import com.epam.aidial.core.server.service.ShareService;
@@ -305,8 +308,8 @@ public class AiDial {
             Duration clientChannelTtl = Duration.ofMillis(resourceServiceSettings.getResourceTypesExpiration().get(ResourceTypes.CLIENT_CHANNEL.name()));
             ClientChannelService clientChannelService = new ClientChannelService(lockService, redis, taskExecutor, clock, storage.getPrefix(), clientChannelTtl);
 
-            ResponseMappingService responseMappingService = new ResponseMappingService(generator, resourceService);
-            responseMappingService.init(vertx, taskExecutor);
+            ResponseMappingService responseMappingService = new ResponseMappingService(vertx, generator, resourceService);
+            responseMappingService.init(taskExecutor);
 
             ComplexResourceService complexResourceService = new ComplexResourceService(
                     resourceService, lockService, shareService, invitationService, storage);
@@ -314,6 +317,15 @@ public class AiDial {
                     settings("complexResourceSweep").toBuffer(), ComplexResourceSweepService.Settings.class);
             complexResourceSweepService = new ComplexResourceSweepService(timerService, storage, redis, lockService,
                     complexResourceService, encryptionService, complexResourceSweepSettings);
+
+            ResponsesApiClient responsesApiClient = new ResponsesApiClient(client, clientOptions);
+            Settings backgroundJobSettings =
+                    Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);
+            BackgroundJobService backgroundJobService = new BackgroundJobService(
+                    vertx, redis, storage.getPrefix(),
+                    responseMappingService, resourceService, taskExecutor, configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
+                    upstreamRouteProvider, responsesApiClient, logStore, credentialEncryptionService, backgroundJobSettings);
+            backgroundJobService.init();
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, configStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
@@ -324,7 +336,7 @@ public class AiDial {
                     toolSetService, securedResourceService, toolSetRepairService, applicationSchemaService, authorizationHeaderProvider,
                     resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
-                    responseMappingService, complexResourceService, generator);
+                    responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

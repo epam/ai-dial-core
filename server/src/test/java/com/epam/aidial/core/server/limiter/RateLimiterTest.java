@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
@@ -20,7 +21,6 @@ import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
 import io.vertx.core.Future;
-import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -204,7 +204,7 @@ public class RateLimiterTest {
         tokenUsage.setTotalTokens(90);
         proxyContext.setTokenUsage(tokenUsage);
 
-        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext, model);
+        Future<Void> increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext), proxyContext.getTokenUsage(), null, null);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -214,7 +214,7 @@ public class RateLimiterTest {
         assertNotNull(checkLimitFuture.result());
         assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
-        increaseLimitFuture = rateLimiter.increase(proxyContext, model);
+        increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext), proxyContext.getTokenUsage(), null, null);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -264,7 +264,7 @@ public class RateLimiterTest {
         assertNotNull(resultFuture.result());
         assertEquals(HttpStatus.OK, resultFuture.result().status());
 
-        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext, model);
+        Future<Void> increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext), proxyContext.getTokenUsage(), null, null);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -286,7 +286,7 @@ public class RateLimiterTest {
         assertEquals(10000000, limitStats.getMonthTokenStats().getTotal());
         assertEquals(90, limitStats.getMonthTokenStats().getUsed());
 
-        increaseLimitFuture = rateLimiter.increase(proxyContext, model);
+        increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext), proxyContext.getTokenUsage(), null, null);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -344,7 +344,7 @@ public class RateLimiterTest {
         tokenUsage.setTotalTokens(150);
         proxyContext.setTokenUsage(tokenUsage);
 
-        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext, model);
+        Future<Void> increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext), proxyContext.getTokenUsage(), null, null);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -354,7 +354,7 @@ public class RateLimiterTest {
         assertNotNull(checkLimitFuture.result());
         assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
-        increaseLimitFuture = rateLimiter.increase(proxyContext, model);
+        increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext), proxyContext.getTokenUsage(), null, null);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -388,7 +388,7 @@ public class RateLimiterTest {
         tokenUsage.setTotalTokens(90);
         proxyContext.setTokenUsage(tokenUsage);
 
-        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext, model);
+        Future<Void> increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext), proxyContext.getTokenUsage(), null, null);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -398,7 +398,7 @@ public class RateLimiterTest {
         assertNotNull(checkLimitFuture.result());
         assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
-        increaseLimitFuture = rateLimiter.increase(proxyContext, model);
+        increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext), proxyContext.getTokenUsage(), null, null);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -446,7 +446,7 @@ public class RateLimiterTest {
         tokenUsage.setTotalTokens(150);
         proxyContext.setTokenUsage(tokenUsage);
 
-        Future<Void> increaseLimitFuture = rateLimiter.increase(proxyContext, model);
+        Future<Void> increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext), proxyContext.getTokenUsage(), null, null);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 
@@ -456,7 +456,7 @@ public class RateLimiterTest {
         assertNotNull(checkLimitFuture.result());
         assertEquals(HttpStatus.OK, checkLimitFuture.result().status());
 
-        increaseLimitFuture = rateLimiter.increase(proxyContext, model);
+        increaseLimitFuture = rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(proxyContext), proxyContext.getTokenUsage(), null, null);
         assertNotNull(increaseLimitFuture);
         assertNull(increaseLimitFuture.cause());
 

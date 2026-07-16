@@ -77,6 +77,10 @@ public class ApiKeyStore {
      * </p>
      */
     public void assignPerRequestApiKey(ApiKeyData data) {
+        assignPerRequestApiKey(data, ttl);
+    }
+
+    public void assignPerRequestApiKey(ApiKeyData data, Duration customTtl) {
         String perRequestKey = generateKey();
         data.setPerRequestKey(perRequestKey);
         String json = ProxyUtil.convertToString(data);
@@ -85,7 +89,7 @@ public class ApiKeyStore {
         if (!bucket.setIfAbsent(json)) {
             throw new IllegalStateException(String.format("API key %s already exists in Redis storage", perRequestKey));
         }
-        bucket.expire(ttl);
+        bucket.expire(customTtl);
     }
 
     public void updatePerRequestApiKey(String key, Function<String, String> fn) {

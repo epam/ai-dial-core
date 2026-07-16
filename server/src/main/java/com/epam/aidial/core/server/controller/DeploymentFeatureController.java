@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -137,7 +138,7 @@ public class DeploymentFeatureController {
                 respond(HttpStatus.FORBIDDEN, "Forbidden deployment");
             } else {
                 respond(HttpStatus.OK);
-                proxy.getLogStore().save(context);
+                proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
             }
             return;
         }
@@ -299,7 +300,7 @@ public class DeploymentFeatureController {
     private void handleResponse(BufferingReadStream responseStream) {
         Buffer proxyResponseBody = responseStream.getContent();
         context.setResponseBody(proxyResponseBody);
-        proxy.getLogStore().save(context);
+        proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
         finalizeRequest();
     }
 
