@@ -20,10 +20,10 @@ jobs:
   validate_openai_spec_generation:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           lfs: true
-      - uses: epam/ai-dial-ci/actions/java_prepare@4.6.0
+      - uses: epam/ai-dial-ci/actions/java_prepare@4.7.2
         with:
           java-version: 21
           java-distribution: temurin
