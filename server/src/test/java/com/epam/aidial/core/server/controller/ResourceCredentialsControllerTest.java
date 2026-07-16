@@ -15,7 +15,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.DeploymentService;
-import com.epam.aidial.core.server.service.ToolSetService;
+import com.epam.aidial.core.server.service.SecuredResourceService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -75,12 +75,11 @@ class ResourceCredentialsControllerTest {
     @BeforeEach
     void setup() {
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor);
-        when(proxy.getResourceCredentialsService()).thenReturn(resourceCredentialsService);
         when(proxy.getAccessService()).thenReturn(accessService);
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
         when(proxy.getDeploymentService()).thenReturn(deploymentService);
         when(proxy.getResourceAuthSettingsEncryptionService()).thenReturn(resourceAuthSettingsEncryptionService);
-        when(proxy.getToolSetService()).thenReturn(mock(ToolSetService.class));
+        when(proxy.getSecuredResourceService()).thenReturn(new SecuredResourceService(resourceCredentialsService));
 
         doAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);

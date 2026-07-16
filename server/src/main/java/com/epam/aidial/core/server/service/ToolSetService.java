@@ -13,29 +13,17 @@ import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.CredentialsDescriptorFactory;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
-import com.epam.aidial.core.server.util.McpClientUtils;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
-import com.epam.aidial.core.storage.http.HttpException;
-import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
-import io.modelcontextprotocol.client.McpClient;
-import io.modelcontextprotocol.client.McpSyncClient;
-import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
-import io.modelcontextprotocol.client.transport.McpHttpClientTransportAuthorizationException;
-import io.modelcontextprotocol.spec.McpError;
-import io.modelcontextprotocol.spec.McpSchema;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
-import java.time.Duration;
 import java.util.Map;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
@@ -43,9 +31,6 @@ import javax.annotation.Nullable;
 @Slf4j
 @AllArgsConstructor
 public class ToolSetService {
-
-    // deliberately not the client idleTimeout (5 min in production) — sign-in is interactive
-    private static final Duration MCP_PROBE_TIMEOUT = Duration.ofSeconds(20);
 
     private final ResourceService resourceService;
     private final ResourceAuthSettingsService resourceAuthSettingsService;
@@ -219,67 +204,6 @@ public class ToolSetService {
         if (resource.isFolder() || resource.getType() != ResourceTypes.TOOL_SET) {
             throw new IllegalArgumentException("Invalid application url: " + resource.getUrl());
         }
-    }
-
-    /**
-     * Validates an API key before it is stored at sign-in: rejects blank/malformed keys, then probes
-     * the MCP server (initialize + tools/list). Rejects only when the server explicitly refuses the
-     * request (HTTP 401/403 or a JSON-RPC error); connectivity issues are tolerated because the key
-     * may be provisioned before the MCP server is reachable (#1698).
-     */
-    public void validateApiKey(ToolSet toolSet, ResourceAuthSettings authSettings, String apiKey) {
-        if (StringUtils.isBlank(apiKey)) {
-            throw new HttpException(HttpStatus.BAD_REQUEST, "api_key must not be blank");
-        }
-        if (containsIllegalHeaderChars(apiKey)) {
-            throw new HttpException(HttpStatus.BAD_REQUEST, "api_key contains illegal control characters");
-        }
-
-        String endpoint = toolSet.getEndpoint();
-        String apiKeyHeader = authSettings.getApiKeyHeader();
-        if (StringUtils.isBlank(endpoint) || StringUtils.isBlank(apiKeyHeader)) {
-            return;
-        }
-
-        HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
-                .builder(endpoint)
-                .connectTimeout(MCP_PROBE_TIMEOUT)
-                .jsonMapper(McpClientUtils.MCP_JSON_MAPPER)
-                .httpRequestCustomizer((builder, method, uri, body, transportContext) ->
-                        builder.header(apiKeyHeader, apiKey))
-                .build();
-
-        try (McpSyncClient client = McpClient.sync(transport)
-                .clientInfo(new McpSchema.Implementation("DIAL", "1.0"))
-                .requestTimeout(MCP_PROBE_TIMEOUT)
-                .initializationTimeout(MCP_PROBE_TIMEOUT)
-                .jsonSchemaValidator(McpClientUtils.NOOP_SCHEMA_VALIDATOR)
-                .build()) {
-            client.initialize();
-            client.listTools(null);
-        } catch (Exception e) {
-            McpHttpClientTransportAuthorizationException authError =
-                    ExceptionUtils.throwableOfType(e, McpHttpClientTransportAuthorizationException.class);
-            if (authError != null) {
-                log.warn("API key validation failed for endpoint {}: MCP server responded with status {}",
-                        endpoint, authError.getResponseInfo().statusCode());
-                throw new HttpException(HttpStatus.BAD_REQUEST,
-                        "API key validation failed: MCP server rejected the provided API key");
-            }
-            McpError mcpError = ExceptionUtils.throwableOfType(e, McpError.class);
-            if (mcpError != null) {
-                log.warn("API key validation failed for endpoint {}: MCP server returned an error: {}",
-                        endpoint, mcpError.getMessage());
-                throw new HttpException(HttpStatus.BAD_REQUEST,
-                        "API key validation failed: MCP server rejected the request: " + mcpError.getMessage());
-            }
-            log.warn("Skipping API key validation for endpoint {}: {}", endpoint, e.getMessage());
-        }
-    }
-
-    // java.net.http rejects header values containing control characters other than HTAB
-    private static boolean containsIllegalHeaderChars(String value) {
-        return value.chars().anyMatch(c -> (c < 0x20 && c != '\t') || c == 0x7f);
     }
 
     private void verifyCredentials(ProxyContext context, ResourceDescriptor resource,

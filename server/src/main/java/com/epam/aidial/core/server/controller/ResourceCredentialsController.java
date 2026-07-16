@@ -6,15 +6,11 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.SecuredResource;
-import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
-import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
-import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
 import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
-import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
@@ -24,8 +20,7 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.service.ToolSetService;
-import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
+import com.epam.aidial.core.server.service.SecuredResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.ValidationUtil;
@@ -34,8 +29,6 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.resource.ResourceType;
-import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import jakarta.validation.ConstraintViolationException;
@@ -50,12 +43,11 @@ public class ResourceCredentialsController {
 
     private final ProxyContext context;
     private final AsyncTaskExecutor taskExecutor;
-    private final ResourceCredentialsService resourceCredentialsService;
     private final AccessService accessService;
     private final EncryptionService encryptionService;
     private final DeploymentService deploymentService;
     private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
-    private final ToolSetService toolSetService;
+    private final SecuredResourceService securedResourceService;
 
     public ResourceCredentialsController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -63,9 +55,8 @@ public class ResourceCredentialsController {
         this.accessService = proxy.getAccessService();
         this.encryptionService = proxy.getEncryptionService();
         this.deploymentService = proxy.getDeploymentService();
-        this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.resourceAuthSettingsEncryptionService = proxy.getResourceAuthSettingsEncryptionService();
-        this.toolSetService = proxy.getToolSetService();
+        this.securedResourceService = proxy.getSecuredResourceService();
     }
 
     @ApiOperation(
@@ -102,16 +93,7 @@ public class ResourceCredentialsController {
                                 decryptAuthSettings(encodedResourceUrl, resourceAuthSettings);
                             }
 
-                            if (securedResource instanceof ToolSet toolSet
-                                    && AuthenticationType.API_KEY.equals(resourceSignInRequest.getAuthenticationType())) {
-                                toolSetService.validateApiKey(toolSet, resourceAuthSettings, resourceSignInRequest.getApiKey());
-                            }
-
-                            ResourceType resourceType = resolveResourceType(securedResource);
-                            CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceUrl, context, resourceType);
-                            CredentialsDescriptor credentialsDescriptor = credentialsLocator.getCredentialsDescriptors().get(credentialsLevel);
-                            resourceCredentialsService.addResourceCredentials(credentialsDescriptor, resourceAuthSettings,
-                                    resourceSignInRequest, context.getInitiatorId());
+                            securedResourceService.signIn(context, securedResource, resourceSignInRequest);
                             return true;
                         }
                         throw new ResourceNotFoundException("Resource is not found: " + resourceId);
@@ -159,12 +141,7 @@ public class ResourceCredentialsController {
                         verifyAccess(encodedResourceId, credentialsLevel);
                     }
 
-                    ResourceType resourceType = resolveResourceType(securedResource);
-                    CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceId, context, resourceType);
-                    return resourceCredentialsService.deleteResourceCredentials(
-                            credentialsLocator,
-                            resourceSignOutRequest,
-                            context.getInitiatorId());
+                    return securedResourceService.signOut(context, securedResource, resourceSignOutRequest);
                 }))
                 .onSuccess(removed -> context.respond(HttpStatus.OK, removed))
                 .onFailure(error ->
@@ -212,13 +189,6 @@ public class ResourceCredentialsController {
             throw new IllegalArgumentException("Wrong authentication_type. Expected type: %s, provided: %s"
                     .formatted(resourceAuthenticationType, requestAuthenticationType));
         }
-    }
-
-    private ResourceType resolveResourceType(SecuredResource resource) {
-        if (resource instanceof ToolSet) {
-            return ResourceTypes.TOOL_SET;
-        }
-        throw new IllegalArgumentException("Unsupported secured resource type: " + resource.getClass().getSimpleName());
     }
 
     private void respondError(String message, Throwable error) {
