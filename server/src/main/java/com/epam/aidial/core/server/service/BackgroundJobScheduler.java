@@ -67,11 +67,11 @@ class BackgroundJobScheduler {
         // (integer) 14335
         // ~/redis-cluster-test$ redis-cli -p 7000 CLUSTER KEYSLOT 'background_job_state:{background_jobs:test-prefix}:dial_gpt-5.4-2026-03-05_858f1fa2488f4bb6b893925866c9da76'
         // (integer) 14335
-        // ~/redis-cluster-test$ redis-cli -p 7000 CLUSTER KEYSLOT 'background_job_state:{background_jobs:test-prefix}:dial_gpt-5.6-terra-2026-07-09_29a1981bd72a4bd19a8a35007fdaf1b7'
+        // ~/redis-cluster-test$ redis-cli -p 7000 CLUSTER KEYSLOT 'background_job_state:{background_jobs:test-prefix}:dial_gpt-5.4-2026-03-05_29a1981bd72a4bd19a8a35007fdaf1b7'
         // (integer) 14335
         //
         // With a different prefix, the key is assigned to a different hash slot:
-        // ~/redis-cluster-test$ redis-cli -p 7000 CLUSTER KEYSLOT 'background_job_state:{background_jobs:another-prefix}:dial_gpt-5.6-terra-2026-07-09_29a1981bd72a4bd19a8a35007fdaf1b7'
+        // ~/redis-cluster-test$ redis-cli -p 7000 CLUSTER KEYSLOT 'background_job_state:{background_jobs:another-prefix}:dial_gpt-5.4-2026-03-05_29a1981bd72a4bd19a8a35007fdaf1b7'
         // (integer) 8387
         this.keyTag = "{background_jobs:" + prefix + "}";
         this.settings = settings;
