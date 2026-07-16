@@ -10,17 +10,26 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.http.HttpMethod;
+import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
 import okio.Buffer;
+import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
+import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
+import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -74,6 +83,38 @@ public class ToolSetApiTest extends ResourceBaseTest {
             // MCP server rejects authorization during the initialize handshake
             return new MockResponse().setResponseCode(statusCode);
         };
+    }
+
+    // MCP server rejects the request at the JSON-RPC layer: HTTP 200 with an error object
+    private static TestWebServer.Handler mcpJsonRpcErrorHandler(String errorMessage) {
+        return request -> {
+            if ("GET".equals(request.getMethod())) {
+                return new MockResponse().setResponseCode(405);
+            }
+            String body = request.getBody().readString(StandardCharsets.UTF_8);
+            String id = extractJsonRpcId(body);
+            return new MockResponse()
+                    .setBody("""
+                            {"jsonrpc":"2.0","id":%s,"error":{"code":-32600,"message":"%s"}}
+                            """.formatted(id, errorMessage))
+                    .setHeader("Content-Type", "application/json");
+        };
+    }
+
+    @SneakyThrows
+    private Response sendNoRedirect(HttpMethod method, String path, String body) {
+        try (CloseableHttpClient noRedirectClient = HttpClientBuilder.create()
+                .disableAutomaticRetries()
+                .disableRedirectHandling()
+                .build()) {
+            String uri = "http://127.0.0.1:" + serverPort + path;
+            HttpUriRequest request = new HttpUriRequestBase(method.name(), URI.create(uri));
+            request.setHeader("api-key", "proxyKey1");
+            if (body != null) {
+                request.setEntity(new StringEntity(body));
+            }
+            return noRedirectClient.execute(request, ResourceBaseTest::toResponse);
+        }
     }
 
     private static String extractJsonRpcId(String body) {
@@ -1824,8 +1865,9 @@ public class ToolSetApiTest extends ResourceBaseTest {
     @Test
     void testOauthSignInWithClientSecretBasic() {
         // Snowflake-managed MCP (and any RFC 6749 §2.3.1-strict authorization server) requires
-        // HTTP Basic auth at the token endpoint. DCR advertises this via
-        // token_endpoint_auth_method=client_secret_basic; DIAL must honor it on token exchange.
+        // HTTP Basic auth at the token endpoint; strict servers like Notion MCP additionally
+        // reject a body client_id alongside the Basic header as a second authentication method
+        // (RFC 6749 §2.3, issue #1703). The mock enforces both.
         String tokenResponse = """
                 {
                     "access_token": "test-access-token",
@@ -1841,6 +1883,11 @@ public class ToolSetApiTest extends ResourceBaseTest {
             server.map(HttpMethod.POST, "/token", request -> {
                 authHeaderRef.set(request.getHeader("Authorization"));
                 bodyRef.set(request.getBody().readUtf8());
+                if (bodyRef.get().contains("client_id=")) {
+                    return new MockResponse().setResponseCode(400)
+                            .setBody("{\"error\":\"invalid_request\",\"error_description\":\"Client must not use multiple authentication methods\"}")
+                            .setHeader("Content-Type", "application/json");
+                }
                 String expected = "Basic " + java.util.Base64.getEncoder().encodeToString(
                         "my-client-id:my-client-secret".getBytes(StandardCharsets.UTF_8));
                 if (expected.equals(authHeaderRef.get())) {
@@ -1883,8 +1930,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     "my-client-id:my-client-secret".getBytes(StandardCharsets.UTF_8));
             assertEquals(expectedHeader, authHeaderRef.get(),
                     "client_secret_basic must produce an Authorization: Basic header per RFC 6749 §2.3.1");
-            assertTrue(bodyRef.get().contains("client_id="),
-                    "client_id must appear in body for client_secret_basic (RFC 6749 §3.2.1), got: " + bodyRef.get());
+            assertFalse(bodyRef.get().contains("client_id="),
+                    "client_id must NOT appear in body for client_secret_basic — strict servers reject it (#1703), got: " + bodyRef.get());
             assertFalse(bodyRef.get().contains("client_secret="),
                     "client_secret must NOT appear in body for client_secret_basic (secret stays in the header), got: " + bodyRef.get());
 
@@ -1896,6 +1943,64 @@ public class ToolSetApiTest extends ResourceBaseTest {
             assertEquals("client_secret_basic", authSettings.get("token_endpoint_auth_method").asText());
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    void testOauthSignInWithClientSecretBasic_retriesWithBodyClientId() {
+        // FastMCP's OAuth Proxy (issue #1608) resolves the client by the BODY client_id even in
+        // client_secret_basic mode and fails with invalid_client "Missing client_id" without it.
+        // The spec-pure first attempt fails, and DIAL must retry once with client_id in the body.
+        String tokenResponse = """
+                {
+                    "access_token": "test-access-token",
+                    "refresh_token": "test-refresh-token",
+                    "expires_in": 3600
+                }
+                """;
+        java.util.concurrent.atomic.AtomicInteger tokenCalls = new java.util.concurrent.atomic.AtomicInteger();
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+            server.map(HttpMethod.POST, "/token", request -> {
+                tokenCalls.incrementAndGet();
+                String body = request.getBody().readUtf8();
+                if (!body.contains("client_id=my-client-id")) {
+                    return new MockResponse().setResponseCode(400)
+                            .setBody("{\"error\":\"invalid_client\",\"error_description\":\"Missing client_id\"}")
+                            .setHeader("Content-Type", "application/json");
+                }
+                return new MockResponse().setBody(tokenResponse).setHeader("Content-Type", "application/json");
+            });
+
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset-basic-retry@", null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "client_secret": "my-client-secret",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token",
+                            "token_endpoint_auth_method": "client_secret_basic"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "toolsets/4X25dj1mja51jykqxsXnCH/toolset-basic-retry@",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            verify(response, 200, "true");
+            assertEquals(2, tokenCalls.get(), "expected spec-pure attempt followed by one body-client_id retry");
         }
     }
 
@@ -1954,8 +2059,8 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     "my-client-id:my-client-secret".getBytes(StandardCharsets.UTF_8));
             assertEquals(expectedAuth, authHeaderRef.get(),
                     "null token_endpoint_auth_method must default to client_secret_basic");
-            assertTrue(bodyRef.get().contains("client_id="),
-                    "client_id must be in body when defaulting to basic (RFC 6749 §3.2.1), got: " + bodyRef.get());
+            assertFalse(bodyRef.get().contains("client_id="),
+                    "client_id must NOT be in body when defaulting to basic (#1703), got: " + bodyRef.get());
             assertFalse(bodyRef.get().contains("client_secret="),
                     "client_secret must NOT be in body when defaulting to basic, got: " + bodyRef.get());
         }
@@ -2444,6 +2549,139 @@ public class ToolSetApiTest extends ResourceBaseTest {
             assertEquals(403, resp.status());
             assertTrue(resp.body().contains("Please sign in to the toolset"), resp.body());
         }
+    }
+
+    private static final String API_KEY_TOOLSET_URL = "toolsets/4X25dj1mja51jykqxsXnCH/api-key-toolset@";
+
+    private void createApiKeyToolSet() {
+        Response response = send(HttpMethod.PUT, "/v1/" + API_KEY_TOOLSET_URL, null, """
+                {
+                    "endpoint": "http://localhost:9876",
+                    "transport": "HTTP",
+                    "allowedTools": [],
+                    "auth_settings": {
+                        "authentication_type": "API_KEY",
+                        "api_key_header": "Authorization"
+                    }
+                }
+                """, "authorization", "admin");
+        verifyNotExact(response, 200, "\"url\":\"" + API_KEY_TOOLSET_URL + "\"");
+    }
+
+    private Response signInWithApiKey(String apiKey) {
+        return send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                {
+                    "url": "%s",
+                    "credentialsLevel": "GLOBAL",
+                    "authenticationType": "API_KEY",
+                    "api_key": "%s"
+                }
+                """.formatted(API_KEY_TOOLSET_URL, apiKey), "authorization", "admin");
+    }
+
+    // MCP server rejects the key during sign-in validation -> credentials must not be stored (#1698)
+    @Test
+    void testSignInWithInvalidApiKey() {
+        createApiKeyToolSet();
+
+        try (TestWebServer ignore = new TestWebServer(9876, mcpAuthErrorHandler(401))) {
+            Response response = signInWithApiKey("invalid-key");
+            assertEquals(400, response.status());
+            assertTrue(response.body().contains("MCP server rejected the provided API key"), response.body());
+        }
+
+        Response response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""), response.body());
+    }
+
+    @Test
+    void testSignInWithValidApiKey() {
+        createApiKeyToolSet();
+
+        String mcpToolsListResponse = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 2,
+                   "result": {
+                     "tools": [
+                       {"name": "branch", "description": "Manage branches"}
+                     ]
+                   }
+                 }
+                """;
+        AtomicReference<String> sentApiKey = new AtomicReference<>();
+        TestWebServer.Handler toolsHandler = mcpToolsHandler(mcpToolsListResponse);
+        TestWebServer.Handler handler = request -> {
+            sentApiKey.set(request.getHeader("Authorization"));
+            return toolsHandler.map(request);
+        };
+
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response response = signInWithApiKey("valid-key");
+            verify(response, 200, "true");
+            assertEquals("valid-key", sentApiKey.get());
+        }
+
+        Response response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_IN\""), response.body());
+    }
+
+    // Validation is best-effort: an unreachable MCP server must not block sign-in (#1698)
+    @Test
+    void testSignInWithApiKeyWhenMcpServerUnreachable() {
+        createApiKeyToolSet();
+
+        Response response = signInWithApiKey("some-key");
+        verify(response, 200, "true");
+
+        response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_IN\""), response.body());
+    }
+
+    @Test
+    void testSignInWithBlankApiKey() {
+        createApiKeyToolSet();
+
+        Response response = signInWithApiKey("");
+        assertEquals(400, response.status());
+        assertTrue(response.body().contains("api_key must not be blank"), response.body());
+
+        response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""), response.body());
+    }
+
+    // A key with control characters (e.g. a pasted trailing newline) can never be sent as an HTTP header
+    @Test
+    void testSignInWithApiKeyContainingControlCharacters() {
+        createApiKeyToolSet();
+
+        Response response = signInWithApiKey("key-with-newline\\n");
+        assertEquals(400, response.status());
+        assertTrue(response.body().contains("api_key contains illegal control characters"), response.body());
+
+        response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""), response.body());
+    }
+
+    // MCP servers doing auth at the application layer reject with HTTP 200 + JSON-RPC error, not 401 (#1698)
+    @Test
+    void testSignInWithApiKeyRejectedByJsonRpcError() {
+        createApiKeyToolSet();
+
+        try (TestWebServer ignore = new TestWebServer(9876, mcpJsonRpcErrorHandler("invalid api key"))) {
+            Response response = signInWithApiKey("invalid-key");
+            assertEquals(400, response.status());
+            assertTrue(response.body().contains("MCP server rejected the request"), response.body());
+        }
+
+        Response response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""), response.body());
     }
 
     @Test
