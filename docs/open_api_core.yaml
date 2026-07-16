@@ -1494,6 +1494,83 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/admin/config/file/applications:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/applications
+      operationId: listFileConfigApplications
+      responses:
+        "200":
+          description: List of file-sourced applications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/applications/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/applications/{name}"
+      operationId: getFileConfigApplication
+      parameters:
+      - name: name
+        in: path
+        description: Application name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Model"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/interceptors:
     get:
       tags:
@@ -1549,6 +1626,83 @@ paths:
               schema:
                 allOf:
                 - $ref: "#/components/schemas/Interceptor"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/keys:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/keys
+      operationId: listFileConfigKeys
+      responses:
+        "200":
+          description: List of file-sourced keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/keys/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/keys/{name}"
+      operationId: getFileConfigKey
+      parameters:
+      - name: name
+        in: path
+        description: Key name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Model"
                 - $ref: "#/components/schemas/EntityMetadata"
         "403":
           description: Forbidden
@@ -1934,6 +2088,83 @@ paths:
               schema:
                 allOf:
                 - $ref: "#/components/schemas/GlobalSettings"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/toolsets:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/toolsets
+      operationId: listFileConfigToolsets
+      responses:
+        "200":
+          description: List of file-sourced toolsets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/toolsets/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/toolsets/{name}"
+      operationId: getFileConfigToolset
+      parameters:
+      - name: name
+        in: path
+        description: Toolset name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Model"
                 - $ref: "#/components/schemas/EntityMetadata"
         "403":
           description: Forbidden
