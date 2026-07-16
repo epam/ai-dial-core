@@ -390,13 +390,7 @@ public class ApplicationController {
             data.setUpdatedAt(application.getUpdatedAt());
         }
 
-        Map<String, Route> routes = null;
-        if (application.hasApplicationTypeSchemaId()) {
-            routes = applicationSchemaService.getRoutes(application);
-        }
-        if (routes == null) {
-            routes = application.getRoutes();
-        }
+        Map<String, Route> routes = application.getRoutes();
         if (!hasWriteAccess(application) && routes != null) {
             routes = clearUpstreams(routes);
         }

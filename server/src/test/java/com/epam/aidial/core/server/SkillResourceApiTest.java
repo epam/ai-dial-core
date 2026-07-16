@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
@@ -498,6 +499,56 @@ public class SkillResourceApiTest extends ResourceBaseTest {
         assertEquals(400, downloadSkill("/as-folder").status());
         // trailing-slash GET -> 400
         assertEquals(400, send(HttpMethod.GET, "/v2/skills/" + bucket + "/as-folder/", null, "").status());
+    }
+
+    @Test
+    void testOwnerAccessAndDenialForOtherUser() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        // owner (default user) can create and read the skill by bucket-location match, no marker walk needed
+        Response created = uploadSkill("/private-skill", files);
+        verify(created, 200);
+        assertEquals(200, downloadSkill("/private-skill").status());
+
+        // another user has no access: whole-resource, single-file and metadata ops are all forbidden, not merely "not found"
+        assertEquals(403, downloadSkill("/private-skill", "Api-key", "proxyKey2").status());
+        assertEquals(403, getSkillFile("/private-skill", "SKILL.md", "Api-key", "proxyKey2").status());
+        verify(listMetadata("private-skill", "Api-key", "proxyKey2"), 403);
+        verify(uploadSkill("/private-skill", files, "Api-key", "proxyKey2"), 403);
+        verify(putSkillFile("/private-skill", "a.txt", "x".getBytes(StandardCharsets.UTF_8), "Api-key", "proxyKey2"), 403);
+        verify(deleteSkill("/private-skill", "Api-key", "proxyKey2"), 403);
+    }
+
+    @Test
+    void testFolderShareInheritsFileAccess() {
+        Map<String, byte[]> files = new LinkedHashMap<>();
+        files.put("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        files.put("scripts/run.sh", "echo hi".getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/shared-group/skill-a", files), 200);
+
+        // before sharing, the other user has no access
+        assertEquals(403, downloadSkill("/shared-group/skill-a", "Api-key", "proxyKey2").status());
+
+        // share the grouping folder (not the skill itself)
+        Response share = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    { "url": "skills/%s/shared-group/" }
+                  ]
+                }
+                """.formatted(bucket));
+        verify(share, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(share.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        verify(send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2"), 200);
+
+        // access to the skill, to a file beneath it, and to the folder's metadata listing is now inherited
+        // from the folder share, via the same recursive parent-permission lookup used for v1 resources
+        assertEquals(200, downloadSkill("/shared-group/skill-a", "Api-key", "proxyKey2").status());
+        assertEquals("echo hi", new String(
+                getSkillFile("/shared-group/skill-a", "scripts/run.sh", "Api-key", "proxyKey2").body(), StandardCharsets.UTF_8));
+        verify(listMetadata("shared-group", "Api-key", "proxyKey2"), 200);
     }
 
     private Response listMetadata(String relativePath, String... headers) {

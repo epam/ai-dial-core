@@ -1534,20 +1534,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                      "invalid" : true,
                      "application_type_schema_id" : "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
                      "viewer_url" : "https://mydial.somewhere.com/custom_application_schemas/viewer",
-                     "routes" : {
-                       "data_sync" : {
-                         "rewritePath" : true,
-                         "paths" : [ "/v1/index/search" ],
-                         "methods" : [ "POST" ],
-                         "maxRetryAttempts" : 1,
-                         "order" : 5,
-                         "permissions" : [ "WRITE" ],
-                         "attachmentPaths" : {
-                           "requestBody" : [ ],
-                           "responseBody" : [ ]
-                         }
-                       }
-                     }
+                     "routes" : { }
                 }
                 """);
     }

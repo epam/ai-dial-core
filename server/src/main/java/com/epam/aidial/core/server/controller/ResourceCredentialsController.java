@@ -7,13 +7,10 @@ import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.SecuredResource;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
-import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
-import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
 import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
-import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
@@ -23,7 +20,7 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
+import com.epam.aidial.core.server.service.SecuredResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.ValidationUtil;
@@ -32,7 +29,6 @@ import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import jakarta.validation.ConstraintViolationException;
@@ -47,11 +43,11 @@ public class ResourceCredentialsController {
 
     private final ProxyContext context;
     private final AsyncTaskExecutor taskExecutor;
-    private final ResourceCredentialsService resourceCredentialsService;
     private final AccessService accessService;
     private final EncryptionService encryptionService;
     private final DeploymentService deploymentService;
     private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
+    private final SecuredResourceService securedResourceService;
 
     public ResourceCredentialsController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -59,8 +55,8 @@ public class ResourceCredentialsController {
         this.accessService = proxy.getAccessService();
         this.encryptionService = proxy.getEncryptionService();
         this.deploymentService = proxy.getDeploymentService();
-        this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.resourceAuthSettingsEncryptionService = proxy.getResourceAuthSettingsEncryptionService();
+        this.securedResourceService = proxy.getSecuredResourceService();
     }
 
     @ApiOperation(
@@ -96,11 +92,8 @@ public class ResourceCredentialsController {
                                 verifyAccess(encodedResourceUrl, credentialsLevel);
                                 decryptAuthSettings(encodedResourceUrl, resourceAuthSettings);
                             }
-                            
-                            CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceUrl, context, ResourceTypes.TOOL_SET);
-                            CredentialsDescriptor credentialsDescriptor = credentialsLocator.getCredentialsDescriptors().get(resourceSignInRequest.getCredentialsLevel());
-                            resourceCredentialsService.addResourceCredentials(credentialsDescriptor, resourceAuthSettings,
-                                    resourceSignInRequest, context.getInitiatorId());
+
+                            securedResourceService.signIn(context, securedResource, resourceSignInRequest);
                             return true;
                         }
                         throw new ResourceNotFoundException("Resource is not found: " + resourceId);
@@ -137,23 +130,18 @@ public class ResourceCredentialsController {
                     ValidationUtil.validate(resourceSignOutRequest);
 
                     Deployment deployment = deploymentService.findDeployment(context, resourceId);
-                    if (deployment instanceof SecuredResource securedResource) {
-                        ResourceAuthSettings resourceAuthSettings = securedResource.getAuthSettings();
-                        validateAuthType(resourceAuthSettings.getAuthenticationType(), resourceSignOutRequest.getAuthenticationType());
-                        if (context.getConfig().isDeploymentExists(encodedResourceId)) {
-                            verifyAccess(securedResource, credentialsLevel);
-                        } else {
-                            verifyAccess(encodedResourceId, credentialsLevel);
-                        }
-                    } else {
+                    if (!(deployment instanceof SecuredResource securedResource)) {
                         throw new ResourceNotFoundException("Resource is not found: " + encodedResourceId);
                     }
+                    ResourceAuthSettings resourceAuthSettings = securedResource.getAuthSettings();
+                    validateAuthType(resourceAuthSettings.getAuthenticationType(), resourceSignOutRequest.getAuthenticationType());
+                    if (context.getConfig().isDeploymentExists(encodedResourceId)) {
+                        verifyAccess(securedResource, credentialsLevel);
+                    } else {
+                        verifyAccess(encodedResourceId, credentialsLevel);
+                    }
 
-                    CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(encodedResourceId, context, ResourceTypes.TOOL_SET);
-                    return resourceCredentialsService.deleteResourceCredentials(
-                            credentialsLocator,
-                            resourceSignOutRequest,
-                            context.getInitiatorId());
+                    return securedResourceService.signOut(context, securedResource, resourceSignOutRequest);
                 }))
                 .onSuccess(removed -> context.respond(HttpStatus.OK, removed))
                 .onFailure(error ->

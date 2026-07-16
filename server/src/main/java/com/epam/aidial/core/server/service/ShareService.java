@@ -75,7 +75,8 @@ public class ShareService {
             ResourceTypes.FILE, new ShareResourceLimit(Integer.MAX_VALUE, 72),
             ResourceTypes.PROMPT, new ShareResourceLimit(Integer.MAX_VALUE, 72),
             ResourceTypes.TOOL_SET, new ShareResourceLimit(10, 72),
-            ResourceTypes.CREDENTIALS, new ShareResourceLimit(10, 72));
+            ResourceTypes.CREDENTIALS, new ShareResourceLimit(10, 72),
+            ResourceTypes.SKILL, new ShareResourceLimit(10, 72));
 
     private static final Set<ResourceType> CREDS_SHARABLE_RESOURCE_TYPES = Set.of(ResourceTypes.TOOL_SET);
 
