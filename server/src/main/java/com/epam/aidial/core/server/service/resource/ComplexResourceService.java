@@ -687,7 +687,11 @@ public class ComplexResourceService {
      */
     boolean reclaimDeletingResource(ResourceDescriptor resource, long gracePeriodMs) {
         ResourceDescriptor marker = markerDescriptor(resource);
-        try (LockService.Lock ignore = resourceService.lockResource(marker)) {
+        try (LockService.Lock lock = resourceService.tryLockResource(marker)) {
+            if (lock == null) {
+                log.warn("Lock is not acquired to delete inactive resource {}", resource.getDecodedUrl());
+                return false;
+            }
             FolderResourceMarker current = readMarker(marker, false);
             if (current == null || !STATE_DELETING.equals(current.getState())) {
                 return false;
@@ -714,7 +718,10 @@ public class ComplexResourceService {
      */
     boolean gcObsoleteVersions(ResourceDescriptor resource, long gracePeriodMs) {
         ResourceDescriptor marker = markerDescriptor(resource);
-        try (LockService.Lock ignore = resourceService.lockResource(marker)) {
+        try (LockService.Lock lock = resourceService.tryLockResource(marker)) {
+            if (lock == null) {
+                return false;
+            }
             FolderResourceMarker current = readMarker(marker, false);
             if (!isActive(current)) {
                 return false;
