@@ -6,7 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.service.AdminManagedFieldsWrite;
+import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -981,7 +981,7 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         app.setEndpoint("http://localhost:7001/v1/x");
         app.setAppIdentity(SCHEDULER_KEY_HASH);
         app.setAllowUserExternalServices(true);
-        applicationService.putApplication(source, EtagHeader.ANY, null, app, false, AdminManagedFieldsWrite.AUTHORITATIVE);
+        applicationService.putApplication(source, EtagHeader.ANY, null, app, false, AdminManagedFieldsWriteMode.AUTHORITATIVE);
         Application stored = applicationService.getApplication(source).getValue();
         assertEquals(SCHEDULER_KEY_HASH, stored.getAppIdentity());
         assertTrue(stored.isAllowUserExternalServices());
@@ -1004,13 +1004,13 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         app.setEndpoint("http://localhost:7001/v1/x");
         app.setAppIdentity(SCHEDULER_KEY_HASH);
         app.setAllowUserExternalServices(true);
-        applicationService.putApplication(source, EtagHeader.ANY, null, app, false, AdminManagedFieldsWrite.AUTHORITATIVE);
+        applicationService.putApplication(source, EtagHeader.ANY, null, app, false, AdminManagedFieldsWriteMode.AUTHORITATIVE);
 
         ResourceDescriptor destination = ResourceDescriptorFactory.fromPublicUrl("applications/public/gov-inherit-dst");
         Application dest = new Application();
         dest.setEndpoint("http://localhost:7001/v1/y");
         dest.setAppIdentity("destination-granted-identity");
-        applicationService.putApplication(destination, EtagHeader.ANY, null, dest, false, AdminManagedFieldsWrite.AUTHORITATIVE);
+        applicationService.putApplication(destination, EtagHeader.ANY, null, dest, false, AdminManagedFieldsWriteMode.AUTHORITATIVE);
 
         applicationService.copyApplication(source, destination, null, true, copy -> { });
 

@@ -2,7 +2,7 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.service.AdminManagedFieldsWrite;
+import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.util.EtagHeader;
@@ -48,11 +48,11 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
         Application app1 = new Application();
         app1.setEndpoint("http://localhost:17323/app1");
         applicationService.putApplication(ResourceDescriptorFactory.fromPublicUrl("applications/public/app1"),
-                EtagHeader.ANY, null, app1, false, AdminManagedFieldsWrite.INHERIT_ONLY);
+                EtagHeader.ANY, null, app1, false, AdminManagedFieldsWriteMode.INHERIT_ONLY);
         Application app2 = new Application();
         app2.setEndpoint("http://localhost:17323/app2");
         applicationService.putApplication(ResourceDescriptorFactory.fromPublicUrl("applications/public/app2"),
-                EtagHeader.ANY, null, app2, false, AdminManagedFieldsWrite.INHERIT_ONLY);
+                EtagHeader.ANY, null, app2, false, AdminManagedFieldsWriteMode.INHERIT_ONLY);
 
         try (TestWebServer server = new TestWebServer(17323)) {
             MutableObject<String> readFileUrl = new MutableObject<>();

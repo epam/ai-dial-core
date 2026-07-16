@@ -20,7 +20,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
 import com.epam.aidial.core.server.data.Prompt;
 import com.epam.aidial.core.server.security.AccessService;
-import com.epam.aidial.core.server.service.AdminManagedFieldsWrite;
+import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -777,18 +777,12 @@ public class ResourceController extends AccessControlBaseController {
                         ProxyUtil.hasTopLevelField(bodyJson, "external_services", "externalServices")
                                 ? ExternalServicesWriteMode.OVERRIDE
                                 : ExternalServicesWriteMode.PRESERVE_IF_OMITTED;
-                // Admin writes to public/ are authoritative for the admin-managed governance fields, but only
-                // for fields present in the body — an omitted field inherits, so a read-modify-write client
-                // can't wipe a grant, while present-as-null explicitly clears it.
-                AdminManagedFieldsWrite adminManagedFieldsWrite = adminPublicWrite
-                        ? new AdminManagedFieldsWrite(
-                                ProxyUtil.hasTopLevelField(bodyJson, "app_identity", "appIdentity"),
-                                ProxyUtil.hasTopLevelField(bodyJson, "allow_user_external_services", "allowUserExternalServices"))
-                        : AdminManagedFieldsWrite.INHERIT_ONLY;
+                AdminManagedFieldsWriteMode adminManagedFieldsWriteMode =
+                        AdminManagedFieldsWriteMode.of(adminPublicWrite, bodyJson);
                 return taskExecutor.submit(() -> {
                     validateCustomApplication(application);
                     return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite,
-                            adminManagedFieldsWrite, externalServicesWriteMode).getKey();
+                            adminManagedFieldsWriteMode, externalServicesWriteMode).getKey();
                 });
             });
         } else if (descriptor.getType() == ResourceTypes.TOOL_SET) {
