@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -83,6 +84,22 @@ public class ToolSetApiTest extends ResourceBaseTest {
             }
             // MCP server rejects authorization during the initialize handshake
             return new MockResponse().setResponseCode(statusCode);
+        };
+    }
+
+    // MCP server rejects the request at the JSON-RPC layer: HTTP 200 with an error object
+    private static TestWebServer.Handler mcpJsonRpcErrorHandler(String errorMessage) {
+        return request -> {
+            if ("GET".equals(request.getMethod())) {
+                return new MockResponse().setResponseCode(405);
+            }
+            String body = request.getBody().readString(StandardCharsets.UTF_8);
+            String id = extractJsonRpcId(body);
+            return new MockResponse()
+                    .setBody("""
+                            {"jsonrpc":"2.0","id":%s,"error":{"code":-32600,"message":"%s"}}
+                            """.formatted(id, errorMessage))
+                    .setHeader("Content-Type", "application/json");
         };
     }
 
@@ -2669,6 +2686,139 @@ public class ToolSetApiTest extends ResourceBaseTest {
             assertEquals(403, resp.status());
             assertTrue(resp.body().contains("Please sign in to the toolset"), resp.body());
         }
+    }
+
+    private static final String API_KEY_TOOLSET_URL = "toolsets/4X25dj1mja51jykqxsXnCH/api-key-toolset@";
+
+    private void createApiKeyToolSet() {
+        Response response = send(HttpMethod.PUT, "/v1/" + API_KEY_TOOLSET_URL, null, """
+                {
+                    "endpoint": "http://localhost:9876",
+                    "transport": "HTTP",
+                    "allowedTools": [],
+                    "auth_settings": {
+                        "authentication_type": "API_KEY",
+                        "api_key_header": "Authorization"
+                    }
+                }
+                """, "authorization", "admin");
+        verifyNotExact(response, 200, "\"url\":\"" + API_KEY_TOOLSET_URL + "\"");
+    }
+
+    private Response signInWithApiKey(String apiKey) {
+        return send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                {
+                    "url": "%s",
+                    "credentialsLevel": "GLOBAL",
+                    "authenticationType": "API_KEY",
+                    "api_key": "%s"
+                }
+                """.formatted(API_KEY_TOOLSET_URL, apiKey), "authorization", "admin");
+    }
+
+    // MCP server rejects the key during sign-in validation -> credentials must not be stored (#1698)
+    @Test
+    void testSignInWithInvalidApiKey() {
+        createApiKeyToolSet();
+
+        try (TestWebServer ignore = new TestWebServer(9876, mcpAuthErrorHandler(401))) {
+            Response response = signInWithApiKey("invalid-key");
+            assertEquals(400, response.status());
+            assertTrue(response.body().contains("MCP server rejected the provided API key"), response.body());
+        }
+
+        Response response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""), response.body());
+    }
+
+    @Test
+    void testSignInWithValidApiKey() {
+        createApiKeyToolSet();
+
+        String mcpToolsListResponse = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 2,
+                   "result": {
+                     "tools": [
+                       {"name": "branch", "description": "Manage branches"}
+                     ]
+                   }
+                 }
+                """;
+        AtomicReference<String> sentApiKey = new AtomicReference<>();
+        TestWebServer.Handler toolsHandler = mcpToolsHandler(mcpToolsListResponse);
+        TestWebServer.Handler handler = request -> {
+            sentApiKey.set(request.getHeader("Authorization"));
+            return toolsHandler.map(request);
+        };
+
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response response = signInWithApiKey("valid-key");
+            verify(response, 200, "true");
+            assertEquals("valid-key", sentApiKey.get());
+        }
+
+        Response response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_IN\""), response.body());
+    }
+
+    // Validation is best-effort: an unreachable MCP server must not block sign-in (#1698)
+    @Test
+    void testSignInWithApiKeyWhenMcpServerUnreachable() {
+        createApiKeyToolSet();
+
+        Response response = signInWithApiKey("some-key");
+        verify(response, 200, "true");
+
+        response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_IN\""), response.body());
+    }
+
+    @Test
+    void testSignInWithBlankApiKey() {
+        createApiKeyToolSet();
+
+        Response response = signInWithApiKey("");
+        assertEquals(400, response.status());
+        assertTrue(response.body().contains("api_key must not be blank"), response.body());
+
+        response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""), response.body());
+    }
+
+    // A key with control characters (e.g. a pasted trailing newline) can never be sent as an HTTP header
+    @Test
+    void testSignInWithApiKeyContainingControlCharacters() {
+        createApiKeyToolSet();
+
+        Response response = signInWithApiKey("key-with-newline\\n");
+        assertEquals(400, response.status());
+        assertTrue(response.body().contains("api_key contains illegal control characters"), response.body());
+
+        response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""), response.body());
+    }
+
+    // MCP servers doing auth at the application layer reject with HTTP 200 + JSON-RPC error, not 401 (#1698)
+    @Test
+    void testSignInWithApiKeyRejectedByJsonRpcError() {
+        createApiKeyToolSet();
+
+        try (TestWebServer ignore = new TestWebServer(9876, mcpJsonRpcErrorHandler("invalid api key"))) {
+            Response response = signInWithApiKey("invalid-key");
+            assertEquals(400, response.status());
+            assertTrue(response.body().contains("MCP server rejected the request"), response.body());
+        }
+
+        Response response = send(HttpMethod.GET, "/openai/toolsets/" + API_KEY_TOOLSET_URL, null, null, "authorization", "admin");
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("\"global_auth_status\":\"SIGNED_OUT\""), response.body());
     }
 
     @Test

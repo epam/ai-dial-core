@@ -14,7 +14,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event.registry_package.package_version.container_metadata.tag.name == 'development' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'development')
-    uses: epam/ai-dial-ci/.github/workflows/deploy-development.yml@4.7.0
+    uses: epam/ai-dial-ci/.github/workflows/deploy-development.yml@4.7.2
     with:
       gitlab-project-id: "2966"
     secrets:
