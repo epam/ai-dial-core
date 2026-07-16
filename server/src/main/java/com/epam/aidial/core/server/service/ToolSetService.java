@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.CredentialsLevel;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;

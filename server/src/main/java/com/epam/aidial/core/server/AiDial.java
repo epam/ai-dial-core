@@ -60,6 +60,7 @@ import com.epam.aidial.core.server.service.PublicationUtil;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.service.RuleService;
+import com.epam.aidial.core.server.service.SecuredResourceService;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.service.ToolSetRepairService;
 import com.epam.aidial.core.server.service.ToolSetService;
@@ -254,6 +255,7 @@ public class AiDial {
                     encryptionService, resourceAuthSettingsEncryptionService);
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
                     resourceAuthSettingsEncryptionService, resourceCredentialsService);
+            SecuredResourceService securedResourceService = new SecuredResourceService(resourceCredentialsService);
             ToolSetRepairService toolSetRepairService = new ToolSetRepairService(resourceService,
                     resourceAuthSettingsEncryptionService, resourceCredentialsService,
                     resourceRegistrationService, resourceAuthSettingsService);
@@ -319,7 +321,8 @@ public class AiDial {
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, externalServiceService, userExternalServiceService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
-                    toolSetService, toolSetRepairService, applicationSchemaService, authorizationHeaderProvider, resourceAuthSettingsService, resourceCredentialsService,
+                    toolSetService, securedResourceService, toolSetRepairService, applicationSchemaService, authorizationHeaderProvider,
+                    resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
                     responseMappingService, complexResourceService, generator);
 
