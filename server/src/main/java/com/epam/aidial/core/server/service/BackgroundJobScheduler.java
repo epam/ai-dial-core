@@ -58,6 +58,21 @@ class BackgroundJobScheduler {
             BackgroundJobService.Settings settings,
             Function<String, BackgroundJobService.Poller> jobPollerProvider,
             Consumer<String> jobExpirer) {
+        // The hash tag is used to force the keys to be stored in the same hash slot.
+        // https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/#implemented-subset
+        // The same should work for Valkey: https://valkey.io/topics/cluster-spec/
+        //
+        // For example:
+        // ~/redis-cluster-test$ redis-cli -p 7000 CLUSTER KEYSLOT 'background_job_schedule:{background_jobs:test-prefix}:queue'
+        // (integer) 14335
+        // ~/redis-cluster-test$ redis-cli -p 7000 CLUSTER KEYSLOT 'background_job_state:{background_jobs:test-prefix}:dial_gpt-5.4-2026-03-05_858f1fa2488f4bb6b893925866c9da76'
+        // (integer) 14335
+        // ~/redis-cluster-test$ redis-cli -p 7000 CLUSTER KEYSLOT 'background_job_state:{background_jobs:test-prefix}:dial_gpt-5.6-terra-2026-07-09_29a1981bd72a4bd19a8a35007fdaf1b7'
+        // (integer) 14335
+        //
+        // With a different prefix, the key is assigned to a different hash slot:
+        // ~/redis-cluster-test$ redis-cli -p 7000 CLUSTER KEYSLOT 'background_job_state:{background_jobs:another-prefix}:dial_gpt-5.6-terra-2026-07-09_29a1981bd72a4bd19a8a35007fdaf1b7'
+        // (integer) 8387
         this.keyTag = "{background_jobs:" + prefix + "}";
         this.settings = settings;
         this.vertx = vertx;
