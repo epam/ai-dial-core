@@ -117,6 +117,7 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
                     if (result == null) {
                         context.respond(HttpStatus.NOT_FOUND);
                     } else {
+                        proxy.getAccessService().filterForbidden(context, resource, result);
                         context.respond(HttpStatus.OK, getContentType(), result);
                     }
                 })
