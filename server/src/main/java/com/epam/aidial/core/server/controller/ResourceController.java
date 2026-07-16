@@ -20,7 +20,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Conversation;
 import com.epam.aidial.core.server.data.Prompt;
 import com.epam.aidial.core.server.security.AccessService;
-import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
+import com.epam.aidial.core.server.service.AdminManagedFieldsWrite;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -559,9 +559,10 @@ public class ResourceController extends AccessControlBaseController {
             overlayUserAuthoredServices(descriptor, application);
             enrichExternalServiceStatuses(descriptor, application);
             clearExternalServiceSecrets(application);
-            // app_identity is admin-managed and immutable once set — it never needs to be read back, so strip it
-            // on every read (the write-access branch would otherwise return the raw app, leaking it).
-            application.setAppIdentity(null);
+
+            if (!accessService.hasAdminAccess(context)) {
+                application.setAppIdentity(null);
+            }
             String body = hasWriteAccess
                     ? ProxyUtil.convertToString(application)
                     : ProxyUtil.convertToString(clearApplicationProperties(application));
@@ -774,10 +775,18 @@ public class ResourceController extends AccessControlBaseController {
                         ProxyUtil.hasTopLevelField(pair.getValue(), "external_services", "externalServices")
                                 ? ExternalServicesWriteMode.OVERRIDE
                                 : ExternalServicesWriteMode.PRESERVE_IF_OMITTED;
+                // Admin writes to public/ are authoritative for the admin-managed governance fields, but only
+                // for fields present in the body — an omitted field inherits, so a read-modify-write client
+                // can't wipe a grant, while present-as-null explicitly clears it.
+                AdminManagedFieldsWrite adminManagedFieldsWrite = adminPublicWrite
+                        ? new AdminManagedFieldsWrite(
+                                ProxyUtil.hasTopLevelField(pair.getValue(), "app_identity", "appIdentity"),
+                                ProxyUtil.hasTopLevelField(pair.getValue(), "allow_user_external_services", "allowUserExternalServices"))
+                        : AdminManagedFieldsWrite.INHERIT_ONLY;
                 return taskExecutor.submit(() -> {
                     validateCustomApplication(application);
                     return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite,
-                            AdminManagedFieldsWriteMode.INHERIT_ONLY, externalServicesWriteMode).getKey();
+                            adminManagedFieldsWrite, externalServicesWriteMode).getKey();
                 });
             });
         } else if (descriptor.getType() == ResourceTypes.TOOL_SET) {

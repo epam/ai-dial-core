@@ -2,7 +2,7 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.data.LimitStats;
-import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
+import com.epam.aidial.core.server.service.AdminManagedFieldsWrite;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -176,7 +176,7 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
         app.setEndpoint("http://localhost:4848/app");
         applicationService.putApplication(
                 ResourceDescriptorFactory.fromPublicUrl("applications/public/annot-test-app"),
-                EtagHeader.ANY, null, app, false, AdminManagedFieldsWriteMode.INHERIT_ONLY);
+                EtagHeader.ANY, null, app, false, AdminManagedFieldsWrite.INHERIT_ONLY);
 
         // Shared state between the two mock handlers that run sequentially
         MutableObject<String> citedFileUrl = new MutableObject<>();

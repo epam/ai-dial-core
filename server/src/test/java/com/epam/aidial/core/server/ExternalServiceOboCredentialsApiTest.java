@@ -6,7 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
+import com.epam.aidial.core.server.service.AdminManagedFieldsWrite;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -464,10 +464,11 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         String appUrl = "/v1/applications/public/gov-applied-app";
         Response adminGet = send(HttpMethod.GET, appUrl, null, "", "authorization", "admin");
         JsonNode adminApp = ProxyUtil.MAPPER.readTree(adminGet.body());
-        // allow_user_external_services is readable governance; app_identity is admin-managed and never exposed.
+        // allow_user_external_services is readable governance; app_identity is admin-readable only (it is
+        // verification material, not a credential) so the Admin UI can display and round-trip grants.
         assertTrue(adminApp.get("allow_user_external_services").asBoolean(), adminGet::body);
-        assertFalse(adminGet.body().contains("app_identity"), () -> "app_identity must not be readable: " + adminGet.body());
-        assertFalse(adminGet.body().contains(SCHEDULER_KEY_HASH), () -> "app_identity value must not leak: " + adminGet.body());
+        assertEquals(SCHEDULER_KEY_HASH, adminApp.path("app_identity").asText(),
+                () -> "admin read must expose app_identity: " + adminGet.body());
 
         Response userGet = send(HttpMethod.GET, appUrl, null, "", "api-key", "proxyKey1");
         assertEquals(200, userGet.status(), () -> userGet.body());
@@ -498,7 +499,7 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         assertEquals(200, apply.status(), () -> apply.body());
 
         String appUrl = "/v1/applications/public/gov-edit-app";
-        // A benign edit that omits the (read-hidden) admin-managed fields must NOT wipe them.
+        // A benign edit that omits the admin-managed fields must NOT wipe them (absent = inherit).
         Response edit = send(HttpMethod.PUT, appUrl, null, """
                 {
                     "endpoint": "http://localhost:7001/v1/x",
@@ -531,9 +532,9 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation("dial-config/external-service-obo.json")
-    void testAdminPublicPutStripsAdminManagedFields() throws Exception {
-        // An admin PUT to the public bucket via the resource API is NOT the authoritative governance channel
-        // (that is config file / admin-apply). It may set forwardAuthToken but must strip the admin-managed fields.
+    void testAdminPublicPutSetsAdminManagedFields() throws Exception {
+        // An admin PUT to the public bucket (the Admin UI write path) is authoritative for the admin-managed
+        // fields when they are present in the body — same trust posture as config file / admin-apply.
         String appUrl = "/v1/applications/public/gov-admin-public-app";
         Response create = send(HttpMethod.PUT, appUrl, null, """
                 {
@@ -545,11 +546,88 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
                 """.formatted(SCHEDULER_KEY_HASH), "authorization", "admin");
         assertEquals(200, create.status(), () -> create.body());
 
+        JsonNode adminApp = ProxyUtil.MAPPER.readTree(send(HttpMethod.GET, appUrl, null, "", "authorization", "admin").body());
+        assertEquals(SCHEDULER_KEY_HASH, adminApp.path("app_identity").asText(), adminApp::toString);
+        assertTrue(adminApp.get("allow_user_external_services").asBoolean(), adminApp::toString);
+
+        Response userGet = send(HttpMethod.GET, appUrl, null, "", "api-key", "proxyKey1");
+        assertEquals(200, userGet.status(), () -> userGet.body());
+        assertFalse(userGet.body().contains(SCHEDULER_KEY_HASH),
+                () -> "non-admin must not see app_identity value: " + userGet.body());
+
+        // Functionally prove the PUT-granted identity: author a user service, sign in, retrieve via OBO.
+        String scope = "applications/public/gov-admin-public-app/external_services/myapi";
+        assertEquals(200, send(HttpMethod.PUT, appUrl + "/external-services/myapi", null, USER_SVC_BODY, "authorization", "user").status());
+        verify(send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "USER",
+                    "authentication_type": "API_KEY",
+                    "api_key": "put-grant-secret",
+                    "offline_usage_consent": true
+                }
+                """.formatted(scope), "authorization", "user"), 200, "true");
+        Response obo = obo(scope, "user", SCHEDULER_KEY);
+        assertEquals(200, obo.status(), () -> "PUT-granted app_identity must pass the OBO gate: " + obo.body());
+        assertEquals("put-grant-secret", ProxyUtil.MAPPER.readTree(obo.body()).get("header_value").asText());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testAdminPublicPutExplicitValuesClearGrant() throws Exception {
+        // Present-as-null / present-as-false are explicit admin revocations; the grant must not survive.
+        String appUrl = "/v1/applications/public/gov-clear-app";
+        assertEquals(200, send(HttpMethod.PUT, appUrl, null, """
+                {
+                    "endpoint": "http://localhost:7001/v1/x",
+                    "display_name": "Gov Clear App",
+                    "app_identity": "%s",
+                    "allow_user_external_services": true
+                }
+                """.formatted(SCHEDULER_KEY_HASH), "authorization", "admin").status());
+
+        Response revoke = send(HttpMethod.PUT, appUrl, null, """
+                {
+                    "endpoint": "http://localhost:7001/v1/x",
+                    "display_name": "Gov Clear App",
+                    "app_identity": null,
+                    "allow_user_external_services": false
+                }
+                """, "authorization", "admin");
+        assertEquals(200, revoke.status(), () -> revoke.body());
+
+        JsonNode afterRevoke = ProxyUtil.MAPPER.readTree(send(HttpMethod.GET, appUrl, null, "", "authorization", "admin").body());
+        assertTrue(afterRevoke.path("app_identity").isMissingNode() || afterRevoke.path("app_identity").isNull(),
+                afterRevoke::toString);
+        assertFalse(afterRevoke.path("allow_user_external_services").asBoolean(false), afterRevoke::toString);
+
+        Response obo = obo("applications/public/gov-clear-app/external_services/myapi", "user", SCHEDULER_KEY);
+        assertEquals(403, obo.status(), () -> "revoked app_identity must fail the OBO gate: " + obo.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testAdminUserBucketPutDoesNotSetAdminManagedFields() throws Exception {
+        // Authoritative admin writes are public-bucket only: grants must never exist on user-bucket apps
+        // (the OBO trust model depends on it — user-bucket apps are movable/copyable by their owners).
+        String adminBucket = ProxyUtil.MAPPER.readTree(send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "admin").body())
+                .get("bucket").asText();
+        String appUrl = "/v1/applications/" + adminBucket + "/gov-admin-own-app";
+        Response create = send(HttpMethod.PUT, appUrl, null, """
+                {
+                    "endpoint": "http://localhost:7001/v1/x",
+                    "display_name": "Gov Admin Own App",
+                    "app_identity": "%s",
+                    "allow_user_external_services": true
+                }
+                """.formatted(SCHEDULER_KEY_HASH), "authorization", "admin");
+        assertEquals(200, create.status(), () -> create.body());
+
         Response get = send(HttpMethod.GET, appUrl, null, "", "authorization", "admin");
         assertFalse(get.body().contains(SCHEDULER_KEY_HASH),
-                () -> "admin public PUT must not set app_identity: " + get.body());
+                () -> "user-bucket PUT must not set app_identity even for admins: " + get.body());
         assertFalse(get.body().contains("allow_user_external_services"),
-                () -> "admin public PUT must not set allow_user_external_services: " + get.body());
+                () -> "user-bucket PUT must not set allow_user_external_services even for admins: " + get.body());
     }
 
     @Test
@@ -903,7 +981,7 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         app.setEndpoint("http://localhost:7001/v1/x");
         app.setAppIdentity(SCHEDULER_KEY_HASH);
         app.setAllowUserExternalServices(true);
-        applicationService.putApplication(source, EtagHeader.ANY, null, app, false, AdminManagedFieldsWriteMode.AUTHORITATIVE);
+        applicationService.putApplication(source, EtagHeader.ANY, null, app, false, AdminManagedFieldsWrite.AUTHORITATIVE);
         Application stored = applicationService.getApplication(source).getValue();
         assertEquals(SCHEDULER_KEY_HASH, stored.getAppIdentity());
         assertTrue(stored.isAllowUserExternalServices());
@@ -926,13 +1004,13 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         app.setEndpoint("http://localhost:7001/v1/x");
         app.setAppIdentity(SCHEDULER_KEY_HASH);
         app.setAllowUserExternalServices(true);
-        applicationService.putApplication(source, EtagHeader.ANY, null, app, false, AdminManagedFieldsWriteMode.AUTHORITATIVE);
+        applicationService.putApplication(source, EtagHeader.ANY, null, app, false, AdminManagedFieldsWrite.AUTHORITATIVE);
 
         ResourceDescriptor destination = ResourceDescriptorFactory.fromPublicUrl("applications/public/gov-inherit-dst");
         Application dest = new Application();
         dest.setEndpoint("http://localhost:7001/v1/y");
         dest.setAppIdentity("destination-granted-identity");
-        applicationService.putApplication(destination, EtagHeader.ANY, null, dest, false, AdminManagedFieldsWriteMode.AUTHORITATIVE);
+        applicationService.putApplication(destination, EtagHeader.ANY, null, dest, false, AdminManagedFieldsWrite.AUTHORITATIVE);
 
         applicationService.copyApplication(source, destination, null, true, copy -> { });
 

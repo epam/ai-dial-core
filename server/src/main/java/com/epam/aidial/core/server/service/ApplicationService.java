@@ -167,15 +167,15 @@ public class ApplicationService {
 
     public void putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
                                Application application, boolean preserveForwardAuthToken,
-                               AdminManagedFieldsWriteMode adminManagedFieldsWriteMode) {
+                               AdminManagedFieldsWrite adminManagedFieldsWrite) {
         // In-memory callers (publication copy, admin apply) provide an authoritative application object.
-        putApplication(resource, etag, author, application, preserveForwardAuthToken, adminManagedFieldsWriteMode,
+        putApplication(resource, etag, author, application, preserveForwardAuthToken, adminManagedFieldsWrite,
                 ExternalServicesWriteMode.OVERRIDE);
     }
 
     public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
                                                                    Application application, boolean preserveForwardAuthToken,
-                                                                   AdminManagedFieldsWriteMode adminManagedFieldsWriteMode,
+                                                                   AdminManagedFieldsWrite adminManagedFieldsWrite,
                                                                    ExternalServicesWriteMode externalServicesWriteMode) {
         prepareApplication(resource, application, preserveForwardAuthToken);
 
@@ -184,7 +184,7 @@ public class ApplicationService {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
             verifySchemaRichApp(application, existing);
             prepareApplicationFunction(resource, application, existing);
-            prepareAdminManagedFields(application, existing, adminManagedFieldsWriteMode);
+            prepareAdminManagedFields(application, existing, adminManagedFieldsWrite);
             List<String> externalServices = externalServiceService.processOnWrite(resource, application, existing, externalServicesWriteMode);
             removedExternalServices.setValue(externalServices);
             return ProxyUtil.convertToString(application);
@@ -196,19 +196,14 @@ public class ApplicationService {
         return Pair.of(meta, application);
     }
 
-    // app_identity and allow_user_external_services are admin-managed. AUTHORITATIVE writes (config file /
-    // admin-apply) honor the incoming values; every other path inherits the stored values on update (so a
-    // read-modify-write can't wipe them) and strips on create.
-    private static void prepareAdminManagedFields(Application application, Application existing, AdminManagedFieldsWriteMode mode) {
-        if (mode == AdminManagedFieldsWriteMode.AUTHORITATIVE) {
-            return;
+    // app_identity and allow_user_external_services are admin-managed: a field the policy does not honor is
+    // inherited from the stored value on update (so a read-modify-write can't wipe it) and stripped on create.
+    private static void prepareAdminManagedFields(Application application, Application existing, AdminManagedFieldsWrite write) {
+        if (!write.honorAppIdentity()) {
+            application.setAppIdentity(existing != null ? existing.getAppIdentity() : null);
         }
-        if (existing != null) {
-            application.setAppIdentity(existing.getAppIdentity());
-            application.setAllowUserExternalServices(existing.isAllowUserExternalServices());
-        } else {
-            application.setAppIdentity(null);
-            application.setAllowUserExternalServices(false);
+        if (!write.honorAllowUserExternalServices()) {
+            application.setAllowUserExternalServices(existing != null && existing.isAllowUserExternalServices());
         }
     }
 
@@ -342,7 +337,7 @@ public class ApplicationService {
             // Same governance rule as putApplication: the source's admin-managed fields never travel through a
             // copy/move (a user could self-grant them by copying a public app), while an overwrite keeps whatever
             // an admin granted to the destination itself.
-            prepareAdminManagedFields(application, existing, AdminManagedFieldsWriteMode.INHERIT_ONLY);
+            prepareAdminManagedFields(application, existing, AdminManagedFieldsWrite.INHERIT_ONLY);
 
             verifySchemaRichApp(application, existing);
 

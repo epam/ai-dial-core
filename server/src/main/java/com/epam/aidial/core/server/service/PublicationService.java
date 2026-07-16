@@ -326,7 +326,7 @@ public class PublicationService {
                         Application app = applicationService.getApplicationWithDecryptedSecrets(to).getValue();
                         app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                         applicationService.putApplication(to, EtagHeader.ANY, null, app, false,
-                                AdminManagedFieldsWriteMode.INHERIT_ONLY);
+                                AdminManagedFieldsWrite.INHERIT_ONLY);
                     }
                 }
             }
