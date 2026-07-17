@@ -552,6 +552,77 @@ public class SkillResourceApiTest extends ResourceBaseTest {
         verify(listMetadata("shared-group", "Api-key", "proxyKey2"), 200);
     }
 
+    @Test
+    void testRevokeSharedAccess() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/revoke-skill", files), 200);
+
+        // before sharing, the other user has no access
+        assertEquals(403, downloadSkill("/revoke-skill", "Api-key", "proxyKey2").status());
+
+        // share the skill itself (the whole resource, not just its containing folder)
+        Response share = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    { "url": "skills/%s/revoke-skill" }
+                  ]
+                }
+                """.formatted(bucket));
+        verify(share, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(share.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        verify(send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2"), 200);
+
+        // access is granted after accepting the invitation
+        assertEquals(200, downloadSkill("/revoke-skill", "Api-key", "proxyKey2").status());
+
+        // explicitly revoke the share
+        Response revoke = operationRequest("/v1/ops/resource/share/revoke", """
+                {
+                  "resources": [
+                    { "url": "skills/%s/revoke-skill" }
+                  ]
+                }
+                """.formatted(bucket));
+        verify(revoke, 200);
+
+        // access to the skill and its files is removed after revoke
+        assertEquals(403, downloadSkill("/revoke-skill", "Api-key", "proxyKey2").status());
+        assertEquals(403, getSkillFile("/revoke-skill", "SKILL.md", "Api-key", "proxyKey2").status());
+    }
+
+    @Test
+    void testCleanUpShareAccessWhenOnResourceDeletion() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/delete-cleanup-skill", files), 200);
+
+        Response share = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    { "url": "skills/%s/delete-cleanup-skill" }
+                  ]
+                }
+                """.formatted(bucket));
+        verify(share, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(share.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+
+        verify(send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2"), 200);
+        assertEquals(200, downloadSkill("/delete-cleanup-skill", "Api-key", "proxyKey2").status());
+
+        // delete the shared skill
+        verify(deleteSkill("/delete-cleanup-skill"), 200);
+
+        // recreate a skill at the same path
+        verify(uploadSkill("/delete-cleanup-skill", files), 200);
+
+        // the other user no longer has access: whole-resource delete already cleaned up the share metadata
+        assertEquals(403, downloadSkill("/delete-cleanup-skill", "Api-key", "proxyKey2").status());
+    }
+
     private Response listMetadata(String relativePath, String... headers) {
         return send(HttpMethod.GET, "/v2/metadata/skills/" + bucket + "/" + relativePath, null, "", headers);
     }
