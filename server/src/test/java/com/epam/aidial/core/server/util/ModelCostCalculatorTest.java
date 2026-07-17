@@ -26,13 +26,13 @@ public class ModelCostCalculatorTest {
 
     @Test
     public void testCalculate_DeploymentIsNotModel() {
-        assertNull(ModelCostCalculator.calculate(context));
+        assertNull(ModelCostCalculator.calculate(context.getDeployment(), context.getTokenUsage(), context.getRequestBody(), context.getResponseBody()));
     }
 
     @Test
     public void testCalculate_PricingIsNull() {
         when(context.getDeployment()).thenReturn(new Model());
-        assertNull(ModelCostCalculator.calculate(context));
+        assertNull(ModelCostCalculator.calculate(context.getDeployment(), context.getTokenUsage(), context.getRequestBody(), context.getResponseBody()));
     }
 
     @Test
@@ -42,7 +42,7 @@ public class ModelCostCalculatorTest {
         pricing.setUnit("unknown");
         model.setPricing(pricing);
         when(context.getDeployment()).thenReturn(model);
-        assertNull(ModelCostCalculator.calculate(context));
+        assertNull(ModelCostCalculator.calculate(context.getDeployment(), context.getTokenUsage(), context.getRequestBody(), context.getResponseBody()));
     }
 
     @Test
@@ -60,7 +60,7 @@ public class ModelCostCalculatorTest {
         tokenUsage.setPromptTokens(10);
         when(context.getTokenUsage()).thenReturn(tokenUsage);
 
-        assertEquals(new BigDecimal("6.0"), ModelCostCalculator.calculate(context));
+        assertEquals(new BigDecimal("6.0"), ModelCostCalculator.calculate(context.getDeployment(), context.getTokenUsage(), context.getRequestBody(), context.getResponseBody()));
     }
 
     @Test
@@ -116,7 +116,7 @@ public class ModelCostCalculatorTest {
                 """;
         when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
 
-        assertEquals(new BigDecimal("13.0"), ModelCostCalculator.calculate(context));
+        assertEquals(new BigDecimal("13.0"), ModelCostCalculator.calculate(context.getDeployment(), context.getTokenUsage(), context.getRequestBody(), context.getResponseBody()));
     }
 
     @Test
@@ -173,7 +173,7 @@ public class ModelCostCalculatorTest {
                 """;
         when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
 
-        assertEquals(new BigDecimal("13.0"), ModelCostCalculator.calculate(context));
+        assertEquals(new BigDecimal("13.0"), ModelCostCalculator.calculate(context.getDeployment(), context.getTokenUsage(), context.getRequestBody(), context.getResponseBody()));
     }
 
     @Test
@@ -211,7 +211,7 @@ public class ModelCostCalculatorTest {
                 """;
         when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
 
-        assertEquals(new BigDecimal("1.0"), ModelCostCalculator.calculate(context));
+        assertEquals(new BigDecimal("1.0"), ModelCostCalculator.calculate(context.getDeployment(), context.getTokenUsage(), context.getRequestBody(), context.getResponseBody()));
     }
 
     @Test
@@ -261,7 +261,7 @@ public class ModelCostCalculatorTest {
                 """;
         when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
 
-        assertEquals(new BigDecimal("6.5"), ModelCostCalculator.calculate(context));
+        assertEquals(new BigDecimal("6.5"), ModelCostCalculator.calculate(context.getDeployment(), context.getTokenUsage(), context.getRequestBody(), context.getResponseBody()));
     }
 
     @Test
@@ -311,7 +311,7 @@ public class ModelCostCalculatorTest {
                 """;
         when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
 
-        assertEquals(new BigDecimal("5.5"), ModelCostCalculator.calculate(context));
+        assertEquals(new BigDecimal("5.5"), ModelCostCalculator.calculate(context.getDeployment(), context.getTokenUsage(), context.getRequestBody(), context.getResponseBody()));
     }
 
     @Test
@@ -337,7 +337,7 @@ public class ModelCostCalculatorTest {
                 """;
         when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
 
-        assertEquals(new BigDecimal("0.7"), ModelCostCalculator.calculate(context));
+        assertEquals(new BigDecimal("0.7"), ModelCostCalculator.calculate(context.getDeployment(), context.getTokenUsage(), context.getRequestBody(), context.getResponseBody()));
     }
 
     @Test
@@ -363,6 +363,6 @@ public class ModelCostCalculatorTest {
                 """;
         when(context.getRequestBody()).thenReturn(Buffer.buffer(request));
 
-        assertEquals(new BigDecimal("0.4"), ModelCostCalculator.calculate(context));
+        assertEquals(new BigDecimal("0.4"), ModelCostCalculator.calculate(context.getDeployment(), context.getTokenUsage(), context.getRequestBody(), context.getResponseBody()));
     }
 }

@@ -20,11 +20,13 @@ import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
+import com.epam.aidial.core.server.function.ExtractTerminalResponseFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
@@ -46,8 +48,10 @@ import io.vertx.core.http.HttpServerResponse;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 
 @Slf4j
@@ -112,7 +116,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         proxy.getConsentService().verifyUserConsent(context, deployment);
 
         Features features = deployment.getFeatures();
-        boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
+        boolean isPerRequestKey = !context.isOriginalRequest();
         if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
             throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", model, context.getApiKeyData().getSourceDeployment()));
         }
@@ -184,9 +188,15 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         context.setStreamingRequest(request.isStreaming());
         context.setStoreResponse(request.isStore());
+        context.setBackgroundJob(request.isBackground());
         ProxyUtil.processChain(request, enhancementFunctions);
         // Enhancement functions update the api key, and it should be saved after that
-        proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+        if (request.isBackground()) {
+            Duration jobTtl = Duration.ofMillis(proxy.getBackgroundJobService().getJobTtlMs());
+            proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData, jobTtl);
+        } else {
+            proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
+        }
 
         context.setRequestBody(Buffer.buffer(request.serialize()));
 
@@ -263,10 +273,11 @@ public class ResponsesController extends BaseDeploymentPostController {
             return;
         }
 
+        ExtractTerminalResponseFn extractFn = new ExtractTerminalResponseFn(proxy, context);
+        ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context);
         BufferingReadStream responseStream = createResponseStream(proxyResponse, () -> {
             CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-            ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context);
-            return new ResponsesSseListener(List.of(attachmentsFn, replaceIdFn));
+            return new ResponsesSseListener(List.of(attachmentsFn, replaceIdFn, extractFn));
         });
 
         HttpServerResponse response = context.getResponse();
@@ -277,83 +288,114 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .endOnFailure(false)
                 .endOnSuccess(false)
                 .to(response)
-                .onSuccess(ignored -> handleResponse(responseStream))
+                .onSuccess(ignored -> handleStreamingResponse(responseStream, replaceIdFn.getDialId(), extractFn.getAssembledStreamingResponse()))
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
     private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
         return rewriteResponseId(proxyResponse, body)
-                .compose(rewritten -> {
+                .compose(pair -> {
+                    String dialId = pair.getKey();
+                    Buffer rewritten = pair.getValue();
                     context.setResponseBody(rewritten);
                     context.setResponseBodyTimestamp(System.currentTimeMillis());
                     HttpServerResponse response = context.getResponse();
                     ProxyUtil.copyResponse(response, proxyResponse);
+                    response.setChunked(false);
                     response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
                     response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
-                    return collectTokenUsage(rewritten)
-                            .transform(result -> {
-                                if (result.failed()) {
-                                    log.warn("Failed to collect token usage", result.cause());
-                                }
-                                return collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
-                            })
-                            .transform(result -> {
-                                if (result.failed()) {
-                                    log.warn("Failed to collect attachments from response", result.cause());
-                                }
-                                completeProxyResponse(() -> response.end(rewritten));
-                                return Future.<Void>succeededFuture();
-                            });
+
+                    if (context.isBackgroundJob() && dialId != null) {
+                        return proxy.getBackgroundJobService().saveJob(dialId, context)
+                                .onComplete(result -> {
+                                    if (result.failed()) {
+                                        log.warn("Failed to save background job record", result.cause());
+                                    }
+                                    response.end(rewritten);
+                                });
+                    } else {
+                        return collectTokenUsage(rewritten)
+                                .transform(result -> {
+                                    if (result.failed()) {
+                                        log.warn("Failed to collect token usage", result.cause());
+                                    }
+                                    return collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
+                                })
+                                .onComplete(result -> {
+                                    if (result.failed()) {
+                                        log.warn("Failed to collect attachments from response", result.cause());
+                                    }
+                                    response.end(rewritten);
+                                    completeProxyResponse(null);
+                                });
+                    }
                 });
     }
 
-    private Future<Buffer> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
+    private Future<Pair<String, Buffer>> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
         if (proxyResponse.statusCode() != 200) {
-            return Future.succeededFuture(body);
+            return Future.succeededFuture(Pair.of(null, body));
         }
         JsonNode tree = JsonUtil.tryParse(body.getBytes());
-        if (tree.isObject() && tree instanceof ObjectNode object) {
-            JsonNode idNode = object.path("id");
-            if (!idNode.isNull()) {
-                String upstreamId = idNode.asText();
-                if (!context.isStoreResponse()) {
-                    String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
-                    object.put("id", dialId);
-                    return Future.succeededFuture(Buffer.buffer(JsonUtil.serialize(object)));
-                }
-                Upstream upstream = context.getUpstreamRoute().get();
-                ResponseMapping mapping = ResponseMapping.builder()
-                        .upstreamResponseId(upstreamId)
-                        .upstreamKey(upstream.getId())
-                        .deploymentName(context.getDeployment().getName())
-                        .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
-                        .build();
-                return rewriteId(proxy, context, mapping)
-                        .map(dialId -> {
-                            object.put("id", dialId);
-                            return Buffer.buffer(JsonUtil.serialize(object));
-                        });
-            }
+        if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
+            log.warn("Response body is not a JSON object, skipping rewrite. Deployment: {}. Endpoint: {}",
+                    context.getDeployment().getName(),
+                    context.getDeployment().getResponsesEndpoint());
+            return Future.succeededFuture(Pair.of(null, body));
+        }
+        JsonNode idNode = object.path("id");
+        if (!idNode.isTextual()) {
+            log.info("Response body doesn't contain 'id' field, skipping rewrite. Deployment: {}. Endpoint: {}",
+                    context.getDeployment().getName(),
+                    context.getDeployment().getResponsesEndpoint());
+            return Future.succeededFuture(Pair.of(null, body));
         }
 
-        return Future.succeededFuture(body);
+        String upstreamId = idNode.asText();
+        if (!context.isStoreResponse()) {
+            String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), proxy.getGenerator().get());
+            object.put("id", dialId);
+            return Future.succeededFuture(Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object))));
+        }
+        Upstream upstream = context.getUpstreamRoute().get();
+        ResponseMapping mapping = ResponseMapping.builder()
+                .upstreamResponseId(upstreamId)
+                .upstreamKey(upstream.getId())
+                .deploymentName(context.getDeployment().getName())
+                .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
+                .build();
+        return proxy.getTaskExecutor()
+                .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
+                .map(dialId -> {
+                    object.put("id", dialId);
+                    return Pair.of(dialId, Buffer.buffer(JsonUtil.serialize(object)));
+                });
     }
 
-    private void handleResponse(BufferingReadStream responseStream) {
+    private void handleStreamingResponse(BufferingReadStream responseStream, String dialId, String assembledStreamingResponse) {
         Buffer responseBody = responseStream.getContent();
         context.setResponseBody(responseBody);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
-        collectTokenUsage(responseBody).onComplete(result -> {
+
+        Future<Void> completionFuture;
+        if (context.isBackgroundJob() && dialId != null) {
+            completionFuture = proxy.getBackgroundJobService().deleteJob(dialId)
+                    .compose(deleted -> deleted ? collectTokenUsage(responseBody) : Future.succeededFuture());
+        } else {
+            completionFuture = collectTokenUsage(responseBody);
+        }
+
+        completionFuture.onComplete(result -> {
             if (result.failed()) {
                 log.warn("Failed to collect token usage", result.cause());
             }
-            completeProxyResponse(() -> responseStream.end(context.getResponse()));
+            responseStream.end(context.getResponse());
+            completeProxyResponse(assembledStreamingResponse);
         });
     }
 
-    private void completeProxyResponse(Runnable endResponse) {
-        endResponse.run();
-        proxy.getLogStore().save(context);
+    private void completeProxyResponse(String assembledStreamingResponse) {
+        proxy.getLogStore().save(AnalyticsLogContext.from(context, assembledStreamingResponse));
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
@@ -383,10 +425,4 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         sendRequest(); // try next
     }
-
-    private static Future<String> rewriteId(Proxy proxy, ProxyContext context, ResponseMapping mapping) {
-        return proxy.getTaskExecutor()
-                .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping));
-    }
-
 }

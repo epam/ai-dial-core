@@ -15,7 +15,6 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Vertx;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -24,37 +23,43 @@ import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
 @Slf4j
-@AllArgsConstructor
 public class ResponseMappingService {
     private static final int PAGE_SIZE = 1000;
     private static final long DEFAULT_CHECK_PERIOD = 24 * 60 * 60 * 1000;
     private static final long DEFAULT_TTL = 30L * 24 * 60 * 60 * 1000;
     private static final long MAX_START_OFFSET = 4 * 60 * 60 * 1000;
 
+    private final Vertx vertx;
     private final Supplier<String> generator;
     private final ResourceService resourceService;
 
-    public void init(Vertx vertx, AsyncTaskExecutor taskExecutor) {
+    public ResponseMappingService(Vertx vertx, Supplier<String> generator, ResourceService resourceService) {
+        this.vertx = vertx;
+        this.generator = generator;
+        this.resourceService = resourceService;
+    }
+
+    public void init(AsyncTaskExecutor taskExecutor) {
         long offset = ThreadLocalRandom.current().nextLong(MAX_START_OFFSET + 1);
         vertx.setPeriodic(offset, DEFAULT_CHECK_PERIOD, ignored -> taskExecutor.submit(this::cleanExpiredMappings));
     }
 
     public String saveMapping(ProxyContext context, ResponseMapping mapping) {
         String dialId = ResponseIdUtil.createResponseId(context.getDeployment().getName(), generator.get());
-        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(dialId);
+        ResourceDescriptor descriptor = ResponseIdUtil.getResponseMappingDescriptor(dialId);
         resourceService.putResource(descriptor, ProxyUtil.convertToString(mapping), EtagHeader.NEW_ONLY);
         return dialId;
     }
 
     @Nullable
     public ResponseMapping getMapping(String dialId) {
-        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(dialId);
+        ResourceDescriptor descriptor = ResponseIdUtil.getResponseMappingDescriptor(dialId);
         String json = resourceService.getResource(descriptor);
         return ProxyUtil.convertToObject(json, ResponseMapping.class);
     }
 
     public void deleteMapping(String dialId) {
-        ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(dialId);
+        ResourceDescriptor descriptor = ResponseIdUtil.getResponseMappingDescriptor(dialId);
         resourceService.deleteResource(descriptor, EtagHeader.ANY);
     }
 
@@ -62,7 +67,7 @@ public class ResponseMappingService {
         log.debug("Housekeeping: scanning for expired response mappings");
         try {
             ResourceDescriptor root = ResourceDescriptorFactory.fromDecoded(
-                    ResourceTypes.RESPONSE_MAPPING, ResponseIdUtil.BUCKET, ResponseIdUtil.BUCKET_LOCATION, null);
+                    ResourceTypes.RESPONSE_MAPPING, ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET, ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET_LOCATION, null);
             cleanDeploymentSubfolders(root);
         } catch (Throwable e) {
             log.warn("Housekeeping: failed to clean expired response mappings", e);
@@ -91,7 +96,7 @@ public class ResponseMappingService {
 
     private void cleanItemsInDeploymentFolder(String deploymentName) {
         ResourceDescriptor subfolder = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.RESPONSE_MAPPING, ResponseIdUtil.BUCKET, ResponseIdUtil.BUCKET_LOCATION, deploymentName + "/");
+                ResourceTypes.RESPONSE_MAPPING, ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET, ResponseIdUtil.RESPONSE_MAPPINGS_BUCKET_LOCATION, deploymentName + "/");
 
         long now = System.currentTimeMillis();
         String token = null;
@@ -121,7 +126,7 @@ public class ResponseMappingService {
 
     private void deleteExpiredItem(String deploymentName, String uuid) {
         try {
-            ResourceDescriptor descriptor = ResponseIdUtil.getDescriptor(ResponseIdUtil.createResponseId(deploymentName, uuid));
+            ResourceDescriptor descriptor = ResponseIdUtil.getResponseMappingDescriptor(ResponseIdUtil.createResponseId(deploymentName, uuid));
             resourceService.deleteResource(descriptor, EtagHeader.ANY);
             log.debug("Housekeeping: deleted expired response mapping {}/{}", deploymentName, uuid);
         } catch (Throwable e) {

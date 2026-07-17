@@ -35,7 +35,6 @@ public class BucketBuilder {
     public static String buildInitiatorBucket(ProxyContext context) {
         String userId = context.getUserId();
         String apiKeyId = context.getProject();
-
         if (userId != null) {
             return USER_BUCKET_PATTERN.formatted(userId);
         }

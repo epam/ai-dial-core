@@ -229,6 +229,21 @@ Priority order:
 </details>
 
 <details> 
+<summary><b>Complex Resource Sweep Configurations</b></summary>
+
+Periodic job that reclaims storage for folder-as-resource complex resources (e.g. skills): it finishes
+reclaiming resources tombstoned by DELETE and GCs stale versions left behind by a failed/interrupted write.
+
+| Setting                                | Default  | Required | Description                                                                                                                                          |
+|-----------------------------------------|:--------:|:--------:|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| complexResourceSweep.period              |  10000   |    No    | Period in milliseconds between sweep ticks.                                                                                                          |
+| complexResourceSweep.batch               |   1000   |    No    | Number of references listed (and potentially processed) per batch.                                                                                   |
+| complexResourceSweep.activeBatches       |    5     |    No    | Max number of batches this instance may have mid-processing in parallel at any moment. Enforced locally per instance; not a cluster-wide total.      |
+| complexResourceSweep.gracePeriod         | 3600000  |    No    | Minimum age in milliseconds a tombstoned resource or a superseded version must reach before the sweep physically deletes it, to protect any reader that started before the delete/supersession. |
+
+</details>
+
+<details> 
 <summary><b>Redis Configurations</b></summary>
 
 | Setting                                  | Default | Required | Description                                                                                                                                                                                                                                                                                                                                                                                    |

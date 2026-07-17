@@ -22,6 +22,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.BackgroundJobService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.ExternalServiceService;
@@ -32,6 +33,7 @@ import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.ResponseMappingService;
+import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.service.RuleService;
 import com.epam.aidial.core.server.service.SecuredResourceService;
 import com.epam.aidial.core.server.service.ShareService;
@@ -174,6 +176,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final String version;
     private final ResponseMappingService responseMappingService;
     private final ComplexResourceService complexResourceService;
+    private final BackgroundJobService backgroundJobService;
+    private final ResponsesApiClient responsesApiClient;
     // Generates the unique portion of a DIAL response ID
     private final Supplier<String> generator;
 

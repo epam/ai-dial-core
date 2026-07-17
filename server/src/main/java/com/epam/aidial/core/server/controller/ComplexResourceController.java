@@ -189,7 +189,7 @@ public class ComplexResourceController extends AccessControlBaseController {
                 .exceptionHandler(received::tryFail);
 
         received.future()
-                .compose(v -> proxy.getTaskExecutor().submit(() -> complexResourceService.putFolder(resource, handler, uploads, etag, author)))
+                .compose(v -> proxy.getTaskExecutor().submit(() -> complexResourceService.put(resource, handler, uploads, etag, author)))
                 .compose(aggregateEtag -> context.putHeader(HttpHeaders.ETAG, aggregateEtag)
                         .exposeHeaders()
                         .respond(HttpStatus.OK)
@@ -226,7 +226,7 @@ public class ComplexResourceController extends AccessControlBaseController {
     )
     private Future<?> putFolderCreate(ResourceDescriptor resource) {
         String author = context.getUserDisplayName();
-        proxy.getTaskExecutor().submit(() -> complexResourceService.createDialFolder(resource, author))
+        proxy.getTaskExecutor().submit(() -> complexResourceService.createFolder(resource, author))
                 .compose(etag -> context.putHeader(HttpHeaders.ETAG, etag)
                         .exposeHeaders()
                         .respond(HttpStatus.OK)
@@ -265,7 +265,7 @@ public class ComplexResourceController extends AccessControlBaseController {
     private Future<?> deleteFolderTarget(ResourceDescriptor resource) {
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
         proxy.getTaskExecutor().submit(() -> {
-            complexResourceService.deleteDialFolder(resource, etag);
+            complexResourceService.deleteFolder(resource, etag);
             return null;
         })
                 .compose(v -> context.respond(HttpStatus.OK).mapEmpty())
@@ -344,7 +344,7 @@ public class ComplexResourceController extends AccessControlBaseController {
     private Future<?> delete(ResourceDescriptor resource) {
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
         proxy.getTaskExecutor().submit(() -> {
-            complexResourceService.deleteFolder(resource, etag);
+            complexResourceService.delete(resource, etag);
             return null;
         })
                 .compose(v -> context.respond(HttpStatus.OK).mapEmpty())
