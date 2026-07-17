@@ -28,6 +28,9 @@ public class ToolSet extends SecuredResource {
 
     private String provider;
 
+    @JsonAlias({"vendorWebsite", "vendor_website"})
+    private String vendorWebsite;
+
     public enum Transport {
         HTTP, SSE;
     }
