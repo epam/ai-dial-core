@@ -186,28 +186,35 @@ public class ProxyUtil {
     }
 
     /**
-     * Returns true if the JSON payload is an object containing any of the given top-level field names.
-     * Lets a write path tell "field omitted" apart from "field sent (even empty)", which a deserialized
-     * POJO cannot. Returns false for blank or non-object payloads.
+     * Parses the payload into a JSON tree for {@link #hasTopLevelField(JsonNode, String...)} checks,
+     * so a body probed for several fields is parsed once. Returns null for blank or unparseable payloads.
      */
-    public static boolean hasTopLevelField(String payload, String... fieldNames) {
+    public static JsonNode parseTree(String payload) {
         if (payload == null || payload.isEmpty()) {
-            return false;
+            return null;
         }
         try {
-            JsonNode node = MAPPER.readTree(payload);
-            if (node == null || !node.isObject()) {
-                return false;
-            }
-            for (String fieldName : fieldNames) {
-                if (node.has(fieldName)) {
-                    return true;
-                }
-            }
-            return false;
+            return MAPPER.readTree(payload);
         } catch (JsonProcessingException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Returns true if the JSON payload is an object containing any of the given top-level field names.
+     * Lets a write path tell "field omitted" apart from "field sent (even empty)", which a deserialized
+     * POJO cannot. Returns false for null or non-object payloads.
+     */
+    public static boolean hasTopLevelField(JsonNode payload, String... fieldNames) {
+        if (payload == null || !payload.isObject()) {
             return false;
         }
+        for (String fieldName : fieldNames) {
+            if (payload.has(fieldName)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static <T> boolean processChain(T item, List<BaseRequestFunction<T>> chain) {
