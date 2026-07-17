@@ -19,7 +19,9 @@ import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagBuilder;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.buffer.Buffer;
+import lombok.Data;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -81,15 +83,30 @@ public class ComplexResourceService {
     private final ShareService shareService;
     private final InvitationService invitationService;
     private final BlobStorage blobStorage;
+    private final Settings settings;
 
     public ComplexResourceService(ResourceService resourceService, LockService lockService,
                                  ShareService shareService, InvitationService invitationService,
-                                 BlobStorage blobStorage) {
+                                 BlobStorage blobStorage, Settings settings) {
         this.resourceService = resourceService;
         this.lockService = lockService;
         this.shareService = shareService;
         this.invitationService = invitationService;
         this.blobStorage = blobStorage;
+        this.settings = settings;
+    }
+
+    /**
+     * Per-resource limits for a folder resource, bounding abuse (upload size/count), listing reads, archive
+     * size and lock-hold time (a single-file mutation copies the whole current version under the resource
+     * lock, so a smaller resource copies - and holds the lock - for less time).
+     */
+    @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Settings {
+        private int maxFiles = 100;
+        private long maxTotalBytes = 16L * 1024 * 1024;
+        private long maxFileSizeBytes = 1024 * 1024;
     }
 
     /**
@@ -118,6 +135,9 @@ public class ComplexResourceService {
             files.put(normalizePath(entry.getKey()), entry.getValue().getBytes());
         }
 
+        // Enforced before any write (and before the handler reads file content), so a rejection never
+        // takes the bucket/resource lock and leaves nothing observable.
+        validateLimits(files);
         handler.validate(files);
 
         // Creating a resource is a structural change: the bucket lock serializes the ancestor walk
@@ -134,14 +154,15 @@ public class ComplexResourceService {
                 etag.validate(readAggregateEtag(marker));
 
                 try {
-                    Map<String, String> fileEtags = new TreeMap<>();
+                    Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata = new TreeMap<>();
                     for (Map.Entry<String, byte[]> entry : files.entrySet()) {
                         String relativePath = entry.getKey();
                         byte[] content = entry.getValue();
                         ResourceDescriptor file = versionFile(resource, versionId, relativePath);
                         FileMetadata written = resourceService.putFile(file, content, EtagHeader.ANY,
                                 BlobStorageUtil.getContentType(relativePath), author);
-                        fileEtags.put(relativePath, written.getEtag());
+                        fileMetadata.put(relativePath,
+                                new FolderResourceMarker.ResourceFileMetadata(content.length, written.getEtag()));
                     }
                     FolderResourceMarker existing = readMarker(marker, false);
                     if (existing == null) {
@@ -149,8 +170,8 @@ public class ComplexResourceService {
                         // its reference, which is keyed by URL, not by version.
                         writeReference(resource);
                     }
-                    return commitMarker(marker, resource, versionId, aggregateEtag(fileEtags),
-                            handler.buildMarkerMetadata(files), fileEtags, existing, author);
+                    return commitMarker(marker, resource, versionId, aggregateEtag(fileMetadata),
+                            handler.buildMarkerMetadata(files), fileMetadata, existing, author);
                 } catch (Exception e) {
                     // Nothing is observable until the marker is committed; drop the orphan version files.
                     deleteVersion(versionFolder(resource, versionId));
@@ -158,6 +179,33 @@ public class ComplexResourceService {
                 }
             }
         });
+    }
+
+    /**
+     * Enforces {@code maxFiles}/{@code maxFileSizeBytes}/{@code maxTotalBytes} against a whole file set.
+     *
+     * @throws HttpException BAD_REQUEST if the file count exceeds {@code maxFiles}, or
+     *                       REQUEST_ENTITY_TOO_LARGE if any single file or the aggregate size exceeds
+     *                       {@code maxFileSizeBytes}/{@code maxTotalBytes}
+     */
+    private void validateLimits(Map<String, byte[]> files) {
+        if (files.size() > settings.getMaxFiles()) {
+            throw new HttpException(HttpStatus.BAD_REQUEST,
+                    "Resource contains %d files which exceeds the limit of %d".formatted(files.size(), settings.getMaxFiles()));
+        }
+        long totalBytes = 0;
+        for (Map.Entry<String, byte[]> entry : files.entrySet()) {
+            long size = entry.getValue().length;
+            if (size > settings.getMaxFileSizeBytes()) {
+                throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE,
+                        "File '%s' size %d exceeds max file size of %d".formatted(entry.getKey(), size, settings.getMaxFileSizeBytes()));
+            }
+            totalBytes += size;
+        }
+        if (totalBytes > settings.getMaxTotalBytes()) {
+            throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE,
+                    "Resource size %d exceeds max total size of %d".formatted(totalBytes, settings.getMaxTotalBytes()));
+        }
     }
 
     /**
@@ -179,18 +227,43 @@ public class ComplexResourceService {
      * Adds or replaces a single file via copy-on-write of a new version: the current version is copied
      * server-side to a fresh {@code v/{versionId}/} prefix, the single file is written, then the marker is
      * committed under the folder-scoped lock. Returns the new aggregate etag.
+     *
+     * @throws HttpException REQUEST_ENTITY_TOO_LARGE if the file or the resulting aggregate size exceeds
+     *                       {@code maxFileSizeBytes}/{@code maxTotalBytes}, or BAD_REQUEST if adding a new file
+     *                       would exceed {@code maxFiles}
      */
     public String putFile(ResourceDescriptor resource, ComplexResourceHandler handler, String relativePath,
                           byte[] content, EtagHeader etag, String author) {
         String normalized = normalizePath(relativePath);
+        if (content.length > settings.getMaxFileSizeBytes()) {
+            throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE,
+                    "File size %d exceeds max file size of %d".formatted(content.length, settings.getMaxFileSizeBytes()));
+        }
         handler.validateFileMutation(normalized, ComplexResourceHandler.FileMutation.PUT);
-        return copyOnWrite(resource, etag, author, (newVersionId, fileEtags) -> {
-            FileMetadata written = resourceService.putFile(versionFile(resource, newVersionId, normalized),
-                    content, EtagHeader.ANY, BlobStorageUtil.getContentType(normalized), author);
-            fileEtags.put(normalized, written.getEtag());
-            // Only a change to a metadata-bearing file (e.g. the manifest) refreshes the marker metadata.
-            return handler.refreshMetadataOnPut(normalized, content);
-        });
+        return copyOnWrite(resource, etag, author,
+                fileMetadata -> {
+                    boolean newFile = !fileMetadata.containsKey(normalized);
+                    if (newFile && fileMetadata.size() + 1 > settings.getMaxFiles()) {
+                        throw new HttpException(HttpStatus.BAD_REQUEST,
+                                "Resource would contain more than %d files".formatted(settings.getMaxFiles()));
+                    }
+                    long existingTotal = fileMetadata.values().stream()
+                            .mapToLong(FolderResourceMarker.ResourceFileMetadata::getSize).sum();
+                    long oldSize = newFile ? 0L : fileMetadata.get(normalized).getSize();
+                    long prospectiveTotal = existingTotal - oldSize + content.length;
+                    if (prospectiveTotal > settings.getMaxTotalBytes()) {
+                        throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE,
+                                "Resource size %d exceeds max total size of %d".formatted(prospectiveTotal, settings.getMaxTotalBytes()));
+                    }
+                },
+                (newVersionId, fileMetadata) -> {
+                    FileMetadata written = resourceService.putFile(versionFile(resource, newVersionId, normalized),
+                            content, EtagHeader.ANY, BlobStorageUtil.getContentType(normalized), author);
+                    fileMetadata.put(normalized,
+                            new FolderResourceMarker.ResourceFileMetadata(content.length, written.getEtag()));
+                    // Only a change to a metadata-bearing file (e.g. the manifest) refreshes the marker metadata.
+                    return handler.refreshMetadataOnPut(normalized, content);
+                });
     }
 
     /**
@@ -202,26 +275,33 @@ public class ComplexResourceService {
                              EtagHeader etag, String author) {
         String normalized = normalizePath(relativePath);
         handler.validateFileMutation(normalized, ComplexResourceHandler.FileMutation.DELETE);
-        return copyOnWrite(resource, etag, author, (newVersionId, fileEtags) -> {
-            if (fileEtags.remove(normalized) == null) {
-                throw new HttpException(HttpStatus.NOT_FOUND, "File not found: " + normalized);
-            }
-            resourceService.deleteResource(versionFile(resource, newVersionId, normalized), EtagHeader.ANY);
-            // A deletable file never carries marker metadata (the manifest cannot be deleted).
-            return null;
-        });
+        return copyOnWrite(resource, etag, author,
+                fileMetadata -> { },
+                (newVersionId, fileMetadata) -> {
+                    if (fileMetadata.remove(normalized) == null) {
+                        throw new HttpException(HttpStatus.NOT_FOUND, "File not found: " + normalized);
+                    }
+                    resourceService.deleteResource(versionFile(resource, newVersionId, normalized), EtagHeader.ANY);
+                    // A deletable file never carries marker metadata (the manifest cannot be deleted).
+                    return null;
+                });
     }
 
     /**
      * Shared copy-on-write engine for single-file mutations. Under the folder-scoped lock it validates the
-     * {@code If-Match} precondition on the aggregate etag, copies the current version server-side to a fresh
-     * one, applies the single change to the new version and commits the marker. The aggregate etag is
-     * recomputed from the per-file etags carried in the marker, so no file content is read.
+     * {@code If-Match} precondition on the aggregate etag, checks the prospective limits (before copying
+     * anything, so a rejection never pays for the copy or extends the lock hold time), copies the current
+     * version server-side to a fresh one, applies the single change to the new version and commits the
+     * marker. The aggregate etag is recomputed from the per-file etags carried in the marker, so no file
+     * content is read.
      *
-     * @param mutation applies the change to the fresh version and to the per-file etag map, returning the
-     *                 refreshed marker metadata, or {@code null} to keep the existing metadata
+     * @param preflight validates the prospective change against the current per-file metadata map before
+     *                  any copy happens; throws {@link HttpException} to reject
+     * @param mutation applies the change to the fresh version and to the per-file metadata map, returning
+     *                 the refreshed marker metadata, or {@code null} to keep the existing metadata
      */
-    private String copyOnWrite(ResourceDescriptor resource, EtagHeader etag, String author, VersionMutation mutation) {
+    private String copyOnWrite(ResourceDescriptor resource, EtagHeader etag, String author,
+                               LimitsPreflight preflight, VersionMutation mutation) {
         ResourceDescriptor marker = markerDescriptor(resource);
         String newVersionId = UUID.randomUUID().toString().replace("-", "");
 
@@ -232,15 +312,16 @@ public class ComplexResourceService {
             }
             etag.validate(current.getEtag());
 
-            Map<String, String> fileEtags = currentFileEtags(resource, current);
+            Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata = currentFileMetadata(resource, current);
+            preflight.check(fileMetadata);
             try {
                 resourceService.copyFolder(versionFolder(resource, current.getCurrentVersion()),
                         versionFolder(resource, newVersionId), false);
-                Map<String, Object> refreshed = mutation.apply(newVersionId, fileEtags);
+                Map<String, Object> refreshed = mutation.apply(newVersionId, fileMetadata);
                 Map<String, Object> metadata = refreshed != null ? refreshed : current.getMetadata();
 
-                String aggregateEtag = commitMarker(marker, resource, newVersionId, aggregateEtag(fileEtags),
-                        metadata, fileEtags, current, author);
+                String aggregateEtag = commitMarker(marker, resource, newVersionId, aggregateEtag(fileMetadata),
+                        metadata, fileMetadata, current, author);
                 deleteVersion(versionFolder(resource, current.getCurrentVersion()));
                 return aggregateEtag;
             } catch (Exception e) {
@@ -252,32 +333,41 @@ public class ComplexResourceService {
     }
 
     @FunctionalInterface
+    private interface LimitsPreflight {
+        void check(Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata);
+    }
+
+    @FunctionalInterface
     private interface VersionMutation {
         @Nullable
-        Map<String, Object> apply(String newVersionId, Map<String, String> fileEtags);
+        Map<String, Object> apply(String newVersionId, Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata);
     }
 
     /**
-     * Per-file etag map of the current version. Reconstructed from per-file metadata for legacy markers that
-     * predate the stored map (still no file content is read).
+     * Per-file metadata map of the current version. Reconstructed from per-file blob metadata for legacy
+     * markers that predate the stored map (still no file content is read).
      */
-    private Map<String, String> currentFileEtags(ResourceDescriptor resource, FolderResourceMarker current) {
-        if (current.getFiles() != null) {
-            return new TreeMap<>(current.getFiles());
+    private Map<String, FolderResourceMarker.ResourceFileMetadata> currentFileMetadata(
+            ResourceDescriptor resource, FolderResourceMarker current) {
+        if (current.getFileMetadata() != null) {
+            return new TreeMap<>(current.getFileMetadata());
         }
-        Map<String, String> fileEtags = new TreeMap<>();
+        Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata = new TreeMap<>();
         ResourceDescriptor versionFolder = versionFolder(resource, current.getCurrentVersion());
         for (ResourceDescriptor file : listVersionFiles(versionFolder)) {
             ResourceItemMetadata meta = resourceService.getResourceMetadata(file);
             if (meta != null) {
-                fileEtags.put(versionFolder.getRelativePath(file), meta.getEtag());
+                String relativePath = versionFolder.getRelativePath(file);
+                long size = meta instanceof FileMetadata fileMeta ? fileMeta.getContentLength() : 0L;
+                fileMetadata.put(relativePath, new FolderResourceMarker.ResourceFileMetadata(size, meta.getEtag()));
             }
         }
-        return fileEtags;
+        return fileMetadata;
     }
 
     private String commitMarker(ResourceDescriptor marker, ResourceDescriptor resource, String versionId,
-                                String aggregateEtag, Map<String, Object> metadata, Map<String, String> fileEtags,
+                                String aggregateEtag, Map<String, Object> metadata,
+                                Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata,
                                 @Nullable FolderResourceMarker existing, String author) {
         long now = System.currentTimeMillis();
         FolderResourceMarker document = new FolderResourceMarker();
@@ -286,7 +376,7 @@ public class ComplexResourceService {
         document.setState(STATE_ACTIVE);
         document.setCurrentVersion(versionId);
         document.setEtag(aggregateEtag);
-        document.setFiles(fileEtags);
+        document.setFileMetadata(fileMetadata);
         document.setCreatedAt(existing == null ? now : existing.getCreatedAt());
         document.setUpdatedAt(now);
         document.setAuthor(author);
@@ -313,11 +403,11 @@ public class ComplexResourceService {
      * Aggregate etag derived from the per-file etags (relative path -> etag), sorted by path so the result
      * is deterministic regardless of insertion order.
      */
-    private static String aggregateEtag(Map<String, String> fileEtags) {
+    private static String aggregateEtag(Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata) {
         EtagBuilder builder = new EtagBuilder();
-        for (Map.Entry<String, String> entry : new TreeMap<>(fileEtags).entrySet()) {
+        for (Map.Entry<String, FolderResourceMarker.ResourceFileMetadata> entry : new TreeMap<>(fileMetadata).entrySet()) {
             builder.append(entry.getKey().getBytes(StandardCharsets.UTF_8))
-                    .append(entry.getValue().getBytes(StandardCharsets.UTF_8));
+                    .append(entry.getValue().getEtag().getBytes(StandardCharsets.UTF_8));
         }
         return builder.build();
     }
