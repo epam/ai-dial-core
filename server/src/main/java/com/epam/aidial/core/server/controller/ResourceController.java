@@ -43,6 +43,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
@@ -559,9 +560,10 @@ public class ResourceController extends AccessControlBaseController {
             overlayUserAuthoredServices(descriptor, application);
             enrichExternalServiceStatuses(descriptor, application);
             clearExternalServiceSecrets(application);
-            // app_identity is admin-managed and immutable once set — it never needs to be read back, so strip it
-            // on every read (the write-access branch would otherwise return the raw app, leaking it).
-            application.setAppIdentity(null);
+
+            if (!accessService.hasAdminAccess(context)) {
+                application.setAppIdentity(null);
+            }
             String body = hasWriteAccess
                     ? ProxyUtil.convertToString(application)
                     : ProxyUtil.convertToString(clearApplicationProperties(application));
@@ -770,14 +772,17 @@ public class ResourceController extends AccessControlBaseController {
                 if (application == null) {
                     throw new HttpException(BAD_REQUEST, "Application can't be empty");
                 }
+                JsonNode bodyJson = ProxyUtil.parseTree(pair.getValue());
                 ExternalServicesWriteMode externalServicesWriteMode =
-                        ProxyUtil.hasTopLevelField(pair.getValue(), "external_services", "externalServices")
+                        ProxyUtil.hasTopLevelField(bodyJson, "external_services", "externalServices")
                                 ? ExternalServicesWriteMode.OVERRIDE
                                 : ExternalServicesWriteMode.PRESERVE_IF_OMITTED;
+                AdminManagedFieldsWriteMode adminManagedFieldsWriteMode =
+                        AdminManagedFieldsWriteMode.of(adminPublicWrite, bodyJson);
                 return taskExecutor.submit(() -> {
                     validateCustomApplication(application);
                     return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite,
-                            AdminManagedFieldsWriteMode.INHERIT_ONLY, externalServicesWriteMode).getKey();
+                            adminManagedFieldsWriteMode, externalServicesWriteMode).getKey();
                 });
             });
         } else if (descriptor.getType() == ResourceTypes.TOOL_SET) {

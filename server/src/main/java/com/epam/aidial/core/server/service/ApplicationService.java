@@ -196,19 +196,14 @@ public class ApplicationService {
         return Pair.of(meta, application);
     }
 
-    // app_identity and allow_user_external_services are admin-managed. AUTHORITATIVE writes (config file /
-    // admin-apply) honor the incoming values; every other path inherits the stored values on update (so a
-    // read-modify-write can't wipe them) and strips on create.
+    // app_identity and allow_user_external_services are admin-managed: a field the mode does not honor is
+    // inherited from the stored value on update (so a read-modify-write can't wipe it) and stripped on create.
     private static void prepareAdminManagedFields(Application application, Application existing, AdminManagedFieldsWriteMode mode) {
-        if (mode == AdminManagedFieldsWriteMode.AUTHORITATIVE) {
-            return;
+        if (!mode.honorAppIdentity()) {
+            application.setAppIdentity(existing != null ? existing.getAppIdentity() : null);
         }
-        if (existing != null) {
-            application.setAppIdentity(existing.getAppIdentity());
-            application.setAllowUserExternalServices(existing.isAllowUserExternalServices());
-        } else {
-            application.setAppIdentity(null);
-            application.setAllowUserExternalServices(false);
+        if (!mode.honorAllowUserExternalServices()) {
+            application.setAllowUserExternalServices(existing != null && existing.isAllowUserExternalServices());
         }
     }
 
