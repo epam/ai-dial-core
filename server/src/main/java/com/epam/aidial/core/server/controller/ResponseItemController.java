@@ -12,14 +12,15 @@ import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
+import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -31,8 +32,8 @@ import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerResponse;
-import io.vertx.core.http.RequestOptions;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
@@ -123,6 +124,7 @@ public class ResponseItemController implements Controller {
     })
     public Future<?> handle() {
         return proxy.getTaskExecutor().submit(this::loadMapping)
+                .compose(this::checkNotActive)
                 .compose(this::forwardToUpstream)
                 .onFailure(error -> {
                     if (!context.getResponse().ended()) {
@@ -131,10 +133,20 @@ public class ResponseItemController implements Controller {
                 });
     }
 
+    private Future<ResponseMapping> checkNotActive(ResponseMapping mapping) {
+        if (operation != Operation.DELETE) {
+            return Future.succeededFuture(mapping);
+        }
+        return proxy.getBackgroundJobService().isJobActive(dialResponseId)
+                .compose(active -> active
+                        ? Future.failedFuture(new HttpException(HttpStatus.CONFLICT, "Cannot delete response while background job is in progress"))
+                        : Future.succeededFuture(mapping));
+    }
+
     private ResponseMapping loadMapping() {
         ResponseMapping mapping = proxy.getResponseMappingService().getMapping(dialResponseId);
         if (mapping == null) {
-            throw notFoundException();
+            throw notFoundException(dialResponseId);
         }
         String currentBucket = BucketBuilder.buildInitiatorBucket(context);
         if (!currentBucket.equals(mapping.getInitiatorBucket())) {
@@ -160,70 +172,79 @@ public class ResponseItemController implements Controller {
         String query = context.getRequest().query();
         String targetUrl = responsesBase(deployment) + "/" + mapping.getUpstreamResponseId() + operation.suffix
                 + (query != null ? "?" + query : "");
-        RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(targetUrl)
-                .setMethod(operation.method)
-                .setConnectTimeout(proxy.getClientOptions().getConnectTimeout())
-                .setIdleTimeout(proxy.getClientOptions().getIdleTimeout());
 
-        return proxy.getClient().request(options)
-                .compose(request -> {
-                    request.putHeader(Proxy.HEADER_UPSTREAM_KEY, upstream.getKey())
-                            .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT, upstream.getResponsesEndpoint())
-                            .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA, UpstreamExtraDataMerger.merge(upstream));
-
-                    return request.send();
-                })
+        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream)
                 .compose(response -> {
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
                     if (operation == Operation.GET
                             && Strings.CI.contains(contentType, Proxy.HEADER_CONTENT_TYPE_TEXT_EVENT_STREAM)) {
                         return collectAndForwardStreaming(response, mapping.getUpstreamResponseId());
                     }
-                    return collectAndForward(response, mapping.getUpstreamResponseId());
+                    return collectAndForward(response, mapping);
                 });
     }
 
-    private Future<Void> collectAndForward(HttpClientResponse proxyResponse, String upstreamResponseId) {
+    private Future<Void> collectAndForward(HttpClientResponse proxyResponse, ResponseMapping mapping) {
         return proxyResponse.body()
-                .compose(body -> rewriteId(body, upstreamResponseId))
-                .compose(rewritten -> {
-                    if (operation.shouldDeleteMapping(proxyResponse.statusCode())) {
-                        return proxy.getTaskExecutor().submit(() -> {
-                            proxy.getResponseMappingService().deleteMapping(dialResponseId);
-                            return rewritten;
-                        });
+                .compose(body -> {
+                    if (proxyResponse.statusCode() != 200) {
+                        return sendResponse(proxyResponse, body);
                     }
-                    return Future.succeededFuture(rewritten);
-                })
-                .compose(rewritten -> {
-                    context.getResponse().setStatusCode(proxyResponse.statusCode());
-                    String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
-                    if (contentType != null) {
-                        context.getResponse().putHeader(HttpHeaders.CONTENT_TYPE, contentType);
-                    }
-                    context.getResponse().putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
-                    return context.getResponse().end(rewritten);
-                })
-                .mapEmpty();
+                    return proxy.getTaskExecutor()
+                            .submit(() -> rewriteId(body, mapping.getUpstreamResponseId()))
+                            .compose(rewritten -> {
+                                if (operation == Operation.DELETE) {
+                                    return proxy.getTaskExecutor().submit(() -> {
+                                        proxy.getResponseMappingService().deleteMapping(dialResponseId);
+                                        return null;
+                                    }).compose(ignored -> sendResponse(proxyResponse, rewritten));
+                                }
+                                if (operation == Operation.GET) {
+                                    ResponsesApiClient.TerminalResult terminalResult = tryParseTerminalResult(rewritten);
+                                    if (terminalResult != null) {
+                                        proxy.getBackgroundJobService()
+                                                .tryComplete(dialResponseId, mapping, terminalResult)
+                                                .onFailure(e -> log.warn("Failed to complete background job on GET {}", dialResponseId, e));
+                                    }
+                                }
+                                return sendResponse(proxyResponse, rewritten);
+                            });
+                });
     }
 
-    private Future<Buffer> rewriteId(Buffer body, String upstreamResponseId) {
-        if (body.length() == 0) {
-            return Future.succeededFuture(body);
+    private Future<Void> sendResponse(HttpClientResponse proxyResponse, Buffer body) {
+        HttpServerResponse serverResponse = context.getResponse();
+        serverResponse.setStatusCode(proxyResponse.statusCode());
+        String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
+        if (contentType != null) {
+            serverResponse.putHeader(HttpHeaders.CONTENT_TYPE, contentType);
         }
-        return proxy.getTaskExecutor().submit(() -> {
-            JsonNode tree = JsonUtil.tryParse(body.getBytes());
-            if (tree.isObject() && tree instanceof ObjectNode object) {
-                JsonNode idNode = object.path("id");
-                if (!idNode.isNull() && upstreamResponseId.equals(idNode.asText())) {
-                    object.put("id", dialResponseId);
-                }
-                return Buffer.buffer(JsonUtil.serialize(object));
-            }
+        serverResponse.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
+        return serverResponse.end(body).mapEmpty();
+    }
 
+    private Buffer rewriteId(Buffer body, String upstreamResponseId) {
+        if (body.length() == 0) {
             return body;
-        });
+        }
+        JsonNode tree = JsonUtil.tryParse(body.getBytes());
+        if (!(tree instanceof ObjectNode object)) {
+            return body;
+        }
+        JsonNode idNode = object.path("id");
+        if (idNode.isTextual() && upstreamResponseId.equals(idNode.asText())) {
+            object.put("id", dialResponseId);
+        }
+        return Buffer.buffer(JsonUtil.serialize(object));
+    }
+
+    private ResponsesApiClient.TerminalResult tryParseTerminalResult(Buffer body) {
+        try {
+            return ResponsesApiClient.parseTerminalBody(body);
+        } catch (Exception e) {
+            log.warn("Failed to extract terminal result for background job {} on GET", dialResponseId, e);
+            return null;
+        }
     }
 
     private Future<Void> collectAndForwardStreaming(HttpClientResponse proxyResponse, String upstreamResponseId) {
@@ -249,30 +270,23 @@ public class ResponseItemController implements Controller {
                 .mapEmpty();
     }
 
-    private static HttpException notFoundException() {
-        return new HttpException(
-                HttpStatus.NOT_FOUND,
-                "{\"error\":{\"message\":\"Unknown or expired response_id\","
-                        + "\"type\":\"invalid_request_error\",\"param\":\"response_id\",\"code\":null}}");
+    @SneakyThrows
+    private static HttpException notFoundException(String dialResponseId) {
+        ErrorData response = new ErrorData();
+        String errorMessage = "Response with id '%s' not found.".formatted(dialResponseId);
+        response.getError().setMessage(errorMessage);
+        response.getError().setDisplayMessage(errorMessage);
+        response.getError().setType("invalid_request_error");
+        return new HttpException(HttpStatus.NOT_FOUND, ProxyUtil.MAPPER.writeValueAsString(response));
     }
 
+    @RequiredArgsConstructor
     public enum Operation {
-        GET(HttpMethod.GET, "", false),
-        CANCEL(HttpMethod.POST, "/cancel", false),
-        DELETE(HttpMethod.DELETE, "", true);
+        GET(HttpMethod.GET, ""),
+        CANCEL(HttpMethod.POST, "/cancel"),
+        DELETE(HttpMethod.DELETE, "");
 
         private final HttpMethod method;
         private final String suffix;
-        private final boolean deleteMappingOnSuccess;
-
-        Operation(HttpMethod method, String suffix, boolean deleteMappingOnSuccess) {
-            this.method = method;
-            this.suffix = suffix;
-            this.deleteMappingOnSuccess = deleteMappingOnSuccess;
-        }
-
-        private boolean shouldDeleteMapping(int status) {
-            return deleteMappingOnSuccess && status == 200;
-        }
     }
 }

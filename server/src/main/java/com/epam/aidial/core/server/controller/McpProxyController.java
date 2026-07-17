@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.FilterAllowedToolsFn;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -360,7 +361,7 @@ public class McpProxyController implements Controller {
         Buffer proxyResponseBody = responseStream.getContent();
         context.setResponseBody(proxyResponseBody);
         finalizeRequest();
-        logStore.save(context);
+        logStore.save(AnalyticsLogContext.from(context, null));
     }
 
     private void handleResponse(int responseStatus, Buffer proxyResponseBody, List<String> contentEncodings) {
@@ -389,7 +390,7 @@ public class McpProxyController implements Controller {
         future.onSuccess(result -> {
             context.setResponseBody(result);
             respond(responseStatus, result);
-            logStore.save(context);
+            logStore.save(AnalyticsLogContext.from(context, null));
         }).onFailure(error -> {
             log.error("Failed to handle MCP response body", error);
             respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to handle MCP response body");

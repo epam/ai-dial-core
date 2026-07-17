@@ -13841,6 +13841,7 @@ components:
       - GLOBAL_SETTINGS
       - RESPONSE_MAPPING
       - SKILL
+      - BACKGROUND_JOB
     ResponseFormatJsonObject:
       required:
       - type
@@ -14405,6 +14406,8 @@ components:
           type: string
         intro:
           type: string
+        vendor_website:
+          type: string
     ToolSetData:
       type: object
       properties:
@@ -14471,6 +14474,8 @@ components:
         provider:
           type: string
         intro:
+          type: string
+        vendor_website:
           type: string
     ToolSetRepairControllerRepairResponse:
       type: object

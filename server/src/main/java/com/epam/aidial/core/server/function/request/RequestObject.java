@@ -88,4 +88,13 @@ public interface RequestObject {
     default boolean isStore() {
         return false;
     }
+
+    /**
+     * Indicates whether the request should be processed in the background (asynchronously).
+     *
+     * @return {@code true} if background processing is requested; {@code false} otherwise
+     */
+    default boolean isBackground() {
+        return false;
+    }
 }
