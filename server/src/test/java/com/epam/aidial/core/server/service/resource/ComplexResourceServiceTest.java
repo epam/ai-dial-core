@@ -7,6 +7,8 @@ import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
@@ -37,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ComplexResourceServiceTest {
@@ -110,8 +113,12 @@ class ComplexResourceServiceTest {
 
             ShareService shareService = Mockito.mock(ShareService.class);
             InvitationService invitationService = Mockito.mock(InvitationService.class);
+            ComplexResourceService.Settings complexResourceSettings = new ComplexResourceService.Settings();
+            complexResourceSettings.setMaxFiles(3);
+            complexResourceSettings.setMaxTotalBytes(200);
+            complexResourceSettings.setMaxFileSizeBytes(100);
             complexResourceService = new ComplexResourceService(
-                    resourceService, lockService, shareService, invitationService, blobStorage);
+                    resourceService, lockService, shareService, invitationService, blobStorage, complexResourceSettings);
         } catch (Throwable e) {
             destroy();
             throw e;
@@ -256,5 +263,105 @@ class ComplexResourceServiceTest {
         complexResourceService.delete(resource, EtagHeader.ANY);
 
         assertFalse(complexResourceService.gcObsoleteVersions(resource, 0L));
+    }
+
+    @Test
+    void testPutRejectsExceedingMaxFiles() {
+        ResourceDescriptor resource = skill("tooManyFiles");
+        Map<String, Buffer> uploads = Map.of(
+                "SKILL.md", Buffer.buffer(MANIFEST),
+                "a.txt", Buffer.buffer("a"),
+                "b.txt", Buffer.buffer("b"),
+                "c.txt", Buffer.buffer("c"));
+
+        assertThrowsBadRequest(() -> complexResourceService.put(resource, handler, uploads, EtagHeader.ANY, "user1"));
+        assertNull(complexResourceService.readMarkerForSweep(resource));
+    }
+
+    @Test
+    void testPutAcceptsExactlyMaxFiles() {
+        ResourceDescriptor resource = skill("exactMaxFiles");
+        Map<String, Buffer> uploads = Map.of(
+                "SKILL.md", Buffer.buffer(MANIFEST),
+                "a.txt", Buffer.buffer("a"),
+                "b.txt", Buffer.buffer("b"));
+
+        complexResourceService.put(resource, handler, uploads, EtagHeader.ANY, "user1");
+        assertNotNull(complexResourceService.readMarkerForSweep(resource));
+    }
+
+    @Test
+    void testPutRejectsExceedingMaxTotalBytes() {
+        ResourceDescriptor resource = skill("tooBigTotal");
+        Map<String, Buffer> uploads = Map.of(
+                "SKILL.md", Buffer.buffer(MANIFEST),
+                "big.txt", Buffer.buffer("x".repeat(200)));
+
+        HttpException e = assertThrows(HttpException.class,
+                () -> complexResourceService.put(resource, handler, uploads, EtagHeader.ANY, "user1"));
+        assertEquals(HttpStatus.REQUEST_ENTITY_TOO_LARGE, e.getStatus());
+        assertNull(complexResourceService.readMarkerForSweep(resource));
+    }
+
+    @Test
+    void testPutRejectsExceedingMaxFileSize() {
+        ResourceDescriptor resource = skill("tooBigFile");
+        Map<String, Buffer> uploads = Map.of(
+                "SKILL.md", Buffer.buffer(MANIFEST),
+                "huge.txt", Buffer.buffer("x".repeat(150)));
+
+        HttpException e = assertThrows(HttpException.class,
+                () -> complexResourceService.put(resource, handler, uploads, EtagHeader.ANY, "user1"));
+        assertEquals(HttpStatus.REQUEST_ENTITY_TOO_LARGE, e.getStatus());
+        assertNull(complexResourceService.readMarkerForSweep(resource));
+    }
+
+    @Test
+    void testPutFileRejectsExceedingMaxFileSize() {
+        ResourceDescriptor resource = skill("fileTooBig");
+        putSkill(resource, EtagHeader.ANY);
+
+        HttpException e = assertThrows(HttpException.class, () -> complexResourceService.putFile(
+                resource, handler, "big.txt", "x".repeat(150).getBytes(), EtagHeader.ANY, "user1"));
+        assertEquals(HttpStatus.REQUEST_ENTITY_TOO_LARGE, e.getStatus());
+    }
+
+    @Test
+    void testPutFileRejectsExceedingMaxTotalBytes() {
+        ResourceDescriptor resource = skill("fileTotalTooBig");
+        putSkill(resource, EtagHeader.ANY);
+        FolderResourceMarker before = complexResourceService.readMarkerForSweep(resource);
+
+        // SKILL.md (68 bytes) + a 190-byte file tips the aggregate past maxTotalBytes(200).
+        HttpException e = assertThrows(HttpException.class, () -> complexResourceService.putFile(
+                resource, handler, "big.txt", "x".repeat(190).getBytes(), EtagHeader.ANY, "user1"));
+        assertEquals(HttpStatus.REQUEST_ENTITY_TOO_LARGE, e.getStatus());
+
+        // rejected mutation must not have changed the resource
+        FolderResourceMarker after = complexResourceService.readMarkerForSweep(resource);
+        assertEquals(before.getEtag(), after.getEtag());
+    }
+
+    @Test
+    void testPutFileRejectsExceedingMaxFiles() {
+        ResourceDescriptor resource = skill("fileCountTooBig");
+        Map<String, Buffer> uploads = Map.of(
+                "SKILL.md", Buffer.buffer(MANIFEST),
+                "a.txt", Buffer.buffer("a"),
+                "b.txt", Buffer.buffer("b"));
+        complexResourceService.put(resource, handler, uploads, EtagHeader.ANY, "user1");
+
+        // adding a 4th distinct file exceeds maxFiles(3)
+        HttpException e = assertThrows(HttpException.class, () -> complexResourceService.putFile(
+                resource, handler, "c.txt", "c".getBytes(), EtagHeader.ANY, "user1"));
+        assertEquals(HttpStatus.BAD_REQUEST, e.getStatus());
+
+        // replacing an existing file is fine (file count unchanged)
+        complexResourceService.putFile(resource, handler, "a.txt", "aa".getBytes(), EtagHeader.ANY, "user1");
+    }
+
+    private static void assertThrowsBadRequest(Runnable action) {
+        HttpException e = assertThrows(HttpException.class, action::run);
+        assertEquals(HttpStatus.BAD_REQUEST, e.getStatus());
     }
 }

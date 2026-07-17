@@ -61,6 +61,11 @@
     "compressionMinSize": 256,
     "heartbeatPeriod": 60000
   },
+  "complexResource": {
+    "maxFiles": 100,
+    "maxTotalBytes": 16777216,
+    "maxFileSizeBytes": 1048576
+  },
   "complexResourceSweep": {
     "period": 10000,
     "batch": 1000,
