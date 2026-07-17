@@ -128,7 +128,7 @@ class ComplexResourceSweepServiceTest {
             ShareService shareService = Mockito.mock(ShareService.class);
             InvitationService invitationService = Mockito.mock(InvitationService.class);
             complexResourceService = new ComplexResourceService(
-                    resourceService, lockService, shareService, invitationService, blobStorage);
+                    resourceService, lockService, shareService, invitationService, blobStorage, new ComplexResourceService.Settings());
             encryptionService = new EncryptionService(new JsonObject().put("secret", "secret").put("key", "key"));
         } catch (Throwable e) {
             destroy();

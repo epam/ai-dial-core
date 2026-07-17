@@ -4,6 +4,7 @@ import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
@@ -719,5 +720,208 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     }
 
     private record BinaryResponse(int status, byte[] body, Map<String, String> headers) {
+    }
+
+    /**
+     * Boundary tests for the per-resource {@code maxFiles}/{@code maxTotalBytes}/{@code maxFileSizeBytes} limits,
+     * run against small overridden limits so the boundaries are cheap to exercise.
+     */
+    public static class LimitsApiTest extends ResourceBaseTest {
+
+        private static final String MANIFEST = """
+                ---
+                name: My Skill
+                description: Does something useful
+                ---
+                """;
+
+        @Override
+        protected JsonObject additionalSettingsOverrides() {
+            return new JsonObject("""
+                    {
+                      "complexResource": {
+                        "maxFiles": 3,
+                        "maxTotalBytes": 200,
+                        "maxFileSizeBytes": 100
+                      }
+                    }
+                    """);
+        }
+
+        @Test
+        void testWholeResourcePutRejectsExceedingMaxFiles() {
+            Map<String, byte[]> files = new LinkedHashMap<>();
+            files.put("SKILL.md", MANIFEST.getBytes(StandardCharsets.UTF_8));
+            files.put("a.txt", "a".getBytes(StandardCharsets.UTF_8));
+            files.put("b.txt", "b".getBytes(StandardCharsets.UTF_8));
+            files.put("c.txt", "c".getBytes(StandardCharsets.UTF_8));
+
+            verify(uploadSkill("/too-many-files", files), 400);
+            assertEquals(404, downloadSkill("/too-many-files").status());
+        }
+
+        @Test
+        void testWholeResourcePutAcceptsExactlyMaxFiles() {
+            Map<String, byte[]> files = new LinkedHashMap<>();
+            files.put("SKILL.md", MANIFEST.getBytes(StandardCharsets.UTF_8));
+            files.put("a.txt", "a".getBytes(StandardCharsets.UTF_8));
+            files.put("b.txt", "b".getBytes(StandardCharsets.UTF_8));
+
+            verify(uploadSkill("/exact-max-files", files), 200);
+        }
+
+        @Test
+        void testWholeResourcePutRejectsExceedingMaxTotalBytes() {
+            Map<String, byte[]> files = new LinkedHashMap<>();
+            files.put("SKILL.md", MANIFEST.getBytes(StandardCharsets.UTF_8));
+            files.put("big.txt", "x".repeat(200).getBytes(StandardCharsets.UTF_8));
+
+            Response put = uploadSkill("/too-big-total", files);
+            verify(put, 413);
+            assertEquals(404, downloadSkill("/too-big-total").status());
+        }
+
+        @Test
+        void testWholeResourcePutRejectsExceedingMaxFileSize() {
+            Map<String, byte[]> files = new LinkedHashMap<>();
+            files.put("SKILL.md", MANIFEST.getBytes(StandardCharsets.UTF_8));
+            files.put("huge.txt", "x".repeat(150).getBytes(StandardCharsets.UTF_8));
+
+            Response put = uploadSkill("/too-big-file", files);
+            verify(put, 413);
+            assertEquals(404, downloadSkill("/too-big-file").status());
+        }
+
+        @Test
+        void testSingleFilePutRejectsExceedingMaxFileSize() {
+            Map<String, byte[]> files = Map.of("SKILL.md", MANIFEST.getBytes(StandardCharsets.UTF_8));
+            verify(uploadSkill("/file-too-big", files), 200);
+
+            verify(putSkillFile("/file-too-big", "big.txt", "x".repeat(150).getBytes(StandardCharsets.UTF_8)), 413);
+            // rejected mutation left nothing observable: the file was never added
+            assertEquals(404, getSkillFile("/file-too-big", "big.txt").status());
+        }
+
+        @Test
+        void testSingleFilePutRejectsExceedingMaxTotalBytes() {
+            Map<String, byte[]> files = Map.of("SKILL.md", MANIFEST.getBytes(StandardCharsets.UTF_8));
+            Response created = uploadSkill("/file-total-too-big", files);
+            verify(created, 200);
+            String before = created.headers().get("etag");
+
+            // SKILL.md is small; adding a near-limit file tips the aggregate past maxTotalBytes(200)
+            verify(putSkillFile("/file-total-too-big", "big.txt", "x".repeat(190).getBytes(StandardCharsets.UTF_8)), 413);
+
+            // rejected mutation must not have changed the resource
+            assertEquals(before, downloadSkill("/file-total-too-big").headers().get("etag"));
+        }
+
+        @Test
+        void testSingleFilePutRejectsExceedingMaxFiles() {
+            Map<String, byte[]> files = new LinkedHashMap<>();
+            files.put("SKILL.md", MANIFEST.getBytes(StandardCharsets.UTF_8));
+            files.put("a.txt", "a".getBytes(StandardCharsets.UTF_8));
+            files.put("b.txt", "b".getBytes(StandardCharsets.UTF_8));
+            verify(uploadSkill("/file-count-too-big", files), 200);
+
+            // adding a 4th distinct file exceeds maxFiles(3)
+            verify(putSkillFile("/file-count-too-big", "c.txt", "c".getBytes(StandardCharsets.UTF_8)), 400);
+
+            // replacing an existing file is fine (file count unchanged)
+            verify(putSkillFile("/file-count-too-big", "a.txt", "aa".getBytes(StandardCharsets.UTF_8)), 200);
+        }
+
+        @SneakyThrows
+        private Response uploadSkill(String skillPath, Map<String, byte[]> files, String... headers) {
+            String uri = "http://127.0.0.1:" + serverPort + "/v2/skills/" + bucket + skillPath;
+            HttpUriRequest request = new HttpUriRequestBase(HttpMethod.PUT.name(), URI.create(uri));
+
+            for (int i = 0; i < headers.length; i += 2) {
+                request.setHeader(headers[i], headers[i + 1]);
+            }
+            if (!request.containsHeader("authorization") && !request.containsHeader("api-key")) {
+                request.setHeader("api-key", "proxyKey1");
+            }
+
+            MultipartEntityBuilder builder = MultipartEntityBuilder.create();
+            builder.setMode(HttpMultipartMode.LEGACY);
+            builder.setCharset(StandardCharsets.UTF_8);
+            for (Map.Entry<String, byte[]> entry : files.entrySet()) {
+                builder.addBinaryBody(entry.getKey(), entry.getValue(), ContentType.DEFAULT_BINARY, entry.getKey());
+            }
+            request.setEntity(builder.build());
+
+            return client.execute(request, ResourceBaseTest::toResponse);
+        }
+
+        @SneakyThrows
+        private BinaryResponse downloadSkill(String skillPath, String... headers) {
+            String uri = "http://127.0.0.1:" + serverPort + "/v2/skills/" + bucket + skillPath;
+            HttpUriRequest request = new HttpUriRequestBase(HttpMethod.GET.name(), URI.create(uri));
+
+            for (int i = 0; i < headers.length; i += 2) {
+                request.setHeader(headers[i], headers[i + 1]);
+            }
+            if (!request.containsHeader("authorization") && !request.containsHeader("api-key")) {
+                request.setHeader("api-key", "proxyKey1");
+            }
+
+            return client.execute(request, response -> {
+                int status = response.getCode();
+                byte[] body = response.getEntity() == null ? new byte[0] : EntityUtils.toByteArray(response.getEntity());
+                Map<String, String> responseHeaders = new HashMap<>();
+                for (Header header : response.getHeaders()) {
+                    responseHeaders.put(header.getName(), header.getValue());
+                }
+                return new BinaryResponse(status, body, responseHeaders);
+            });
+        }
+
+        @SneakyThrows
+        private Response putSkillFile(String skillPath, String filePath, byte[] content, String... headers) {
+            String uri = "http://127.0.0.1:" + serverPort + "/v2/skills/" + bucket + skillPath + "/files/" + filePath;
+            HttpUriRequest request = new HttpUriRequestBase(HttpMethod.PUT.name(), URI.create(uri));
+
+            for (int i = 0; i < headers.length; i += 2) {
+                request.setHeader(headers[i], headers[i + 1]);
+            }
+            if (!request.containsHeader("authorization") && !request.containsHeader("api-key")) {
+                request.setHeader("api-key", "proxyKey1");
+            }
+
+            MultipartEntityBuilder builder = MultipartEntityBuilder.create();
+            builder.setMode(HttpMultipartMode.LEGACY);
+            builder.setCharset(StandardCharsets.UTF_8);
+            builder.addBinaryBody("file", content, ContentType.DEFAULT_BINARY, "file");
+            request.setEntity(builder.build());
+
+            return client.execute(request, ResourceBaseTest::toResponse);
+        }
+
+        @SneakyThrows
+        private BinaryResponse getSkillFile(String skillPath, String filePath, String... headers) {
+            String uri = "http://127.0.0.1:" + serverPort + "/v2/skills/" + bucket + skillPath + "/files/" + filePath;
+            HttpUriRequest request = new HttpUriRequestBase(HttpMethod.GET.name(), URI.create(uri));
+
+            for (int i = 0; i < headers.length; i += 2) {
+                request.setHeader(headers[i], headers[i + 1]);
+            }
+            if (!request.containsHeader("authorization") && !request.containsHeader("api-key")) {
+                request.setHeader("api-key", "proxyKey1");
+            }
+
+            return client.execute(request, response -> {
+                int status = response.getCode();
+                byte[] body = response.getEntity() == null ? new byte[0] : EntityUtils.toByteArray(response.getEntity());
+                Map<String, String> responseHeaders = new HashMap<>();
+                for (Header header : response.getHeaders()) {
+                    responseHeaders.put(header.getName(), header.getValue());
+                }
+                return new BinaryResponse(status, body, responseHeaders);
+            });
+        }
+
+        private record BinaryResponse(int status, byte[] body, Map<String, String> headers) {
+        }
     }
 }

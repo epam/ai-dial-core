@@ -229,6 +229,22 @@ Priority order:
 </details>
 
 <details> 
+<summary><b>Complex Resource Limits Configurations</b></summary>
+
+Per-resource limits for folder-as-resource complex resources (e.g. skills), enforced on whole-resource
+PUT and single-file PUT. Exceeding a limit rejects the request and leaves nothing observable written.
+These limits also bound listing reads, archive (ZIP download) size and how long a mutation holds the
+resource lock (a single-file PUT copies the whole current version under the lock).
+
+| Setting                            | Default  | Required | Description                                                      |
+|-------------------------------------|:--------:|:--------:|--------------------------------------------------------------------|
+| complexResource.maxFiles           |   100    |    No    | Max number of files a complex resource may contain.               |
+| complexResource.maxTotalBytes      | 16777216 |    No    | Max aggregate size in bytes of all files in a complex resource.   |
+| complexResource.maxFileSizeBytes   | 1048576  |    No    | Max size in bytes of a single file within a complex resource.     |
+
+</details>
+
+<details> 
 <summary><b>Complex Resource Sweep Configurations</b></summary>
 
 Periodic job that reclaims storage for folder-as-resource complex resources (e.g. skills): it finishes
