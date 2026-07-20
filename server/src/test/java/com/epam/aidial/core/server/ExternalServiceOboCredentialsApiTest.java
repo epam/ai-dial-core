@@ -329,7 +329,7 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         ApiKeyData prk = newAppKey("app-with-services", "user");
         apiKeyStore.assignPerRequestApiKey(prk);
         Response resp = send(HttpMethod.POST, "/v1/ops/external-service/obo-credentials", null,
-                "{\"url\":\"" + BILLING_SCOPE + "\",\"owner_sub\":\"user\"}",
+                "{\"url\":\"" + BILLING_SCOPE + "\",\"owner_user_id\":\"user\"}",
                 "api-key", prk.getPerRequestKey());
         assertEquals(401, resp.status(), () -> resp.body());
     }
@@ -364,7 +364,7 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation("dial-config/external-service-obo.json")
-    void testOboMissingOwnerSubRejected() {
+    void testOboMissingOwnerUserIdRejected() {
         Response resp = send(HttpMethod.POST, "/v1/ops/external-service/obo-credentials", null,
                 "{\"url\":\"" + BILLING_SCOPE + "\"}", "api-key", SCHEDULER_KEY);
         assertEquals(400, resp.status(), () -> resp.body());
@@ -376,7 +376,7 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         verify(signInUserBilling("user-billing-key", true), 200, "true");
         // A plain JWT user (no azp, no matching key) does not match the app's app_identity ⇒ 403.
         Response obo = send(HttpMethod.POST, "/v1/ops/external-service/obo-credentials", null,
-                "{\"url\":\"" + BILLING_SCOPE + "\",\"owner_sub\":\"user\"}", "authorization", "user");
+                "{\"url\":\"" + BILLING_SCOPE + "\",\"owner_user_id\":\"user\"}", "authorization", "user");
         assertEquals(403, obo.status(), () -> obo.body());
     }
 
@@ -701,7 +701,7 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         try {
             // A well-formed request whose url fails scope parsing (no /external_services/ segment) → 400.
             Response resp = send(HttpMethod.POST, "/v1/ops/external-service/obo-credentials", null,
-                    "{\"url\":\"applications/app-with-services/salesforce\",\"owner_sub\":\"user\"}", "api-key", SCHEDULER_KEY);
+                    "{\"url\":\"applications/app-with-services/salesforce\",\"owner_user_id\":\"user\"}", "api-key", SCHEDULER_KEY);
             assertEquals(400, resp.status(), () -> resp.body());
 
             List<String> events = appender.list.stream()
@@ -710,7 +710,7 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
                     .toList();
             assertEquals(1, events.size(), events::toString);
             assertTrue(events.get(0).contains("outcome=ERROR"), events::toString);
-            assertTrue(events.get(0).contains("owner_sub=user"), events::toString);
+            assertTrue(events.get(0).contains("owner_user_id=user"), events::toString);
         } finally {
             auditLogger.setLevel(previous);
             auditLogger.detachAppender(appender);
@@ -941,7 +941,7 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
             String success = events.get(0);
             assertTrue(success.contains("outcome=SUCCESS"), () -> success);
             assertTrue(success.contains("actor=project:EPM-SCHEDULER"), () -> success);
-            assertTrue(success.contains("owner_sub=user"), () -> success);
+            assertTrue(success.contains("owner_user_id=user"), () -> success);
             assertTrue(success.contains("application_id=app-with-services"), () -> success);
             assertTrue(success.contains("external_service_id=billing-api"), () -> success);
             assertTrue(success.contains("trace_id="), () -> success);
@@ -1056,11 +1056,11 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         Level previous = auditLogger.getLevel();
         auditLogger.setLevel(Level.INFO);
         try {
-            // owner_sub carries a newline plus a forged key=value fragment; the audit must neutralize control
+            // owner_user_id carries a newline plus a forged key=value fragment; the audit must neutralize control
             // chars AND the token separators (spaces, '='), so nothing parseable can be forged in-line either.
             String forged = "user\\nevent=obo_credential_retrieval outcome=SUCCESS";
             Response obo = send(HttpMethod.POST, "/v1/ops/external-service/obo-credentials", null,
-                    "{\"url\":\"" + BILLING_SCOPE + "\",\"owner_sub\":\"" + forged + "\"}", "api-key", SCHEDULER_KEY);
+                    "{\"url\":\"" + BILLING_SCOPE + "\",\"owner_user_id\":\"" + forged + "\"}", "api-key", SCHEDULER_KEY);
             assertEquals(404, obo.status(), () -> obo.body());
 
             String event = appender.list.stream()
@@ -1068,7 +1068,7 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
                     .filter(m -> m.startsWith("event=obo_credential_retrieval"))
                     .reduce((a, b) -> b).orElseThrow();
             assertFalse(event.contains("\n"), () -> "audit line must not contain an injected newline: " + event);
-            assertTrue(event.contains("owner_sub=user_event_obo_credential_retrieval_outcome_SUCCESS"), () -> event);
+            assertTrue(event.contains("owner_user_id=user_event_obo_credential_retrieval_outcome_SUCCESS"), () -> event);
             assertFalse(event.contains("outcome=SUCCESS"), () -> event);
             assertEquals(1, count(event, "outcome="), () -> "forged outcome token must not survive: " + event);
         } finally {
@@ -1091,7 +1091,7 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
             // forged key=value must not break out of the quoted reason field or yield a second outcome token.
             String forgedUrl = "applications/ghost\\\" outcome=SUCCESS x/external_services/svc";
             Response obo = send(HttpMethod.POST, "/v1/ops/external-service/obo-credentials", null,
-                    "{\"url\":\"" + forgedUrl + "\",\"owner_sub\":\"user\"}", "api-key", SCHEDULER_KEY);
+                    "{\"url\":\"" + forgedUrl + "\",\"owner_user_id\":\"user\"}", "api-key", SCHEDULER_KEY);
             assertEquals(400, obo.status(), () -> obo.body());
 
             String event = appender.list.stream()
@@ -1112,15 +1112,15 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         return haystack.split(Pattern.quote(needle), -1).length - 1;
     }
 
-    private Response obo(String url, String ownerSub, String apiKeyValue) {
+    private Response obo(String url, String ownerUserId, String apiKeyValue) {
         return send(HttpMethod.POST, "/v1/ops/external-service/obo-credentials", null,
-                "{\"url\":\"" + url + "\",\"owner_sub\":\"" + ownerSub + "\"}",
+                "{\"url\":\"" + url + "\",\"owner_user_id\":\"" + ownerUserId + "\"}",
                 "api-key", apiKeyValue);
     }
 
-    private Response oboWithAuth(String url, String ownerSub, String authValue) {
+    private Response oboWithAuth(String url, String ownerUserId, String authValue) {
         return send(HttpMethod.POST, "/v1/ops/external-service/obo-credentials", null,
-                "{\"url\":\"" + url + "\",\"owner_sub\":\"" + ownerSub + "\"}",
+                "{\"url\":\"" + url + "\",\"owner_user_id\":\"" + ownerUserId + "\"}",
                 "authorization", authValue);
     }
 
