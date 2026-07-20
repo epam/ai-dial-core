@@ -46,11 +46,29 @@ allprojects {
             force 'com.google.code.gson:gson:2.11.0'
             force 'net.minidev:json-smart:2.5.2'
             force 'io.grpc:grpc-netty-shaded:1.75.0'
+            // Keep the whole netty graph on one patched version; netty-tcnative-* is intentionally
+            // absent, it has its own 2.0.x version line.
+            force "io.netty:netty-buffer:${netty_version}"
             force "io.netty:netty-codec:${netty_version}"
             force "io.netty:netty-codec-dns:${netty_version}"
             force "io.netty:netty-codec-http:${netty_version}"
             force "io.netty:netty-codec-http2:${netty_version}"
+            force "io.netty:netty-codec-socks:${netty_version}"
+            force "io.netty:netty-common:${netty_version}"
+            force "io.netty:netty-handler:${netty_version}"
+            force "io.netty:netty-handler-proxy:${netty_version}"
+            force "io.netty:netty-resolver:${netty_version}"
             force "io.netty:netty-resolver-dns:${netty_version}"
+            force "io.netty:netty-resolver-dns-classes-macos:${netty_version}"
+            force "io.netty:netty-resolver-dns-native-macos:${netty_version}"
+            force "io.netty:netty-transport:${netty_version}"
+            force "io.netty:netty-transport-classes-epoll:${netty_version}"
+            force "io.netty:netty-transport-classes-kqueue:${netty_version}"
+            force "io.netty:netty-transport-native-kqueue:${netty_version}"
+            force "io.netty:netty-transport-native-unix-common:${netty_version}"
+            // opentelemetry-exporter-sender-okhttp pulls okhttp 5.x, which drops okhttp3.internal.Util and
+            // breaks mockwebserver 4.x; pin okhttp to the 4.x line the project already targets.
+            force "com.squareup.okhttp3:okhttp:${squareup_okhttp3_version}"
             force "com.google.guava:guava:${guava_version}"
             dependencySubstitution {
                 substitute module('com.google.guava:guava:31.0.1-jre') using module("com.google.guava:guava:${guava_version}") because "CVE in 31.0.1-jre pulled transitively via com.google.inject:guice:7.0.0"
