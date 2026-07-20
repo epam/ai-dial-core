@@ -32,7 +32,7 @@ public final class ExternalServiceAuditLog {
 
     /** One event per OBO retrieval outcome; {@code error} is {@code null} on success. */
     public static void oboRetrieval(ProxyContext context, String applicationId, String externalServiceId,
-                                    String ownerSub, RuntimeException error) {
+                                    String ownerUserId, RuntimeException error) {
         String outcome = switch (error) {
             case null -> "SUCCESS";
             case ConsentRequiredException ignored -> "CONSENT_REQUIRED";
@@ -41,9 +41,9 @@ public final class ExternalServiceAuditLog {
             default -> "ERROR";
         };
         // reason echoes only the exception message, never a response body or secret — keep it that way.
-        AUDIT.info("event=obo_credential_retrieval outcome={} actor={} owner_sub={} application_id={} "
+        AUDIT.info("event=obo_credential_retrieval outcome={} actor={} owner_user_id={} application_id={} "
                         + "external_service_id={} trace_id={}{}",
-                outcome, actorEvidence(context), sanitizeToken(ownerSub), sanitizeToken(applicationId),
+                outcome, actorEvidence(context), sanitizeToken(ownerUserId), sanitizeToken(applicationId),
                 sanitizeToken(externalServiceId), context.getTraceId(),
                 error == null ? "" : " reason=\"%s\"".formatted(sanitizeReason(error.getMessage())));
     }
