@@ -30,7 +30,7 @@ import java.util.function.Function;
 
 /**
  * User-authored external-service definitions: each is its own resource in the author's
- * bucket at {@code Users/{ownerSub}/external_services/applications/{app_id}/{id}}. Isolation rides on
+ * bucket at {@code Users/{ownerUserId}/external_services/applications/{app_id}/{id}}. Isolation rides on
  * bucket ownership; the {@code client_secret} is encrypted under the owner's CEK.
  */
 @RequiredArgsConstructor
@@ -42,18 +42,18 @@ public class UserExternalServiceService {
     private final ResourceAuthSettingsEncryptionService secretEncryptionService;
     private final EncryptionService bucketEncryptionService;
 
-    public ResourceDescriptor descriptor(String ownerSub, String appPart, String serviceId) {
-        requireOwner(ownerSub);
+    public ResourceDescriptor descriptor(String ownerUserId, String appPart, String serviceId) {
+        requireOwner(ownerUserId);
         ExternalServiceValidation.validateServiceId(serviceId);
-        String bucketLocation = BucketBuilder.USER_BUCKET_PATTERN.formatted(ownerSub);
+        String bucketLocation = BucketBuilder.USER_BUCKET_PATTERN.formatted(ownerUserId);
         String bucketName = bucketEncryptionService.encrypt(bucketLocation);
         List<String> parentFolders = applicationSegments(appPart);
         return new ResourceDescriptor(ResourceTypes.EXTERNAL_SERVICE, serviceId, parentFolders, bucketName, bucketLocation, false);
     }
 
-    private ResourceDescriptor folderDescriptor(String ownerSub, String appPart) {
-        requireOwner(ownerSub);
-        String bucketLocation = BucketBuilder.USER_BUCKET_PATTERN.formatted(ownerSub);
+    private ResourceDescriptor folderDescriptor(String ownerUserId, String appPart) {
+        requireOwner(ownerUserId);
+        String bucketLocation = BucketBuilder.USER_BUCKET_PATTERN.formatted(ownerUserId);
         String bucketName = bucketEncryptionService.encrypt(bucketLocation);
         List<String> segments = applicationSegments(appPart);
         String name = segments.remove(segments.size() - 1);
@@ -61,8 +61,8 @@ public class UserExternalServiceService {
     }
 
     // A blank owner would derive the shared "Users/null/" bucket (cross-caller secret leak); require a real owner.
-    private static void requireOwner(String ownerSub) {
-        if (StringUtils.isBlank(ownerSub)) {
+    private static void requireOwner(String ownerUserId) {
+        if (StringUtils.isBlank(ownerUserId)) {
             throw new PermissionDeniedException("A user identity is required to manage user-authored external services");
         }
     }
@@ -75,8 +75,8 @@ public class UserExternalServiceService {
         return segments;
     }
 
-    public ExternalService put(String ownerSub, String appPart, String serviceId, ExternalService service, String author) {
-        ResourceDescriptor resource = descriptor(ownerSub, appPart, serviceId);
+    public ExternalService put(String ownerUserId, String appPart, String serviceId, ExternalService service, String author) {
+        ResourceDescriptor resource = descriptor(ownerUserId, appPart, serviceId);
         BucketInfo bucket = new BucketInfo(resource.getBucketName(), resource.getBucketLocation());
         String aad = resource.getAbsoluteFilePath();
         MutableObject<ExternalService> result = new MutableObject<>();
@@ -94,8 +94,8 @@ public class UserExternalServiceService {
     }
 
     /** Reads and decrypts the user-authored definition, or {@code null} if the owner has none for this scope. */
-    public ExternalService get(String ownerSub, String appPart, String serviceId) {
-        ResourceDescriptor resource = descriptor(ownerSub, appPart, serviceId);
+    public ExternalService get(String ownerUserId, String appPart, String serviceId) {
+        ResourceDescriptor resource = descriptor(ownerUserId, appPart, serviceId);
         Pair<ResourceItemMetadata, String> stored = resourceService.getResourceWithMetadata(resource, EtagHeader.ANY);
         if (stored == null || stored.getValue() == null) {
             return null;
@@ -106,8 +106,8 @@ public class UserExternalServiceService {
     }
 
     /** Lists and decrypts all user-authored definitions the owner has for this application (id → definition). */
-    public Map<String, ExternalService> list(String ownerSub, String appPart) {
-        ResourceDescriptor folder = folderDescriptor(ownerSub, appPart);
+    public Map<String, ExternalService> list(String ownerUserId, String appPart) {
+        ResourceDescriptor folder = folderDescriptor(ownerUserId, appPart);
         Map<String, ExternalService> result = new LinkedHashMap<>();
         String token = null;
         do {
@@ -119,7 +119,7 @@ public class UserExternalServiceService {
             if (items != null) {
                 for (MetadataBase item : items) {
                     if (item.getNodeType() == NodeType.ITEM) {
-                        ExternalService service = get(ownerSub, appPart, item.getName());
+                        ExternalService service = get(ownerUserId, appPart, item.getName());
                         if (service != null) {
                             result.put(item.getName(), service);
                         }
@@ -137,9 +137,9 @@ public class UserExternalServiceService {
      * user-authored definition is passed through {@code shaper} before being added (e.g. to strip secrets). Returns
      * {@code inline} unchanged when the owner has none for this application.
      */
-    public Map<String, ExternalService> overlay(Map<String, ExternalService> inline, String ownerSub, String appPart,
+    public Map<String, ExternalService> overlay(Map<String, ExternalService> inline, String ownerUserId, String appPart,
                                                 Function<ExternalService, ExternalService> shaper) {
-        Map<String, ExternalService> userServices = list(ownerSub, appPart);
+        Map<String, ExternalService> userServices = list(ownerUserId, appPart);
         if (userServices.isEmpty()) {
             return inline;
         }
@@ -151,8 +151,8 @@ public class UserExternalServiceService {
         return merged;
     }
 
-    public void delete(String ownerSub, String appPart, String serviceId) {
-        ResourceDescriptor resource = descriptor(ownerSub, appPart, serviceId);
+    public void delete(String ownerUserId, String appPart, String serviceId) {
+        ResourceDescriptor resource = descriptor(ownerUserId, appPart, serviceId);
         if (!resourceService.deleteResource(resource, EtagHeader.ANY)) {
             throw new ResourceNotFoundException("External service '%s' not found".formatted(serviceId));
         }

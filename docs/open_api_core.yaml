@@ -13192,7 +13192,7 @@ components:
     OboCredentialsRequest:
       type: object
       properties:
-        ownerSub:
+        ownerUserId:
           type: string
         url:
           type: string
