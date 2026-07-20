@@ -4,7 +4,9 @@ import com.networknt.schema.Collector;
 import lombok.Getter;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 public class ListCollector<T> implements Collector<List<T>> {
 
@@ -32,7 +34,7 @@ public class ListCollector<T> implements Collector<List<T>> {
         }
     }
 
-    private final List<T> references = new ArrayList<>();
+    private final Set<T> references = new LinkedHashSet<>();
 
     @Override
     @SuppressWarnings("unchecked")
@@ -46,7 +48,7 @@ public class ListCollector<T> implements Collector<List<T>> {
 
     @Override
     public List<T> collect() {
-        return references;
+        return new ArrayList<>(references);
     }
 }
 

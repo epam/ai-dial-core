@@ -564,6 +564,26 @@ public class ApplicationSchemaServiceTest {
     }
 
     @Test
+    public void getFiles_dedupsDuplicateFileReferences() {
+        when(configStore.get()).thenReturn(config);
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+
+        String sharedUrl = "files/public/valid-file-path/valid-sub-path/valid%20file%20name1.ext";
+        Map<String, Object> duplicateProperties = new HashMap<>();
+        duplicateProperties.put("clientFile", sharedUrl);
+        duplicateProperties.put("serverFile", sharedUrl);
+        application.setApplicationProperties(duplicateProperties);
+
+        when(config.getCustomApplicationSchema(any())).thenReturn(schema);
+        when(resourceService.hasResource(any())).thenReturn(true);
+
+        List<ResourceDescriptor> result = service.getFiles(application);
+
+        Assertions.assertEquals(1, result.size());
+        Assertions.assertEquals(sharedUrl, result.get(0).getUrl());
+    }
+
+    @Test
     public void getServerFiles_returnsListOfServerFiles_whenSchemaExists() {
         when(configStore.get()).thenReturn(config);
         application.setApplicationTypeSchemaId(URI.create("schemaId"));
