@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -26,12 +27,13 @@ import static com.epam.aidial.core.storage.resource.ResourceTypes.APPLICATION;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.CONVERSATION;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.FILE;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.PROMPT;
+import static com.epam.aidial.core.storage.resource.ResourceTypes.SKILL;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.TOOL_SET;
 
 @AllArgsConstructor
 public class ResourceOperationService {
     private static final Set<ResourceTypes> ALLOWED_RESOURCES = Set.of(FILE, CONVERSATION,
-            PROMPT, APPLICATION, TOOL_SET);
+            PROMPT, APPLICATION, TOOL_SET, SKILL);
 
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
@@ -39,6 +41,7 @@ public class ResourceOperationService {
     private final InvitationService invitationService;
     private final ShareService shareService;
     private final LockService lockService;
+    private final ComplexResourceService complexResourceService;
 
     public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescriptor> resources,
                                                          Consumer<ResourceEvent> subscriber) {
@@ -54,7 +57,7 @@ public class ResourceOperationService {
         String sourceResourceUrl = source.getUrl();
         String destinationResourceUrl = destination.getUrl();
 
-        if (!resourceService.hasResource(source)) {
+        if (!hasResource(source)) {
             throw new IllegalArgumentException("Source resource %s does not exist".formatted(sourceResourceUrl));
         }
 
@@ -76,6 +79,11 @@ public class ResourceOperationService {
             // TODO: support move for USER and APP credentials for public toolsets
             // TODO: support move for USER and APP credentials for shared toolsets (?)
             toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, credentialsToCopy);
+        } else if (destination.getType() == SKILL) {
+            if (!complexResourceService.copyResource(source, destination, null, overwriteIfExists)) {
+                throw new IllegalArgumentException("Can't move resource %s to %s, because destination resource already exists"
+                        .formatted(sourceResourceUrl, destinationResourceUrl));
+            }
         } else {
             boolean copied = resourceService.copyResource(source, destination, null, overwriteIfExists);
             if (!copied) {
@@ -103,6 +111,8 @@ public class ResourceOperationService {
             applicationService.deleteApplication(source, EtagHeader.ANY);
         } else if (destination.getType() == TOOL_SET) {
             toolSetService.deleteToolset(context, source, EtagHeader.ANY);
+        } else if (destination.getType() == SKILL) {
+            complexResourceService.delete(source, EtagHeader.ANY);
         } else {
             resourceService.deleteResource(source, EtagHeader.ANY);
         }
@@ -117,7 +127,7 @@ public class ResourceOperationService {
         String sourceResourceUrl = source.getUrl();
         String destinationResourceUrl = destination.getUrl();
 
-        if (!resourceService.hasResource(source)) {
+        if (!hasResource(source)) {
             throw new IllegalArgumentException("Source resource does not exist: " + sourceResourceUrl);
         }
 
@@ -135,6 +145,11 @@ public class ResourceOperationService {
             });
         } else if (destination.getType() == TOOL_SET) {
             toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, Map.of());
+        } else if (destination.getType() == SKILL) {
+            if (!complexResourceService.copyResource(source, destination, null, overwriteIfExists)) {
+                throw new IllegalArgumentException("Can't copy resource %s to %s, because destination resource already exists"
+                        .formatted(sourceResourceUrl, destinationResourceUrl));
+            }
         } else {
             boolean copied = resourceService.copyResource(source, destination, null, overwriteIfExists);
             if (!copied) {
@@ -142,6 +157,12 @@ public class ResourceOperationService {
                         .formatted(sourceResourceUrl, destinationResourceUrl));
             }
         }
+    }
+
+    private boolean hasResource(ResourceDescriptor resource) {
+        return resource.getType() == SKILL
+                ? complexResourceService.getMarker(resource) != null
+                : resourceService.hasResource(resource);
     }
 
     public boolean deleteResource(ProxyContext context, ResourceDescriptor resource, EtagHeader etag) {
@@ -166,7 +187,7 @@ public class ResourceOperationService {
     private static void verifyResourceToDelete(ResourceDescriptor resource) {
         ResourceType type = resource.getType();
         if (!(APPLICATION == type || FILE == type
-                || CONVERSATION == type || type == PROMPT || type == TOOL_SET)) {
+                || CONVERSATION == type || type == PROMPT || type == TOOL_SET || type == SKILL)) {
             throw new IllegalArgumentException("Unsupported resource type to delete: " + type.name());
         }
     }
@@ -182,9 +203,19 @@ public class ResourceOperationService {
         }
         if (resource.getType() == TOOL_SET) {
             return toolSetService.deleteToolset(context, resource, etag);
-        } else {
-            return resourceService.deleteResource(resource, etag);
         }
+        if (resource.getType() == SKILL) {
+            try {
+                complexResourceService.delete(resource, etag);
+            } catch (HttpException e) {
+                if (e.getStatus() == HttpStatus.NOT_FOUND) {
+                    return false;
+                }
+                throw e;
+            }
+            return true;
+        }
+        return resourceService.deleteResource(resource, etag);
     }
 
 }

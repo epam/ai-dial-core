@@ -2,8 +2,6 @@ package com.epam.aidial.core.server.service.resource;
 
 import com.epam.aidial.core.server.data.folder.ComplexResourceRef;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
-import com.epam.aidial.core.server.service.InvitationService;
-import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
@@ -12,6 +10,7 @@ import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.NodeType;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -80,18 +79,13 @@ public class ComplexResourceService {
 
     private final ResourceService resourceService;
     private final LockService lockService;
-    private final ShareService shareService;
-    private final InvitationService invitationService;
     private final BlobStorage blobStorage;
     private final Settings settings;
 
     public ComplexResourceService(ResourceService resourceService, LockService lockService,
-                                 ShareService shareService, InvitationService invitationService,
                                  BlobStorage blobStorage, Settings settings) {
         this.resourceService = resourceService;
         this.lockService = lockService;
-        this.shareService = shareService;
-        this.invitationService = invitationService;
         this.blobStorage = blobStorage;
         this.settings = settings;
     }
@@ -179,6 +173,74 @@ public class ComplexResourceService {
                 }
             }
         });
+    }
+
+    /**
+     * Copies a whole resource across resource keys — used to move a complex resource between the private,
+     * review and public buckets during publication. The current version's files are copied server-side
+     * into a fresh {@code v/{versionId}/} prefix at the destination, then a marker is committed there that
+     * is freshly synthesized from the copy (a new {@code currentVersion}, an aggregate etag recomputed from
+     * the copied files, fresh {@code createdAt}/{@code updatedAt}/author) — the source marker document is
+     * never carried over as-is. The type-specific metadata (e.g. a skill's name/description) is preserved
+     * as-is since the file content is unchanged.
+     *
+     * @return {@code true} if copied; {@code false} if the destination already holds an active resource and
+     *         {@code overwrite} is {@code false} (mirrors {@link ResourceService#copyResource})
+     * @throws HttpException NOT_FOUND if the source resource is absent or in the {@code deleting} state
+     */
+    public boolean copyResource(ResourceDescriptor from, ResourceDescriptor to, String author, boolean overwrite) {
+        return lockService.underBucketLock(to.getBucketLocation(), () -> copyResourceLocked(from, to, author, overwrite));
+    }
+
+    /**
+     * Same as {@link #copyResource}, for a caller that already holds {@code to}'s bucket lock — e.g.
+     * publication approval, which locks the whole public bucket around the entire approve operation to
+     * serialize it against concurrent publish/rule writes. Taking the bucket lock again here would
+     * self-deadlock (the lock is a per-call spin lock, not reentrant across calls).
+     */
+    public boolean copyResourceLocked(ResourceDescriptor from, ResourceDescriptor to, String author, boolean overwrite) {
+        FolderResourceMarker source = getMarker(from);
+        if (source == null) {
+            throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + from.getUrl());
+        }
+
+        ResourceDescriptor marker = markerDescriptor(to);
+        String versionId = UUID.randomUUID().toString().replace("-", "");
+
+        ensureStructuralPath(to, ResourceKind.RESOURCE, author);
+
+        try (LockService.Lock ignore = resourceService.lockResource(marker)) {
+            FolderResourceMarker existing = readMarker(marker, false);
+            if (isActive(existing) && !overwrite) {
+                return false;
+            }
+
+            try {
+                Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata = currentFileMetadata(from, source);
+                for (Map.Entry<String, FolderResourceMarker.ResourceFileMetadata> entry : fileMetadata.entrySet()) {
+                    ResourceDescriptor sourceFile = versionFile(from, source.getCurrentVersion(), entry.getKey());
+                    ResourceDescriptor destFile = versionFile(to, versionId, entry.getKey());
+                    UserMetadata fileMeta = new UserMetadata();
+                    fileMeta.setEtag(entry.getValue().getEtag());
+                    if (!resourceService.copyResource(sourceFile, destFile, fileMeta, false)) {
+                        throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                "Can't copy resource file from: " + sourceFile.getUrl() + " to: " + destFile.getUrl());
+                    }
+                }
+                // Mirrors put(): an overwrite of an existing (even `deleting`) marker reuses its
+                // reference, which is keyed by URL, not by version.
+                if (existing == null) {
+                    writeReference(to);
+                }
+                commitMarker(marker, to, versionId, aggregateEtag(fileMetadata), source.getMetadata(),
+                        fileMetadata, existing, author);
+                return true;
+            } catch (Exception e) {
+                // Nothing is observable until the marker is committed; drop the orphan version files.
+                deleteVersion(versionFolder(to, versionId));
+                throw e;
+            }
+        }
     }
 
     /**
@@ -715,13 +777,16 @@ public class ComplexResourceService {
 
     /**
      * Tombstones the resource by flipping the {@code .dial-resource} marker to {@code state: deleting} and
-     * stamping {@code deletedAt}, then (for a private resource) cleans up its invitation links and shares.
-     * The version tree, the marker file itself and its {@code complex_resource_refs} pointer are <b>not</b>
-     * touched here: they are reclaimed later, once {@code gracePeriod} has elapsed, by
-     * {@code ComplexResourceSweepService} via {@link #reclaimDeletingResource}.
+     * stamping {@code deletedAt}. The version tree, the marker file itself and its
+     * {@code complex_resource_refs} pointer are <b>not</b> touched here: they are reclaimed later, once
+     * {@code gracePeriod} has elapsed, by {@code ComplexResourceSweepService} via
+     * {@link #reclaimDeletingResource}.
      *
      * <p>The tombstone write (via {@link ResourceService#computeResource}) is the linearization point:
-     * once committed, all read paths return 404 even if the version tree still physically exists.
+     * once committed, all read paths return 404 even if the version tree still physically exists. This
+     * resource-level lock (held internally by {@code computeResource}) is the only locking done here;
+     * bucket-level locking and invitation/share cleanup are the caller's responsibility (see
+     * {@code ResourceOperationService#deleteResource}).
      *
      * @throws HttpException NOT_FOUND if the resource does not exist or is already {@code deleting};
      *                       PRECONDITION_FAILED if the {@code If-Match} header does not match
@@ -729,29 +794,18 @@ public class ComplexResourceService {
     public void delete(ResourceDescriptor resource, EtagHeader etag) {
         ResourceDescriptor marker = markerDescriptor(resource);
 
-        // use bucket lock since the operation involves updating multiple resources
-        lockService.underBucketLock(resource.getBucketLocation(), () -> {
-            resourceService.computeResource(marker, json -> {
-                if (json == null) {
-                    throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
-                }
-                FolderResourceMarker current = ProxyUtil.convertToObject(json, FolderResourceMarker.class);
-                if (!isActive(current)) {
-                    throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
-                }
-                etag.validate(current.getEtag());
-                current.setState(STATE_DELETING);
-                current.setDeletedAt(System.currentTimeMillis());
-                return Objects.requireNonNull(ProxyUtil.convertToString(current));
-            });
-
-            if (resource.isPrivate()) {
-                String bucketName = resource.getBucketName();
-                String bucketLocation = resource.getBucketLocation();
-                invitationService.cleanUpResourceLink(bucketName, bucketLocation, resource);
-                shareService.revokeSharedResource(bucketName, bucketLocation, resource);
+        resourceService.computeResource(marker, json -> {
+            if (json == null) {
+                throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
             }
-            return null;
+            FolderResourceMarker current = ProxyUtil.convertToObject(json, FolderResourceMarker.class);
+            if (!isActive(current)) {
+                throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
+            }
+            etag.validate(current.getEtag());
+            current.setState(STATE_DELETING);
+            current.setDeletedAt(System.currentTimeMillis());
+            return Objects.requireNonNull(ProxyUtil.convertToString(current));
         });
     }
 

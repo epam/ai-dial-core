@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.data.ResourceUrl;
 import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -57,7 +58,7 @@ public class PublicationService {
             ResourceTypes.PUBLICATION, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, PUBLICATIONS_NAME);
 
     private static final Set<ResourceType> ALLOWED_RESOURCES = Set.of(ResourceTypes.FILE, ResourceTypes.CONVERSATION,
-            ResourceTypes.PROMPT, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET);
+            ResourceTypes.PROMPT, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET, ResourceTypes.SKILL);
 
     private final EncryptionService encryption;
     private final ResourceService resourceService;
@@ -67,6 +68,7 @@ public class PublicationService {
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
     private final ResourceOperationService resourceOperationService;
+    private final ComplexResourceService complexResourceService;
     private final Supplier<String> ids;
     private final LongSupplier clock;
 
@@ -268,7 +270,7 @@ public class PublicationService {
                 if (resource.getAction() == Publication.ResourceAction.ADD || resource.getAction() == Publication.ResourceAction.ADD_IF_ABSENT) {
                     if (existingResource == null) {
                         ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(resource.getSourceUrl(), encryption);
-                        if (!resourceService.hasResource(from)) {
+                        if (!hasResource(from)) {
                             throw new IllegalArgumentException("Source resource does not exist: " + resource.getSourceUrl());
                         }
                         reviewResourcesToAdd.add(resource);
@@ -305,6 +307,8 @@ public class PublicationService {
                 ResourceDescriptor resource = ResourceDescriptorFactory.fromPrivateUrl(reviewResource.getReviewUrl(), encryption);
                 if (resource.getType() == ResourceTypes.TOOL_SET) {
                     toolSetService.deleteToolset(context, resource, EtagHeader.ANY);
+                } else if (resource.getType() == ResourceTypes.SKILL) {
+                    complexResourceService.delete(resource, EtagHeader.ANY);
                 } else {
                     resourceService.deleteResource(resource, EtagHeader.ANY);
                 }
@@ -549,11 +553,11 @@ public class PublicationService {
             throw new IllegalArgumentException("Source and target resource types do not match: " + targetUrl);
         }
 
-        if (isPublicationNew && !resourceService.hasResource(source)) {
+        if (isPublicationNew && !hasResource(source)) {
             throw new IllegalArgumentException("Source resource does not exist: " + sourceUrl);
         }
 
-        if (resource.getAction() == Publication.ResourceAction.ADD && resourceService.hasResource(target)) {
+        if (resource.getAction() == Publication.ResourceAction.ADD && hasResource(target)) {
             throw new IllegalArgumentException("Target resource already exists: " + targetUrl);
         }
 
@@ -602,7 +606,7 @@ public class PublicationService {
             throw new IllegalArgumentException("Target resources have duplicate urls: " + targetUrl);
         }
 
-        if (!resourceService.hasResource(target)) {
+        if (!hasResource(target)) {
             throw new IllegalArgumentException("Target resource does not exists: " + targetUrl);
         }
 
@@ -643,7 +647,7 @@ public class PublicationService {
             String url = resource.getReviewUrl();
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPrivateUrl(url, encryption);
             verifyResourceType(descriptor);
-            if (!resourceService.hasResource(descriptor)) {
+            if (!hasResource(descriptor)) {
                 throw new IllegalArgumentException("Review resource does not exist: " + descriptor.getUrl());
             }
         }
@@ -655,11 +659,17 @@ public class PublicationService {
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPublicUrl(url);
             verifyResourceType(descriptor);
 
-            if (resource.getAction() != Publication.ResourceAction.ADD_IF_ABSENT && resourceService.hasResource(descriptor) != exists) {
+            if (resource.getAction() != Publication.ResourceAction.ADD_IF_ABSENT && hasResource(descriptor) != exists) {
                 String errorMessage = exists ? "Target resource does not exists: " + url : "Target resource  exists: " + url;
                 throw new IllegalArgumentException(errorMessage);
             }
         }
+    }
+
+    private boolean hasResource(ResourceDescriptor descriptor) {
+        return descriptor.getType() == ResourceTypes.SKILL
+                ? complexResourceService.getMarker(descriptor) != null
+                : resourceService.hasResource(descriptor);
     }
 
     private void copySourceToReviewResources(ProxyContext context, List<Publication.Resource> resources) {
@@ -696,6 +706,10 @@ public class PublicationService {
                 Map<CredentialsLevel, Boolean> credentialsToCopy = getCredentialsLevelsToCopy(resource);
                 toolSetService.copyToolSet(context, from, to, null, false, credentialsToCopy,
                         toolSet -> toolSet.setIconUrl(replaceLink(replacementLinks, toolSet.getIconUrl())));
+            } else if (from.getType() == ResourceTypes.SKILL) {
+                if (!complexResourceService.copyResource(from, to, null, false)) {
+                    throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
+                }
             } else if (!resourceService.copyResource(from, to)) {
                 throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to review: " + to.getUrl());
             }
@@ -741,6 +755,14 @@ public class PublicationService {
                 Map<CredentialsLevel, Boolean> credentialsToCopy = getCredentialsLevelsToCopy(resource);
                 toolSetService.copyToolSet(context, from, to, publication.getDisplayAuthor(), false,
                         credentialsToCopy, toolSet -> toolSet.setIconUrl(replaceLink(replacementLinks, toolSet.getIconUrl())));
+            } else if (from.getType() == ResourceTypes.SKILL) {
+                // approvePublication is always invoked under the public bucket lock (see
+                // PublicationController#approvePublication), so the "already locked" variant is required
+                // here: taking the same bucket lock again would self-deadlock.
+                if (!complexResourceService.copyResourceLocked(from, to, publication.getDisplayAuthor(), false)
+                        && resource.getAction() != Publication.ResourceAction.ADD_IF_ABSENT) {
+                    throw new IllegalStateException("Can't copy source resource from: " + from.getUrl() + " to target: " + to.getUrl());
+                }
             } else {
                 UserMetadata userMetadata = new UserMetadata();
                 ResourceItemMetadata metadata = resourceService.getResourceMetadata(from);

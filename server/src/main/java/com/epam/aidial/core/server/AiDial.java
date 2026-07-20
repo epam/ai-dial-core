@@ -287,10 +287,16 @@ public class AiDial {
             UpstreamCacheService upstreamCacheService = new UpstreamCacheService(redis, lockService, clock, storage.getPrefix());
             UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, Random::new, upstreamCacheService);
 
+            ComplexResourceService.Settings complexResourceSettings = Json.decodeValue(
+                    settings("complexResource").toBuffer(), ComplexResourceService.Settings.class);
+            ComplexResourceService complexResourceService = new ComplexResourceService(
+                    resourceService, lockService, storage, complexResourceSettings);
+
             ResourceOperationService resourceOperationService = new ResourceOperationService(applicationService,
-                    toolSetService, resourceService, invitationService, shareService, lockService);
+                    toolSetService, resourceService, invitationService, shareService, lockService, complexResourceService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
-                    ruleService, notificationService, applicationService, toolSetService, resourceOperationService, generator, clock);
+                    ruleService, notificationService, applicationService, toolSetService, resourceOperationService,
+                    complexResourceService, generator, clock);
 
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
                     toolSetService, resourceService, applicationSchemaService);
@@ -311,10 +317,6 @@ public class AiDial {
             ResponseMappingService responseMappingService = new ResponseMappingService(vertx, generator, resourceService);
             responseMappingService.init(taskExecutor);
 
-            ComplexResourceService.Settings complexResourceSettings = Json.decodeValue(
-                    settings("complexResource").toBuffer(), ComplexResourceService.Settings.class);
-            ComplexResourceService complexResourceService = new ComplexResourceService(
-                    resourceService, lockService, shareService, invitationService, storage, complexResourceSettings);
             ComplexResourceSweepService.Settings complexResourceSweepSettings = Json.decodeValue(
                     settings("complexResourceSweep").toBuffer(), ComplexResourceSweepService.Settings.class);
             complexResourceSweepService = new ComplexResourceSweepService(timerService, storage, redis, lockService,
