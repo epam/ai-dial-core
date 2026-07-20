@@ -288,12 +288,12 @@ public class ExternalServiceCredentialsController {
                         }
 
                         ExternalService externalService = resolveExternalServiceDefinition(
-                                app.application, scope[0], scope[1], request.getOwnerSub());
+                                app.application, scope[0], scope[1], request.getOwnerUserId());
                         ResourceAuthSettings authSettings = externalService.getAuthSettings();
                         CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScopeForOwner(
-                                request.getUrl(), request.getOwnerSub(), context);
+                                request.getUrl(), request.getOwnerUserId(), context);
                         ResourceCredentials credentials = resourceCredentialsService.getRefreshedUserCredentials(
-                                locator, authSettings, request.getOwnerSub());
+                                locator, authSettings, request.getOwnerUserId());
 
                         // Fail closed: no fallback to APP/GLOBAL. Missing owner credential ⇒ 404.
                         if (credentials == null) {
@@ -304,12 +304,12 @@ public class ExternalServiceCredentialsController {
                         }
 
                         ExternalServiceCredentialsResponse response = toCredentialsResponse(credentials, request.getUrl());
-                        ExternalServiceAuditLog.oboRetrieval(context, scope[0], scope[1], request.getOwnerSub(), null);
+                        ExternalServiceAuditLog.oboRetrieval(context, scope[0], scope[1], request.getOwnerUserId(), null);
                         return response;
                     } catch (RuntimeException e) {
                         // Audit failures too — including a malformed url that fails scope parsing (best-effort ids).
                         String[] scope = safeParseScope(request.getUrl());
-                        ExternalServiceAuditLog.oboRetrieval(context, scope[0], scope[1], request.getOwnerSub(), e);
+                        ExternalServiceAuditLog.oboRetrieval(context, scope[0], scope[1], request.getOwnerUserId(), e);
                         throw e;
                     }
                 }))
@@ -353,13 +353,13 @@ public class ExternalServiceCredentialsController {
     /**
      * Canonical external-service definition resolver. Resolves the admin/inline definition first; when the
      * app permits it ({@code allow_user_external_services}) and no inline definition exists, falls back to a
-     * user-authored definition in the owner's bucket. {@code ownerSub} is the credential
+     * user-authored definition in the owner's bucket. {@code ownerUserId} is the credential
      * owner on the OBO path; {@code null} on caller-scoped paths, where the caller is the owner.
      */
-    private ResolvedExternalService resolveExternalService(String scopeId, @Nullable String ownerSub) {
+    private ResolvedExternalService resolveExternalService(String scopeId, @Nullable String ownerUserId) {
         String[] parts = CredentialsLocatorFactory.parseExternalServiceScope(scopeId);
         ResolvedApplication app = resolveApplication(parts[0]);
-        ExternalService externalService = resolveExternalServiceDefinition(app.application, parts[0], parts[1], ownerSub);
+        ExternalService externalService = resolveExternalServiceDefinition(app.application, parts[0], parts[1], ownerUserId);
         return new ResolvedExternalService(app.application, externalService, app.applicationDescriptor, app.staticApp);
     }
 
@@ -384,11 +384,11 @@ public class ExternalServiceCredentialsController {
     }
 
     private ExternalService resolveExternalServiceDefinition(Application application, String appPart,
-                                                             String externalServiceId, @Nullable String ownerSub) {
+                                                             String externalServiceId, @Nullable String ownerUserId) {
         ExternalService externalService = application.getExternalServices() == null
                 ? null : application.getExternalServices().get(externalServiceId);
         if (externalService == null && application.isAllowUserExternalServices()) {
-            String owner = ownerSub != null ? ownerSub : context.getUserId();
+            String owner = ownerUserId != null ? ownerUserId : context.getUserId();
             if (owner != null) {
                 externalService = userExternalServiceService.get(owner, appPart, externalServiceId);
             }

@@ -71,17 +71,17 @@ public class CredentialsLocatorFactory {
 
     /**
      * Builds a USER-only {@link CredentialsLocator} for an external-service scope, resolving the USER
-     * bucket from the given {@code ownerSub} rather than the caller. Used by the on-behalf-of (OBO)
+     * bucket from the given {@code ownerUserId} rather than the caller. Used by the on-behalf-of (OBO)
      * retrieval path, where the actor (caller) differs from the credential owner. The resource id is
      * normalized identically to {@link #fromExternalServiceScope} so it reads exactly where sign-in wrote.
      * Carries only the USER level, so no APPLICATION/GLOBAL fallback is structurally possible (fail-closed).
      */
-    public static CredentialsLocator fromExternalServiceScopeForOwner(String scopeId, String ownerSub, ProxyContext proxyContext) {
+    public static CredentialsLocator fromExternalServiceScopeForOwner(String scopeId, String ownerUserId, ProxyContext proxyContext) {
         String[] parts = parseExternalServiceScope(scopeId);
         boolean configApp = proxyContext.getConfig().isDeploymentExists(parts[0]);
 
         Map<CredentialsLevel, BucketInfo> bucketInfo = new EnumMap<>(CredentialsLevel.class);
-        bucketInfo.put(CredentialsLevel.USER, CredentialsDescriptorFactory.getUserBucketInfoForUser(proxyContext, ownerSub));
+        bucketInfo.put(CredentialsLevel.USER, CredentialsDescriptorFactory.getUserBucketInfoForUser(proxyContext, ownerUserId));
         String resourceId = normalizeResourceId(configApp, parts[0], parts[1]);
         return new CredentialsLocator(resourceId, bucketInfo);
     }

@@ -229,7 +229,7 @@ public class ResourceCredentialsService {
      * Resolves the owner's USER-level credential only, with auto-refresh — and <b>no fallback</b> to
      * GLOBAL/APPLICATION levels. Used by the on-behalf-of (OBO) retrieval path, which must fail closed
      * rather than silently serve a shared/app-level identity. Returns {@code null} when the owner has no
-     * USER-level credential for the scope (the locator must carry only a USER bucket, but the userSub
+     * USER-level credential for the scope (the locator must carry only a USER bucket, but the owner user-id
      * match is enforced defensively here too).
      *
      * <p>When a credential exists but the owner did not grant offline-usage consent, it is returned <b>as
@@ -239,7 +239,7 @@ public class ResourceCredentialsService {
     @Nullable
     public ResourceCredentials getRefreshedUserCredentials(CredentialsLocator credentialsLocator,
                                                            ResourceAuthSettings authSettings,
-                                                           String ownerSub) {
+                                                           String ownerUserId) {
         if (authSettings.getAuthenticationType() == AuthenticationType.NONE) {
             return null;
         }
@@ -252,7 +252,7 @@ public class ResourceCredentialsService {
         ResourceCredentials stored = getResourceCredentials(userDescriptor);
         if (stored == null
                 || !stored.getCredentialsLevel().equals(CredentialsLevel.USER)
-                || !Objects.equals(ownerSub, stored.getUserId())) {
+                || !Objects.equals(ownerUserId, stored.getUserId())) {
             return null;
         }
         // Gate consent BEFORE refreshing: an OBO probe against a non-consented credential must not rotate the
@@ -267,7 +267,7 @@ public class ResourceCredentialsService {
         // window — accepted, since revocation via sign-out normally deletes the credential outright.)
         if (userCredentials != null
                 && userCredentials.getCredentialsLevel().equals(CredentialsLevel.USER)
-                && Objects.equals(ownerSub, userCredentials.getUserId())
+                && Objects.equals(ownerUserId, userCredentials.getUserId())
                 && userCredentials.isOfflineUsageConsent()) {
             return userCredentials;
         }
