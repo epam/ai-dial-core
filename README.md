@@ -14,6 +14,7 @@
 </h4>
 
 - [Overview](#Overview)
+- [OpenAPI Specification](#openapi-specification)
 - [Build](#build-)
 - [Run](#run-)
 - [Helm Deployment](#helm-deployment)
@@ -36,6 +37,26 @@
 **[Read more about the DIAL Core](https://docs.dialx.ai/platform/core/about-core)**
 
 ---
+
+## OpenAPI Specification
+
+DIAL Core exposes an OpenAPI specification describing all available REST endpoints, request and response models, and common error responses.
+
+The specification is generated automatically from the source code using the `openapi-generator` module. Do not edit the generated OpenAPI files manually, as any changes will be overwritten during the next generation.
+
+The latest OpenAPI 3.0 specification is available in docs/open_api_core.yaml:
+https://github.com/epam/ai-dial-core/blob/development/docs/open_api_core.yaml
+
+### Preview endpoints
+
+Endpoints that are still under development are marked with the vendor extension:
+
+```yaml
+x-preview: true
+```
+
+These endpoints are considered experimental and may change or be removed in future releases without backward compatibility guarantees.
+
 
 ## Build 🏗
 

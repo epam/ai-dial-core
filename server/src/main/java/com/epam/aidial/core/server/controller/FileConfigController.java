@@ -107,6 +107,117 @@ public class FileConfigController implements Controller {
             ),
             @ApiOperation(
                     method = "GET",
+                    path = "/v1/admin/config/file/keys",
+                    operationId = "listFileConfigKeys",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced keys",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/keys/{name}",
+                    operationId = "getFileConfigKey",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Key name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Model.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/applications",
+                    operationId = "listFileConfigApplications",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced applications",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/applications/{name}",
+                    operationId = "getFileConfigApplication",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Application name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Model.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/toolsets",
+                    operationId = "listFileConfigToolsets",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced toolsets",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/toolsets/{name}",
+                    operationId = "getFileConfigToolset",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Toolset name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Model.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
                     path = "/v1/admin/config/file/interceptors",
                     operationId = "listFileConfigInterceptors",
                     tags = {"Admin"},

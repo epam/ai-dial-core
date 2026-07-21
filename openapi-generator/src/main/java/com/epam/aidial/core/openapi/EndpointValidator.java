@@ -6,6 +6,7 @@ import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.controller.ControllerSelector;
+import com.epam.aidial.core.server.data.RouteTemplate;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -25,6 +26,7 @@ import java.util.stream.Collectors;
 public final class EndpointValidator {
 
     private static final Pattern PATH_PARAM_PATTERN = Pattern.compile("\\{([^}]+)}");
+
     private static final Set<Integer> VALID_HTTP_STATUS_CODES = Set.of(
             // 1xx Informational
             100, 101, 102, 103,
@@ -39,8 +41,35 @@ public final class EndpointValidator {
             // 5xx Server Error
             500, 501, 502, 503, 504, 505, 506, 507, 508, 510, 511
     );
+    private static final Set<RouteTemplate> EXCLUDE_ROUTE_TEMPLATES = Set.of(
+            RouteTemplate.TOOL_SET_PROXY_METADATA, RouteTemplate.APPLICATION_MCP_PROXY_METADATA, RouteTemplate.DEPLOYMENT_ROUTES,
+            RouteTemplate.TOOL_SET_MCP_PROXY, RouteTemplate.APPLICATION_MCP_PROXY);
 
-    private record RouteInfo(String method, Pattern pattern) {}
+    private static final List<RouteInfo> EXCLUDED_ROUTES = List.of(
+        new RouteInfo(null, RouteTemplate.DEPLOYMENT_ROUTES.getPattern()),
+        new RouteInfo(null, RouteTemplate.TOOL_SET_PROXY_METADATA.getPattern()),
+        new RouteInfo(null, RouteTemplate.APPLICATION_MCP_PROXY_METADATA.getPattern()),
+
+        new RouteInfo(null, RouteTemplate.TOOL_SET_MCP_PROXY.getPattern()),
+        new RouteInfo(null, RouteTemplate.APPLICATION_MCP_PROXY.getPattern()),
+
+        new RouteInfo("POST", RouteTemplate.CONFIG_RESOURCE.getPattern()),
+
+        new RouteInfo("POST", RouteTemplate.CONFIG_RESOURCE_METADATA.getPattern()),
+        new RouteInfo("PUT", RouteTemplate.CONFIG_RESOURCE_METADATA.getPattern()),
+        new RouteInfo("DELETE", RouteTemplate.CONFIG_RESOURCE_METADATA.getPattern()),
+
+        new RouteInfo("POST", RouteTemplate.ADMIN_FILE_CONFIG.getPattern()),
+        new RouteInfo("PUT", RouteTemplate.ADMIN_FILE_CONFIG.getPattern()),
+        new RouteInfo("DELETE", RouteTemplate.ADMIN_FILE_CONFIG.getPattern())
+    );
+
+    private record RouteInfo(String method, Pattern pattern) {
+        boolean matches(String httpMethod, Pattern routePattern) {
+            return (method == null || method.equals(httpMethod))
+                    && pattern().equals(routePattern);
+        }
+    }
 
     private EndpointValidator() {
     }
@@ -58,8 +87,10 @@ public final class EndpointValidator {
         validatePathParameters(endpoints);
         validateResponseCodes(endpoints);
         validateApiSchemas(endpoints);
-        validatePathsMatchRoutes(endpoints);
         validateUniqueOperationIds(endpoints);
+        validatePathsMatchRoutes(endpoints);
+        validateControllerRouteCoverage(endpoints);
+        validateRouteCoverage(endpoints);
     }
 
     /**
@@ -283,21 +314,26 @@ public final class EndpointValidator {
         }
 
         if (strategyCount > 1) {
-            List<String> strategies = new ArrayList<>();
-            if (schema.implementation() != null && schema.implementation() != Void.class) {
-                strategies.add("implementation");
-            }
-            if (schema.schemaRef() != null && !schema.schemaRef().isEmpty()) {
-                strategies.add("schemaRef");
-            }
-            if (hasOneOf) {
-                strategies.add("oneOf");
-            }
-            if (hasAllOf) {
-                strategies.add("allOf");
-            }
+            List<String> strategies = getStrings(schema, hasOneOf, hasAllOf);
             errors.add(location + " uses multiple @ApiSchema strategies: " + String.join(", ", strategies));
         }
+    }
+
+    private static List<String> getStrings(ApiSchema schema, boolean hasOneOf, boolean hasAllOf) {
+        List<String> strategies = new ArrayList<>();
+        if (schema.implementation() != null && schema.implementation() != Void.class) {
+            strategies.add("implementation");
+        }
+        if (schema.schemaRef() != null && !schema.schemaRef().isEmpty()) {
+            strategies.add("schemaRef");
+        }
+        if (hasOneOf) {
+            strategies.add("oneOf");
+        }
+        if (hasAllOf) {
+            strategies.add("allOf");
+        }
+        return strategies;
     }
 
     /**
@@ -464,6 +500,11 @@ public final class EndpointValidator {
         }
     }
 
+    private static boolean isExcluded(String httpMethod, Pattern routePattern) {
+        return EXCLUDED_ROUTES.stream()
+            .anyMatch(exclusion -> exclusion.matches(httpMethod, routePattern));
+    }
+
     private static String getRouteMethodName(Object route) throws Exception {
         Method accessor = route.getClass().getDeclaredMethod("method");
         accessor.setAccessible(true);
@@ -475,5 +516,312 @@ public final class EndpointValidator {
         Method accessor = route.getClass().getDeclaredMethod("pathPattern");
         accessor.setAccessible(true);
         return (Pattern) accessor.invoke(route);
+    }
+
+    /**
+     * Validates that every simple RouteTemplate has a corresponding @ApiOperation.
+     * Route templates containing alternation (|), optional groups, or other
+     * complex regular expression constructs are skipped because they may represent
+     * multiple OpenAPI operations.
+     */
+    private static void validateRouteCoverage(List<EndpointMetadata.Endpoint> endpoints) {
+        Set<String> documentedEndpoints = endpoints.stream()
+                .map(EndpointMetadata.Endpoint::path)
+                .map(EndpointValidator::normalizePath)
+                .collect(Collectors.toSet());
+
+        List<String> errors = new ArrayList<>();
+
+        for (RouteTemplate route : RouteTemplate.values()) {
+            if (!EXCLUDE_ROUTE_TEMPLATES.contains(route)) {
+                for (String expected : expandRoute(route)) {
+                    String normalizedExpected = normalizePath(expected);
+
+                    if (!documentedEndpoints.contains(normalizedExpected)) {
+                        errors.add(expected);
+                    }
+                }
+            }
+        }
+        if (!errors.isEmpty()) {
+            throw new IllegalStateException(
+                    "OpenAPI spec generation failed: Missing @ApiOperation annotations for routes:\n  "
+                            + String.join("\n  ", errors)
+            );
+        }
+    }
+
+    /**
+     * Expands a RouteTemplate into the list of expected OpenAPI paths.
+     *
+     * <p>Examples:
+     *
+     * <pre>
+     * Regex:
+     *   ^/v1/ops/publication/(list|get|create)$
+     *
+     * Template:
+     *   /v1/ops/publication/{operation}
+     *
+     * Result:
+     *   /v1/ops/publication/list
+     *   /v1/ops/publication/get
+     *   /v1/ops/publication/create
+     * </pre>
+     *
+     * <pre>
+     * Regex:
+     *   ^/openai/deployments/(?&lt;id&gt;.+?)/(completions|chat/completions|embeddings)$
+     *
+     * Template:
+     *   /openai/deployments/{id}/{action}
+     *
+     * Result:
+     *   /openai/deployments/{id}/completions
+     *   /openai/deployments/{id}/chat/completions
+     *   /openai/deployments/{id}/embeddings
+     * </pre>
+     *
+     * <p>If the regex does not contain an alternation group, the normalized template
+     * itself is returned.
+     */
+
+    private static void validateControllerRouteCoverage(List<EndpointMetadata.Endpoint> endpoints) {
+        List<RouteInfo> routes = getControllerRoutes();
+
+        List<String> uncoveredRoutes = new ArrayList<>();
+
+        for (RouteInfo route : routes) {
+            if (isExcluded(route.method, route.pattern)) {
+                continue;
+            }
+
+            boolean covered = false;
+
+            for (EndpointMetadata.Endpoint endpoint : endpoints) {
+                if (!endpoint.method().equals(route.method())) {
+                    continue;
+                }
+
+                String samplePath = RouteExtractor.toSamplePath(endpoint.path());
+
+                if (route.pattern().matcher(samplePath).find()) {
+                    covered = true;
+                    break;
+                }
+            }
+
+            if (!covered) {
+                String samplePath = patternToSamplePath(route.pattern().pattern());
+                uncoveredRoutes.add(route.method() + " " + route.pattern().pattern() + " -> " + samplePath);
+            }
+        }
+
+        if (!uncoveredRoutes.isEmpty()) {
+            throw new IllegalStateException(
+                    "OpenAPI spec generation failed: The following ControllerSelector routes lack corresponding @ApiOperation annotations:\n  "
+                    + String.join("\n  ", uncoveredRoutes)
+            );
+        }
+    }
+
+    private static List<String> expandRoute(RouteTemplate route) {
+        String regex = route.getPattern().pattern();
+        List<String> paths = new ArrayList<>(List.of(route.getNormalizedPath()));
+
+        Matcher placeholderMatcher = PATH_PARAM_PATTERN.matcher(route.getNormalizedPath());
+
+        int searchFrom = 0;
+
+        while (placeholderMatcher.find()) {
+            String placeholder = "{" + placeholderMatcher.group(1) + "}";
+
+            Group group = findNextGroup(regex, placeholder, searchFrom);
+            if (group == null) {
+                continue;
+            }
+
+            if (isExpandableAlternation(group.expression())) {
+                paths = expand(paths, placeholder, splitAlternatives(group.expression()));
+            }
+
+            searchFrom = group.end() + 1;
+        }
+
+        return paths;
+    }
+
+    private static Group findNextGroup(String regex, String placeholder, int searchFrom) {
+
+        int namedGroupStart = regex.indexOf(
+                "(?<" + placeholder.substring(1, placeholder.length() - 1) + ">", searchFrom);
+
+        if (namedGroupStart >= 0) {
+            int bodyStart = regex.indexOf('>', namedGroupStart) + 1;
+            int bodyEnd = findClosingParen(regex, bodyStart);
+
+            return new Group(
+                regex.substring(bodyStart, bodyEnd),
+                bodyEnd
+            );
+        }
+
+        int unnamedGroupStart = findNextUnnamedAlternation(regex, searchFrom);
+
+        if (unnamedGroupStart < 0) {
+            return null;
+        }
+
+        int bodyStart = unnamedGroupStart + 1;
+        int bodyEnd = findClosingParen(regex, bodyStart);
+
+        return new Group(
+            regex.substring(bodyStart, bodyEnd),
+            bodyEnd
+        );
+    }
+
+    private static List<String> expand(List<String> paths,
+                                       String placeholder,
+                                       List<String> values) {
+
+        List<String> result = new ArrayList<>();
+
+        for (String value : values) {
+            for (String path : paths) {
+                result.add(path.replace(placeholder, value));
+            }
+        }
+
+        return result;
+    }
+
+    private static int findClosingParen(String regex, int from) {
+
+        int depth = 1;
+
+        for (int i = from; i < regex.length(); i++) {
+
+            char c = regex.charAt(i);
+
+            if (c == '(') {
+                depth++;
+            } else if (c == ')') {
+                depth--;
+                if (depth == 0) {
+                    return i;
+                }
+            }
+        }
+
+        throw new IllegalStateException("Unbalanced regex: " + regex);
+    }
+
+    private static int findNextUnnamedAlternation(String regex, int from) {
+        for (int i = from; i < regex.length(); i++) {
+            if (regex.charAt(i) != '('
+                    || regex.startsWith("(?<", i)
+                    || regex.startsWith("(?:", i)) {
+                continue;
+            }
+
+            int end = findClosingParen(regex, i + 1);
+
+            if (isExpandableAlternation(regex.substring(i + 1, end))) {
+                return i;
+            }
+
+            i = end;
+        }
+
+        return -1;
+    }
+
+    private static List<String> splitAlternatives(String body) {
+
+        List<String> result = new ArrayList<>();
+
+        int depth = 0;
+        StringBuilder current = new StringBuilder();
+
+        for (char c : body.toCharArray()) {
+
+            if (c == '(') {
+                depth++;
+            }
+            if (c == ')') {
+                depth--;
+            }
+
+            if (c == '|' && depth == 0) {
+                result.add(current.toString());
+                current.setLength(0);
+            } else {
+                current.append(c);
+            }
+        }
+
+        result.add(current.toString());
+
+        return result;
+    }
+
+    private static boolean isExpandableAlternation(String expression) {
+        if (expression.contains("(?:")
+                || expression.contains("(?=")
+                || expression.contains("(?!")
+                || expression.contains("(?<")
+                || expression.contains("[")
+                || expression.contains("*")
+                || expression.contains("+")
+                || expression.contains("?")
+                || expression.contains("{")
+                || expression.contains("\\")) {
+            return false;
+        }
+
+        return expression.contains("|");
+    }
+
+    private static String normalizePath(String path) {
+        return PATH_PARAM_PATTERN.matcher(path).replaceAll("{}");
+    }
+
+    private static String patternToSamplePath(String regexPattern) {
+        String result = regexPattern;
+
+        // Remove anchors
+        result = result.replaceAll("^\\^", "").replaceAll("\\$$", "");
+
+        // Replace named groups like (?<bucket>[a-zA-Z0-9_-]+) with bucket-example
+        result = result.replaceAll("\\(\\?<(\\w+)>[^)]+\\)", "$1-example");
+
+        // Replace alternation groups like (models|interceptors|roles) with first option
+        // Handle both non-capturing groups (?:...) and regular groups (...)
+        result = result.replaceAll("\\(\\?:([^|)]+)(?:\\|[^)]*)?\\)", "$1");
+        result = result.replaceAll("\\(([^|)]+)(?:\\|[^)]*)?\\)", "$1");
+
+        // Replace .* and .+ with "path"
+        result = result.replaceAll("\\.\\*", "path").replaceAll("\\.\\+", "path");
+
+        // Replace character classes like [a-zA-Z0-9_-]+ with "value"
+        result = result.replaceAll("\\[[^]]+\\]\\+", "value");
+
+        // Remove ? quantifiers (optional markers)
+        result = result.replaceAll("\\?", "");
+
+        return result;
+    }
+
+    private static boolean isRegisteredRoute(String expectedPath, String method) {
+        String samplePath = RouteExtractor.toSamplePath(expectedPath);
+
+        return getControllerRoutes().stream()
+            .anyMatch(route ->
+                route.method().equals(method)
+                    && route.pattern().matcher(samplePath).find());
+    }
+
+    private record Group(String expression, int end) {
     }
 }
