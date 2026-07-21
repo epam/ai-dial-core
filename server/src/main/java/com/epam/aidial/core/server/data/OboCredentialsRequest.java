@@ -10,7 +10,7 @@ public class OboCredentialsRequest {
     @NotBlank(message = "url should be specified")
     private String url;
 
-    @NotBlank(message = "owner_sub should be specified")
-    @JsonAlias({"ownerSub", "owner_sub"})
-    private String ownerSub;
+    @NotBlank(message = "owner_user_id should be specified")
+    @JsonAlias({"ownerUserId", "owner_user_id"})
+    private String ownerUserId;
 }

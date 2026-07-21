@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.data.folder;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -40,10 +41,12 @@ public class FolderResourceMarker {
      */
     private String etag;
     /**
-     * Per-file etags of the current version (relative path -> etag). The aggregate {@link #etag} is derived
-     * from these, so single-file mutations can recompute it without reading file content.
+     * Per-file metadata of the current version (relative path -> size/etag). The aggregate {@link #etag} is
+     * derived from the per-file etags, so single-file mutations can recompute it without reading file
+     * content; the sizes let {@code maxTotalBytes}/{@code maxFiles} be enforced on a single-file mutation
+     * without re-reading every existing file's content or metadata.
      */
-    private Map<String, String> files;
+    private Map<String, ResourceFileMetadata> fileMetadata;
     private Long createdAt;
     private Long updatedAt;
     private Long deletedAt;
@@ -52,4 +55,15 @@ public class FolderResourceMarker {
      * Type-specific metadata extracted by the per-type handler (e.g. skill name/description/version).
      */
     private Map<String, Object> metadata;
+
+    /**
+     * Per-file size and etag, keyed by relative path in {@link #fileMetadata}.
+     */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ResourceFileMetadata {
+        private long size;
+        private String etag;
+    }
 }

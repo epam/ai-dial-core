@@ -311,8 +311,10 @@ public class AiDial {
             ResponseMappingService responseMappingService = new ResponseMappingService(vertx, generator, resourceService);
             responseMappingService.init(taskExecutor);
 
+            ComplexResourceService.Settings complexResourceSettings = Json.decodeValue(
+                    settings("complexResource").toBuffer(), ComplexResourceService.Settings.class);
             ComplexResourceService complexResourceService = new ComplexResourceService(
-                    resourceService, lockService, shareService, invitationService, storage);
+                    resourceService, lockService, shareService, invitationService, storage, complexResourceSettings);
             ComplexResourceSweepService.Settings complexResourceSweepSettings = Json.decodeValue(
                     settings("complexResourceSweep").toBuffer(), ComplexResourceSweepService.Settings.class);
             complexResourceSweepService = new ComplexResourceSweepService(timerService, storage, redis, lockService,

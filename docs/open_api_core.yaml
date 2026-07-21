@@ -13423,7 +13423,7 @@ components:
     OboCredentialsRequest:
       type: object
       properties:
-        ownerSub:
+        ownerUserId:
           type: string
         url:
           type: string
@@ -14603,6 +14603,9 @@ components:
         project:
           type: string
           description: Present only if authenticated via an API Key. Represents the target project scope.
+        userId:
+          type: string
+          description: The user id as DIAL resolves it from the identity provider configuration (not necessarily the token's sub claim). Present only for user-based session authentication. Use this value as owner_user_id when retrieving credentials on behalf of the user.
         userClaims:
           type: object
           additionalProperties:
