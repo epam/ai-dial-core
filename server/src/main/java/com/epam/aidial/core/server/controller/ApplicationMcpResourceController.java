@@ -1,0 +1,155 @@
+package com.epam.aidial.core.server.controller;
+
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
+import com.epam.aidial.core.server.service.ConsentService;
+import com.epam.aidial.core.server.service.DeploymentService;
+import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Future;
+import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpHeaders;
+import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.RequestOptions;
+import lombok.extern.slf4j.Slf4j;
+
+import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
+
+@Slf4j
+public class ApplicationMcpResourceController implements Controller {
+
+    // sandbox without allow-same-origin: the widget runs in a null opaque origin and
+    // cannot make credentialed requests to the DIAL API, preventing same-origin XSS.
+    private static final String WIDGET_CSP =
+            "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: data:";
+
+    private final ProxyContext context;
+    private final String applicationId;
+    private final DeploymentService deploymentService;
+    private final ConsentService consentService;
+    private final ApplicationSchemaService applicationSchemaService;
+    private final AsyncTaskExecutor taskExecutor;
+    private final HttpClient httpClient;
+
+    public ApplicationMcpResourceController(Proxy proxy, ProxyContext context, String applicationId) {
+        this.context = context;
+        this.applicationId = applicationId;
+        this.deploymentService = proxy.getDeploymentService();
+        this.consentService = proxy.getConsentService();
+        this.applicationSchemaService = proxy.getApplicationSchemaService();
+        this.taskExecutor = proxy.getTaskExecutor();
+        this.httpClient = proxy.getClient();
+    }
+
+    @Override
+    public Future<?> handle() {
+        String resourceUri = context.getRequest().getParam("uri");
+        if (resourceUri == null || resourceUri.isBlank()) {
+            return context.respond(HttpStatus.BAD_REQUEST, "Missing 'uri' query parameter");
+        }
+
+        return taskExecutor.submit(() -> {
+            var deployment = deploymentService.findDeployment(context, applicationId);
+            if (!(deployment instanceof Application app)) {
+                throw new ResourceNotFoundException("Application is not found: " + applicationId);
+            }
+            consentService.verifyUserConsent(context, deployment);
+            Application.Mcp mcp;
+            if (app.hasApplicationTypeSchemaId()) {
+                mcp = applicationSchemaService.getMcp(app);
+                app.setMcp(mcp);
+            } else {
+                mcp = app.getMcp();
+            }
+            if (mcp == null) {
+                throw new IllegalArgumentException("Application doesn't support MCP protocol: " + applicationId);
+            }
+            context.setDeployment(deployment);
+            return app;
+        }).compose(app -> fetchResource(app, resourceUri))
+                .otherwise(error -> {
+                    handleError(error);
+                    return null;
+                });
+    }
+
+    private Future<?> fetchResource(Application app, String resourceUri) {
+        ObjectNode params = ProxyUtil.MAPPER.createObjectNode();
+        params.put("uri", resourceUri);
+        ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
+        body.put("jsonrpc", "2.0");
+        body.put("id", 1);
+        body.put("method", "resources/read");
+        body.set("params", params);
+        Buffer requestBody = Buffer.buffer(body.toString());
+
+        RequestOptions options = new RequestOptions()
+                .setAbsoluteURI(app.getMcp().getEndpoint())
+                .setMethod(HttpMethod.POST)
+                .setConnectTimeout(context.getProxy().getClientOptions().getConnectTimeout())
+                .setIdleTimeout(context.getProxy().getClientOptions().getIdleTimeout());
+
+        return httpClient.request(options)
+                .compose(req -> {
+                    req.putHeader(HttpHeaders.CONTENT_TYPE, "application/json");
+                    req.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
+                    req.putHeader(HEADER_APPLICATION_ID, app.getName());
+                    // TODO: inject per-request API key when mcp.forwardPerRequestKey is true,
+                    //  following ApplicationMcpProxyController.injectProxyRequestHeaders()
+                    return req.send(requestBody);
+                })
+                .compose(resp -> resp.body()
+                        .compose(buf -> handleResourceBody(resp.statusCode(), buf)));
+    }
+
+    private Future<?> handleResourceBody(int status, Buffer buf) {
+        if (status != 200) {
+            return context.respond(HttpStatus.BAD_GATEWAY, "MCP server returned " + status);
+        }
+        try {
+            JsonNode json = ProxyUtil.MAPPER.readTree(buf.getBytes());
+            JsonNode contents = json.path("result").path("contents");
+            if (!contents.isArray() || contents.isEmpty()) {
+                return context.respond(HttpStatus.BAD_GATEWAY, "Empty resource contents");
+            }
+            JsonNode first = contents.get(0);
+            JsonNode mimeTypeNode = first.path("mimeType");
+            if (mimeTypeNode.isMissingNode() || mimeTypeNode.isNull()) {
+                return context.respond(HttpStatus.BAD_GATEWAY, "Resource missing mimeType");
+            }
+            String mimeType = mimeTypeNode.asText();
+            String text = first.path("text").asText("");
+            return context.getResponse()
+                    .putHeader(HttpHeaders.CONTENT_TYPE, mimeType)
+                    .putHeader("Content-Security-Policy", WIDGET_CSP)
+                    .putHeader("X-Content-Type-Options", "nosniff")
+                    .end(text);
+        } catch (Exception e) {
+            log.warn("Failed to parse MCP resource response", e);
+            return context.respond(HttpStatus.BAD_GATEWAY, "Invalid resource response");
+        }
+    }
+
+    private void handleError(Throwable error) {
+        switch (error) {
+            case PermissionDeniedException ignored ->
+                    context.respond(HttpStatus.FORBIDDEN, error.getMessage());
+            case ResourceNotFoundException ignored ->
+                    context.respond(HttpStatus.NOT_FOUND, error.getMessage());
+            case IllegalArgumentException ignored ->
+                    context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
+            default -> {
+                log.error("Error handling MCP resource request for {}", applicationId, error);
+                context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to handle MCP resource request");
+            }
+        }
+    }
+}
