@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.controller.AdminHealthConfigController;
 import com.epam.aidial.core.server.controller.AdminValidateController;
 import com.epam.aidial.core.server.controller.ApplicationController;
 import com.epam.aidial.core.server.controller.ApplicationMcpProxyController;
+import com.epam.aidial.core.server.controller.ApplicationMcpResourceController;
 import com.epam.aidial.core.server.controller.ApplicationTypeSchemaController;
 import com.epam.aidial.core.server.controller.BucketController;
 import com.epam.aidial.core.server.controller.CatalogSchemaController;
@@ -65,6 +66,7 @@ public final class AnnotationEndpointCollector {
             AdminValidateController.class,
             ApplicationController.class,
             ApplicationMcpProxyController.class,
+            ApplicationMcpResourceController.class,
             ApplicationTypeSchemaController.class,
             BucketController.class,
             CatalogSchemaController.class,
