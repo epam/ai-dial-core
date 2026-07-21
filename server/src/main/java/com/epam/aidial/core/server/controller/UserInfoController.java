@@ -39,6 +39,9 @@ public class UserInfoController implements Controller {
         if (context.getKey() != null) {
             response.put("project", context.getKey().getProject());
         } else {
+            // The user id as DIAL resolves it from the identity provider configuration (userIdPath) — the value
+            // integrations must pass as owner_user_id on the on-behalf-of credentials path.
+            response.put("userId", context.getExtractedClaims().userId());
             ObjectNode claims = normalize(context.getExtractedClaims().userClaims());
             response.put("userClaims", claims);
         }

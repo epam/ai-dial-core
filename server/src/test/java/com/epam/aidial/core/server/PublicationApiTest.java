@@ -1854,6 +1854,64 @@ class PublicationApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testApplicationWithTypeSchemaPublish_Ok_DuplicateFileReference() {
+        Response response = upload(HttpMethod.PUT, "/v1/files/%s/screenshot.png".formatted(bucket), null, """
+                  Test1
+                """);
+
+        Assertions.assertEquals(200, response.status());
+
+        response = send(HttpMethod.PUT, "/v1/applications/%s/test_app_dup".formatted(bucket), null, """
+                  {
+                      "displayName": "test_app_dup",
+                      "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                      "applicationProperties": {
+                        "property1": "test property1",
+                        "property2": "test property2",
+                        "property3": [
+                                "files/%s/screenshot.png",
+                                "files/%s/screenshot.png"
+                        ]
+                       },
+                       "userRoles": [
+                            "Admin"
+                       ],
+                       "forwardAuthToken": true,
+                       "iconUrl": "https://mydial.somewhere.com/app-icon.svg",
+                       "description": "My application description"
+                  }
+                """.formatted(bucket, bucket));
+        Assertions.assertEquals(200, response.status());
+
+        response = operationRequest("/v1/ops/publication/create", """
+                {
+                      "name": "Publication of my application",
+                      "targetFolder": "public/folder/",
+                      "resources": [
+                        {
+                          "action": "ADD",
+                          "sourceUrl": "applications/%s/test_app_dup",
+                          "targetUrl": "applications/public/folder/with_apps/test_app_dup"
+                        }
+                      ],
+                      "rules": [
+                        {
+                          "source": "roles",
+                          "function": "TRUE"
+                        }
+                      ]
+                    }
+                """.formatted(bucket));
+        Assertions.assertEquals(200, response.status());
+
+        // Before the fix: 400 "Can't copy source file: ..." (second identical copyResource call fails
+        // because the same file URL is collected twice from the schema and the second copy hits an
+        // already-existing destination).
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+    }
+
+    @Test
     void testApplicationWithTypeSchemaPublish_Ok_FolderWithSubfolder() throws JsonProcessingException {
 
         List<String> filePaths =

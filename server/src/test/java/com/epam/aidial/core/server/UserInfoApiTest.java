@@ -22,6 +22,6 @@ public class UserInfoApiTest extends ResourceBaseTest {
 
         assertEquals(200, resp.status());
         assertEquals("""
-                {"roles":["user"],"userClaims":{"title":["Manager"]}}""", resp.body());
+                {"roles":["user"],"userId":"user","userClaims":{"title":["Manager"]}}""", resp.body());
     }
 }

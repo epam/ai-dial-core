@@ -391,7 +391,7 @@ public class ApplicationService {
                     resourceService.copyFolder(sourceFile, destFile, false);
                 } else {
                     if (!resourceService.copyResource(sourceFile, destFile, null, false)) {
-                        throw new IllegalArgumentException("Can't copy source file: " + source.getUrl()
+                        throw new IllegalArgumentException("Can't copy source file: " + sourceFile.getUrl()
                                 + " to destination file: " + destFile.getUrl());
                     }
                 }

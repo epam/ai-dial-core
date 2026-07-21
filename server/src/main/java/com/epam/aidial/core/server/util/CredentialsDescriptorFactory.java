@@ -64,11 +64,11 @@ public class CredentialsDescriptorFactory {
     }
 
     /**
-     * Builds the USER bucket for an arbitrary owner sub (not the caller). Used by the on-behalf-of (OBO)
+     * Builds the USER bucket for an arbitrary owner user id (not the caller). Used by the on-behalf-of (OBO)
      * path, where the actor (caller) and the credential owner differ.
      */
-    public static BucketInfo getUserBucketInfoForUser(ProxyContext proxyContext, String ownerSub) {
-        String location = BucketBuilder.USER_BUCKET_PATTERN.formatted(ownerSub);
+    public static BucketInfo getUserBucketInfoForUser(ProxyContext proxyContext, String ownerUserId) {
+        String location = BucketBuilder.USER_BUCKET_PATTERN.formatted(ownerUserId);
         String name = proxyContext.getProxy().getEncryptionService().encrypt(location);
         return new BucketInfo(name, location);
     }
