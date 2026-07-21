@@ -2,8 +2,6 @@ package com.epam.aidial.core.server.service.resource;
 
 import com.epam.aidial.core.server.FileUtil;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
-import com.epam.aidial.core.server.service.InvitationService;
-import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
@@ -37,6 +35,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -111,14 +110,12 @@ class ComplexResourceServiceTest {
             ResourceService.Settings settings = mapper.readValue(serviceConfig, ResourceService.Settings.class);
             resourceService = new ResourceService(timerService, redis, blobStorage, lockService, settings, null);
 
-            ShareService shareService = Mockito.mock(ShareService.class);
-            InvitationService invitationService = Mockito.mock(InvitationService.class);
             ComplexResourceService.Settings complexResourceSettings = new ComplexResourceService.Settings();
             complexResourceSettings.setMaxFiles(3);
             complexResourceSettings.setMaxTotalBytes(200);
             complexResourceSettings.setMaxFileSizeBytes(100);
             complexResourceService = new ComplexResourceService(
-                    resourceService, lockService, shareService, invitationService, blobStorage, complexResourceSettings);
+                    resourceService, lockService, blobStorage, complexResourceSettings);
         } catch (Throwable e) {
             destroy();
             throw e;
@@ -340,6 +337,69 @@ class ComplexResourceServiceTest {
         // rejected mutation must not have changed the resource
         FolderResourceMarker after = complexResourceService.readMarkerForSweep(resource);
         assertEquals(before.getEtag(), after.getEtag());
+    }
+
+    @Test
+    void testCopyResourceResynthesizesFreshMarker() throws InterruptedException {
+        ResourceDescriptor source = skill("source-skill");
+        Map<String, Buffer> uploads = Map.of(
+                "SKILL.md", Buffer.buffer(MANIFEST),
+                "scripts/run.sh", Buffer.buffer("echo hi"));
+        complexResourceService.put(source, handler, uploads, EtagHeader.ANY, "author1");
+        FolderResourceMarker sourceMarker = complexResourceService.readMarkerForSweep(source);
+
+        // updatedAt has millisecond resolution; force a visible difference at the destination.
+        Thread.sleep(5);
+
+        ResourceDescriptor destination = skill("dest-skill");
+        boolean copied = complexResourceService.copyResource(source, destination, "author2", false);
+        assertTrue(copied);
+
+        FolderResourceMarker destMarker = complexResourceService.readMarkerForSweep(destination);
+        assertNotNull(destMarker);
+
+        // the marker is re-synthesized, not carried over verbatim: fresh version, fresh timestamps/author...
+        assertNotEquals(sourceMarker.getCurrentVersion(), destMarker.getCurrentVersion());
+        assertNotEquals(sourceMarker.getCreatedAt(), destMarker.getCreatedAt());
+        assertNotEquals(sourceMarker.getUpdatedAt(), destMarker.getUpdatedAt());
+        assertEquals("author2", destMarker.getAuthor());
+        // ...but the aggregate etag is recomputed (not copied) from the copied files, which happen to be
+        // byte-identical to the source, and the type-specific metadata (parsed from SKILL.md) is unchanged.
+        assertEquals(sourceMarker.getEtag(), destMarker.getEtag());
+        assertEquals(sourceMarker.getMetadata(), destMarker.getMetadata());
+
+        // the destination's version tree is a real, independent copy of the files
+        ResourceItemMetadata manifest = resourceService.getResourceMetadata(
+                versionFile(destination, destMarker.getCurrentVersion(), "SKILL.md"));
+        assertNotNull(manifest);
+        ResourceItemMetadata script = resourceService.getResourceMetadata(
+                versionFile(destination, destMarker.getCurrentVersion(), "scripts/run.sh"));
+        assertNotNull(script);
+    }
+
+    @Test
+    void testCopyResourceSkipsWhenDestinationActiveAndNotOverwriting() {
+        ResourceDescriptor source = skill("source-skip");
+        putSkill(source, EtagHeader.ANY);
+        ResourceDescriptor destination = skill("dest-skip");
+        putSkill(destination, EtagHeader.ANY);
+        FolderResourceMarker destBefore = complexResourceService.readMarkerForSweep(destination);
+
+        assertFalse(complexResourceService.copyResource(source, destination, "author2", false));
+
+        FolderResourceMarker destAfter = complexResourceService.readMarkerForSweep(destination);
+        assertEquals(destBefore.getCurrentVersion(), destAfter.getCurrentVersion());
+    }
+
+    @Test
+    void testCopyResourceThrowsWhenSourceAbsent() {
+        ResourceDescriptor source = skill("never-existed-source");
+        ResourceDescriptor destination = skill("dest-for-absent-source");
+
+        HttpException e = assertThrows(HttpException.class,
+                () -> complexResourceService.copyResource(source, destination, "author2", false));
+        assertEquals(HttpStatus.NOT_FOUND, e.getStatus());
+        assertNull(complexResourceService.readMarkerForSweep(destination));
     }
 
     @Test

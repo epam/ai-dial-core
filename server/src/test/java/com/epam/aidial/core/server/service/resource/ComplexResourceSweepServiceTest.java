@@ -3,8 +3,6 @@ package com.epam.aidial.core.server.service.resource;
 import com.epam.aidial.core.server.FileUtil;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.service.InvitationService;
-import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -125,10 +123,8 @@ class ComplexResourceSweepServiceTest {
             ResourceService.Settings settings = mapper.readValue(serviceConfig, ResourceService.Settings.class);
             resourceService = new ResourceService(timerService, redis, blobStorage, lockService, settings, null);
 
-            ShareService shareService = Mockito.mock(ShareService.class);
-            InvitationService invitationService = Mockito.mock(InvitationService.class);
             complexResourceService = new ComplexResourceService(
-                    resourceService, lockService, shareService, invitationService, blobStorage, new ComplexResourceService.Settings());
+                    resourceService, lockService, blobStorage, new ComplexResourceService.Settings());
             encryptionService = new EncryptionService(new JsonObject().put("secret", "secret").put("key", "key"));
         } catch (Throwable e) {
             destroy();

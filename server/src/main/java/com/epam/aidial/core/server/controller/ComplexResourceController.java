@@ -10,6 +10,7 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
+import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceHandler;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.service.resource.SkillHandler;
@@ -49,6 +50,7 @@ public class ComplexResourceController extends AccessControlBaseController {
             ResourceTypes.SKILL, new SkillHandler());
 
     private final ComplexResourceService complexResourceService;
+    private final ResourceOperationService resourceOperationService;
     // Relative path of a single file inside the resource; null for whole-resource operations.
     private final String filePath;
     // True for DIAL grouping-folder operations (trailing-slash route).
@@ -69,6 +71,7 @@ public class ComplexResourceController extends AccessControlBaseController {
     private ComplexResourceController(Proxy proxy, ProxyContext context, boolean isWriteAccess, String filePath, boolean folderOp) {
         super(proxy, context, isWriteAccess);
         this.complexResourceService = proxy.getComplexResourceService();
+        this.resourceOperationService = proxy.getResourceOperationService();
         this.filePath = filePath;
         this.folderOp = folderOp;
     }
@@ -343,11 +346,13 @@ public class ComplexResourceController extends AccessControlBaseController {
     )
     private Future<?> delete(ResourceDescriptor resource) {
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
-        proxy.getTaskExecutor().submit(() -> {
-            complexResourceService.delete(resource, etag);
-            return null;
-        })
-                .compose(v -> context.respond(HttpStatus.OK).mapEmpty())
+        proxy.getTaskExecutor().submit(() -> resourceOperationService.deleteResource(context, resource, etag))
+                .compose(deleted -> {
+                    if (!deleted) {
+                        return context.respond(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl()).mapEmpty();
+                    }
+                    return context.respond(HttpStatus.OK).mapEmpty();
+                })
                 .recover(error -> {
                     log.warn("Failed to delete resource: {}", resource.getUrl(), error);
                     return context.respond(error, "Failed to delete resource: " + resource.getUrl()).mapEmpty();
