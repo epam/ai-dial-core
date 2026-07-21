@@ -148,6 +148,12 @@ public class ComplexResourceService {
                 etag.validate(readAggregateEtag(marker));
 
                 try {
+                    FolderResourceMarker existing = readMarker(marker, false);
+                    if (existing == null) {
+                        // First creation only: an overwrite of an existing (even `deleting`) marker reuses
+                        // its reference, which is keyed by URL, not by version.
+                        writeReference(resource);
+                    }
                     Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata = new TreeMap<>();
                     for (Map.Entry<String, byte[]> entry : files.entrySet()) {
                         String relativePath = entry.getKey();
@@ -157,12 +163,6 @@ public class ComplexResourceService {
                                 BlobStorageUtil.getContentType(relativePath), author);
                         fileMetadata.put(relativePath,
                                 new FolderResourceMarker.ResourceFileMetadata(content.length, written.getEtag()));
-                    }
-                    FolderResourceMarker existing = readMarker(marker, false);
-                    if (existing == null) {
-                        // First creation only: an overwrite of an existing (even `deleting`) marker reuses
-                        // its reference, which is keyed by URL, not by version.
-                        writeReference(resource);
                     }
                     return commitMarker(marker, resource, versionId, aggregateEtag(fileMetadata),
                             handler.buildMarkerMetadata(files), fileMetadata, existing, author);
@@ -216,6 +216,11 @@ public class ComplexResourceService {
             }
 
             try {
+                // Mirrors put(): an overwrite of an existing (even `deleting`) marker reuses its
+                // reference, which is keyed by URL, not by version.
+                if (existing == null) {
+                    writeReference(to);
+                }
                 Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata = currentFileMetadata(from, source);
                 for (Map.Entry<String, FolderResourceMarker.ResourceFileMetadata> entry : fileMetadata.entrySet()) {
                     ResourceDescriptor sourceFile = versionFile(from, source.getCurrentVersion(), entry.getKey());
@@ -226,11 +231,6 @@ public class ComplexResourceService {
                         throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
                                 "Can't copy resource file from: " + sourceFile.getUrl() + " to: " + destFile.getUrl());
                     }
-                }
-                // Mirrors put(): an overwrite of an existing (even `deleting`) marker reuses its
-                // reference, which is keyed by URL, not by version.
-                if (existing == null) {
-                    writeReference(to);
                 }
                 commitMarker(marker, to, versionId, aggregateEtag(fileMetadata), source.getMetadata(),
                         fileMetadata, existing, author);
