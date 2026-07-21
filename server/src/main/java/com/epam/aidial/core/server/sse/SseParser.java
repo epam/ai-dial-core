@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.sse;
 
+import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.vertx.core.buffer.Buffer;
@@ -70,6 +71,18 @@ public class SseParser {
         } catch (Throwable error) {
             log.error("Error occurred at finishing SSE stream", error);
         }
+    }
+
+    /**
+     * Releases the pooled buffer backing this parser. Must be called exactly once when the parser is no longer used.
+     */
+    public void close() {
+        chunkBuffer.release();
+    }
+
+    @VisibleForTesting
+    int chunkBufferRefCnt() {
+        return chunkBuffer.refCnt();
     }
 
     private void processLine() {
