@@ -230,7 +230,7 @@ public enum RouteTemplate {
     ),
 
     TOOL_SET_CREDENTIALS(
-        "^/v1/ops/toolset/(signin|signout|ree)",
+        "^/v1/ops/toolset/(signin|signout)",
         "/v1/ops/toolset/{operation}"
     ),
 

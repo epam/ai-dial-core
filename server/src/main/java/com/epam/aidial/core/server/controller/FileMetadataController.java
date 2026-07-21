@@ -9,6 +9,7 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.AccessService;
+import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -52,7 +53,7 @@ public class FileMetadataController extends AccessControlBaseController {
                     @ApiParameter(name = "permissions", in = ParameterIn.QUERY, description = OpenApiDescriptions.QUERY_PERMISSIONS, schema = Boolean.class)
             },
             responses = {
-                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = FileMetadata.class)),
                     @ApiResponse(code = 400),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 404),

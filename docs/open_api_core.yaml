@@ -5051,7 +5051,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MetadataBase"
+                $ref: "#/components/schemas/FileMetadata"
         "400":
           description: Bad request
           content:

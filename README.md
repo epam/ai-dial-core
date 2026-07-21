@@ -44,6 +44,9 @@ DIAL Core exposes an OpenAPI specification describing all available REST endpoin
 
 The specification is generated automatically from the source code using the `openapi-generator` module. Do not edit the generated OpenAPI files manually, as any changes will be overwritten during the next generation.
 
+The latest OpenAPI 3.0 specification is available in docs/open_api_core.yaml:
+https://github.com/epam/ai-dial-core/blob/development/docs/open_api_core.yaml
+
 ### Preview endpoints
 
 Endpoints that are still under development are marked with the vendor extension:
