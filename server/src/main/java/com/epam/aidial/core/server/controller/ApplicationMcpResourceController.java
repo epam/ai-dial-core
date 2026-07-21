@@ -1,6 +1,12 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiOperations;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -50,6 +56,27 @@ public class ApplicationMcpResourceController implements Controller {
     }
 
     @Override
+    @ApiOperations({
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/deployments/{deployment_name}/mcp/resources",
+                    operationId = "getApplicationMcpResources",
+                    tags = {"Deployments", "MCP"},
+                    parameters = {
+                            @ApiParameter(name = "deployment_name", in = ParameterIn.PATH, required = true,
+                                    description = OpenApiDescriptions.DEPLOYMENT_IDENTIFIER),
+                            @ApiParameter(name = "uri", in = ParameterIn.QUERY, required = true,
+                                    description = "URI of the MCP resource to retrieve")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "HTML widget content"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 502),
+                            @ApiResponse(code = 500)
+                    })
+    })
     public Future<?> handle() {
         String resourceUri = context.getRequest().getParam("uri");
         if (resourceUri == null || resourceUri.isBlank()) {
