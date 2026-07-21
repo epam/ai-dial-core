@@ -1,9 +1,11 @@
 package com.epam.aidial.core.server.sse;
 
+import io.netty.util.IllegalReferenceCountException;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class SseParserTest {
 
@@ -131,5 +133,18 @@ public class SseParserTest {
                 
                 """;
         assertEquals(response, listener.response.toString());
+    }
+
+    @Test
+    public void testClose_releasesChunkBuffer() {
+        TestSseEventListener listener = new TestSseEventListener();
+        SseParser parser = new SseParser(128, listener);
+
+        parser.parse(Buffer.buffer("data: hi\n\n"));
+        parser.finish();
+        parser.close();
+
+        assertEquals(0, parser.chunkBufferRefCnt());
+        assertThrows(IllegalReferenceCountException.class, parser::close);
     }
 }

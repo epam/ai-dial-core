@@ -36,6 +36,7 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     private Throwable error;
     private boolean ended;
     private boolean reset;
+    private boolean eventStreamParserClosed;
     private final SseParser eventStreamParser;
     private final BaseEventListener eventListener;
     // promise on input stream is completed
@@ -167,6 +168,7 @@ public class BufferingReadStream implements ReadStream<Buffer> {
             handleEndInternal(ignored);
         } else {
             eventStreamParser.finish();
+            closeEventStreamParser();
         }
     }
 
@@ -178,8 +180,16 @@ public class BufferingReadStream implements ReadStream<Buffer> {
     private synchronized void handleException(Throwable exception) {
         error = exception;
         ended = true;
+        closeEventStreamParser();
         endStream.tryFail(exception);
         notifyOnException(exception);
+    }
+
+    private void closeEventStreamParser() {
+        if (eventStreamParser != null && !eventStreamParserClosed) {
+            eventStreamParserClosed = true;
+            eventStreamParser.close();
+        }
     }
 
     private synchronized void notifyOnChunk(Buffer chunk) {
