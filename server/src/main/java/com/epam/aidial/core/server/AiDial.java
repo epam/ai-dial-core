@@ -50,6 +50,7 @@ import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.BackgroundJobService;
 import com.epam.aidial.core.server.service.BackgroundJobService.Settings;
+import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.ExternalServiceService;
@@ -240,6 +241,7 @@ public class AiDial {
             ConfigStore configStore = mergedConfigStore;
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(resourceService, configStore, encryptionService, httpProxySelector);
+            CatalogSchemaService catalogSchemaService = new CatalogSchemaService(resourceService, configStore, encryptionService);
 
             TimeProvider timeProvider = new TimeProvider();
             TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);
@@ -257,7 +259,7 @@ public class AiDial {
             AuthSettingsResolver authSettingsResolver = new AuthSettingsResolver(
                     encryptionService, resourceAuthSettingsEncryptionService);
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
-                    resourceAuthSettingsEncryptionService, resourceCredentialsService);
+                    resourceAuthSettingsEncryptionService, resourceCredentialsService, catalogSchemaService);
             SecuredResourceService securedResourceService = new SecuredResourceService(resourceCredentialsService);
             ToolSetRepairService toolSetRepairService = new ToolSetRepairService(resourceService,
                     resourceAuthSettingsEncryptionService, resourceCredentialsService,
@@ -268,7 +270,7 @@ public class AiDial {
             UserExternalServiceService userExternalServiceService = new UserExternalServiceService(
                     resourceService, resourceAuthSettingsEncryptionService, encryptionService);
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
-                    externalServiceService, resourceService, lockService, operatorService, applicationSchemaService,
+                    externalServiceService, resourceService, lockService, operatorService, applicationSchemaService, catalogSchemaService,
                     configStore, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
                     lockService, applicationSchemaService, clock, resourceCredentialsService);
@@ -337,7 +339,7 @@ public class AiDial {
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, externalServiceService, userExternalServiceService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
-                    toolSetService, securedResourceService, toolSetRepairService, applicationSchemaService, authorizationHeaderProvider,
+                    toolSetService, securedResourceService, toolSetRepairService, applicationSchemaService, catalogSchemaService, authorizationHeaderProvider,
                     resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator);

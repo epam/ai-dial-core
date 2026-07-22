@@ -58,6 +58,8 @@ class ToolSetServiceTest {
     private ProxyContext context;
     @Mock
     private Proxy proxy;
+    @Mock
+    private CatalogSchemaService catalogSchemaService;
 
     @InjectMocks
     private ToolSetService toolSetService;

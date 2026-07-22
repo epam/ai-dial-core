@@ -210,6 +210,16 @@ public class ControllerSelector {
                 default -> null;
             };
         });
+        get(RouteTemplate.CATALOG_SCHEMAS, (proxy, context, pathMatcher) -> {
+            CatalogSchemaController controller = new CatalogSchemaController(context);
+            String operation = pathMatcher.group(1);
+            return switch (operation) {
+                case "schemas" -> controller::handleListSchemas;
+                case "meta_schema" -> controller::handleGetMetaSchema;
+                case "schema" -> controller::handleGetSchema;
+                default -> null;
+            };
+        });
         get(RouteTemplate.TOOL_SET, (proxy, context, pathMatcher) -> {
             ToolSetController controller = new ToolSetController(context);
             String toolsetId = UrlUtil.decodePath(pathMatcher.group(1));

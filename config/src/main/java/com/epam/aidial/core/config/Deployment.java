@@ -1,10 +1,12 @@
 package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 
@@ -19,17 +21,17 @@ public abstract class Deployment extends RoleBasedEntity {
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     private Map<String, DeploymentInterface> interfaces = Map.of();
     @JsonAlias({"displayName", "display_name"})
-    private String displayName;
+    private LocalizedValue displayName;
     @JsonAlias({"displayVersion", "display_version"})
     private String displayVersion;
     @JsonAlias({"iconUrl", "icon_url"})
     private String iconUrl;
-    private String description;
+    private LocalizedValue description;
     /**
      * Short introductory/onboarding text for the deployment, shown to the end user
      * separately from the more general-purpose {@link #description}.
      */
-    private String intro;
+    private LocalizedValue intro;
     private String reference;
     /**
      * Forward Http header with authorization token when request is sent to deployment.
@@ -81,6 +83,24 @@ public abstract class Deployment extends RoleBasedEntity {
      * Dependent deployments
      */
     private List<String> dependencies = List.of();
+
+    /**
+     * Points to the registered catalog schema governing this deployment's
+     * {@link #catalogProperties catalog metadata}.
+     */
+    @JsonAlias({"catalogSchemaId", "catalog_schema_id"})
+    private URI catalogSchemaId;
+
+    /**
+     * Curated marketplace/catalog display metadata, validated against {@link #catalogSchemaId}.
+     */
+    @JsonAlias({"catalogProperties", "catalog_properties"})
+    private Map<String, Object> catalogProperties;
+
+    @JsonIgnore
+    public boolean hasCatalogSchemaId() {
+        return catalogSchemaId != null;
+    }
 
     /**
      * New-flow base URL for the type (trailing slash stripped), or null when not declared.

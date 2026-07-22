@@ -11,9 +11,11 @@ import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.BucketBuilder;
+import com.epam.aidial.core.server.util.CatalogPropertiesLinkRewriter;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
+import com.epam.aidial.core.server.validation.CatalogSchemaValidationException;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
@@ -26,10 +28,6 @@ import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.UrlUtil;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
@@ -75,6 +73,7 @@ public class ApplicationService {
     private final boolean includeCustomApps;
 
     private final ApplicationSchemaService applicationSchemaService;
+    private final CatalogSchemaService catalogSchemaService;
 
     public ApplicationService(Vertx vertx,
                               AsyncTaskExecutor taskExecutor,
@@ -86,6 +85,7 @@ public class ApplicationService {
                               LockService lockService,
                               ApplicationOperatorService operatorService,
                               ApplicationSchemaService applicationSchemaService,
+                              CatalogSchemaService catalogSchemaService,
                               ConfigStore configStore,
                               Supplier<String> idGenerator,
                               JsonObject settings) {
@@ -97,6 +97,7 @@ public class ApplicationService {
         this.externalServiceService = externalServiceService;
         this.resourceService = resourceService;
         this.applicationSchemaService = applicationSchemaService;
+        this.catalogSchemaService = catalogSchemaService;
         this.configStore = configStore;
         this.lockService = lockService;
         this.idGenerator = idGenerator;
@@ -244,6 +245,14 @@ public class ApplicationService {
         }
     }
 
+    private void validateCatalogProperties(Application application) {
+        try {
+            catalogSchemaService.validate(application);
+        } catch (CatalogSchemaValidationException e) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Catalog properties validation failed: " + e.getMessage(), e);
+        }
+    }
+
     public void deleteApplication(ResourceDescriptor resource, EtagHeader etag) {
         verifyApplication(resource);
         MutableObject<Application> reference = new MutableObject<>();
@@ -318,13 +327,22 @@ public class ApplicationService {
         Map<String, String> fileReplacementLinks;
         List<ResourceDescriptor> sourceAppFiles = List.of();
         List<ResourceDescriptor> destAppFiles = List.of();
+        List<ResourceDescriptor> sourceCatalogFiles = List.of();
+        List<ResourceDescriptor> destCatalogFiles = List.of();
         if (isPublicOrReview) {
             sourceAppFiles = applicationSchemaService.getFiles(application);
             destAppFiles = toDestAppFiles(source, destination, sourceAppFiles);
+            sourceCatalogFiles = catalogSchemaService.getFiles(application);
+            destCatalogFiles = toDestAppFiles(source, destination, sourceCatalogFiles);
             fileReplacementLinks = new HashMap<>();
             for (int i = 0; i < sourceAppFiles.size(); i++) {
                 ResourceDescriptor sourceFile = sourceAppFiles.get(i);
                 ResourceDescriptor destFile = destAppFiles.get(i);
+                fileReplacementLinks.put(sourceFile.getDecodedUrl(), destFile.getUrl());
+            }
+            for (int i = 0; i < sourceCatalogFiles.size(); i++) {
+                ResourceDescriptor sourceFile = sourceCatalogFiles.get(i);
+                ResourceDescriptor destFile = destCatalogFiles.get(i);
                 fileReplacementLinks.put(sourceFile.getDecodedUrl(), destFile.getUrl());
             }
         } else {
@@ -340,6 +358,7 @@ public class ApplicationService {
             prepareAdminManagedFields(application, existing, AdminManagedFieldsWriteMode.INHERIT_ONLY);
 
             verifySchemaRichApp(application, existing);
+            validateCatalogProperties(application);
 
             if (function != null) {
                 if (existing == null || existing.getFunction() == null) {
@@ -371,6 +390,7 @@ public class ApplicationService {
 
             if (isPublicOrReview) {
                 replaceLinksInAppProperties(application, fileReplacementLinks);
+                application.setCatalogProperties(CatalogPropertiesLinkRewriter.rewrite(application.getCatalogProperties(), fileReplacementLinks));
             }
 
             externalServiceService.encryptSecrets(destination, application);
@@ -384,22 +404,27 @@ public class ApplicationService {
                 // source files are copied to read-only deployment bucket for such applications
                 copyFolder(sourceFolder, function.getSourceFolder());
             }
-            for (int i = 0; i < sourceAppFiles.size(); i++) {
-                ResourceDescriptor sourceFile = sourceAppFiles.get(i);
-                ResourceDescriptor destFile = destAppFiles.get(i);
-                if (sourceFile.isFolder()) {
-                    resourceService.copyFolder(sourceFile, destFile, false);
-                } else {
-                    if (!resourceService.copyResource(sourceFile, destFile, null, false)) {
-                        throw new IllegalArgumentException("Can't copy source file: " + sourceFile.getUrl()
-                                + " to destination file: " + destFile.getUrl());
-                    }
-                }
-            }
+            copyResourceFiles(sourceAppFiles, destAppFiles);
+            copyResourceFiles(sourceCatalogFiles, destCatalogFiles);
         }
 
         if (applicationSchemaService.getCopyAppBucketOptions(application) == CopyAppBucketOptions.ENABLED) {
             copyAppFileBucket(source, destination);
+        }
+    }
+
+    private void copyResourceFiles(List<ResourceDescriptor> sourceFiles, List<ResourceDescriptor> destFiles) {
+        for (int i = 0; i < sourceFiles.size(); i++) {
+            ResourceDescriptor sourceFile = sourceFiles.get(i);
+            ResourceDescriptor destFile = destFiles.get(i);
+            if (sourceFile.isFolder()) {
+                resourceService.copyFolder(sourceFile, destFile, false);
+            } else {
+                if (!resourceService.copyResource(sourceFile, destFile, null, false)) {
+                    throw new IllegalArgumentException("Can't copy source file: " + sourceFile.getUrl()
+                            + " to destination file: " + destFile.getUrl());
+                }
+            }
         }
     }
 
@@ -554,6 +579,7 @@ public class ApplicationService {
                 && (application.getMcp() == null || application.getMcp().getEndpoint() == null)) {
             throw new IllegalArgumentException("At least application endpoint, MCP endpoint or function must be provided");
         }
+        validateCatalogProperties(application);
 
         application.setName(resource.getUrl());
         application.setUserRoles(null);
@@ -830,36 +856,7 @@ public class ApplicationService {
     }
 
     public static void replaceLinksInAppProperties(Application application, Map<String, String> replacementLinks) {
-        JsonNode customProperties = ProxyUtil.MAPPER.convertValue(application.getApplicationProperties(), JsonNode.class);
-        replaceTextNodes(customProperties, replacementLinks, null, null);
-        Map<String, Object> customPropertiesMap = ProxyUtil.MAPPER.convertValue(customProperties, new TypeReference<>() {
-        });
-        application.setApplicationProperties(customPropertiesMap);
-    }
-
-    private static void replaceTextNodes(JsonNode node, Map<String, String> replacementMap, JsonNode parent, String fieldName) {
-        if (node.isObject()) {
-            node.fields().forEachRemaining(entry -> replaceTextNodes(entry.getValue(), replacementMap, node, entry.getKey()));
-        } else if (node.isArray()) {
-            for (int i = 0; i < node.size(); i++) {
-                JsonNode childNode = node.get(i);
-                if (childNode.isTextual()) {
-                    String decodedUrl = UrlUtil.tryDecodePath(childNode.textValue());
-                    String replacement = replacementMap.get(decodedUrl);
-                    if (replacement != null) {
-                        ((ArrayNode) node).set(i, replacement);
-                    }
-                } else {
-                    replaceTextNodes(childNode, replacementMap, node, String.valueOf(i));
-                }
-            }
-        } else if (node.isTextual()) {
-            String decodedUrl = UrlUtil.tryDecodePath(node.textValue());
-            String replacement = replacementMap.get(decodedUrl);
-            if (replacement != null && parent.isObject()) {
-                ((ObjectNode) parent).put(fieldName, replacement);
-            }
-        }
+        application.setApplicationProperties(CatalogPropertiesLinkRewriter.rewrite(application.getApplicationProperties(), replacementLinks));
     }
 
     private static String createUniqueFileName(ResourceDescriptor sourceDescriptor, Map<String, Integer> fileNamesTaken) {

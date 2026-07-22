@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.data;
 
+import com.epam.aidial.core.config.LocalizedValue;
 import com.epam.aidial.core.config.ToolSet;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -36,13 +37,15 @@ public class ToolSetData extends SecuredResourceData {
         if (toolSet.getDisplayName() != null) {
             data.setDisplayName(toolSet.getDisplayName());
         } else {
-            data.setDisplayName(toolSet.getName());
+            data.setDisplayName(LocalizedValue.of(toolSet.getName()));
         }
         data.setIconUrl(toolSet.getIconUrl());
         data.setDisplayVersion(toolSet.getDisplayVersion());
         data.setDescription(toolSet.getDescription());
         data.setIntro(toolSet.getIntro());
         data.setDescriptionKeywords(toolSet.getDescriptionKeywords());
+        data.setCatalogSchemaId(toolSet.getCatalogSchemaId());
+        data.setCatalogProperties(toolSet.getCatalogProperties());
         data.setReference(toolSet.getReference() == null ? toolSet.getName() : toolSet.getReference());
         FeaturesData featuresData = FeaturesData.createFeatures(toolSet.getFeatures());
         featuresData.setMcp(true);

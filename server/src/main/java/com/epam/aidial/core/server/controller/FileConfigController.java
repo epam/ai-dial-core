@@ -366,6 +366,43 @@ public class FileConfigController implements Controller {
             ),
             @ApiOperation(
                     method = "GET",
+                    path = "/v1/admin/config/file/catalog_schemas",
+                    operationId = "listFileConfigCatalogSchemas",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced catalog schemas",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/catalog_schemas/{name}",
+                    operationId = "getFileConfigCatalogSchema",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Schema name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"ProxyResponse"}, allOf = {EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
                     path = "/v1/admin/config/file/settings",
                     operationId = "listFileConfigSettings",
                     tags = {"Admin"},
@@ -484,7 +521,7 @@ public class FileConfigController implements Controller {
             return Future.succeededFuture();
         }
 
-        if (resourceType == ResourceTypes.APP_TYPE_SCHEMA) {
+        if (resourceType == ResourceTypes.APP_TYPE_SCHEMA || resourceType == ResourceTypes.CATALOG_SCHEMA) {
             String json = (String) item;
             try {
                 JsonNode schema = ProxyUtil.MAPPER.readTree(json);
@@ -540,6 +577,7 @@ public class FileConfigController implements Controller {
             case PROJECT_KEY -> config.getKeys();
             case ROUTE -> config.getRoutes();
             case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas();
+            case CATALOG_SCHEMA -> config.getCatalogSchemas();
             case APPLICATION -> config.getApplications();
             case TOOL_SET -> config.getToolsets();
             // GLOBAL_SETTINGS has no per-entity map — handled by handleSettings before this helper.
