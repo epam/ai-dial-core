@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
-import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -137,25 +136,7 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Future<Void> handleInterceptor(int interceptorIndex) {
-        List<String> interceptors = context.getInterceptors();
-        String interceptorName = interceptors.get(interceptorIndex);
-        Interceptor interceptor = context.getConfig().getInterceptors().get(interceptorName);
-        if (interceptor == null) {
-            log.warn("Interceptor is not found: {}", interceptorName);
-            respond(HttpStatus.NOT_FOUND, "Interceptor is not found");
-            return Future.succeededFuture();
-        }
-        context.setTraceOperation("Send request to %s interceptor".formatted(interceptorName));
-        context.setDeployment(interceptor);
-        ApiKeyData proxyApiKeyData = new ApiKeyData();
-        proxyApiKeyData.setInterceptorIndex(interceptorIndex);
-        proxyApiKeyData.setInterceptors(interceptors);
-        proxyApiKeyData.setInitialDeployment(context.getInitialDeployment());
-        context.setProxyApiKeyData(proxyApiKeyData);
-        ApiKeyData.initFromContext(proxyApiKeyData, context);
-
-        InterceptorController controller = InterceptorController.forResponses(proxy, context);
-        return controller.handle().mapEmpty();
+        return InterceptorController.forResponses(proxy, context, interceptorIndex).handle().mapEmpty();
     }
 
     private Void setupDeployment(String model) {
