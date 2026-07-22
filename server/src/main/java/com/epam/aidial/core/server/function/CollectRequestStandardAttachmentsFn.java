@@ -6,9 +6,9 @@ import com.epam.aidial.core.server.function.request.RequestObject;
 
 import java.util.Set;
 
-public class CollectRequestChatCompletionAttachmentsFn extends CollectRequestAttachmentsFn {
+public class CollectRequestStandardAttachmentsFn extends CollectRequestAttachmentsFn {
 
-    public CollectRequestChatCompletionAttachmentsFn(Proxy proxy, ProxyContext context) {
+    public CollectRequestStandardAttachmentsFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }
 

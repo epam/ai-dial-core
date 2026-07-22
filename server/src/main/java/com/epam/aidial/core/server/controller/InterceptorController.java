@@ -7,11 +7,14 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.AutoShareDeploymentFn;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
-import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -26,6 +29,7 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -37,12 +41,78 @@ public class InterceptorController extends BaseDeploymentPostController {
     private static final Pattern DEPLOYMENT_PATH = Pattern.compile("(/openai/deployments/)([^/]+)(/.*)");
 
     private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
+    private final RequestParser requestParser;
+    private final String uri;
+    private final Supplier<BufferingReadStream.BaseEventListener> listenerFactory;
+    private final CollectResponseAttachmentsFn attachmentFn;
 
-    public InterceptorController(Proxy proxy, ProxyContext context) {
+    private InterceptorController(
+            Proxy proxy,
+            ProxyContext context,
+            RequestParser requestParser,
+            String uri,
+            CollectResponseAttachmentsFn attachmentFn,
+            Supplier<BufferingReadStream.BaseEventListener> listenerFactory) {
         super(proxy, context);
-        this.enhancementFunctions = List.of(new ApplyDefaultDeploymentSettingsFn(proxy, context),
-                new CollectRequestChatCompletionAttachmentsFn(proxy, context),
+        this.enhancementFunctions = List.of(
+                new ApplyDefaultDeploymentSettingsFn(proxy, context),
+                new CollectRequestStandardAttachmentsFn(proxy, context),
                 new AutoShareDeploymentFn(proxy, context));
+        this.requestParser = requestParser;
+        this.uri = uri;
+        this.attachmentFn = attachmentFn;
+        this.listenerFactory = listenerFactory;
+    }
+
+    static InterceptorController forChatCompletions(Proxy proxy, ProxyContext context) {
+        CollectResponseChatCompletionAttachmentsFn attachmentFn = new CollectResponseChatCompletionAttachmentsFn(proxy, context);
+        return new InterceptorController(proxy, context,
+                body -> new ChatCompletionRequest(ProxyUtil.parseObject(body)),
+                chatCompletionsUri(context),
+                attachmentFn,
+                () -> new DeploymentPostController.ChatCompletionSseListener(attachmentFn));
+    }
+
+    static InterceptorController forResponses(Proxy proxy, ProxyContext context) {
+        CollectResponsesApiOutputAttachmentsFn attachmentFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
+        return new InterceptorController(proxy, context,
+                body -> new ResponsesApiRequest(ProxyUtil.parseObject(body)),
+                responsesUri(context),
+                attachmentFn,
+                () -> new ResponsesSseListener(List.of(attachmentFn)));
+    }
+
+    private static String chatCompletionsUri(ProxyContext context) {
+        Deployment deployment = context.getDeployment();
+        HttpServerRequest request = context.getRequest();
+        String query = request.query();
+        String baseUrl = deployment.getInterfaceBaseUrl(InterfaceType.OPENAI_CHAT_COMPLETIONS);
+        if (baseUrl != null) {
+            // New flow: rewrite the {id} segment to the interceptor's own name, then base_url + path.
+            String name = UrlUtil.encodePathSegment(deployment.getName());
+            String path = rewriteDeploymentSegment(request.path(), name);
+            return query == null ? baseUrl + path : baseUrl + path + "?" + query;
+        }
+        // Legacy flow: verbatim endpoint + query.
+        return query == null ? deployment.getEndpoint() : deployment.getEndpoint() + "?" + query;
+    }
+
+    private static String responsesUri(ProxyContext context) {
+        Deployment deployment = context.getDeployment();
+        HttpServerRequest request = context.getRequest();
+        String query = request.query();
+        String endpoint = deployment.getInterfaceBaseUrl(InterfaceType.OPENAI_RESPONSES);
+        if (endpoint != null) {
+            String path = "/openai/v1/responses";
+            return query == null ? endpoint + path : endpoint + path + "?" + query;
+        }
+        endpoint = deployment.getResponsesEndpoint();
+        return query == null ? endpoint : endpoint + "?" + query;
+    }
+
+    static String rewriteDeploymentSegment(String path, String name) {
+        Matcher m = DEPLOYMENT_PATH.matcher(path);
+        return m.matches() ? m.group(1) + name + m.group(3) : path;
     }
 
     public Future<?> handle() {
@@ -70,7 +140,7 @@ public class InterceptorController extends BaseDeploymentPostController {
         context.setRequestBody(requestBody);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         try {
-            RequestObject request = new ChatCompletionRequest(ProxyUtil.parseObject(requestBody));
+            RequestObject request = requestParser.parse(requestBody);
             context.setStreamingRequest(request.isStreaming());
             if (ProxyUtil.processChain(request, enhancementFunctions)) {
                 context.setRequestBody(Buffer.buffer(request.serialize()));
@@ -88,37 +158,15 @@ public class InterceptorController extends BaseDeploymentPostController {
         sendRequest();
     }
 
-
     private void sendRequest() {
-        createProxyRequest(interceptorUri())
+        createProxyRequest(uri)
                 .onSuccess(this::handleProxyRequest)
                 .onFailure(this::handleProxyConnectionError);
     }
 
-    private String interceptorUri() {
-        Deployment deployment = context.getDeployment();
-        HttpServerRequest request = context.getRequest();
-        String query = request.query();
-        String baseUrl = deployment.getInterfaceBaseUrl(InterfaceType.OPENAI_CHAT_COMPLETIONS);
-        if (baseUrl != null) {
-            // New flow: rewrite the {id} segment to the interceptor's own name, then base_url + path.
-            String name = UrlUtil.encodePathSegment(deployment.getName());
-            String path = rewriteDeploymentSegment(request.path(), name);
-            return query == null ? baseUrl + path : baseUrl + path + "?" + query;
-        }
-        // Legacy flow: verbatim endpoint + query — identical to today's buildUri.
-        return query == null ? deployment.getEndpoint() : deployment.getEndpoint() + "?" + query;
-    }
-
-    static String rewriteDeploymentSegment(String path, String name) {
-        Matcher m = DEPLOYMENT_PATH.matcher(path);
-        return m.matches() ? m.group(1) + name + m.group(3) : path;
-    }
-
-
-    void handleProxyRequest(HttpClientRequest proxyRequest) {
+    private void handleProxyRequest(HttpClientRequest proxyRequest) {
         log.info("Connected to interceptor. Deployment: {}. Address: {}",
-                 context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
+                context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
 
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
@@ -150,18 +198,14 @@ public class InterceptorController extends BaseDeploymentPostController {
 
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
         log.info("Received header from origin. Endpoint: {}. Status: {}. Headers: {}",
-                context.getDeployment().getEndpoint(),
-                proxyResponse.statusCode(), proxyResponse.headers().size());
+                proxyResponse.request().getURI(), proxyResponse.statusCode(), proxyResponse.headers().size());
 
-        Supplier<BufferingReadStream.BaseEventListener> eventListenerSupplier = () ->
-                new DeploymentPostController.ChatCompletionSseListener(new CollectResponseChatCompletionAttachmentsFn(proxy, context));
-        BufferingReadStream responseStream = createResponseStream(proxyResponse, eventListenerSupplier);
+        BufferingReadStream responseStream = createResponseStream(proxyResponse, listenerFactory);
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
 
         HttpServerResponse response = context.getResponse();
-
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
 
         responseStream.pipe()
@@ -172,10 +216,9 @@ public class InterceptorController extends BaseDeploymentPostController {
                 .onFailure(this::handleResponseError);
     }
 
-    void handleResponse(BufferingReadStream responseStream) {
+    private void handleResponse(BufferingReadStream responseStream) {
         Buffer responseBody = responseStream.getContent();
-        CollectResponseChatCompletionAttachmentsFn fn = new CollectResponseChatCompletionAttachmentsFn(proxy, context);
-        collectResponseAttachments(responseBody, fn).onComplete(result -> {
+        collectResponseAttachments(responseBody, attachmentFn).onComplete(result -> {
             if (result.failed()) {
                 log.warn("Failed to collect attachments from response. Error:", result.cause());
             }
@@ -200,4 +243,8 @@ public class InterceptorController extends BaseDeploymentPostController {
         finalizeRequest();
     }
 
+    @FunctionalInterface
+    interface RequestParser {
+        RequestObject parse(Buffer body) throws IOException;
+    }
 }

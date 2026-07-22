@@ -22,7 +22,7 @@ import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
-import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
@@ -62,7 +62,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
     public DeploymentPostController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
-        this.enhancementFunctions = List.of(new CollectRequestChatCompletionAttachmentsFn(proxy, context),
+        this.enhancementFunctions = List.of(new CollectRequestStandardAttachmentsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
@@ -243,7 +243,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             proxyApiKeyData.setInitialDeployment(context.getInitialDeployment());
             setupProxyApiKeyData(proxyApiKeyData);
 
-            InterceptorController controller = new InterceptorController(proxy, context);
+            InterceptorController controller = InterceptorController.forChatCompletions(proxy, context);
             return controller.handle();
         } else { // all interceptors are completed we should call the initial deployment
             return handleDeployment(apiKeyData.getInitialDeployment());
