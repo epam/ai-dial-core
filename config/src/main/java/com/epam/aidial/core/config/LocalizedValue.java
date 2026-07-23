@@ -5,10 +5,11 @@ import com.epam.aidial.core.config.databind.LocalizedValueSerializer;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * A free-text value that is either a plain string (the value for the default locale) or a
@@ -16,8 +17,10 @@ import java.util.Objects;
  * legacy/majority form and are wire-identical to a raw string field; the map form is only
  * emitted/accepted when more than one locale is present.
  */
+@Getter
 @JsonDeserialize(using = LocalizedValueDeserializer.class)
 @JsonSerialize(using = LocalizedValueSerializer.class)
+@EqualsAndHashCode
 public final class LocalizedValue {
 
     private final String plainValue;
@@ -39,14 +42,6 @@ public final class LocalizedValue {
     @JsonIgnore
     public boolean isMap() {
         return localeMap != null;
-    }
-
-    public String getPlainValue() {
-        return plainValue;
-    }
-
-    public Map<String, String> getLocaleMap() {
-        return localeMap;
     }
 
     /**
@@ -76,22 +71,6 @@ public final class LocalizedValue {
             return localeMap.get(defaultLocale);
         }
         return localeMap.values().stream().findFirst().orElse(null);
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (!(o instanceof LocalizedValue other)) {
-            return false;
-        }
-        return Objects.equals(plainValue, other.plainValue) && Objects.equals(localeMap, other.localeMap);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(plainValue, localeMap);
     }
 
     @Override

@@ -21,6 +21,7 @@ import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Slf4j
@@ -63,8 +64,7 @@ public class CatalogPropertiesConformToSchemasValidator implements ConstraintVal
             if (!validationResults.isEmpty()) {
                 String logMessage = validationResults.stream()
                         .map(ValidationMessage::getMessage)
-                        .reduce((a, b) -> a + ", " + b)
-                        .orElse("Unknown validation error");
+                        .collect(Collectors.joining(", "));
                 log.warn("Deployment {} does not conform to catalog schema {}: {}", entry.getKey(), schemaId, logMessage);
                 return reportViolation(context, entry.getKey(), "does not conform to catalog schema " + schemaId);
             }
