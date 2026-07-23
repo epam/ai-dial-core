@@ -106,7 +106,7 @@ public class ResponsesController extends BaseDeploymentPostController {
     private Future<Void> dispatch(ResponsesApiRequest request) {
         ApiKeyData apiKeyData = context.getApiKeyData();
         String deploymentName;
-        if (apiKeyData != null && apiKeyData.isInterceptor()) {
+        if (apiKeyData.isInterceptor()) {
             context.setInitialDeployment(apiKeyData.getInitialDeployment());
             context.setInterceptors(apiKeyData.getInterceptors());
             int nextIndex = apiKeyData.getInterceptorIndex() + 1;
