@@ -601,6 +601,87 @@ public class ConfigResourceController implements Controller {
                             @ApiExtension(name = "x-preview", value = "true") 
                     }
             ),
+            // Catalog Schemas
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/catalog_schemas/{bucket}/{path}",
+                    operationId = "getCatalogSchemaResource",
+                    tags = {"Catalog"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"ProxyResponse"}, allOf = {EntityMetadata.class}),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the catalog schema", required = true)
+                                    }
+                            ),
+                            @ApiResponse(code = 304),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/catalog_schemas/{bucket}/{path}",
+                    operationId = "saveCatalogSchemaResource",
+                    tags = {"Catalog"},
+                    requestBody = @ApiSchema(schemaRef = "ProxyRequest"),
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved catalog schema", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 422),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/catalog_schemas/{bucket}/{path}",
+                    operationId = "deleteCatalogSchemaResource",
+                    tags = {"Catalog"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.SCHEMA_ID),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 204, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
             // Global Settings
             @ApiOperation(
                     method = "GET",
@@ -749,7 +830,8 @@ public class ConfigResourceController implements Controller {
             case ROUTE -> handleSingleGet(
                     config.getRoutes(), ResourceTypes.ROUTE,
                     (key, route) -> projectItem(route, key));
-            case APP_TYPE_SCHEMA -> handleSchemaGet(config, admin);
+            case APP_TYPE_SCHEMA -> handleSchemaGet(config.getApplicationTypeSchemas(), ResourceTypes.APP_TYPE_SCHEMA, admin);
+            case CATALOG_SCHEMA -> handleSchemaGet(config.getCatalogSchemas(), ResourceTypes.CATALOG_SCHEMA, admin);
             case GLOBAL_SETTINGS -> handleSettingsGet(config);
             default -> respondMethodNotAllowed();
         };
@@ -861,6 +943,8 @@ public class ConfigResourceController implements Controller {
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case APP_TYPE_SCHEMA -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.APP_TYPE_SCHEMA,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
+            case CATALOG_SCHEMA -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.CATALOG_SCHEMA,
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             default -> null;
         };
     }
@@ -869,10 +953,9 @@ public class ConfigResourceController implements Controller {
         return entityType + "/" + bucket + "/" + path;
     }
 
-    private Future<?> handleSchemaGet(Config config, boolean admin) throws JsonProcessingException {
-        Map<String, String> schemas = config.getApplicationTypeSchemas();
+    private Future<?> handleSchemaGet(Map<String, String> schemas, ResourceTypes resourceType, boolean admin) throws JsonProcessingException {
         Map<String, InvalidEntityRecord> invalid = mergedConfigStore.getInvalidEntities()
-                .getOrDefault(ResourceTypes.APP_TYPE_SCHEMA, Map.of());
+                .getOrDefault(resourceType, Map.of());
         if (path == null || path.isEmpty()) {
             context.respond(HttpStatus.NOT_FOUND);
             return Future.succeededFuture();
@@ -1222,6 +1305,7 @@ public class ConfigResourceController implements Controller {
             case PROJECT_KEY -> new WriteSpec(descriptor, Key.class, true, true);
             case ROUTE -> new WriteSpec(descriptor, Route.class, true, false);
             case APP_TYPE_SCHEMA -> new WriteSpec(descriptor, null, false, false);
+            case CATALOG_SCHEMA -> new WriteSpec(descriptor, null, false, false);
             default -> {
                 respondMethodNotAllowed();
                 yield null;

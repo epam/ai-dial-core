@@ -76,6 +76,7 @@ public final class MergedConfigStore implements ConfigStore {
     private static final List<ResourceTypes> MANAGED_TYPES = List.of(
             ResourceTypes.MODEL,
             ResourceTypes.APP_TYPE_SCHEMA,
+            ResourceTypes.CATALOG_SCHEMA,
             ResourceTypes.INTERCEPTOR,
             ResourceTypes.ROLE,
             ResourceTypes.PROJECT_KEY,
@@ -395,7 +396,7 @@ public final class MergedConfigStore implements ConfigStore {
             case ROLE -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Role.class);
             case PROJECT_KEY -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Key.class);
             case ROUTE -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Route.class);
-            case APP_TYPE_SCHEMA -> node.toString();
+            case APP_TYPE_SCHEMA, CATALOG_SCHEMA -> node.toString();
             default -> throw new IllegalArgumentException("Unsupported replica type: " + type);
         };
     }
@@ -661,7 +662,7 @@ public final class MergedConfigStore implements ConfigStore {
                     resurrectInvalidModels(next, nextInvalid);
                 }
                 case ROLE -> ConfigPostProcessor.validateSingleRole(next, canonicalId);
-                case PROJECT_KEY, APP_TYPE_SCHEMA -> { /* no post-processing */ }
+                case PROJECT_KEY, APP_TYPE_SCHEMA, CATALOG_SCHEMA -> { /* no post-processing */ }
                 case ROUTE -> ConfigPostProcessor.sortRoutesInPlace(next);
                 default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
             }
@@ -874,6 +875,7 @@ public final class MergedConfigStore implements ConfigStore {
             case PROJECT_KEY -> config.setKeys(new HashMap<>(config.getKeys()));
             case ROUTE -> config.setRoutes(new LinkedHashMap<>(config.getRoutes()));
             case APP_TYPE_SCHEMA -> config.setApplicationTypeSchemas(new LinkedHashMap<>(config.getApplicationTypeSchemas()));
+            case CATALOG_SCHEMA -> config.setCatalogSchemas(new LinkedHashMap<>(config.getCatalogSchemas()));
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -886,6 +888,7 @@ public final class MergedConfigStore implements ConfigStore {
             case PROJECT_KEY -> config.getKeys().get(canonicalId);
             case ROUTE -> config.getRoutes().get(canonicalId);
             case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas().get(canonicalId);
+            case CATALOG_SCHEMA -> config.getCatalogSchemas().get(canonicalId);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         };
     }
@@ -898,6 +901,7 @@ public final class MergedConfigStore implements ConfigStore {
             case PROJECT_KEY -> config.getKeys().put(canonicalId, (Key) entity);
             case ROUTE -> config.getRoutes().put(canonicalId, (Route) entity);
             case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas().put(canonicalId, schemaBody(entity));
+            case CATALOG_SCHEMA -> config.getCatalogSchemas().put(canonicalId, schemaBody(entity));
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -910,6 +914,7 @@ public final class MergedConfigStore implements ConfigStore {
             case PROJECT_KEY -> config.getKeys().remove(canonicalId);
             case ROUTE -> config.getRoutes().remove(canonicalId);
             case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas().remove(canonicalId);
+            case CATALOG_SCHEMA -> config.getCatalogSchemas().remove(canonicalId);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -950,6 +955,7 @@ public final class MergedConfigStore implements ConfigStore {
         Map<String, Key> keys = new HashMap<>(base.getKeys());
         LinkedHashMap<String, Route> routes = new LinkedHashMap<>(base.getRoutes());
         Map<String, String> schemas = new LinkedHashMap<>(base.getApplicationTypeSchemas());
+        Map<String, String> catalogSchemas = new LinkedHashMap<>(base.getCatalogSchemas());
         merged.setApplications(base.getApplications());
         merged.setToolsets(new LinkedHashMap<>(base.getToolsets()));
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
@@ -999,7 +1005,7 @@ public final class MergedConfigStore implements ConfigStore {
                     AddedEntity added;
                     try {
                         added = addBlobEntity(type, canonicalId, node,
-                                models, interceptors, roles, keys, routes, schemas);
+                                models, interceptors, roles, keys, routes, schemas, catalogSchemas);
                     } catch (Exception parseError) {
                         recordInvalid(pendingInvalid, type, canonicalId, name,
                                 "JSON parse failure: " + parseError.getMessage(),
@@ -1014,7 +1020,7 @@ public final class MergedConfigStore implements ConfigStore {
                         } catch (Exception decryptError) {
                             // Roll back the partial insertion so decryption-failure entities never
                             // reach addProjectKeys (locked 2S.9 invariant).
-                            removeAddedEntity(type, canonicalId, models, interceptors, roles, keys, routes, schemas);
+                            removeAddedEntity(type, canonicalId, models, interceptors, roles, keys, routes, schemas, catalogSchemas);
                             recordInvalid(pendingInvalid, type, canonicalId, name,
                                     "Decryption failure: " + decryptError.getMessage(),
                                     List.of(new ValidationWarning("body", decryptError.getMessage())),
@@ -1036,6 +1042,7 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setKeys(keys);
         merged.setRoutes(routes);
         merged.setApplicationTypeSchemas(schemas);
+        merged.setCatalogSchemas(catalogSchemas);
 
         // Semantic pass — under MODE_SKIP, route per-entity violations to invalidEntities and
         // continue; under MODE_ABORT, the post-processor throws and the rebuild aborts (this.config
@@ -1167,7 +1174,8 @@ public final class MergedConfigStore implements ConfigStore {
     private static AddedEntity addBlobEntity(ResourceTypes type, String canonicalId, JsonNode node,
                                              Map<String, Model> models, Map<String, Interceptor> interceptors,
                                              Map<String, Role> roles, Map<String, Key> keys,
-                                             LinkedHashMap<String, Route> routes, Map<String, String> schemas)
+                                             LinkedHashMap<String, Route> routes, Map<String, String> schemas,
+                                             Map<String, String> catalogSchemas)
             throws JsonProcessingException {
         switch (type) {
             case MODEL -> {
@@ -1199,6 +1207,10 @@ public final class MergedConfigStore implements ConfigStore {
                 warnIfReplaced(type, canonicalId, schemas.put(canonicalId, node.toString()));
                 return null;
             }
+            case CATALOG_SCHEMA -> {
+                warnIfReplaced(type, canonicalId, catalogSchemas.put(canonicalId, node.toString()));
+                return null;
+            }
             default -> {
                 /* GLOBAL_SETTINGS is a singleton — design 02 §4 leaves union-by-key out of scope. */
                 return null;
@@ -1216,7 +1228,8 @@ public final class MergedConfigStore implements ConfigStore {
     private static void removeAddedEntity(ResourceTypes type, String canonicalId,
                                           Map<String, Model> models, Map<String, Interceptor> interceptors,
                                           Map<String, Role> roles, Map<String, Key> keys,
-                                          LinkedHashMap<String, Route> routes, Map<String, String> schemas) {
+                                          LinkedHashMap<String, Route> routes, Map<String, String> schemas,
+                                          Map<String, String> catalogSchemas) {
         switch (type) {
             case MODEL -> models.remove(canonicalId);
             case INTERCEPTOR -> interceptors.remove(canonicalId);
@@ -1224,6 +1237,7 @@ public final class MergedConfigStore implements ConfigStore {
             case PROJECT_KEY -> keys.remove(canonicalId);
             case ROUTE -> routes.remove(canonicalId);
             case APP_TYPE_SCHEMA -> schemas.remove(canonicalId);
+            case CATALOG_SCHEMA -> catalogSchemas.remove(canonicalId);
             default -> { /* no-op */ }
         }
     }

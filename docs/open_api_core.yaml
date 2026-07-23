@@ -47,6 +47,7 @@ tags:
 - name: Admin
 - name: Anthropic
 - name: Applications
+- name: Catalog
 - name: Client channel
 - name: Code interpreter
 - name: Config
@@ -1571,6 +1572,83 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/admin/config/file/catalog_schemas:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/catalog_schemas
+      operationId: listFileConfigCatalogSchemas
+      responses:
+        "200":
+          description: List of file-sourced catalog schemas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/catalog_schemas/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/catalog_schemas/{name}"
+      operationId: getFileConfigCatalogSchema
+      parameters:
+      - name: name
+        in: path
+        description: Schema name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/ProxyResponse"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/interceptors:
     get:
       tags:
@@ -3023,6 +3101,341 @@ paths:
       - lang: cURL
         label: CURL
         source: "curl -X GET https://chat.<company>.com/v1/bucket \\\n  -H \"Api-Key: DIAL_API_KEY\"        \n"
+  /v1/catalog_schemas/meta_schema:
+    get:
+      tags:
+      - Catalog
+      summary: /v1/catalog_schemas/meta_schema
+      operationId: getMetaSchemaOfCatalogSchema
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/catalog_schemas/schema:
+    get:
+      tags:
+      - Catalog
+      summary: /v1/catalog_schemas/schema
+      operationId: getCatalogSchema
+      parameters:
+      - name: id
+        in: query
+        description: schema ID of custom application
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/catalog_schemas/schemas:
+    get:
+      tags:
+      - Catalog
+      summary: /v1/catalog_schemas/schemas
+      operationId: listCatalogSchemas
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/catalog_schemas/{bucket}/{path}:
+    get:
+      tags:
+      - Catalog
+      summary: "/v1/catalog_schemas/{bucket}/{path}"
+      operationId: getCatalogSchemaResource
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: schema ID of custom application
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the catalog schema
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/ProxyResponse"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Catalog
+      summary: "/v1/catalog_schemas/{bucket}/{path}"
+      operationId: saveCatalogSchemaResource
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: schema ID of custom application
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProxyRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved catalog schema
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Catalog
+      summary: "/v1/catalog_schemas/{bucket}/{path}"
+      operationId: deleteCatalogSchemaResource
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: schema ID of custom application
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/consent/{deployment_id}:
     get:
       tags:
@@ -4888,6 +5301,74 @@ paths:
         source: |
           curl -X GET https://chat.<company>.com/v1/metadata/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/ \
             -H "Api-Key: DIAL_API_KEY"
+  /v1/metadata/catalog_schemas/{bucket}/{path}:
+    get:
+      tags:
+      - Catalog
+      summary: "/v1/metadata/catalog_schemas/{bucket}/{path}"
+      operationId: getCatalogSchemaMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/metadata/conversations/{bucket}/{path}:
     get:
       tags:
@@ -11598,7 +12079,7 @@ components:
           items:
             type: string
         displayName:
-          type: string
+          $ref: "#/components/schemas/LocalizedValue"
         displayVersion:
           type: string
         editor_url:
@@ -11653,11 +12134,16 @@ components:
         interfaces:
           $ref: "#/components/schemas/MapStringDeploymentInterface"
         intro:
-          type: string
+          $ref: "#/components/schemas/LocalizedValue"
         allow_user_external_services:
           type: boolean
         app_identity:
           type: string
+        catalogProperties:
+          $ref: "#/components/schemas/MapStringObject"
+        catalogSchemaId:
+          type: string
+          format: uri
     ApplicationData:
       type: object
       properties:
@@ -11679,7 +12165,7 @@ components:
           items:
             type: string
         display_name:
-          type: string
+          $ref: "#/components/schemas/LocalizedValue"
         display_version:
           type: string
         editor_url:
@@ -11731,7 +12217,12 @@ components:
         external_services:
           $ref: "#/components/schemas/MapStringExternalService"
         intro:
+          $ref: "#/components/schemas/LocalizedValue"
+        catalog_properties:
+          $ref: "#/components/schemas/MapStringObject"
+        catalog_schema_id:
           type: string
+          format: uri
     ApplicationFunction:
       type: object
       properties:
@@ -12135,6 +12626,10 @@ components:
           $ref: "#/components/schemas/LinkedHashMapStringRoute"
         toolsets:
           $ref: "#/components/schemas/MapStringToolSet"
+        catalogSchemas:
+          $ref: "#/components/schemas/MapStringString"
+        defaultLocale:
+          type: string
     ConfigResourceControllerConfigWriteResponse:
       type: object
       properties:
@@ -12769,7 +13264,7 @@ components:
           items:
             type: string
         displayName:
-          type: string
+          $ref: "#/components/schemas/LocalizedValue"
         displayVersion:
           type: string
         endpoint:
@@ -12809,7 +13304,12 @@ components:
         interfaces:
           $ref: "#/components/schemas/MapStringDeploymentInterface"
         intro:
+          $ref: "#/components/schemas/LocalizedValue"
+        catalogProperties:
+          $ref: "#/components/schemas/MapStringObject"
+        catalogSchemaId:
           type: string
+          format: uri
     Invitation:
       type: object
       properties:
@@ -13012,6 +13512,13 @@ components:
           items:
             $ref: "#/components/schemas/ResourceTypes"
         with:
+          type: string
+    LocalizedValue:
+      type: object
+      properties:
+        localeMap:
+          $ref: "#/components/schemas/MapStringString"
+        plainValue:
           type: string
     MapStringApplication:
       type: object
@@ -13246,7 +13753,7 @@ components:
           items:
             type: string
         displayName:
-          type: string
+          $ref: "#/components/schemas/LocalizedValue"
         displayVersion:
           type: string
         embeddingDimensions:
@@ -13306,7 +13813,12 @@ components:
         interfaces:
           $ref: "#/components/schemas/MapStringDeploymentInterface"
         intro:
+          $ref: "#/components/schemas/LocalizedValue"
+        catalogProperties:
+          $ref: "#/components/schemas/MapStringObject"
+        catalogSchemaId:
           type: string
+          format: uri
     ModelData:
       type: object
       properties:
@@ -13325,7 +13837,7 @@ components:
           items:
             type: string
         display_name:
-          type: string
+          $ref: "#/components/schemas/LocalizedValue"
         display_version:
           type: string
         embedding_dimensions:
@@ -13375,7 +13887,12 @@ components:
         updated_at:
           type: integer
         intro:
+          $ref: "#/components/schemas/LocalizedValue"
+        catalog_properties:
+          $ref: "#/components/schemas/MapStringObject"
+        catalog_schema_id:
           type: string
+          format: uri
     ModelType:
       type: string
       enum:
@@ -13834,6 +14351,7 @@ components:
       - CLIENT_CHANNEL
       - MODEL
       - APP_TYPE_SCHEMA
+      - CATALOG_SCHEMA
       - INTERCEPTOR
       - ROLE
       - PROJECT_KEY
@@ -14359,7 +14877,7 @@ components:
           items:
             type: string
         displayName:
-          type: string
+          $ref: "#/components/schemas/LocalizedValue"
         displayVersion:
           type: string
         endpoint:
@@ -14405,9 +14923,14 @@ components:
         provider:
           type: string
         intro:
-          type: string
+          $ref: "#/components/schemas/LocalizedValue"
         vendor_website:
           type: string
+        catalogProperties:
+          $ref: "#/components/schemas/MapStringObject"
+        catalogSchemaId:
+          type: string
+          format: uri
     ToolSetData:
       type: object
       properties:
@@ -14430,7 +14953,7 @@ components:
           items:
             type: string
         display_name:
-          type: string
+          $ref: "#/components/schemas/LocalizedValue"
         display_version:
           type: string
         features:
@@ -14474,9 +14997,14 @@ components:
         provider:
           type: string
         intro:
-          type: string
+          $ref: "#/components/schemas/LocalizedValue"
         vendor_website:
           type: string
+        catalog_properties:
+          $ref: "#/components/schemas/MapStringObject"
+        catalog_schema_id:
+          type: string
+          format: uri
     ToolSetRepairControllerRepairResponse:
       type: object
       properties:

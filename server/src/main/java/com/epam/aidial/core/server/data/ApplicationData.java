@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.ExternalService;
+import com.epam.aidial.core.config.LocalizedValue;
 import com.epam.aidial.core.config.Route;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -64,7 +65,7 @@ public class ApplicationData extends DeploymentData {
         if (application.getDisplayName() != null) {
             data.setDisplayName(application.getDisplayName());
         } else {
-            data.setDisplayName(application.getName());
+            data.setDisplayName(LocalizedValue.of(application.getName()));
         }
         data.setDisplayVersion(application.getDisplayVersion());
         data.setIconUrl(application.getIconUrl());
@@ -79,6 +80,8 @@ public class ApplicationData extends DeploymentData {
 
         data.setApplicationTypeSchemaId(application.getApplicationTypeSchemaId());
         data.setApplicationProperties(application.getApplicationProperties());
+        data.setCatalogSchemaId(application.getCatalogSchemaId());
+        data.setCatalogProperties(application.getCatalogProperties());
         String reference = application.getReference();
         data.setReference(reference == null ? application.getName() : reference);
         data.setFunction(application.getFunction());

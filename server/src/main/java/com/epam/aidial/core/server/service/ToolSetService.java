@@ -11,11 +11,16 @@ import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionSe
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.util.CatalogPropertiesLinkRewriter;
 import com.epam.aidial.core.server.util.CredentialsDescriptorFactory;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.server.validation.CatalogSchemaValidationException;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -24,6 +29,9 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
@@ -36,6 +44,7 @@ public class ToolSetService {
     private final ResourceAuthSettingsService resourceAuthSettingsService;
     private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
     private final ResourceCredentialsService resourceCredentialsService;
+    private final CatalogSchemaService catalogSchemaService;
 
     public Pair<ResourceItemMetadata, ToolSet> getToolSet(ResourceDescriptor resource) {
         return getToolSet(resource, EtagHeader.ANY);
@@ -91,6 +100,7 @@ public class ToolSetService {
 
     public Pair<ResourceItemMetadata, ToolSet> putToolSet(ResourceDescriptor resource, EtagHeader etag, String author, ToolSet toolSet,
                                                           boolean preserveForwardAuthToken) {
+        validateCatalogProperties(toolSet);
         if (!preserveForwardAuthToken) {
             toolSet.setForwardAuthToken(false);
         }
@@ -159,8 +169,34 @@ public class ToolSetService {
                 toolSet.getAuthSettings());
 
         consumer.accept(toolSet);
+        validateCatalogProperties(toolSet);
+
+        boolean isPublicOrReview = destination.isPublic() || PublicationService.isReviewBucket(destination);
+        List<ResourceDescriptor> sourceCatalogFiles = List.of();
+        List<ResourceDescriptor> destCatalogFiles = List.of();
+        if (isPublicOrReview) {
+            sourceCatalogFiles = catalogSchemaService.getFiles(toolSet);
+            destCatalogFiles = toDestCatalogFiles(destination, sourceCatalogFiles);
+            Map<String, String> fileReplacementLinks = new HashMap<>();
+            for (int i = 0; i < sourceCatalogFiles.size(); i++) {
+                fileReplacementLinks.put(sourceCatalogFiles.get(i).getDecodedUrl(), destCatalogFiles.get(i).getUrl());
+            }
+            toolSet.setCatalogProperties(CatalogPropertiesLinkRewriter.rewrite(toolSet.getCatalogProperties(), fileReplacementLinks));
+        }
+
         String json = ProxyUtil.convertToString(toolSet);
         resourceService.putResource(destination, json, etag, author);
+
+        for (int i = 0; i < sourceCatalogFiles.size(); i++) {
+            ResourceDescriptor sourceFile = sourceCatalogFiles.get(i);
+            ResourceDescriptor destFile = destCatalogFiles.get(i);
+            if (sourceFile.isFolder()) {
+                resourceService.copyFolder(sourceFile, destFile, false);
+            } else if (!resourceService.copyResource(sourceFile, destFile, null, false)) {
+                throw new IllegalArgumentException("Can't copy source file: " + sourceFile.getUrl()
+                        + " to destination file: " + destFile.getUrl());
+            }
+        }
 
         for (Map.Entry<CredentialsLevel, Boolean> entry : credentialsToCopy.entrySet()) {
             // Copy the toolset first. If toolset copying fails, credentials won't be copied.
@@ -198,6 +234,37 @@ public class ToolSetService {
         resourceCredentialsService.deleteResourceCredentials(credentialsLocator);
 
         return resourceService.deleteResource(resource, etag);
+    }
+
+    private void validateCatalogProperties(ToolSet toolSet) {
+        try {
+            catalogSchemaService.validate(toolSet);
+        } catch (CatalogSchemaValidationException e) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Catalog properties validation failed: " + e.getMessage(), e);
+        }
+    }
+
+    private static String getTargetFolderForCatalogFiles(ResourceDescriptor target) {
+        String toolSetName = target.getName();
+        String parentPath = target.getParentPath();
+        return (parentPath == null ? "" : parentPath + ResourceDescriptor.PATH_SEPARATOR)
+                + "." + toolSetName + ResourceDescriptor.PATH_SEPARATOR;
+    }
+
+    private static List<ResourceDescriptor> toDestCatalogFiles(ResourceDescriptor dest, List<ResourceDescriptor> sourceFiles) {
+        if (sourceFiles.isEmpty()) {
+            return List.of();
+        }
+        String targetFolder = getTargetFolderForCatalogFiles(dest);
+        List<ResourceDescriptor> result = new ArrayList<>();
+        for (ResourceDescriptor file : sourceFiles) {
+            String path = targetFolder + file.getName();
+            if (file.isFolder()) {
+                path += ResourceDescriptor.PATH_SEPARATOR;
+            }
+            result.add(ResourceDescriptorFactory.fromDecoded(ResourceTypes.FILE, dest.getBucketName(), dest.getBucketLocation(), path));
+        }
+        return result;
     }
 
     private static void verifyToolSet(ResourceDescriptor resource) {

@@ -1,0 +1,193 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://dial.epam.com/catalog_schemas/schema#",
+  "title": "Core meta-schema defining AI DIAL catalog deployment metadata schemas",
+  "allOf": [
+    { "$ref": "#/definitions/topLevelSchema" },
+    { "$ref": "#/definitions/dialRootSchema" }
+  ],
+  "definitions": {
+    "dialRootSchema": {
+      "properties": {
+        "dial:catalogEntityType": {
+          "type": "string",
+          "description": "Catalog entity type this schema applies to",
+          "enum": ["model", "agent", "toolset", "skill", "interceptor"]
+        },
+        "dial:catalogDisplayName": {
+          "type": "string",
+          "description": "Human-readable name of the catalog entity type"
+        },
+        "dial:defaultLocale": {
+          "type": "string",
+          "description": "BCP-47 locale used as the fallback for every localized field. Optional; defaults to \"en\" when omitted",
+          "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
+          "default": "en"
+        }
+      },
+      "required": ["dial:catalogEntityType", "dial:catalogDisplayName"]
+    },
+    "dialFileFormatAndTypeSchema": {
+      "$comment": "Reused verbatim from application_type_schemas: enforces dial:file string+format",
+      "properties": {
+        "format": { "type": "string" },
+        "type": {
+          "anyOf": [
+            { "$ref": "#/definitions/simpleTypes" },
+            {
+              "type": "array",
+              "items": { "$ref": "#/definitions/simpleTypes" },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          ]
+        },
+        "dial:file": {
+          "description": "Marks the value as a DIAL file to be copied on publish/share",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "dial:file": { "const": true } },
+            "required": ["dial:file"]
+          },
+          "then": {
+            "required": ["format", "type"],
+            "properties": {
+              "format": { "const": "dial-file-encoded" },
+              "type": { "const": "string" }
+            }
+          }
+        }
+      ]
+    },
+    "dialPropertyMetaSchema": {
+      "$comment": "Optional presentation hints for the data-driven catalog page",
+      "type": "object",
+      "properties": {
+        "dial:meta": {
+          "type": "object",
+          "properties": {
+            "dial:tab": {
+              "type": "string",
+              "description": "Tab the field renders in, e.g. Summary, About, Overview, Pricing, API"
+            },
+            "dial:section": {
+              "type": "string",
+              "description": "Section within the tab, e.g. Capabilities, Specification"
+            },
+            "dial:propertyOrder": {
+              "type": "number",
+              "description": "Order of the field within its section"
+            },
+            "dial:widget": {
+              "type": "string",
+              "description": "Rendering hint for the generic catalog renderer",
+              "enum": ["text", "richText", "badge", "chips", "url", "boolean", "image", "date"]
+            },
+            "dial:localized": {
+              "type": "boolean",
+              "description": "Marks the field value as a BCP-47 locale-to-value map",
+              "default": false
+            }
+          }
+        }
+      }
+    },
+    "topLevelSchema": {
+      "allOf": [
+        { "$ref": "#/definitions/dialFileFormatAndTypeSchema" },
+        {
+          "type": ["object", "boolean"],
+          "properties": {
+            "$id": { "type": "string", "format": "uri-reference" },
+            "$schema": { "type": "string", "format": "uri" },
+            "$ref": { "type": "string", "format": "uri-reference" },
+            "$comment": { "type": "string" },
+            "title": { "type": "string" },
+            "description": { "type": "string" },
+            "default": true,
+            "readOnly": { "type": "boolean", "default": false },
+            "examples": { "type": "array", "items": true },
+            "maxLength": { "$ref": "#/definitions/nonNegativeInteger" },
+            "minLength": { "$ref": "#/definitions/nonNegativeIntegerDefault0" },
+            "pattern": { "type": "string", "format": "regex" },
+            "items": {
+              "anyOf": [
+                { "$ref": "#/definitions/notTopLevelSchema" },
+                { "$ref": "#/definitions/notTopLevelSchemaArray" }
+              ],
+              "default": true
+            },
+            "maxItems": { "$ref": "#/definitions/nonNegativeInteger" },
+            "minItems": { "$ref": "#/definitions/nonNegativeIntegerDefault0" },
+            "uniqueItems": { "type": "boolean", "default": false },
+            "required": { "$ref": "#/definitions/stringArray" },
+            "additionalProperties": { "$ref": "#/definitions/notTopLevelSchema" },
+            "definitions": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/definitions/notTopLevelSchema" },
+              "default": {}
+            },
+            "$defs": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/definitions/notTopLevelSchema" },
+              "default": {}
+            },
+            "properties": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/definitions/propertySchema" },
+              "default": {}
+            },
+            "const": true,
+            "enum": {
+              "type": "array",
+              "items": true,
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "format": { "type": "string" },
+            "allOf": { "$ref": "#/definitions/notTopLevelSchemaArray" },
+            "anyOf": { "$ref": "#/definitions/notTopLevelSchemaArray" },
+            "oneOf": { "$ref": "#/definitions/notTopLevelSchemaArray" },
+            "not": { "$ref": "#/definitions/notTopLevelSchema" }
+          },
+          "default": true
+        }
+      ]
+    },
+    "notTopLevelSchema": {
+      "$ref": "#/definitions/topLevelSchema"
+    },
+    "propertySchema": {
+      "allOf": [
+        { "$ref": "#/definitions/notTopLevelSchema" },
+        { "$ref": "#/definitions/dialPropertyMetaSchema" }
+      ]
+    },
+    "notTopLevelSchemaArray": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/notTopLevelSchema" }
+    },
+    "nonNegativeInteger": { "type": "integer", "minimum": 0 },
+    "nonNegativeIntegerDefault0": {
+      "allOf": [
+        { "$ref": "#/definitions/nonNegativeInteger" },
+        { "default": 0 }
+      ]
+    },
+    "simpleTypes": {
+      "enum": ["array", "boolean", "integer", "null", "number", "object", "string"]
+    },
+    "stringArray": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "default": []
+    }
+  }
+}

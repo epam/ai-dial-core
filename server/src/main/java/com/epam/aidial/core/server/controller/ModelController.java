@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.LocalizedValue;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
@@ -93,7 +94,7 @@ public class ModelController {
         if (model.getDisplayName() != null) {
             data.setDisplayName(model.getDisplayName());
         } else {
-            data.setDisplayName(model.getName());
+            data.setDisplayName(LocalizedValue.of(model.getName()));
         }
         data.setDisplayVersion(model.getDisplayVersion());
         data.setIconUrl(model.getIconUrl());
@@ -105,6 +106,8 @@ public class ModelController {
         data.setReference(model.getName());
         data.setDescriptionKeywords(model.getDescriptionKeywords());
         data.setMaxRetryAttempts(model.getMaxRetryAttempts());
+        data.setCatalogSchemaId(model.getCatalogSchemaId());
+        data.setCatalogProperties(model.getCatalogProperties());
 
         if (model.getType() == ModelType.EMBEDDING) {
             data.getCapabilities().setEmbeddings(true);

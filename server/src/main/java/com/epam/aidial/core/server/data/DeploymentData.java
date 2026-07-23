@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.data;
 
+import com.epam.aidial.core.config.LocalizedValue;
 import com.epam.aidial.core.openapi.annotations.ApiSubType;
 import com.epam.aidial.core.openapi.annotations.ApiSubTypes;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -7,6 +8,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 
@@ -35,11 +37,11 @@ public class DeploymentData {
     private String model;
     private String application;
     private String toolset;
-    private String displayName;
+    private LocalizedValue displayName;
     private String displayVersion;
     private String iconUrl;
-    private String description;
-    private String intro;
+    private LocalizedValue description;
+    private LocalizedValue intro;
     private String reference;
     private String owner = "organization-owner";
     private String object = "deployment";
@@ -55,4 +57,6 @@ public class DeploymentData {
     private List<String> descriptionKeywords;
     private int maxRetryAttempts;
     private List<String> interfaces;
+    private URI catalogSchemaId;
+    private Map<String, Object> catalogProperties;
 }

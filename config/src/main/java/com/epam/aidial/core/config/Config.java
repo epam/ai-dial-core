@@ -2,8 +2,11 @@ package com.epam.aidial.core.config;
 
 import com.epam.aidial.core.config.databind.JsonArrayToSchemaMapDeserializer;
 import com.epam.aidial.core.config.databind.MapToJsonArraySerializer;
+import com.epam.aidial.core.config.validation.CatalogPropertiesConformToSchemas;
+import com.epam.aidial.core.config.validation.ConformToCatalogMetaSchema;
 import com.epam.aidial.core.config.validation.ConformToMetaSchema;
 import com.epam.aidial.core.config.validation.CustomApplicationsConformToTypeSchemas;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -21,6 +24,7 @@ import java.util.Set;
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
 @CustomApplicationsConformToTypeSchemas(message = "All custom schema-rich applications should conform to their schemas")
+@CatalogPropertiesConformToSchemas(message = "All deployments with catalog_schema_id should conform to their catalog schema")
 public class Config {
     // maintain the order of routes defined in the config
     private LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
@@ -37,6 +41,18 @@ public class Config {
     @JsonSerialize(using = MapToJsonArraySerializer.class)
     @ConformToMetaSchema(message = "All custom application type schemas should conform to meta schema")
     private Map<String, String> applicationTypeSchemas = Map.of();
+
+    @JsonDeserialize(using = JsonArrayToSchemaMapDeserializer.class)
+    @JsonSerialize(using = MapToJsonArraySerializer.class)
+    @ConformToCatalogMetaSchema(message = "All catalog schemas should conform to the catalog meta schema")
+    private Map<String, String> catalogSchemas = Map.of();
+
+    /**
+     * Instance-wide BCP-47 default locale: the locale assigned to legacy plain-string
+     * displayName/description/intro values, and the fallback locale used across localized fields.
+     */
+    @JsonAlias({"defaultLocale", "default_locale"})
+    private String defaultLocale = "en";
 
     private List<String> globalInterceptors = List.of();
 
@@ -70,5 +86,13 @@ public class Config {
             return null;
         }
         return applicationTypeSchemas.get(schemaId.toString());
+    }
+
+    @JsonIgnore
+    public String getCatalogSchema(URI schemaId) {
+        if (schemaId == null) {
+            return null;
+        }
+        return catalogSchemas.get(schemaId.toString());
     }
 }

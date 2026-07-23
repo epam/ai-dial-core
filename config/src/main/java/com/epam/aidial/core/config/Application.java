@@ -176,6 +176,7 @@ public class Application extends Deployment {
         this.setDisplayVersion(source.getDisplayVersion());
         this.setIconUrl(source.getIconUrl());
         this.setDescription(source.getDescription());
+        this.setIntro(source.getIntro());
         this.setReference(source.getReference());
         this.setUserRoles(source.getUserRoles());
         this.setForwardAuthToken(source.isForwardAuthToken());
@@ -189,6 +190,8 @@ public class Application extends Deployment {
         this.setFunction(source.getFunction());
         this.setApplicationProperties(source.getApplicationProperties());
         this.setApplicationTypeSchemaId(source.getApplicationTypeSchemaId());
+        this.setCatalogProperties(source.getCatalogProperties());
+        this.setCatalogSchemaId(source.getCatalogSchemaId());
         this.setAuthor(source.getAuthor());
         this.setCreatedAt(source.getCreatedAt());
         this.setUpdatedAt(source.getUpdatedAt());

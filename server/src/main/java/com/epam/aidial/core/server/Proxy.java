@@ -23,6 +23,7 @@ import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.BackgroundJobService;
+import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.ExternalServiceService;
@@ -165,6 +166,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final SecuredResourceService securedResourceService;
     private final ToolSetRepairService toolSetRepairService;
     private final ApplicationSchemaService applicationSchemaService;
+    private final CatalogSchemaService catalogSchemaService;
     private final AuthorizationHeaderProvider authorizationHeaderProvider;
     private final ResourceAuthSettingsService resourceAuthSettingsService;
     private final ResourceCredentialsService resourceCredentialsService;
