@@ -27,12 +27,12 @@ import java.io.IOException;
 import java.util.List;
 
 @Slf4j
-public abstract class InterceptorController extends BaseDeploymentPostController {
+public abstract class BaseInterceptorController extends BaseDeploymentPostController {
 
     private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
     private final int interceptorIndex;
 
-    protected InterceptorController(Proxy proxy, ProxyContext context, int interceptorIndex) {
+    protected BaseInterceptorController(Proxy proxy, ProxyContext context, int interceptorIndex) {
         super(proxy, context);
         this.enhancementFunctions = List.of(
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),

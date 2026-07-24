@@ -15,7 +15,7 @@ import io.vertx.core.buffer.Buffer;
 import java.io.IOException;
 import java.util.List;
 
-public class ResponsesInterceptorController extends InterceptorController {
+public class ResponsesInterceptorController extends BaseInterceptorController {
 
     private final String uriSuffix;
 

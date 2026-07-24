@@ -18,7 +18,7 @@ import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class ChatCompletionInterceptorController extends InterceptorController {
+public class ChatCompletionInterceptorController extends BaseInterceptorController {
 
     private static final Pattern DEPLOYMENT_PATH = Pattern.compile("(/openai/deployments/)([^/]+)(/.*)");
 
