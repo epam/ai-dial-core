@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
+import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
@@ -234,13 +235,54 @@ public class BaseDeploymentPostController {
         HttpServerRequest request = context.getRequest();
         Deployment deployment = context.getDeployment();
         String baseUrl = deployment.getInterfaceBaseUrl(type);
-        String uri = baseUrl != null
-                // New flow: base_url + exact ingress path. request.uri() already includes path + query.
-                ? baseUrl + request.uri()
-                // Legacy flow: verbatim endpoint + original query — byte-identical to today.
-                : deployment.getLegacyEndpoint(type)
-                        + (request.query() == null ? "" : "?" + request.query());
+        String uri;
+        if (baseUrl != null) {
+            // New flow: base_url + exact ingress path. request.uri() already includes path + query.
+            String path = request.uri();
+            String targetDeploymentName = deployment.getInterfaceDeploymentName(type);
+            if (targetDeploymentName != null) {
+                path = rewriteDeploymentPathSegment(path, deployment.getName(), targetDeploymentName);
+            }
+            uri = baseUrl + path;
+        } else {
+            // Legacy flow: verbatim endpoint + original query — byte-identical to today.
+            uri = deployment.getLegacyEndpoint(type)
+                    + (request.query() == null ? "" : "?" + request.query());
+        }
         return createProxyRequest(uri);
+    }
+
+    /**
+     * Rewrites the {@code /deployments/{name}/} ingress path segment to a different deployment id, so an
+     * alias deployment whose base_url loops back to Core lands on the aliased deployment instead of itself.
+     * No-op for interfaces whose ingress path carries no deployment segment (openaiResponses,
+     * anthropicMessages resolve the deployment from the request body instead — see
+     * {@link #applyInterfaceDeploymentNameOverride}).
+     */
+    private static String rewriteDeploymentPathSegment(String path, String currentName, String targetName) {
+        String marker = "/deployments/" + currentName + "/";
+        int index = path.indexOf(marker);
+        if (index < 0) {
+            return path;
+        }
+        return path.substring(0, index) + "/deployments/" + targetName + "/" + path.substring(index + marker.length());
+    }
+
+    /**
+     * Rewrites the request's {@code model} field to the interface's configured alias target, when declared.
+     * For interfaces that resolve the deployment from the request body (openaiResponses, anthropicMessages)
+     * rather than the ingress path, this is what makes an alias deployment's base_url loop back onto the
+     * aliased deployment instead of itself.
+     */
+    protected void applyInterfaceDeploymentNameOverride(RequestObject request, InterfaceType type) {
+        Deployment deployment = context.getDeployment();
+        if (deployment.getInterfaceBaseUrl(type) == null) {
+            return;
+        }
+        String targetDeploymentName = deployment.getInterfaceDeploymentName(type);
+        if (targetDeploymentName != null) {
+            request.setModel(targetDeploymentName);
+        }
     }
 
     protected Future<HttpClientResponse> sendProxyRequest(

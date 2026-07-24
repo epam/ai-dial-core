@@ -240,6 +240,25 @@ public class MessagesApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testDeploymentNameAliasRewritesBodyModel() throws IOException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE, "Content-Type", "application/json");
+            });
+
+            // claude-alias declares deployment_name=claude-ns: the ingress path carries no deployment
+            // segment for this interface, so the alias must rewrite the outgoing body's "model" instead
+            // (mirrors the legacy endpoint-loopback alias, without landing back on itself).
+            Response response = post(client, MESSAGES_PATH, requestBody("claude-alias", false), "api-key", "proxyKey1");
+
+            assertEquals(200, response.status());
+            assertTrue(captured.get().getBody().readUtf8().contains("\"model\":\"claude-ns\""));
+        }
+    }
+
+    @Test
     public void testUnsupportedInterfaceReturns503() throws IOException {
         try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
             Response response = post(client, MESSAGES_PATH, requestBody("claude-no-iface", false), "api-key", "proxyKey1");

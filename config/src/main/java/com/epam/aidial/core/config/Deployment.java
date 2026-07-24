@@ -115,6 +115,15 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
+     * Deployment id this interface should route to instead of this deployment's own id, or null when not
+     * declared. Only meaningful alongside {@link #getInterfaceBaseUrl}.
+     */
+    public String getInterfaceDeploymentName(InterfaceType type) {
+        DeploymentInterface deploymentInterface = interfaces == null ? null : interfaces.get(type.getValue());
+        return deploymentInterface == null ? null : deploymentInterface.getDeploymentName();
+    }
+
+    /**
      * Legacy fully-qualified endpoint configured for the type, or null.
      */
     public String getLegacyEndpoint(InterfaceType type) {

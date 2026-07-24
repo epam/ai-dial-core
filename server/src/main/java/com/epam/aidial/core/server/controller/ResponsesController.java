@@ -190,6 +190,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         context.setStoreResponse(request.isStore());
         context.setBackgroundJob(request.isBackground());
         ProxyUtil.processChain(request, enhancementFunctions);
+        applyInterfaceDeploymentNameOverride(request, InterfaceType.OPENAI_RESPONSES);
         // Enhancement functions update the api key, and it should be saved after that
         if (request.isBackground()) {
             Duration jobTtl = Duration.ofMillis(proxy.getBackgroundJobService().getJobTtlMs());
