@@ -9,6 +9,7 @@ import lombok.EqualsAndHashCode;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import javax.annotation.Nullable;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -118,6 +119,7 @@ public abstract class Deployment extends RoleBasedEntity {
      * Deployment id this interface should route to instead of this deployment's own id, or null when not
      * declared. Only meaningful alongside {@link #getInterfaceBaseUrl}.
      */
+    @Nullable
     public String getInterfaceDeploymentName(InterfaceType type) {
         DeploymentInterface deploymentInterface = interfaces == null ? null : interfaces.get(type.getValue());
         return deploymentInterface == null ? null : deploymentInterface.getDeploymentName();
