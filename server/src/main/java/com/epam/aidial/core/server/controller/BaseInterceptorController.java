@@ -1,22 +1,19 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.AutoShareDeploymentFn;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
-import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
-import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
-import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -26,26 +23,49 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.IOException;
 import java.util.List;
-import java.util.function.Supplier;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Slf4j
-public class InterceptorController extends BaseDeploymentPostController {
-
-    private static final Pattern DEPLOYMENT_PATH = Pattern.compile("(/openai/deployments/)([^/]+)(/.*)");
+public abstract class BaseInterceptorController extends BaseDeploymentPostController {
 
     private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
+    private final int interceptorIndex;
 
-    public InterceptorController(Proxy proxy, ProxyContext context) {
+    protected BaseInterceptorController(Proxy proxy, ProxyContext context, int interceptorIndex) {
         super(proxy, context);
-        this.enhancementFunctions = List.of(new ApplyDefaultDeploymentSettingsFn(proxy, context),
-                new CollectRequestChatCompletionAttachmentsFn(proxy, context),
+        this.enhancementFunctions = List.of(
+                new ApplyDefaultDeploymentSettingsFn(proxy, context),
+                new CollectRequestStandardAttachmentsFn(proxy, context),
                 new AutoShareDeploymentFn(proxy, context));
+        this.interceptorIndex = interceptorIndex;
     }
 
+    protected abstract RequestObject parseRequest(Buffer body) throws IOException;
+
+    protected abstract String buildUri(ProxyContext context);
+
+    protected abstract CollectResponseAttachmentsFn createAttachmentFn(Proxy proxy, ProxyContext context);
+
+    protected abstract BufferingReadStream.BaseEventListener createListener(Proxy proxy, ProxyContext context);
+
     public Future<?> handle() {
+        List<String> interceptors = context.getInterceptors();
+        String interceptorName = interceptors.get(interceptorIndex);
+        Interceptor interceptor = context.getConfig().getInterceptors().get(interceptorName);
+        if (interceptor == null) {
+            log.warn("Interceptor is not found: {}", interceptorName);
+            return respond(HttpStatus.NOT_FOUND, "Interceptor is not found");
+        }
+        context.setTraceOperation("Send request to %s interceptor".formatted(interceptorName));
+        context.setDeployment(interceptor);
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setInterceptorIndex(interceptorIndex);
+        proxyApiKeyData.setInterceptors(interceptors);
+        proxyApiKeyData.setInitialDeployment(context.getInitialDeployment());
+        context.setProxyApiKeyData(proxyApiKeyData);
+        ApiKeyData.initFromContext(proxyApiKeyData, context);
+
         log.info("Received request from client. Deployment: {}. Headers: {}",
                 context.getDeployment().getName(),
                 context.getRequest().headers().size());
@@ -70,10 +90,12 @@ public class InterceptorController extends BaseDeploymentPostController {
         context.setRequestBody(requestBody);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         try {
-            RequestObject request = new ChatCompletionRequest(ProxyUtil.parseObject(requestBody));
-            context.setStreamingRequest(request.isStreaming());
-            if (ProxyUtil.processChain(request, enhancementFunctions)) {
-                context.setRequestBody(Buffer.buffer(request.serialize()));
+            RequestObject request = parseRequest(requestBody);
+            if (request != null) {
+                context.setStreamingRequest(request.isStreaming());
+                if (ProxyUtil.processChain(request, enhancementFunctions)) {
+                    context.setRequestBody(Buffer.buffer(request.serialize()));
+                }
             }
             proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
         } catch (Throwable e) {
@@ -88,37 +110,15 @@ public class InterceptorController extends BaseDeploymentPostController {
         sendRequest();
     }
 
-
     private void sendRequest() {
-        createProxyRequest(interceptorUri())
+        createProxyRequest(buildUri(context))
                 .onSuccess(this::handleProxyRequest)
                 .onFailure(this::handleProxyConnectionError);
     }
 
-    private String interceptorUri() {
-        Deployment deployment = context.getDeployment();
-        HttpServerRequest request = context.getRequest();
-        String query = request.query();
-        String baseUrl = deployment.getInterfaceBaseUrl(InterfaceType.OPENAI_CHAT_COMPLETIONS);
-        if (baseUrl != null) {
-            // New flow: rewrite the {id} segment to the interceptor's own name, then base_url + path.
-            String name = UrlUtil.encodePathSegment(deployment.getName());
-            String path = rewriteDeploymentSegment(request.path(), name);
-            return query == null ? baseUrl + path : baseUrl + path + "?" + query;
-        }
-        // Legacy flow: verbatim endpoint + query — identical to today's buildUri.
-        return query == null ? deployment.getEndpoint() : deployment.getEndpoint() + "?" + query;
-    }
-
-    static String rewriteDeploymentSegment(String path, String name) {
-        Matcher m = DEPLOYMENT_PATH.matcher(path);
-        return m.matches() ? m.group(1) + name + m.group(3) : path;
-    }
-
-
-    void handleProxyRequest(HttpClientRequest proxyRequest) {
+    private void handleProxyRequest(HttpClientRequest proxyRequest) {
         log.info("Connected to interceptor. Deployment: {}. Address: {}",
-                 context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
+                context.getDeployment().getName(), proxyRequest.connection().remoteAddress());
 
         HttpServerRequest request = context.getRequest();
         context.setProxyRequest(proxyRequest);
@@ -150,18 +150,14 @@ public class InterceptorController extends BaseDeploymentPostController {
 
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
         log.info("Received header from origin. Endpoint: {}. Status: {}. Headers: {}",
-                context.getDeployment().getEndpoint(),
-                proxyResponse.statusCode(), proxyResponse.headers().size());
+                proxyResponse.request().getURI(), proxyResponse.statusCode(), proxyResponse.headers().size());
 
-        Supplier<BufferingReadStream.BaseEventListener> eventListenerSupplier = () ->
-                new DeploymentPostController.ChatCompletionSseListener(new CollectResponseChatCompletionAttachmentsFn(proxy, context));
-        BufferingReadStream responseStream = createResponseStream(proxyResponse, eventListenerSupplier);
+        BufferingReadStream responseStream = createResponseStream(proxyResponse, () -> createListener(proxy, context));
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
 
         HttpServerResponse response = context.getResponse();
-
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
 
         responseStream.pipe()
@@ -172,10 +168,9 @@ public class InterceptorController extends BaseDeploymentPostController {
                 .onFailure(this::handleResponseError);
     }
 
-    void handleResponse(BufferingReadStream responseStream) {
+    private void handleResponse(BufferingReadStream responseStream) {
         Buffer responseBody = responseStream.getContent();
-        CollectResponseChatCompletionAttachmentsFn fn = new CollectResponseChatCompletionAttachmentsFn(proxy, context);
-        collectResponseAttachments(responseBody, fn).onComplete(result -> {
+        collectResponseAttachments(responseBody, createAttachmentFn(proxy, context)).onComplete(result -> {
             if (result.failed()) {
                 log.warn("Failed to collect attachments from response. Error:", result.cause());
             }
@@ -199,5 +194,4 @@ public class InterceptorController extends BaseDeploymentPostController {
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
         finalizeRequest();
     }
-
 }

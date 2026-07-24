@@ -12,6 +12,7 @@ import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
@@ -124,8 +125,8 @@ public class ResponseItemController implements Controller {
     })
     public Future<?> handle() {
         return proxy.getTaskExecutor().submit(this::loadMapping)
-                .compose(this::checkNotActive)
-                .compose(this::forwardToUpstream)
+                .compose(this::checkNotDeletingActive)
+                .compose(this::dispatch)
                 .onFailure(error -> {
                     if (!context.getResponse().ended()) {
                         context.respond(error, "Failed to process response operation");
@@ -133,7 +134,7 @@ public class ResponseItemController implements Controller {
                 });
     }
 
-    private Future<ResponseMapping> checkNotActive(ResponseMapping mapping) {
+    private Future<ResponseMapping> checkNotDeletingActive(ResponseMapping mapping) {
         if (operation != Operation.DELETE) {
             return Future.succeededFuture(mapping);
         }
@@ -155,18 +156,43 @@ public class ResponseItemController implements Controller {
         return mapping;
     }
 
-    private Future<Void> forwardToUpstream(ResponseMapping mapping) {
+    private Future<Void> dispatch(ResponseMapping mapping) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName());
         if (!deployment.supportsInterface(InterfaceType.OPENAI_RESPONSES)) {
             return context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API")
                     .mapEmpty();
         }
+        context.setDeployment(deployment);
+
+        ApiKeyData apiKeyData = context.getApiKeyData();
+        if (apiKeyData.isInterceptor()) {
+            context.setInitialDeployment(apiKeyData.getInitialDeployment());
+            context.setInterceptors(apiKeyData.getInterceptors());
+            int nextIndex = apiKeyData.getInterceptorIndex() + 1;
+            if (nextIndex < apiKeyData.getInterceptors().size()) {
+                return handleInterceptor(nextIndex);
+            }
+        } else {
+            context.setInterceptors(proxy.getDeploymentService().getInterceptors(context, deployment));
+            if (context.hasNextInterceptor()) {
+                context.setInitialDeployment(deployment.getName());
+                return handleInterceptor(0);
+            }
+        }
+
+        return forwardToUpstream(mapping, deployment);
+    }
+
+    private Future<Void> handleInterceptor(int interceptorIndex) {
+        return new ResponsesInterceptorController(proxy, context, dialResponseId, operation.suffix, interceptorIndex).handle().mapEmpty();
+    }
+
+    private Future<Void> forwardToUpstream(ResponseMapping mapping, Deployment deployment) {
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment,
                         null,
                         dep -> dep.resolveEndpoint(InterfaceType.OPENAI_RESPONSES),
-                        mapping.getUpstreamKey()
-                );
+                        mapping.getUpstreamKey());
         Upstream upstream = upstreamRoute.next();
 
         String query = context.getRequest().query();

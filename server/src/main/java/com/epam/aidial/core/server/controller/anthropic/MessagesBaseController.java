@@ -12,7 +12,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
-import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
@@ -58,7 +58,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     protected MessagesBaseController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
         this.enhancementFunctions = List.of(
-                new CollectRequestChatCompletionAttachmentsFn(proxy, context),
+                new CollectRequestStandardAttachmentsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),

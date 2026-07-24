@@ -18,7 +18,7 @@ import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
-import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.ExtractTerminalResponseFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
@@ -62,7 +62,7 @@ public class ResponsesController extends BaseDeploymentPostController {
     public ResponsesController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
         this.enhancementFunctions = List.of(
-                new CollectRequestChatCompletionAttachmentsFn(proxy, context),
+                new CollectRequestStandardAttachmentsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
@@ -98,17 +98,45 @@ public class ResponsesController extends BaseDeploymentPostController {
         }
         context.getRequest().body()
                 .map(ResponsesController::parseBody)
-                .compose(request -> {
-                    String model = request.getModel();
-                    return proxy.getTaskExecutor().submit(() -> setupDeployment(model))
-                            .compose(ignore -> verifyLimit())
-                            .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
-                                    .map(ignored -> handleRequestBody(request)))
-                            .otherwise(error -> handleRequestError(model, error));
-                })
+                .compose(this::dispatch)
                 .onFailure(this::handleRequestBodyError);
-
         return Future.succeededFuture();
+    }
+
+    private Future<Void> dispatch(ResponsesApiRequest request) {
+        ApiKeyData apiKeyData = context.getApiKeyData();
+        String deploymentName;
+        if (apiKeyData.isInterceptor()) {
+            context.setInitialDeployment(apiKeyData.getInitialDeployment());
+            context.setInterceptors(apiKeyData.getInterceptors());
+            int nextIndex = apiKeyData.getInterceptorIndex() + 1;
+            if (nextIndex < apiKeyData.getInterceptors().size()) {
+                return handleInterceptor(nextIndex);
+            }
+            deploymentName = apiKeyData.getInitialDeployment();
+        } else {
+            deploymentName = request.getModel();
+        }
+        return proxy.getTaskExecutor().submit(() -> setupDeployment(deploymentName))
+                .compose(ignore -> {
+                    if (context.hasNextInterceptor()) {
+                        context.setInitialDeployment(context.getDeployment().getName());
+                        return handleInterceptor(0);
+                    }
+                    return proceedToDeployment(request, deploymentName);
+                })
+                .otherwise(error -> handleRequestError(deploymentName, error));
+    }
+
+    private Future<Void> proceedToDeployment(ResponsesApiRequest request, String deploymentName) {
+        return verifyLimit()
+                .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
+                        .map(ignored -> handleRequestBody(request)))
+                .otherwise(error -> handleRequestError(deploymentName, error));
+    }
+
+    private Future<Void> handleInterceptor(int interceptorIndex) {
+        return new ResponsesInterceptorController(proxy, context, interceptorIndex).handle().mapEmpty();
     }
 
     private Void setupDeployment(String model) {
@@ -134,6 +162,8 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         context.setTraceOperation("Send request to %s deployment".formatted(deployment.getName()));
         context.setDeployment(deployment);
+        List<String> interceptors = proxy.getDeploymentService().getInterceptors(context, deployment);
+        context.setInterceptors(interceptors);
 
         return null;
     }

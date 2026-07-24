@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
-import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Upstream;
@@ -22,7 +21,7 @@ import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
-import com.epam.aidial.core.server.function.CollectRequestChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
@@ -62,7 +61,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
     public DeploymentPostController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
-        this.enhancementFunctions = List.of(new CollectRequestChatCompletionAttachmentsFn(proxy, context),
+        this.enhancementFunctions = List.of(new CollectRequestStandardAttachmentsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceModelRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
@@ -226,27 +225,11 @@ public class DeploymentPostController extends BaseDeploymentPostController {
     }
 
     private Future<?> handleInterceptor(int interceptorIndex) {
-        ApiKeyData apiKeyData = context.getApiKeyData();
         List<String> interceptors = context.getInterceptors();
         if (interceptorIndex < interceptors.size()) {
-            String interceptorName = interceptors.get(interceptorIndex);
-            Interceptor interceptor = context.getConfig().getInterceptors().get(interceptorName);
-            if (interceptor == null) {
-                log.warn("Interceptor is not found for the given name: {}", interceptorName);
-                return respond(HttpStatus.NOT_FOUND, "Interceptor is not found");
-            }
-            context.setTraceOperation("Send request to %s interceptor".formatted(interceptorName));
-            context.setDeployment(interceptor);
-            ApiKeyData proxyApiKeyData = new ApiKeyData();
-            proxyApiKeyData.setInterceptorIndex(interceptorIndex);
-            proxyApiKeyData.setInterceptors(interceptors);
-            proxyApiKeyData.setInitialDeployment(context.getInitialDeployment());
-            setupProxyApiKeyData(proxyApiKeyData);
-
-            InterceptorController controller = new InterceptorController(proxy, context);
-            return controller.handle();
+            return new ChatCompletionInterceptorController(proxy, context, interceptorIndex).handle();
         } else { // all interceptors are completed we should call the initial deployment
-            return handleDeployment(apiKeyData.getInitialDeployment());
+            return handleDeployment(context.getApiKeyData().getInitialDeployment());
         }
     }
 
