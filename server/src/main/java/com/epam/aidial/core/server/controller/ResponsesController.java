@@ -136,7 +136,7 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Future<Void> handleInterceptor(int interceptorIndex) {
-        return InterceptorController.forResponses(proxy, context, interceptorIndex).handle().mapEmpty();
+        return new ResponsesInterceptorController(proxy, context, interceptorIndex).handle().mapEmpty();
     }
 
     private Void setupDeployment(String model) {

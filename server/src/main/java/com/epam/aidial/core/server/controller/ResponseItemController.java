@@ -184,7 +184,7 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> handleInterceptor(int interceptorIndex) {
-        return InterceptorController.forResponseItem(proxy, context, dialResponseId, operation.suffix, interceptorIndex).handle().mapEmpty();
+        return new ResponsesInterceptorController(proxy, context, dialResponseId, operation.suffix, interceptorIndex).handle().mapEmpty();
     }
 
     private Future<Void> forwardToUpstream(ResponseMapping mapping, Deployment deployment) {
