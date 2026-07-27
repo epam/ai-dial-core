@@ -1,6 +1,9 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiOperations;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
@@ -9,14 +12,20 @@ import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
+import com.epam.aidial.core.server.util.McpUpstreamAuthInjector;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -27,10 +36,11 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import lombok.extern.slf4j.Slf4j;
 
-import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Slf4j
-public class ApplicationMcpResourceController implements Controller {
+public class McpResourceController implements Controller {
 
     // sandbox without allow-same-origin: the widget runs in a null opaque origin and
     // cannot make credentialed requests to the DIAL API, preventing same-origin XSS.
@@ -44,8 +54,10 @@ public class ApplicationMcpResourceController implements Controller {
     private final ApplicationSchemaService applicationSchemaService;
     private final AsyncTaskExecutor taskExecutor;
     private final HttpClient httpClient;
+    private final ApiKeyStore apiKeyStore;
+    private final McpUpstreamAuthInjector authInjector;
 
-    public ApplicationMcpResourceController(Proxy proxy, ProxyContext context, String applicationId) {
+    public McpResourceController(Proxy proxy, ProxyContext context, String applicationId) {
         this.context = context;
         this.applicationId = applicationId;
         this.deploymentService = proxy.getDeploymentService();
@@ -53,6 +65,8 @@ public class ApplicationMcpResourceController implements Controller {
         this.applicationSchemaService = proxy.getApplicationSchemaService();
         this.taskExecutor = proxy.getTaskExecutor();
         this.httpClient = proxy.getClient();
+        this.apiKeyStore = proxy.getApiKeyStore();
+        this.authInjector = new McpUpstreamAuthInjector(proxy);
     }
 
     @Override
@@ -84,31 +98,41 @@ public class ApplicationMcpResourceController implements Controller {
         }
 
         return taskExecutor.submit(() -> {
-            var deployment = deploymentService.findDeployment(context, applicationId);
-            if (!(deployment instanceof Application app)) {
-                throw new ResourceNotFoundException("Application is not found: " + applicationId);
-            }
+            Deployment deployment = deploymentService.findDeployment(context, applicationId);
             consentService.verifyUserConsent(context, deployment);
-            Application.Mcp mcp;
-            if (app.hasApplicationTypeSchemaId()) {
-                mcp = applicationSchemaService.getMcp(app);
-                app.setMcp(mcp);
-            } else {
-                mcp = app.getMcp();
-            }
-            if (mcp == null) {
-                throw new IllegalArgumentException("Application doesn't support MCP protocol: " + applicationId);
-            }
             context.setDeployment(deployment);
-            return app;
-        }).compose(app -> fetchResource(app, resourceUri))
+            Map<String, String> authHeaders = new LinkedHashMap<>();
+            if (deployment instanceof Application app) {
+                Application.Mcp mcp;
+                if (app.hasApplicationTypeSchemaId()) {
+                    mcp = applicationSchemaService.getMcp(app);
+                    app.setMcp(mcp);
+                } else {
+                    mcp = app.getMcp();
+                }
+                if (mcp == null) {
+                    throw new IllegalArgumentException("Application doesn't support MCP protocol: " + applicationId);
+                }
+                authInjector.inject(authHeaders::put, app, context);
+            } else if (deployment instanceof ToolSet toolSet) {
+                CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
+                        UrlUtil.encodePath(applicationId), context, ResourceTypes.TOOL_SET);
+                authInjector.inject(authHeaders::put, toolSet, context, credentialsLocator);
+            } else {
+                throw new ResourceNotFoundException("Application or ToolSet is not found: " + applicationId);
+            }
+            return new FetchContext(deployment, authHeaders);
+        }).compose(fc -> fetchResource(fc, resourceUri))
                 .otherwise(error -> {
                     handleError(error);
                     return null;
-                });
+                })
+                .onComplete(ignored -> finalizeRequest());
     }
 
-    private Future<?> fetchResource(Application app, String resourceUri) {
+    private record FetchContext(Deployment deployment, Map<String, String> authHeaders) {}
+
+    private Future<?> fetchResource(FetchContext fc, String resourceUri) {
         ObjectNode params = ProxyUtil.MAPPER.createObjectNode();
         params.put("uri", resourceUri);
         ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
@@ -118,8 +142,12 @@ public class ApplicationMcpResourceController implements Controller {
         body.set("params", params);
         Buffer requestBody = Buffer.buffer(body.toString());
 
+        String endpoint = fc.deployment() instanceof Application app
+                ? app.getMcp().getEndpoint()
+                : fc.deployment().getEndpoint();
+
         RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(app.getMcp().getEndpoint())
+                .setAbsoluteURI(endpoint)
                 .setMethod(HttpMethod.POST)
                 .setConnectTimeout(context.getProxy().getClientOptions().getConnectTimeout())
                 .setIdleTimeout(context.getProxy().getClientOptions().getIdleTimeout());
@@ -128,9 +156,7 @@ public class ApplicationMcpResourceController implements Controller {
                 .compose(req -> {
                     req.putHeader(HttpHeaders.CONTENT_TYPE, "application/json");
                     req.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
-                    req.putHeader(HEADER_APPLICATION_ID, app.getName());
-                    // TODO: inject per-request API key when mcp.forwardPerRequestKey is true,
-                    //  following ApplicationMcpProxyController.injectProxyRequestHeaders()
+                    fc.authHeaders().forEach(req::putHeader);
                     return req.send(requestBody);
                 })
                 .compose(resp -> resp.body()
@@ -177,6 +203,18 @@ public class ApplicationMcpResourceController implements Controller {
                 log.error("Error handling MCP resource request for {}", applicationId, error);
                 context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to handle MCP resource request");
             }
+        }
+    }
+
+    private void finalizeRequest() {
+        ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
+        if (proxyApiKeyData != null) {
+            apiKeyStore.invalidatePerRequestApiKey(proxyApiKeyData)
+                    .onSuccess(invalidated -> {
+                        if (!invalidated) {
+                            log.warn("Per request is not removed: {}", proxyApiKeyData.getPerRequestKey());
+                        }
+                    }).onFailure(error -> log.error("error occurred on invalidating per-request key", error));
         }
     }
 }

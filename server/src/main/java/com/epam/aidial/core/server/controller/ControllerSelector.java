@@ -241,9 +241,9 @@ public class ControllerSelector {
             String toolSetId = UrlUtil.decodePath(pathMatcher.group(1));
             return new ToolSetMcpProxyController(proxy, context, toolSetId);
         }));
-        get(RouteTemplate.APPLICATION_MCP_RESOURCE, ((proxy, context, pathMatcher) -> {
+        get(RouteTemplate.MCP_RESOURCE, ((proxy, context, pathMatcher) -> {
             String applicationId = UrlUtil.decodePath(pathMatcher.group(1));
-            return new ApplicationMcpResourceController(proxy, context, applicationId);
+            return new McpResourceController(proxy, context, applicationId);
         }));
         get(RouteTemplate.APPLICATION_MCP_PROXY, ((proxy, context, pathMatcher) -> {
             String applicationId = UrlUtil.decodePath(pathMatcher.group(1));

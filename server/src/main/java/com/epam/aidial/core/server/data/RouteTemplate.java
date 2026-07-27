@@ -300,7 +300,7 @@ public enum RouteTemplate {
             "^/v1/deployments/(?<id>.+?)/mcp$",
             "/v1/deployments/{id}/mcp"
     ),
-    APPLICATION_MCP_RESOURCE(
+    MCP_RESOURCE(
             "^/v1/deployments/(?<id>.+?)/mcp/resources$",
             "/v1/deployments/{id}/mcp/resources"
     ),

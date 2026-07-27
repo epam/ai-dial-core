@@ -34,7 +34,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class ApplicationMcpResourceControllerTest {
+class McpResourceControllerTest {
 
     @Mock
     private Proxy proxy;
@@ -53,7 +53,7 @@ class ApplicationMcpResourceControllerTest {
     @Mock
     private HttpServerRequest request;
 
-    private ApplicationMcpResourceController controller;
+    private McpResourceController controller;
 
     @BeforeEach
     void setup() {
@@ -74,7 +74,7 @@ class ApplicationMcpResourceControllerTest {
 
         when(context.getRequest()).thenReturn(request);
 
-        controller = new ApplicationMcpResourceController(proxy, context, "statgpt");
+        controller = new McpResourceController(proxy, context, "statgpt");
     }
 
     @Test
