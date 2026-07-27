@@ -267,14 +267,6 @@ public class ToolSetToolsController implements Controller {
         return deployment.getEndpoint();
     }
 
-    private String assignPerRequestKey() {
-        ApiKeyData proxyApiKeyData = new ApiKeyData();
-        context.setProxyApiKeyData(proxyApiKeyData);
-        ApiKeyData.initFromContext(proxyApiKeyData, context);
-        apiKeyStore.assignPerRequestApiKey(proxyApiKeyData);
-        return proxyApiKeyData.getPerRequestKey();
-    }
-
     private void handleError(Throwable error) {
         switch (error) {
             case PermissionDeniedException ignored ->

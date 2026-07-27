@@ -96,6 +96,15 @@ class McpResourceControllerTest {
     }
 
     @Test
+    void nonUiSchemeUri_returns400() {
+        when(request.getParam("uri")).thenReturn("file:///etc/passwd");
+
+        controller.handle();
+
+        verify(context).respond(HttpStatus.BAD_REQUEST, "Resource URI must use the 'ui://' scheme");
+    }
+
+    @Test
     void deploymentNotFound_returns404() {
         when(request.getParam("uri")).thenReturn("ui://widget");
         when(deploymentService.findDeployment(context, "statgpt"))
@@ -195,11 +204,40 @@ class McpResourceControllerTest {
         verify(context).respond(HttpStatus.BAD_GATEWAY, "Resource missing mimeType");
     }
 
+    @Test
+    void disallowedMimeType_returns502() {
+        when(request.getParam("uri")).thenReturn("ui://statgpt/chart.html");
+        Application app = appWithEndpoint("http://mcp.example.com/mcp");
+        when(deploymentService.findDeployment(context, "statgpt")).thenReturn(app);
+
+        mockClientOptions();
+        mockHttpResponse(200, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"contents\":[{\"mimeType\":\"application/octet-stream\",\"text\":\"bin\"}]}}");
+
+        controller.handle();
+
+        verify(context).respond(HttpStatus.BAD_GATEWAY, "Unsupported resource mimeType: application/octet-stream");
+    }
+
+    @Test
+    void mimeTypeWithCrlf_returns502() {
+        when(request.getParam("uri")).thenReturn("ui://statgpt/chart.html");
+        Application app = appWithEndpoint("http://mcp.example.com/mcp");
+        when(deploymentService.findDeployment(context, "statgpt")).thenReturn(app);
+
+        mockClientOptions();
+        mockHttpResponse(200, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"contents\":[{\"mimeType\":\"text/html\\r\\nX-Injected: evil\",\"text\":\"<h1>hi</h1>\"}]}}");
+
+        controller.handle();
+
+        verify(context).respond(HttpStatus.BAD_GATEWAY, "Unsupported resource mimeType: text/html\r\nX-Injected: evil");
+    }
+
     // --- helpers ---
 
     private static Application appWithEndpoint(String endpoint) {
         Application.Mcp mcp = new Application.Mcp();
         mcp.setEndpoint(endpoint);
+        mcp.setForwardPerRequestKey(false);
         Application app = new Application();
         app.setMcp(mcp);
         return app;

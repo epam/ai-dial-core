@@ -38,14 +38,31 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 public class McpResourceController implements Controller {
 
     // sandbox without allow-same-origin: the widget runs in a null opaque origin and
     // cannot make credentialed requests to the DIAL API, preventing same-origin XSS.
+    // frame-ancestors 'self': prevents third-party sites from framing this endpoint.
     private static final String WIDGET_CSP =
-            "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: data:";
+            "frame-ancestors 'self'; sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: data:";
+
+    // Allowlist of MIME types that may be returned as widget content.
+    // Restricts the upstream-controlled mimeType field to prevent header injection
+    // and avoid serving unexpected content types (e.g. application/octet-stream).
+    private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
+            "text/html",
+            "text/plain",
+            "text/css",
+            "application/json",
+            "image/svg+xml",
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/webp"
+    );
 
     private final ProxyContext context;
     private final String applicationId;
@@ -95,6 +112,9 @@ public class McpResourceController implements Controller {
         String resourceUri = context.getRequest().getParam("uri");
         if (resourceUri == null || resourceUri.isBlank()) {
             return context.respond(HttpStatus.BAD_REQUEST, "Missing 'uri' query parameter");
+        }
+        if (!resourceUri.startsWith("ui://")) {
+            return context.respond(HttpStatus.BAD_REQUEST, "Resource URI must use the 'ui://' scheme");
         }
 
         return taskExecutor.submit(() -> {
@@ -179,6 +199,9 @@ public class McpResourceController implements Controller {
                 return context.respond(HttpStatus.BAD_GATEWAY, "Resource missing mimeType");
             }
             String mimeType = mimeTypeNode.asText();
+            if (!ALLOWED_MIME_TYPES.contains(mimeType)) {
+                return context.respond(HttpStatus.BAD_GATEWAY, "Unsupported resource mimeType: " + mimeType);
+            }
             String text = first.path("text").asText("");
             return context.getResponse()
                     .putHeader(HttpHeaders.CONTENT_TYPE, mimeType)
