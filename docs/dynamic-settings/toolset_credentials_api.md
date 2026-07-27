@@ -77,13 +77,13 @@ This API allows the creation of a new ToolSet with customizable properties. The 
 }
 ```
 
-> **Note:** `redirect_uri` is optional. When omitted, the client must provide `redirect_uri` in the sign-in request. The provided URI is validated against the `toolsets.security.allowedRedirectUris` setting and the toolset's own `redirect_uri` (if configured).
+> **Note:** `redirect_uri` is optional and pins the toolset to a single callback URL. When omitted, the client must provide `redirect_uri` in the sign-in request; it is accepted only if listed in `toolsets.security.allowedRedirectUris` or equal to the toolset's own `redirect_uri`. Deployments with more than one sign-in client (e.g. Chat and Admin panel) must therefore configure `allowedRedirectUris`.
 
 ---
 
 ##### **2. OAUTH (Dynamic Client Registration)**
 
-The client can be dynamically created without including a `client_id` or `client_secret`. The `redirect_uri` is optional — if omitted, all URIs from `toolsets.security.allowedRedirectUris` are registered with the authorization server.
+The client can be dynamically created without including a `client_id` or `client_secret`. The `redirect_uri` is optional — if omitted, all URIs from `toolsets.security.allowedRedirectUris` are registered with the authorization server. A callback URL missing from that list at registration time cannot be used later without re-registering the client.
 
 ```json
 {
