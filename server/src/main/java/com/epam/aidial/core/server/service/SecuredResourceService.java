@@ -37,6 +37,7 @@ public class SecuredResourceService {
     private static final Duration MCP_PROBE_TIMEOUT = Duration.ofSeconds(20);
 
     private final ResourceCredentialsService resourceCredentialsService;
+    private final McpHttpClientBuilderService mcpHttpClientBuilderService;
 
     public void signIn(ProxyContext context, SecuredResource securedResource, ResourceSignInRequest request) {
         if (AuthenticationType.API_KEY.equals(request.getAuthenticationType())) {
@@ -88,7 +89,7 @@ public class SecuredResourceService {
 
         HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
                 .builder(endpoint)
-                .connectTimeout(MCP_PROBE_TIMEOUT)
+                .clientBuilder(mcpHttpClientBuilderService.httpClientBuilder())
                 .jsonMapper(McpClientUtils.MCP_JSON_MAPPER)
                 .httpRequestCustomizer((builder, method, uri, body, transportContext) ->
                         builder.header(apiKeyHeader, apiKey))

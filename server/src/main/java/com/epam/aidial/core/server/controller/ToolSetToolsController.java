@@ -23,6 +23,7 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.DeploymentService;
+import com.epam.aidial.core.server.service.McpHttpClientBuilderService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -71,6 +72,7 @@ public class ToolSetToolsController implements Controller {
     private final ResourceCredentialsService resourceCredentialsService;
     private final ApplicationSchemaService applicationSchemaService;
     private final AuthSettingsResolver authSettingsResolver;
+    private final McpHttpClientBuilderService mcpHttpClientBuilderService;
 
     public ToolSetToolsController(Proxy proxy, ProxyContext context, String toolSetId, boolean filterAllowed) {
         this.proxy = proxy;
@@ -86,6 +88,7 @@ public class ToolSetToolsController implements Controller {
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.applicationSchemaService = proxy.getApplicationSchemaService();
         this.authSettingsResolver = proxy.getAuthSettingsResolver();
+        this.mcpHttpClientBuilderService = proxy.getMcpHttpClientBuilderService();
         this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
                 UrlUtil.encodePath(toolSetId), context, ResourceTypes.TOOL_SET);
     }
@@ -189,6 +192,7 @@ public class ToolSetToolsController implements Controller {
 
         HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
                 .builder(upstream.getEndpoint())
+                .clientBuilder(mcpHttpClientBuilderService.httpClientBuilder())
                 .jsonMapper(McpClientUtils.MCP_JSON_MAPPER)
                 .httpRequestCustomizer((builder, method, endpoint, body, transportContext) ->
                         customizeRequest(builder, deployment))
