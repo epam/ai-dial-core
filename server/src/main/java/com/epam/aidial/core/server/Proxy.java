@@ -314,7 +314,6 @@ public class Proxy implements Handler<HttpServerRequest> {
     private Future<AuthorizationResult> authorizeRequest(HttpServerRequest request) {
         String apiKey = extractApiKey(request);
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-        log.debug("Authorization header: {}", authorization);
 
         String clientIpAddress = ProxyUtil.getClientIpAddress(request, apiKeyValidation.getProxyCount());
         if (apiKey == null && authorization == null) {
