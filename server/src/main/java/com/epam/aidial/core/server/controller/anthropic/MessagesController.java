@@ -140,9 +140,10 @@ public class MessagesController extends MessagesBaseController {
         endResponse.run();
         proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
         Upstream currentUpstream = context.getUpstreamRoute().get();
-        log.info("Sent response to client. Deployment: {}. Interface: {}. Upstream: {}. Length: {}. Tokens: {}.",
+        log.info("Sent response to client. Deployment: {}. Interface: {}. Endpoint: {}. Upstream: {}. Length: {}. Tokens: {}.",
                 context.getDeployment().getName(),
                 InterfaceType.ANTHROPIC_MESSAGES.getValue(),
+                context.getProxyRequestUri(),
                 currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
                 context.getResponseBody() == null ? 0 : context.getResponseBody().length(),
                 context.getTokenUsage() == null ? "N/A" : context.getTokenUsage());

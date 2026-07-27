@@ -150,7 +150,7 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
 
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
         log.info("Received header from origin. Endpoint: {}. Status: {}. Headers: {}",
-                proxyResponse.request().getURI(), proxyResponse.statusCode(), proxyResponse.headers().size());
+                context.getProxyRequestUri(), proxyResponse.statusCode(), proxyResponse.headers().size());
 
         BufferingReadStream responseStream = createResponseStream(proxyResponse, () -> createListener(proxy, context));
 

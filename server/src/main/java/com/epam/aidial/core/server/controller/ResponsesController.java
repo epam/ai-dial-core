@@ -275,7 +275,8 @@ public class ResponsesController extends BaseDeploymentPostController {
         Upstream currentUpstream = upstreamRoute.get();
         log.info("Received header from origin. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}. Upstream.extraData: {}",
                 context.getDeployment().getName(),
-                context.getDeployment().getResponsesEndpoint(), currentUpstream == null ? "N/A" : currentUpstream.getResponsesEndpoint(),
+                context.getProxyRequestUri(),
+                currentUpstream == null ? "N/A" : currentUpstream.getResponsesEndpoint(),
                 proxyResponse.statusCode(), proxyResponse.headers().size(), currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
         int responseStatusCode = proxyResponse.statusCode();
@@ -371,14 +372,14 @@ public class ResponsesController extends BaseDeploymentPostController {
         if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
             log.warn("Response body is not a JSON object, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
-                    context.getDeployment().getResponsesEndpoint());
+                    context.getProxyRequestUri());
             return Future.succeededFuture(Pair.of(null, body));
         }
         JsonNode idNode = object.path("id");
         if (!idNode.isTextual()) {
             log.info("Response body doesn't contain 'id' field, skipping rewrite. Deployment: {}. Endpoint: {}",
                     context.getDeployment().getName(),
-                    context.getDeployment().getResponsesEndpoint());
+                    context.getProxyRequestUri());
             return Future.succeededFuture(Pair.of(null, body));
         }
 
@@ -431,8 +432,8 @@ public class ResponsesController extends BaseDeploymentPostController {
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
                 context.getDeployment().getName(),
-                context.getDeployment().getEndpoint(),
-                currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
+                context.getProxyRequestUri(),
+                currentUpstream == null ? "N/A" : currentUpstream.getResponsesEndpoint(),
                 context.getResponseBody().length(),
                 context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
                 context.getRequestBodyTimestamp() - context.getRequestTimestamp(),

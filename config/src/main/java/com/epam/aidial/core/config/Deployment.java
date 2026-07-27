@@ -154,4 +154,40 @@ public abstract class Deployment extends RoleBasedEntity {
     public boolean supportsInterface(InterfaceType type) {
         return getInterfaceBaseUrl(type) != null || getLegacyEndpoint(type) != null;
     }
+
+    /**
+     * Dual-mode: the absolute URI a request for the type is forwarded to. When the deployment declares an
+     * {@code interfaces} base URL, that base URL plus the exact ingress path (with the {@code deployment_name}
+     * alias applied when declared); otherwise the verbatim legacy endpoint plus the original query,
+     * byte-identical to the legacy flow.
+     *
+     * @param ingressUri the inbound request URI, already including path and query
+     * @param query      the inbound query string, or null when absent
+     */
+    public String resolveRequestUri(InterfaceType type, String ingressUri, String query) {
+        String baseUrl = getInterfaceBaseUrl(type);
+        if (baseUrl == null) {
+            return getLegacyEndpoint(type) + (query == null ? "" : "?" + query);
+        }
+        String targetDeploymentName = getInterfaceDeploymentName(type);
+        return baseUrl + (targetDeploymentName == null
+                ? ingressUri
+                : rewriteDeploymentPathSegment(ingressUri, getName(), targetDeploymentName));
+    }
+
+    /**
+     * Rewrites the {@code /deployments/{name}/} ingress path segment to a different deployment id, so an
+     * alias deployment whose base_url loops back to Core lands on the aliased deployment instead of itself.
+     * No-op for interfaces whose ingress path carries no deployment segment (openaiResponses and
+     * anthropicMessages resolve the deployment from the request body instead, so the caller overrides the
+     * body's model field there rather than the path).
+     */
+    private static String rewriteDeploymentPathSegment(String path, String currentName, String targetName) {
+        String marker = "/deployments/" + currentName + "/";
+        int index = path.indexOf(marker);
+        if (index < 0) {
+            return path;
+        }
+        return path.substring(0, index) + "/deployments/" + targetName + "/" + path.substring(index + marker.length());
+    }
 }

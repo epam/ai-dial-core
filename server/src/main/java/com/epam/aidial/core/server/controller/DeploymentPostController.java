@@ -350,7 +350,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         Upstream currentUpstream = upstreamRoute.get();
         log.info("Received header from origin. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}. Upstream.extraData: {}",
                 context.getDeployment().getName(),
-                context.getDeployment().getEndpoint(), currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
+                context.getProxyRequestUri(),
+                currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
                 proxyResponse.statusCode(), proxyResponse.headers().size(), currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
         int responseStatusCode = proxyResponse.statusCode();
@@ -425,7 +426,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
                         + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
                 context.getDeployment().getName(),
-                context.getDeployment().getEndpoint(),
+                context.getProxyRequestUri(),
                 currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
                 context.getResponseBody().length(),
                 context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
