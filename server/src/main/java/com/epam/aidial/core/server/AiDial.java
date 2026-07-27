@@ -56,6 +56,7 @@ import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
+import com.epam.aidial.core.server.service.McpHttpClientBuilderService;
 import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
@@ -169,6 +170,7 @@ public class AiDial {
     private BlobStorage storage;
     private ResourceService resourceService;
     private ComplexResourceSweepService complexResourceSweepService;
+    private McpHttpClientBuilderService mcpHttpClientBuilderService;
     private EncryptionService encryptionService;
 
     private LongSupplier clock = System::currentTimeMillis;
@@ -260,7 +262,10 @@ public class AiDial {
                     encryptionService, resourceAuthSettingsEncryptionService);
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
                     resourceAuthSettingsEncryptionService, resourceCredentialsService, catalogSchemaService);
-            SecuredResourceService securedResourceService = new SecuredResourceService(resourceCredentialsService);
+            McpHttpClientBuilderService.Settings mcpHttpClientBuilderSettings = Json.decodeValue(
+                    settings("mcpHttpClient").toBuffer(), McpHttpClientBuilderService.Settings.class);
+            mcpHttpClientBuilderService = new McpHttpClientBuilderService(mcpHttpClientBuilderSettings);
+            SecuredResourceService securedResourceService = new SecuredResourceService(resourceCredentialsService, mcpHttpClientBuilderService);
             ToolSetRepairService toolSetRepairService = new ToolSetRepairService(resourceService,
                     resourceAuthSettingsEncryptionService, resourceCredentialsService,
                     resourceRegistrationService, resourceAuthSettingsService);
@@ -339,7 +344,8 @@ public class AiDial {
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, externalServiceService, userExternalServiceService, codeInterpreterService, heartbeatService, upstreamCacheService,
                     consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
-                    toolSetService, securedResourceService, toolSetRepairService, applicationSchemaService, catalogSchemaService, authorizationHeaderProvider,
+                    toolSetService, securedResourceService, mcpHttpClientBuilderService, toolSetRepairService, applicationSchemaService,
+                    catalogSchemaService, authorizationHeaderProvider,
                     resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator);
@@ -437,6 +443,7 @@ public class AiDial {
             close(client, HttpClient::close);
             close(resourceService);
             close(complexResourceSweepService);
+            close(mcpHttpClientBuilderService);
             // Unhook from the global composite before vertx.close() so its shutdown metrics
             // stop flowing here; close the registries only after vertx has flushed its own.
             if (prometheusRegistry != null) {
