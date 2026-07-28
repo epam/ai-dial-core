@@ -299,9 +299,7 @@ public class AiDial {
                     toolSetService, securedResourceService, toolSetRepairService, applicationSchemaService, authorizationHeaderProvider,
                     resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
-                    responseMappingService, generator);
-                    printAuthorizationHeader,
-                    responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator);
+                    printAuthorizationHeader, responseMappingService, generator);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);
