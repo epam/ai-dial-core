@@ -178,6 +178,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ClientChannelService clientChannelService;
     private final AsyncTaskExecutor taskExecutor;
     private final String version;
+    private final Boolean printAuthorizationHeader;
     private final ResponseMappingService responseMappingService;
     private final ComplexResourceService complexResourceService;
     private final BackgroundJobService backgroundJobService;
@@ -314,6 +315,9 @@ public class Proxy implements Handler<HttpServerRequest> {
     private Future<AuthorizationResult> authorizeRequest(HttpServerRequest request) {
         String apiKey = extractApiKey(request);
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (Boolean.TRUE.equals(printAuthorizationHeader)) {
+            log.debug("Authorization header: {}", authorization);
+        }
 
         String clientIpAddress = ProxyUtil.getClientIpAddress(request, apiKeyValidation.getProxyCount());
         if (apiKey == null && authorization == null) {
