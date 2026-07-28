@@ -103,6 +103,20 @@ public class DeploymentTest {
     }
 
     @Test
+    void resolveRequestUriRewritesInterceptorPseudoDeploymentSegment() {
+        // When a deployment has interceptors configured, the interceptor calls back into Core using the
+        // literal pseudo deployment id "interceptor" in the path instead of the real deployment name.
+        Model model = new Model();
+        model.setName("essay-assistant-gpt");
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://localhost:5025")));
+
+        assertEquals("http://localhost:5025/openai/deployments/essay-assistant-gpt/chat/completions?api-version=2024-08-06",
+                model.resolveRequestUri(OPENAI_CHAT_COMPLETIONS,
+                        "/openai/deployments/interceptor/chat/completions?api-version=2024-08-06", "api-version=2024-08-06"));
+    }
+
+    @Test
     void resolveRequestUriLeavesPathAloneWhenNoDeploymentSegment() {
         Model model = new Model();
         model.setName("als-2");

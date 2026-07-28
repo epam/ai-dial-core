@@ -9,11 +9,16 @@ import lombok.EqualsAndHashCode;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
 public abstract class Deployment extends RoleBasedEntity {
+
+    private static final Pattern DEPLOYMENT_SEGMENT = Pattern.compile("/deployments/[^/]+/");
+
     private String endpoint;
     private String responsesEndpoint;
     /**
@@ -170,24 +175,26 @@ public abstract class Deployment extends RoleBasedEntity {
             return getLegacyEndpoint(type) + (query == null ? "" : "?" + query);
         }
         String targetDeploymentName = getInterfaceDeploymentName(type);
-        return baseUrl + (targetDeploymentName == null
-                ? ingressUri
-                : rewriteDeploymentPathSegment(ingressUri, getName(), targetDeploymentName));
+        return baseUrl + rewriteDeploymentPathSegment(
+                ingressUri,
+                targetDeploymentName == null ? getName() : targetDeploymentName
+        );
     }
 
     /**
-     * Rewrites the {@code /deployments/{name}/} ingress path segment to a different deployment id, so an
-     * alias deployment whose base_url loops back to Core lands on the aliased deployment instead of itself.
-     * No-op for interfaces whose ingress path carries no deployment segment (openaiResponses and
-     * anthropicMessages resolve the deployment from the request body instead, so the caller overrides the
-     * body's model field there rather than the path).
+     * Rewrites the {@code /deployments/{id}/} ingress path segment to the target deployment id, whatever id
+     * it currently carries. Two cases need this: an alias deployment whose base_url loops back to Core must
+     * land on the aliased deployment instead of itself, and a request forwarded through an interceptor
+     * carries the literal pseudo id {@code interceptor} in the path (see
+     * {@code DeploymentPostController#handle}) rather than this deployment's own name. No-op for interfaces
+     * whose ingress path carries no deployment segment (openaiResponses and anthropicMessages resolve the
+     * deployment from the request body instead, so the caller overrides the body's model field there rather
+     * than the path).
      */
-    private static String rewriteDeploymentPathSegment(String path, String currentName, String targetName) {
-        String marker = "/deployments/" + currentName + "/";
-        int index = path.indexOf(marker);
-        if (index < 0) {
-            return path;
-        }
-        return path.substring(0, index) + "/deployments/" + targetName + "/" + path.substring(index + marker.length());
+    private static String rewriteDeploymentPathSegment(String path, String targetName) {
+        Matcher matcher = DEPLOYMENT_SEGMENT.matcher(path);
+        return matcher.find()
+                ? matcher.replaceFirst(Matcher.quoteReplacement("/deployments/" + targetName + "/"))
+                : path;
     }
 }
