@@ -282,6 +282,7 @@ public class AiDial {
             PerRequestPermissionService perRequestPermissionService = new PerRequestPermissionService(apiKeyStore, accessService, encryptionService);
 
             ApiKeyValidation apiKeyValidation = Json.decodeValue(settings("apiKeyValidation").toBuffer(), ApiKeyValidation.class);
+            boolean printAuthorizationHeader = settings.getBoolean("printAuthorizationHeader", false);
 
             Duration clientChannelTtl = Duration.ofMillis(resourceServiceSettings.getResourceTypesExpiration().get(ResourceTypes.CLIENT_CHANNEL.name()));
             ClientChannelService clientChannelService = new ClientChannelService(lockService, redis, taskExecutor, clock, storage.getPrefix(), clientChannelTtl);
@@ -298,7 +299,7 @@ public class AiDial {
                     toolSetService, securedResourceService, toolSetRepairService, applicationSchemaService, authorizationHeaderProvider,
                     resourceAuthSettingsService, resourceCredentialsService,
                     perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
-                    responseMappingService, generator);
+                    printAuthorizationHeader, responseMappingService, generator);
 
             server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
             open(server, HttpServer::listen);

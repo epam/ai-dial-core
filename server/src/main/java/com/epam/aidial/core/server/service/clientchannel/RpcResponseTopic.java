@@ -25,9 +25,9 @@ public class RpcResponseTopic {
     }
 
     public void publish(PubSubResponse response) {
-        log.debug("Publish RPC response {} to Redis topic RPC Responses. Channel ID {}",
-                response.getResponse().getId().asText(), response.getChannelId());
-        topic.publish(response);
+        long receivers = topic.publish(response);
+        log.debug("Publish RPC response {} to Redis topic RPC Responses. Channel ID {}. Receivers: {}",
+                response.getResponse().getId().asText(), response.getChannelId(), receivers);
     }
 
     public RpcResponseSubscription subscribe(String channelId, String requestId, Consumer<RpcResponse> subscriber) {
@@ -41,6 +41,8 @@ public class RpcResponseTopic {
             subs.add(subscription);
             return subs;
         });
+        log.debug("Registered local subscription for channel {} request {}. Local subscriber count: {}",
+                channelId, requestId, subscriptions.getOrDefault(key, Set.of()).size());
         return subscription;
     }
 
@@ -49,6 +51,8 @@ public class RpcResponseTopic {
         String requestId = pubSubResponse.getResponse().getId().asText();
         Key key = new Key(channelId, requestId);
         Set<RpcResponseSubscription> subs = subscriptions.getOrDefault(key, Set.of());
+        log.debug("Handling published RPC response for channel {} request {}. Local subscriber count: {}",
+                channelId, requestId, subs.size());
         for (RpcResponseSubscription subscription : subs) {
             log.debug("Received RPC response ID {} to Redis topic RPC Responses. Channel ID {}",
                     pubSubResponse.getResponse().getId(), pubSubResponse.getChannelId());

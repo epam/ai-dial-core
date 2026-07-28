@@ -160,6 +160,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ClientChannelService clientChannelService;
     private final AsyncTaskExecutor taskExecutor;
     private final String version;
+    private final Boolean printAuthorizationHeader;
     private final ResponseMappingService responseMappingService;
     // Generates the unique portion of a DIAL response ID
     private final Supplier<String> generator;
@@ -294,7 +295,9 @@ public class Proxy implements Handler<HttpServerRequest> {
     private Future<AuthorizationResult> authorizeRequest(HttpServerRequest request) {
         String apiKey = request.headers().get(HEADER_API_KEY);
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-        log.debug("Authorization header: {}", authorization);
+        if (Boolean.TRUE.equals(printAuthorizationHeader)) {
+            log.debug("Authorization header: {}", authorization);
+        }
 
         String clientIpAddress = ProxyUtil.getClientIpAddress(request, apiKeyValidation.getProxyCount());
         if (apiKey == null && authorization == null) {
