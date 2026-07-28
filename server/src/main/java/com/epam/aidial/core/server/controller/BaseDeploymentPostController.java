@@ -127,7 +127,7 @@ public class BaseDeploymentPostController {
         respond(HttpStatus.BAD_GATEWAY, response);
         log.warn("Can't connect to origin.  Deployment: {}. Address: {}. Error: {}",
                 context.getDeployment().getName(),
-                context.getDeployment().getEndpoint(), error.getMessage());
+                context.getProxyRequestUri(), error.getMessage());
     }
 
     protected void handleRequestBodyError(Throwable error) {
@@ -171,7 +171,7 @@ public class BaseDeploymentPostController {
                         Upstream currentUpstream = context.getUpstreamRoute().get();
                         log.warn("Can't find token usage. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}. Upstream.extraData: {}",
                                 context.getDeployment().getName(),
-                                context.getDeployment().getEndpoint(),
+                                context.getProxyRequestUri(),
                                 currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
                                 context.getResponseBody().length(),
                                 currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
@@ -216,6 +216,7 @@ public class BaseDeploymentPostController {
      */
     protected Future<HttpClientRequest> createProxyRequest(String absoluteUri) {
         HttpServerRequest request = context.getRequest();
+        context.setProxyRequestUri(absoluteUri);
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(absoluteUri)
                 .setMethod(request.method())
@@ -227,45 +228,14 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * Dual-mode: route by interface type. When the deployment declares an {@code interfaces} base URL
-     * for the type, forward to {@code base_url + <exact ingress path>}; otherwise forward the verbatim
-     * legacy endpoint (plus the original query), byte-identical to the legacy flow.
+     * Routes by interface type, forwarding to the URI resolved by
+     * {@link Deployment#resolveRequestUri(InterfaceType, String, String)}. {@code request.uri()} already
+     * includes path and query.
      */
     protected Future<HttpClientRequest> createProxyRequest(InterfaceType type) {
         HttpServerRequest request = context.getRequest();
-        Deployment deployment = context.getDeployment();
-        String baseUrl = deployment.getInterfaceBaseUrl(type);
-        String uri;
-        if (baseUrl != null) {
-            // New flow: base_url + exact ingress path. request.uri() already includes path + query.
-            String path = request.uri();
-            String targetDeploymentName = deployment.getInterfaceDeploymentName(type);
-            if (targetDeploymentName != null) {
-                path = rewriteDeploymentPathSegment(path, deployment.getName(), targetDeploymentName);
-            }
-            uri = baseUrl + path;
-        } else {
-            // Legacy flow: verbatim endpoint + original query — byte-identical to today.
-            uri = deployment.getLegacyEndpoint(type)
-                    + (request.query() == null ? "" : "?" + request.query());
-        }
-        return createProxyRequest(uri);
-    }
-
-    /**
-     * Rewrites the {@code /deployments/{name}/} ingress path segment to a different deployment id, so an
-     * alias deployment whose base_url loops back to Core lands on the aliased deployment instead of itself.
-     * No-op for interfaces whose ingress path carries no deployment segment (openaiResponses,
-     * anthropicMessages resolve the deployment from the request body instead — see
-     * {@link #applyInterfaceDeploymentNameOverride}).
-     */
-    private static String rewriteDeploymentPathSegment(String path, String currentName, String targetName) {
-        String marker = "/deployments/" + currentName + "/";
-        int index = path.indexOf(marker);
-        if (index < 0) {
-            return path;
-        }
-        return path.substring(0, index) + "/deployments/" + targetName + "/" + path.substring(index + marker.length());
+        return createProxyRequest(context.getDeployment()
+                .resolveRequestUri(type, request.uri(), request.query()));
     }
 
     /**

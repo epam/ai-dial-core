@@ -79,6 +79,55 @@ public class DeploymentTest {
     }
 
     @Test
+    void resolveRequestUriAppendsIngressPathToBaseUrl() {
+        Model model = new Model();
+        model.setName("als-2");
+        model.setInterfaces(Map.of(
+                OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://localhost:6001/")));
+
+        assertEquals("http://localhost:6001/openai/v1/responses",
+                model.resolveRequestUri(OPENAI_RESPONSES, "/openai/v1/responses", null));
+    }
+
+    @Test
+    void resolveRequestUriRewritesDeploymentSegmentForAlias() {
+        Model model = new Model();
+        model.setName("als-2");
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(),
+                new DeploymentInterface("http://localhost:6001", "openai-gpt-5.4-mini")));
+
+        assertEquals("http://localhost:6001/openai/deployments/openai-gpt-5.4-mini/chat/completions?api-version=2024-10-21",
+                model.resolveRequestUri(OPENAI_CHAT_COMPLETIONS,
+                        "/openai/deployments/als-2/chat/completions?api-version=2024-10-21", "api-version=2024-10-21"));
+    }
+
+    @Test
+    void resolveRequestUriLeavesPathAloneWhenNoDeploymentSegment() {
+        Model model = new Model();
+        model.setName("als-2");
+        model.setInterfaces(Map.of(
+                OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://localhost:6001", "openai-gpt-5.4-mini")));
+
+        // openaiResponses carries no /deployments/{name}/ segment; the model is overridden in the body instead
+        assertEquals("http://localhost:6001/openai/v1/responses",
+                model.resolveRequestUri(OPENAI_RESPONSES, "/openai/v1/responses", null));
+    }
+
+    @Test
+    void resolveRequestUriFallsBackToLegacyEndpointWithQuery() {
+        Model model = new Model();
+        model.setName("als-2");
+        model.setEndpoint("http://legacy/openai/deployments/1/chat/completions");
+
+        assertEquals("http://legacy/openai/deployments/1/chat/completions?api-version=2024-10-21",
+                model.resolveRequestUri(OPENAI_CHAT_COMPLETIONS,
+                        "/openai/deployments/als-2/chat/completions?api-version=2024-10-21", "api-version=2024-10-21"));
+        assertEquals("http://legacy/openai/deployments/1/chat/completions",
+                model.resolveRequestUri(OPENAI_CHAT_COMPLETIONS, "/openai/deployments/als-2/chat/completions", null));
+    }
+
+    @Test
     void baseUrlIsRequired() {
         assertThrows(IllegalArgumentException.class, () -> new DeploymentInterface(null));
         assertThrows(IllegalArgumentException.class, () -> new DeploymentInterface(""));

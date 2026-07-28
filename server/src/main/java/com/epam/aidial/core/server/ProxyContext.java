@@ -75,6 +75,7 @@ public class ProxyContext {
     private Route route;
     private UpstreamRoute upstreamRoute;
     private HttpClientRequest proxyRequest;
+    private String proxyRequestUri;
     private HttpClientResponse proxyResponse;
     private Buffer requestBody;
     private Buffer responseBody;
