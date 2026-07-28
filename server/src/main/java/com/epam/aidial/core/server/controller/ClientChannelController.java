@@ -385,6 +385,7 @@ public class ClientChannelController {
     }
 
     private void handleRpcError(Throwable error) {
+        log.warn("RPC error on client-channel interact", error);
         ErrorMessage errorMessage = new ErrorMessage(-32000, error.getMessage(), null);
         RpcResponse message = new RpcResponse(errorMessage);
         HttpServerResponse httpServerResponse = context.getResponse();
