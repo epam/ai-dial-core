@@ -25,9 +25,9 @@ public class RpcRequestTopic {
     }
 
     public void publish(PubSubRequest request) {
-        log.debug("Publish RPC request {} to Redis topic RPC Requests. Channel ID {}",
-                request.getRequest().getId().asText(), request.getChannelId());
-        topic.publish(request);
+        long receivers = topic.publish(request);
+        log.debug("Publish RPC request {} to Redis topic RPC Requests. Channel ID {}. Receivers: {}",
+                request.getRequest().getId().asText(), request.getChannelId(), receivers);
     }
 
     public RpcRequestSubscription subscribe(String channelId, Consumer<RpcRequest> subscriber) {
@@ -40,11 +40,15 @@ public class RpcRequestTopic {
             subs.add(subscription);
             return subs;
         });
+        log.debug("Registered local subscription for channel {}. Local subscriber count: {}",
+                channelId, subscriptions.getOrDefault(channelId, Set.of()).size());
         return subscription;
     }
 
     private void handle(PubSubRequest pubSubRequest) {
         Set<RpcRequestSubscription> subs = subscriptions.getOrDefault(pubSubRequest.getChannelId(), Set.of());
+        log.debug("Handling published RPC request for channel {}. Local subscriber count: {}",
+                pubSubRequest.getChannelId(), subs.size());
         for (RpcRequestSubscription subscription : subs) {
             log.debug("Received RPC request ID {} to Redis topic RPC Requests. Channel ID {}",
                     pubSubRequest.getRequest().getId(), pubSubRequest.getChannelId());
