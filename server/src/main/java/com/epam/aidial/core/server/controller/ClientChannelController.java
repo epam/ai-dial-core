@@ -37,6 +37,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import javax.annotation.Nullable;
 
 @Slf4j
 public class ClientChannelController {
@@ -209,7 +210,7 @@ public class ClientChannelController {
         setupEventStreamResponse(response);
         String channelId = context.getRequest().getHeader(Proxy.HEADER_CLIENT_CHANNEL_ID);
         if (channelId == null) {
-            handleRpcError(new HttpException(HttpStatus.BAD_REQUEST, "Channel ID is missed"));
+            handleRpcError(new HttpException(HttpStatus.BAD_REQUEST, "Channel ID is missed"), null);
             return Future.succeededFuture();
         }
         context.getRequest()
@@ -227,7 +228,7 @@ public class ClientChannelController {
                         }
                     });
                 })
-                .onFailure(this::handleRpcError);
+                .onFailure(error -> handleRpcError(error, channelId));
 
         return Future.succeededFuture();
     }
@@ -384,7 +385,8 @@ public class ClientChannelController {
         }
     }
 
-    private void handleRpcError(Throwable error) {
+    private void handleRpcError(Throwable error, @Nullable String channelId) {
+        log.warn("RPC error on client-channel {} interact", channelId, error);
         ErrorMessage errorMessage = new ErrorMessage(-32000, error.getMessage(), null);
         RpcResponse message = new RpcResponse(errorMessage);
         HttpServerResponse httpServerResponse = context.getResponse();
