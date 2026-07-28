@@ -36,9 +36,6 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.modelcontextprotocol.client.McpClient;
-import io.modelcontextprotocol.client.McpSyncClient;
-import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.McpHttpClientTransportAuthorizationException;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.vertx.core.Future;
@@ -181,28 +178,23 @@ public class ToolSetToolsController implements Controller {
         Objects.requireNonNull(upstream);
         Deployment deployment = context.getDeployment();
 
-        HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
-                .builder(upstream.getEndpoint())
-                .clientBuilder(mcpHttpClientBuilderService.httpClientBuilder())
-                .jsonMapper(McpClientUtils.MCP_JSON_MAPPER)
-                .httpRequestCustomizer((builder, method, endpoint, body, transportContext) ->
-                        customizeRequest(builder, deployment))
-                .build();
-
-        try (McpSyncClient client = McpClient.sync(transport)
-                .clientInfo(new McpSchema.Implementation("DIAL", "1.0"))
-                .requestTimeout(Duration.ofMillis(proxy.getClientOptions().getIdleTimeout()))
-                .jsonSchemaValidator(McpClientUtils.NOOP_SCHEMA_VALIDATOR)
-                .build()) {
-            client.initialize();
-            if (filterAllowed) {
-                // listTools() auto-paginates all pages via the SDK's expand() chain
-                processUserToolsResult(client.listTools().tools());
-            } else {
-                // listTools(cursor) fetches exactly one page; null = first page
-                String cursor = context.getRequest().getParam("nextCursor");
-                processAdminToolsResult(client.listTools(cursor));
-            }
+        try {
+            McpClientUtils.withSyncClient(
+                    upstream.getEndpoint(),
+                    Duration.ofMillis(proxy.getClientOptions().getIdleTimeout()),
+                    mcpHttpClientBuilderService.httpClientBuilder(),
+                    builder -> customizeRequest(builder, deployment),
+                    client -> {
+                        if (filterAllowed) {
+                            // listTools() auto-paginates all pages via the SDK's expand() chain
+                            processUserToolsResult(client.listTools().tools());
+                        } else {
+                            // listTools(cursor) fetches exactly one page; null = first page
+                            String cursor = context.getRequest().getParam("nextCursor");
+                            processAdminToolsResult(client.listTools(cursor));
+                        }
+                        return null;
+                    });
         } catch (Exception e) {
             McpHttpClientTransportAuthorizationException authError =
                     ExceptionUtils.throwableOfType(e, McpHttpClientTransportAuthorizationException.class);

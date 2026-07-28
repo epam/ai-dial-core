@@ -13,32 +13,39 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.limiter.RateLimitResult;
+import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
+import com.epam.aidial.core.server.service.McpHttpClientBuilderService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
+import com.epam.aidial.core.server.util.McpClientUtils;
 import com.epam.aidial.core.server.util.McpUpstreamAuthInjector;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.modelcontextprotocol.client.transport.McpHttpClientTransportAuthorizationException;
+import io.modelcontextprotocol.spec.McpSchema;
 import io.vertx.core.Future;
-import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpHeaders;
-import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.RequestOptions;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import static io.vertx.core.http.HttpHeaders.RETRY_AFTER;
 
 @Slf4j
 public class McpResourceController implements Controller {
@@ -64,26 +71,30 @@ public class McpResourceController implements Controller {
             "image/webp"
     );
 
+    private final Proxy proxy;
     private final ProxyContext context;
     private final String applicationId;
     private final DeploymentService deploymentService;
     private final ConsentService consentService;
     private final ApplicationSchemaService applicationSchemaService;
     private final AsyncTaskExecutor taskExecutor;
-    private final HttpClient httpClient;
     private final ApiKeyStore apiKeyStore;
+    private final RateLimiter rateLimiter;
     private final McpUpstreamAuthInjector authInjector;
+    private final McpHttpClientBuilderService mcpHttpClientBuilderService;
 
     public McpResourceController(Proxy proxy, ProxyContext context, String applicationId) {
+        this.proxy = proxy;
         this.context = context;
         this.applicationId = applicationId;
         this.deploymentService = proxy.getDeploymentService();
         this.consentService = proxy.getConsentService();
         this.applicationSchemaService = proxy.getApplicationSchemaService();
         this.taskExecutor = proxy.getTaskExecutor();
-        this.httpClient = proxy.getClient();
         this.apiKeyStore = proxy.getApiKeyStore();
+        this.rateLimiter = proxy.getRateLimiter();
         this.authInjector = new McpUpstreamAuthInjector(proxy);
+        this.mcpHttpClientBuilderService = proxy.getMcpHttpClientBuilderService();
     }
 
     @Override
@@ -142,7 +153,14 @@ public class McpResourceController implements Controller {
                 throw new ResourceNotFoundException("Application or ToolSet is not found: " + applicationId);
             }
             return new FetchContext(deployment, authHeaders);
-        }).compose(fc -> fetchResource(fc, resourceUri))
+        }).compose(fc -> rateLimiter.limit(context, fc.deployment())
+                .compose(rateLimitResult -> {
+                    if (rateLimitResult.status() == HttpStatus.OK) {
+                        return fetchResource(fc, resourceUri);
+                    }
+                    handleRateLimitHit(rateLimitResult);
+                    return Future.succeededFuture();
+                }))
                 .otherwise(error -> {
                     handleError(error);
                     return null;
@@ -153,65 +171,80 @@ public class McpResourceController implements Controller {
     private record FetchContext(Deployment deployment, Map<String, String> authHeaders) {}
 
     private Future<?> fetchResource(FetchContext fc, String resourceUri) {
-        ObjectNode params = ProxyUtil.MAPPER.createObjectNode();
-        params.put("uri", resourceUri);
-        ObjectNode body = ProxyUtil.MAPPER.createObjectNode();
-        body.put("jsonrpc", "2.0");
-        body.put("id", 1);
-        body.put("method", "resources/read");
-        body.set("params", params);
-        Buffer requestBody = Buffer.buffer(body.toString());
-
-        String endpoint = fc.deployment() instanceof Application app
-                ? app.getMcp().getEndpoint()
-                : fc.deployment().getEndpoint();
-
-        RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(endpoint)
-                .setMethod(HttpMethod.POST)
-                .setConnectTimeout(context.getProxy().getClientOptions().getConnectTimeout())
-                .setIdleTimeout(context.getProxy().getClientOptions().getIdleTimeout());
-
-        return httpClient.request(options)
-                .compose(req -> {
-                    req.putHeader(HttpHeaders.CONTENT_TYPE, "application/json");
-                    req.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));
-                    fc.authHeaders().forEach(req::putHeader);
-                    return req.send(requestBody);
-                })
-                .compose(resp -> resp.body()
-                        .compose(buf -> handleResourceBody(resp.statusCode(), buf)));
+        return taskExecutor.submit(() -> {
+            String endpoint = fc.deployment() instanceof Application app
+                    ? app.getMcp().getEndpoint()
+                    : fc.deployment().getEndpoint();
+            try {
+                McpClientUtils.withSyncClient(
+                        endpoint,
+                        Duration.ofMillis(proxy.getClientOptions().getIdleTimeout()),
+                        mcpHttpClientBuilderService.httpClientBuilder(),
+                        builder -> fc.authHeaders().forEach(builder::header),
+                        client -> {
+                            McpSchema.ReadResourceResult result = client.readResource(
+                                    new McpSchema.ReadResourceRequest(resourceUri));
+                            sendResourceResponse(result);
+                            return null;
+                        });
+            } catch (Exception e) {
+                McpHttpClientTransportAuthorizationException authError =
+                        ExceptionUtils.throwableOfType(e, McpHttpClientTransportAuthorizationException.class);
+                if (authError != null) {
+                    HttpStatus status = HttpStatus.fromStatusCode(
+                            authError.getResponseInfo().statusCode(), HttpStatus.UNAUTHORIZED);
+                    throw new HttpException(status, "MCP server returned " + authError.getResponseInfo().statusCode());
+                }
+                log.warn("Failed to fetch MCP resource '{}' for deployment '{}'", resourceUri, applicationId, e);
+                throw new HttpException(HttpStatus.BAD_GATEWAY, "Failed to fetch MCP resource");
+            }
+            return null;
+        });
     }
 
-    private Future<?> handleResourceBody(int status, Buffer buf) {
-        if (status != 200) {
-            return context.respond(HttpStatus.BAD_GATEWAY, "MCP server returned " + status);
+    void sendResourceResponse(McpSchema.ReadResourceResult result) {
+        List<McpSchema.ResourceContents> contents = result.contents();
+        if (contents == null || contents.isEmpty()) {
+            context.respond(HttpStatus.BAD_GATEWAY, "Empty resource contents");
+            return;
         }
-        try {
-            JsonNode json = ProxyUtil.MAPPER.readTree(buf.getBytes());
-            JsonNode contents = json.path("result").path("contents");
-            if (!contents.isArray() || contents.isEmpty()) {
-                return context.respond(HttpStatus.BAD_GATEWAY, "Empty resource contents");
-            }
-            JsonNode first = contents.get(0);
-            JsonNode mimeTypeNode = first.path("mimeType");
-            if (mimeTypeNode.isMissingNode() || mimeTypeNode.isNull()) {
-                return context.respond(HttpStatus.BAD_GATEWAY, "Resource missing mimeType");
-            }
-            String mimeType = mimeTypeNode.asText();
-            if (!ALLOWED_MIME_TYPES.contains(mimeType)) {
-                return context.respond(HttpStatus.BAD_GATEWAY, "Unsupported resource mimeType: " + mimeType);
-            }
-            String text = first.path("text").asText("");
-            return context.getResponse()
-                    .putHeader(HttpHeaders.CONTENT_TYPE, mimeType)
-                    .putHeader("Content-Security-Policy", WIDGET_CSP)
-                    .putHeader("X-Content-Type-Options", "nosniff")
-                    .end(text);
-        } catch (Exception e) {
-            log.warn("Failed to parse MCP resource response", e);
-            return context.respond(HttpStatus.BAD_GATEWAY, "Invalid resource response");
+        McpSchema.ResourceContents first = contents.get(0);
+        String mimeType = first.mimeType();
+        if (mimeType == null || mimeType.isBlank()) {
+            context.respond(HttpStatus.BAD_GATEWAY, "Resource missing mimeType");
+            return;
         }
+        if (!ALLOWED_MIME_TYPES.contains(mimeType)) {
+            context.respond(HttpStatus.BAD_GATEWAY, "Unsupported resource mimeType: " + mimeType);
+            return;
+        }
+        if (!(first instanceof McpSchema.TextResourceContents textContents)) {
+            context.respond(HttpStatus.BAD_GATEWAY, "Unsupported resource contents type: " + first.getClass().getSimpleName());
+            return;
+        }
+        String text = textContents.text();
+        context.getResponse()
+                .putHeader(HttpHeaders.CONTENT_TYPE, mimeType)
+                .putHeader("Content-Security-Policy", WIDGET_CSP)
+                .putHeader("X-Content-Type-Options", "nosniff")
+                .end(text);
+    }
+
+    private void handleRateLimitHit(RateLimitResult result) {
+        ErrorData rateLimitError = new ErrorData();
+        rateLimitError.getError().setCode(String.valueOf(result.status().getCode()));
+        rateLimitError.getError().setMessage(result.errorMessage());
+        rateLimitError.getError().setDisplayMessage(result.displayErrorMessage());
+        String errorMessage = ProxyUtil.convertToString(rateLimitError);
+        HttpException httpException;
+        if (result.replyAfterSeconds() >= 0) {
+            httpException = new HttpException(result.status(), errorMessage,
+                    Map.of(RETRY_AFTER.toString(), Long.toString(result.replyAfterSeconds())));
+        } else {
+            httpException = new HttpException(result.status(), errorMessage);
+        }
+        context.respond(httpException);
+        log.warn("Rate limit hit for MCP resource request: {}", result.errorMessage());
     }
 
     private void handleError(Throwable error) {
@@ -222,7 +255,8 @@ public class McpResourceController implements Controller {
                     context.respond(HttpStatus.NOT_FOUND, error.getMessage());
             case IllegalArgumentException ignored ->
                     context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
-            default -> {
+            case HttpException httpException -> context.respond(httpException);
+            case null, default -> {
                 log.error("Error handling MCP resource request for {}", applicationId, error);
                 context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to handle MCP resource request");
             }
