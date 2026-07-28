@@ -17,6 +17,7 @@ import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ConsentService;
+import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
@@ -972,6 +973,9 @@ public class ResponsesControllerTest {
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         when(context.getInterceptors()).thenReturn(apiKeyData.getInterceptors());
         when(context.getConfig()).thenReturn(config);
+        // Resolved up front: the controller is still running on a Vert.x thread when await() returns,
+        // and resolving a deep stub on `proxy` from two threads at once corrupts its stubbing container.
+        DeploymentService deploymentService = proxy.getDeploymentService();
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getClient()).thenReturn(httpClient);
@@ -989,7 +993,7 @@ public class ResponsesControllerTest {
 
         await(testContext);
 
-        verify(proxy.getDeploymentService(), never()).findDeployment(any(), any());
+        verify(deploymentService, never()).findDeployment(any(), any());
         verify(context).setProxyApiKeyData(argThat(data -> data.getInterceptorIndex() == 1));
         verify(httpClient).request(argThat(opts ->
                 "interceptor2".equals(opts.getHost())
@@ -1019,7 +1023,8 @@ public class ResponsesControllerTest {
         when(request.method()).thenReturn(HttpMethod.POST);
         when(context.getRequest()).thenReturn(request);
         when(context.getApiKeyData()).thenReturn(apiKeyData);
-        when(proxy.getDeploymentService().findDeployment(context, "actual-model")).thenReturn(deployment);
+        DeploymentService deploymentService = proxy.getDeploymentService();
+        when(deploymentService.findDeployment(context, "actual-model")).thenReturn(deployment);
         when(proxy.getRateLimiter().limit(context, deployment)).thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -1043,8 +1048,8 @@ public class ResponsesControllerTest {
 
         await(textContext);
 
-        verify(proxy.getDeploymentService()).findDeployment(context, "actual-model");
-        verify(proxy.getDeploymentService(), never()).findDeployment(any(), eq("ignored"));
+        verify(deploymentService).findDeployment(context, "actual-model");
+        verify(deploymentService, never()).findDeployment(any(), eq("ignored"));
         verify(httpClient).request(argThat(opts ->
                 "actual-model".equals(opts.getHost())
                 && "/responses".equals(opts.getURI().toString())));
