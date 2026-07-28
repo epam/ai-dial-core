@@ -125,6 +125,7 @@ Priority order:
 | asyncTaskExecutor.useVirtualThreads      |        true        |    No    | The flag determines if virtual threads are used to run blocking tasks or platform threads.                                                                                                                                                                                                                      |
 | config.jsonMergeStrategy.overwriteArrays |       false        |    No    | Specifies a merging strategy for JSON arrays. If it's set to `true`, arrays will be overwritten. Otherwise, they will be concatenated.                                                                                                                                                                          |
 | apiKeyValidation.proxyCount              |         0          | No | The count of trusted proxies between the client and DIAL Core server. See [selecting an IP address in HTTP header X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) for more details. The default value means there are no proxies. |
+| printAuthorizationHeader                 |       false       | No | If `true`, logs the raw `Authorization` header value at `DEBUG` level for each request. Intended for debugging JWT/identity provider setup only. **Note**: the header may contain sensitive tokens; do not enable in production. |
 
 
 <details> 
