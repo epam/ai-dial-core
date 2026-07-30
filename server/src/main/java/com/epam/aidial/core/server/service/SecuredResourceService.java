@@ -86,8 +86,7 @@ public class SecuredResourceService {
             return;
         }
 
-        HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
-                .builder(endpoint)
+        HttpClientStreamableHttpTransport transport = McpClientUtils.transportBuilder(endpoint)
                 .connectTimeout(MCP_PROBE_TIMEOUT)
                 .jsonMapper(McpClientUtils.MCP_JSON_MAPPER)
                 .httpRequestCustomizer((builder, method, uri, body, transportContext) ->

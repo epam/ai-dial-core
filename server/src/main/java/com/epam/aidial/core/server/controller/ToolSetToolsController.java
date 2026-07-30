@@ -187,8 +187,7 @@ public class ToolSetToolsController implements Controller {
         Objects.requireNonNull(upstream);
         Deployment deployment = context.getDeployment();
 
-        HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
-                .builder(upstream.getEndpoint())
+        HttpClientStreamableHttpTransport transport = McpClientUtils.transportBuilder(upstream.getEndpoint())
                 .jsonMapper(McpClientUtils.MCP_JSON_MAPPER)
                 .httpRequestCustomizer((builder, method, endpoint, body, transportContext) ->
                         customizeRequest(builder, deployment))
