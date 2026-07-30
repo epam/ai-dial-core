@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
@@ -7,6 +8,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -28,11 +30,15 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.server.security.Operation;
+import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
+import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -88,6 +94,8 @@ public class ConfigResourceController implements Controller {
     private final boolean softValidation;
     private final ApiKeyStore apiKeyStore;
     private final LockService lockService;
+    private final ApplicationService applicationService;
+    private final ToolSetService toolSetService;
     private final String entityType;
     private final String bucket;
     private final String path;
@@ -101,6 +109,8 @@ public class ConfigResourceController implements Controller {
                                     boolean softValidation,
                                     ApiKeyStore apiKeyStore,
                                     LockService lockService,
+                                    ApplicationService applicationService,
+                                    ToolSetService toolSetService,
                                     String entityType,
                                     String bucket,
                                     String path) {
@@ -113,6 +123,8 @@ public class ConfigResourceController implements Controller {
         this.softValidation = softValidation;
         this.apiKeyStore = apiKeyStore;
         this.lockService = lockService;
+        this.applicationService = applicationService;
+        this.toolSetService = toolSetService;
         this.entityType = entityType;
         this.bucket = bucket;
         this.path = path;
@@ -755,8 +767,166 @@ public class ConfigResourceController implements Controller {
                             @ApiResponse(code = 412),
                             @ApiResponse(code = 500)
                     },
-                    extensions = { 
-                            @ApiExtension(name = "x-preview", value = "true") 
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            // Applications (platform bucket only — this is a distinct, admin-only, config-managed
+            // contract from ResourceController's generic /v1/applications/{bucket}/{application_path};
+            // the literal "platform" segment here (rather than a {bucket} template) is deliberate so
+            // this operation doesn't collide with — or silently duplicate — that one in the generated
+            // spec, since OpenAPI can't express two different contracts for one shared path template.
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/applications/platform/{path}",
+                    operationId = "getPlatformApplication",
+                    tags = {"Applications"},
+                    parameters = {
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Application name"),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Application.class, EntityMetadata.class}),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the application", required = true)
+                                    }),
+                            @ApiResponse(code = 304),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/applications/platform/{path}",
+                    operationId = "savePlatformApplication",
+                    requestBody = @ApiSchema(implementation = Application.class),
+                    tags = {"Applications"},
+                    parameters = {
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Application name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved application", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 422),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/applications/platform/{path}",
+                    operationId = "deletePlatformApplication",
+                    tags = {"Applications"},
+                    parameters = {
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Application name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 204, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            // Toolsets (platform bucket only — same rationale as Applications above)
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/toolsets/platform/{path}",
+                    operationId = "getPlatformToolSet",
+                    tags = {"Toolsets"},
+                    parameters = {
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Toolset name"),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {ToolSet.class, EntityMetadata.class}),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the toolset", required = true)
+                                    }),
+                            @ApiResponse(code = 304),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/toolsets/platform/{path}",
+                    operationId = "savePlatformToolSet",
+                    requestBody = @ApiSchema(implementation = ToolSet.class),
+                    tags = {"Toolsets"},
+                    parameters = {
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Toolset name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved toolset", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 422),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/toolsets/platform/{path}",
+                    operationId = "deletePlatformToolSet",
+                    tags = {"Toolsets"},
+                    parameters = {
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Toolset name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 204, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
                     }
             )
     })
@@ -797,6 +967,19 @@ public class ConfigResourceController implements Controller {
             }
             return respondMethodNotAllowed();
         }
+        if (resourceType() == ResourceTypes.APPLICATION || resourceType() == ResourceTypes.TOOL_SET) {
+            // Applications/toolsets own real write-time business logic (atomic compute-based writes,
+            // function lifecycle bookkeeping, admin-managed-field inheritance, external-service/
+            // authSettings secret handling, credential purge on delete) that ApplicationService/
+            // ToolSetService already implement — delegate rather than duplicate the raw-blob path.
+            if (method == HttpMethod.PUT) {
+                return handleAppOrToolSetPut();
+            }
+            if (method == HttpMethod.DELETE) {
+                return handleAppOrToolSetDelete();
+            }
+            return respondMethodNotAllowed();
+        }
         if (method == HttpMethod.PUT) {
             return handlePut();
         }
@@ -832,6 +1015,12 @@ public class ConfigResourceController implements Controller {
                     (key, route) -> projectItem(route, key));
             case APP_TYPE_SCHEMA -> handleSchemaGet(config.getApplicationTypeSchemas(), ResourceTypes.APP_TYPE_SCHEMA, admin);
             case CATALOG_SCHEMA -> handleSchemaGet(config.getCatalogSchemas(), ResourceTypes.CATALOG_SCHEMA, admin);
+            case APPLICATION -> handleSingleGet(
+                    config.getApplications(), ResourceTypes.APPLICATION,
+                    (key, application) -> redactExternalServiceSecrets(projectItem(application, key)));
+            case TOOL_SET -> handleSingleGet(
+                    config.getToolsets(), ResourceTypes.TOOL_SET,
+                    (key, toolSet) -> redactAuthSettingsSecrets(projectItem(toolSet, key)));
             case GLOBAL_SETTINGS -> handleSettingsGet(config);
             default -> respondMethodNotAllowed();
         };
@@ -944,6 +1133,10 @@ public class ConfigResourceController implements Controller {
             case APP_TYPE_SCHEMA -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.APP_TYPE_SCHEMA,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case CATALOG_SCHEMA -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.CATALOG_SCHEMA,
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
+            case APPLICATION -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION,
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
+            case TOOL_SET -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.TOOL_SET,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             default -> null;
         };
@@ -1067,6 +1260,83 @@ public class ConfigResourceController implements Controller {
             // If-Match passes through to deleteResource which throws 412 on mismatch.
             resourceService.deleteResource(descriptor, etag, false);
             mergedConfigStore.applySettingsDelete();
+            return true;
+        })).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
+
+        return Future.succeededFuture();
+    }
+
+    /**
+     * PUT-upsert for {@code APPLICATION}/{@code TOOL_SET} in the {@code platform} bucket. Delegates
+     * to {@link ApplicationService#putApplication} / {@link ToolSetService#putToolSet} — they own
+     * the atomic compute-based write, function lifecycle bookkeeping, admin-managed-field
+     * inheritance, and secret encryption (unchanged; both services already derive the encryption
+     * {@code BucketInfo} from the resource descriptor's own bucket, so {@code platform} needs no
+     * special-casing there). After the write, the entity is re-fetched with secrets decrypted so
+     * {@link MergedConfigStore#applyEntityWrite} receives a fully-decrypted entity, matching what
+     * the rebuild-time materialization loop produces.
+     */
+    private Future<?> handleAppOrToolSetPut() {
+        if (path == null || path.isEmpty() || path.endsWith("/")) {
+            context.respond(HttpStatus.BAD_REQUEST, "Resource name must not be empty or a folder");
+            return Future.succeededFuture();
+        }
+        ResourceTypes type = resourceType();
+        ResourceDescriptor descriptor = descriptorFor(type);
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
+        String author = context.getUserDisplayName();
+
+        context.getRequest().body().compose(body -> {
+            JsonNode requestNode = parseJsonBody(body);
+            if (!requestNode.isObject()) {
+                throw new HttpException(HttpStatus.BAD_REQUEST, "Request body must be a JSON object");
+            }
+            return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
+                Object decrypted;
+                // The platform bucket requires explicit admin access for every operation (see
+                // AdminRoleAuthorizationService), not just an admin-AND-public-bucket combination like
+                // ResourceController's adminPublicWrite — so, same as AdminApplyController's bulk apply,
+                // this path is always admin context and may preserve forwardAuthToken.
+                if (type == ResourceTypes.APPLICATION) {
+                    Application application = treeToEntity(requestNode, Application.class);
+                    applicationService.putApplication(descriptor, etag, author, application, true, AdminManagedFieldsWriteMode.AUTHORITATIVE);
+                    decrypted = applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
+                } else {
+                    ToolSet toolSet = treeToEntity(requestNode, ToolSet.class);
+                    toolSetService.putToolSet(descriptor, etag, author, toolSet, true);
+                    decrypted = toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
+                }
+                mergedConfigStore.applyEntityWrite(type, MergedConfigStore.canonicalId(descriptor), decrypted);
+                return resourceService.getResourceMetadata(descriptor);
+            }));
+        }).onSuccess(meta -> context.putHeader(HttpHeaders.ETAG, meta.getEtag())
+                .respond(HttpStatus.OK, createNameEnvelope(path)))
+                .onFailure(this::handleWriteError);
+
+        return Future.succeededFuture();
+    }
+
+    /**
+     * DELETE for {@code APPLICATION}/{@code TOOL_SET} in the {@code platform} bucket. Delegates to
+     * {@link ApplicationService#deleteApplication} / {@link ToolSetService#deleteToolset} for the
+     * same reason as the PUT path — credential purge and (for applications) the active-function
+     * delete guard live there, not in this controller's generic raw-blob delete.
+     */
+    private Future<?> handleAppOrToolSetDelete() {
+        ResourceTypes type = resourceType();
+        ResourceDescriptor descriptor = descriptorFor(type);
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
+
+        taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
+            if (type == ResourceTypes.APPLICATION) {
+                applicationService.deleteApplication(descriptor, etag);
+            } else {
+                boolean deleted = toolSetService.deleteToolset(context, descriptor, etag);
+                if (!deleted) {
+                    throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + descriptor.getUrl());
+                }
+            }
+            mergedConfigStore.applyEntityDelete(type, MergedConfigStore.canonicalId(descriptor));
             return true;
         })).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
 
@@ -1353,6 +1623,10 @@ public class ConfigResourceController implements Controller {
     private void handleWriteError(Throwable error) {
         if (error instanceof HttpException exception) {
             context.respond(exception);
+        } else if (error instanceof ResourceNotFoundException notFound) {
+            // ApplicationService/ToolSetService signal a missing entity via this unchecked exception
+            // rather than HttpException (unlike the raw-blob path this controller otherwise uses).
+            context.respond(HttpStatus.NOT_FOUND, notFound.getMessage());
         } else {
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
         }
@@ -1422,6 +1696,36 @@ public class ConfigResourceController implements Controller {
         return node;
     }
 
+    /**
+     * {@code Application}/{@code ToolSet} secrets ({@code ResourceAuthSettings.clientSecret}/
+     * {@code codeVerifier}) are not {@code @EncryptedField}-annotated, so — unlike models — they
+     * are held <strong>decrypted</strong> in the merged {@link Config} for internal routing use.
+     * {@code @JsonProperty(WRITE_ONLY)} is not an option here: {@code ApplicationService}/
+     * {@code ToolSetService} persist through the plain {@code MAPPER} (not {@code BLOB_MAPPER}'s
+     * {@code @EncryptedField}-aware override), so WRITE_ONLY would also drop the field from the
+     * blob write itself. Redact on the {@link ObjectNode} snapshot {@link #projectItem} already
+     * produces instead — a fresh copy, so this never mutates the live {@link Config} entity.
+     */
+    private static void redactSecretFields(JsonNode authSettings) {
+        if (authSettings instanceof ObjectNode settings) {
+            settings.remove("client_secret");
+            settings.remove("code_verifier");
+        }
+    }
+
+    private static ObjectNode redactAuthSettingsSecrets(ObjectNode node) {
+        redactSecretFields(node.get("auth_settings"));
+        return node;
+    }
+
+    private static ObjectNode redactExternalServiceSecrets(ObjectNode node) {
+        JsonNode externalServices = node.get("external_services");
+        if (externalServices != null && externalServices.isObject()) {
+            externalServices.forEach(service -> redactSecretFields(service.get("auth_settings")));
+        }
+        return node;
+    }
+
     private ObjectNode projectSchemaItem(String name, String json)
             throws JsonProcessingException {
         // applicationTypeSchemas stores raw JSON strings; parse for projection.
@@ -1468,6 +1772,8 @@ public class ConfigResourceController implements Controller {
             case ROLE -> Role.class;
             case PROJECT_KEY -> Key.class;
             case ROUTE -> Route.class;
+            case APPLICATION -> Application.class;
+            case TOOL_SET -> ToolSet.class;
             default -> null;
         };
     }

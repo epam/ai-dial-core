@@ -388,7 +388,12 @@ public final class ConfigPostProcessor {
         return true;
     }
 
+    // Bare file-sourced names have no '/'; API-managed toolsets are keyed by their canonical id
+    // ("toolsets/platform/name") — validate only the trailing short-name segment in that case, same
+    // as the plain-name case would validate the whole (slash-free) string.
     private static boolean isValidResourceKey(String resourceKey) {
-        return RESOURCE_KEY_PATTERN.matcher(resourceKey).matches();
+        int slash = resourceKey.lastIndexOf('/');
+        String candidate = slash < 0 ? resourceKey : resourceKey.substring(slash + 1);
+        return RESOURCE_KEY_PATTERN.matcher(candidate).matches();
     }
 }

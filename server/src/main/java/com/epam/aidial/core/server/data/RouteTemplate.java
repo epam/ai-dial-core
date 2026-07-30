@@ -79,6 +79,19 @@ public enum RouteTemplate {
             "/v1/{resourceType}/{bucket}/{path}"
     ),
 
+    // API-managed applications/toolsets in the platform bucket — Configuration-API-shaped CRUD via
+    // ConfigResourceController, not the generic RESOURCE route. Registered before RESOURCE in
+    // ControllerSelector (first match wins) since RESOURCE's bucket group structurally also matches
+    // the literal "platform" segment.
+    PLATFORM_APP_TOOLSET_RESOURCE(
+            "^/v1/(applications|toolsets)/(?<bucket>platform)/(?<path>.*)$",
+            "/v1/{resourceType}/platform/{path}"
+    ),
+    PLATFORM_APP_TOOLSET_RESOURCE_METADATA(
+            "^/v1/metadata/(applications|toolsets)/(?<bucket>platform)/(?<path>.*)$",
+            "/v1/metadata/{resourceType}/platform/{path}"
+    ),
+
     // V2 whole-resource (folder-as-resource) routes.
     // The {path} is the resource name and may span multiple segments (e.g. /v2/skills/{bucket}/group/name).
     // The pattern forbids empty segments and a trailing slash (a resource is addressed by name, not as a

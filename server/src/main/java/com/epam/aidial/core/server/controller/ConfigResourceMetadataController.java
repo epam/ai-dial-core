@@ -228,6 +228,48 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiResponse(code = 500)
             }
         )
+    // Applications/toolsets listings, platform bucket only. Literal "platform" segment (not a
+    // {bucket} template) for the same reason as ConfigResourceController's per-entity operations —
+    // ResourceController already documents the generic /v1/metadata/applications/{bucket}/{path}
+    // template, which no longer describes bucket=platform's (blob-only, admin-gated) behavior.
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/metadata/applications/platform/{path}",
+            operationId = "getPlatformApplicationMetadata",
+            tags = {"Applications"},
+            parameters = {
+                @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_APPLICATIONS),
+                @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
+                @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
+                @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
+            },
+            responses = {
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                @ApiResponse(code = 400),
+                @ApiResponse(code = 403),
+                @ApiResponse(code = 404),
+                @ApiResponse(code = 500)
+            }
+        )
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/metadata/toolsets/platform/{path}",
+            operationId = "getPlatformToolSetMetadata",
+            tags = {"Toolsets"},
+            parameters = {
+                @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.METADATA_PATH_TOOLSETS),
+                @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
+                @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
+                @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
+            },
+            responses = {
+                @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = MetadataBase.class)),
+                @ApiResponse(code = 400),
+                @ApiResponse(code = 403),
+                @ApiResponse(code = 404),
+                @ApiResponse(code = 500)
+            }
+        )
     @Override
     public Future<?> handle() throws Exception {
         if (!EntityBucketBinding.isAllowed(entityType, bucket)) {

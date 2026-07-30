@@ -93,6 +93,30 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
+    void testSemanticKeepsCanonicalIdKeyedToolSet() {
+        // Materialized platform toolsets are keyed by canonical id ("toolsets/platform/name"), unlike
+        // file-sourced ones (bare "name") — processToolSets must validate only the trailing short-name
+        // segment, not reject the whole key for containing '/'.
+        Config config = newMutableConfig();
+        config.getToolsets().put("toolsets/platform/my-toolset", new ToolSet());
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getToolsets().containsKey("toolsets/platform/my-toolset"));
+        assertEquals("toolsets/platform/my-toolset", config.getToolsets().get("toolsets/platform/my-toolset").getName());
+    }
+
+    @Test
+    void testSemanticDropsCanonicalIdToolSetWithInvalidShortName() {
+        Config config = newMutableConfig();
+        config.getToolsets().put("toolsets/platform/bad name", new ToolSet());
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getToolsets().isEmpty());
+    }
+
+    @Test
     void testPreservesAllInterfacesIncludingUnknownKeys() {
         Config config = newMutableConfig();
 

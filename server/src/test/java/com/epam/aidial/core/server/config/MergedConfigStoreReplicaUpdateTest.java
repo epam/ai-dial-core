@@ -4,8 +4,10 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
@@ -72,6 +74,10 @@ public class MergedConfigStoreReplicaUpdateTest {
     private FileConfigStore fileConfigStore;
     @Mock
     private LockService lockService;
+    @Mock
+    private ExternalServiceService externalServiceService;
+    @Mock
+    private ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
 
     // The real ReentrantLock the store adopts as its rebuildLock (== ApiKeyStore's mutationLock).
     // Captured here so lock-held-invariant tests can assert it is held at the mutation call sites.
@@ -383,7 +389,8 @@ public class MergedConfigStoreReplicaUpdateTest {
         when(fileConfigStore.get()).thenReturn(seeded);
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, onInvalidEntity, false, POD_ID);
+                secretFieldProcessor, lockService, onInvalidEntity, false, POD_ID,
+                externalServiceService, resourceAuthSettingsEncryptionService);
         store.init(fileConfigStore);
         return store;
     }

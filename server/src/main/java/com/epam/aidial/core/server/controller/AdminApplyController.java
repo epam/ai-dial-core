@@ -375,8 +375,8 @@ public class AdminApplyController {
                     Route.class, pending);
             case "Key" -> applyKey(entry, id, pending);
             case "Model" -> applyModel(entry, id, scratch, pending);
-            case "ToolSet" -> applyToolSet(entry, id);
-            case "Application" -> applyApplication(entry, id);
+            case "ToolSet" -> applyToolSet(entry, id, pending);
+            case "Application" -> applyApplication(entry, id, pending);
             default -> new EntityResult(id, AdminApplyStatus.FAILED, "Unknown kind: " + entry.kind());
         };
     }
@@ -495,23 +495,27 @@ public class AdminApplyController {
         return new EntityResult(id, invalid ? AdminApplyStatus.APPLIED_INVALID : AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyApplication(AdminManifest entry, String id) {
+    private EntityResult applyApplication(AdminManifest entry, String id, List<EntityChange> pending) {
         Application application = ConfigResourceController.treeToEntity(entry.spec(), Application.class);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.APPLICATION, ResourceDescriptor.PUBLIC_BUCKET,
-                ResourceDescriptor.PUBLIC_LOCATION, entry.name());
+                ResourceTypes.APPLICATION, ResourceDescriptor.PLATFORM_BUCKET,
+                ResourceDescriptor.PLATFORM_LOCATION, entry.name());
         // Bulk admin apply is always admin context — preserve forwardAuthToken if the manifest set it.
         applicationService.putApplication(descriptor, EtagHeader.ANY, null, application, true,
                 AdminManagedFieldsWriteMode.AUTHORITATIVE);
+        Application decrypted = applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
+        pending.add(new EntityChange(ResourceTypes.APPLICATION, MergedConfigStore.canonicalId(descriptor), decrypted));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyToolSet(AdminManifest entry, String id) {
+    private EntityResult applyToolSet(AdminManifest entry, String id, List<EntityChange> pending) {
         ToolSet toolSet = ConfigResourceController.treeToEntity(entry.spec(), ToolSet.class);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.TOOL_SET, ResourceDescriptor.PUBLIC_BUCKET,
-                ResourceDescriptor.PUBLIC_LOCATION, entry.name());
+                ResourceTypes.TOOL_SET, ResourceDescriptor.PLATFORM_BUCKET,
+                ResourceDescriptor.PLATFORM_LOCATION, entry.name());
         toolSetService.putToolSet(descriptor, EtagHeader.ANY, null, toolSet, true);
+        ToolSet decrypted = toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
+        pending.add(new EntityChange(ResourceTypes.TOOL_SET, MergedConfigStore.canonicalId(descriptor), decrypted));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
@@ -571,15 +575,11 @@ public class AdminApplyController {
         String segment = KIND_URL_SEGMENT.getOrDefault(entry.kind(), entry.kind().toLowerCase());
         String name = entry.name() != null ? entry.name()
                 : ("Settings".equals(entry.kind()) ? SETTINGS_SINGLETON_NAME : "");
-        String bucket = "Application".equals(entry.kind()) || "ToolSet".equals(entry.kind())
-                ? ResourceDescriptor.PUBLIC_BUCKET : ResourceDescriptor.PLATFORM_BUCKET;
-        return segment + "/" + bucket + "/" + name;
+        return segment + "/" + ResourceDescriptor.PLATFORM_BUCKET + "/" + name;
     }
 
     private static String canonical(String segment, String name) {
-        String bucket = "applications".equals(segment) || "toolsets".equals(segment)
-                ? ResourceDescriptor.PUBLIC_BUCKET : ResourceDescriptor.PLATFORM_BUCKET;
-        return segment + "/" + bucket + "/" + name;
+        return segment + "/" + ResourceDescriptor.PLATFORM_BUCKET + "/" + name;
     }
 
     private static String locationOf(JsonProcessingException e) {

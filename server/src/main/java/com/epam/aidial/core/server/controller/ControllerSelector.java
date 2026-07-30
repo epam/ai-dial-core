@@ -63,6 +63,18 @@ public class ControllerSelector {
             return () -> controller.deleteExternalService(appId, serviceId);
         });
 
+        // API-managed applications/toolsets in the platform bucket. Registered before the generic
+        // RESOURCE/RESOURCE_METADATA routes so /v1/(applications|toolsets)/platform/... is not
+        // swallowed by them (first match wins) and instead reaches ConfigResourceController.
+        get(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE, ControllerSelector::configResourceController);
+        get(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        post(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE, ControllerSelector::configResourceController);
+        post(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        put(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE, ControllerSelector::configResourceController);
+        put(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        delete(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE, ControllerSelector::configResourceController);
+        delete(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+
         // GET routes
         get(RouteTemplate.DEPLOYMENT, (proxy, context, pathMatcher) -> {
             DeploymentController controller = new DeploymentController(proxy, context);
@@ -620,6 +632,8 @@ public class ControllerSelector {
                 mergedConfigStore.isSoftValidation(),
                 proxy.getApiKeyStore(),
                 proxy.getLockService(),
+                proxy.getApplicationService(),
+                proxy.getToolSetService(),
                 entityType, bucket, path);
     }
 

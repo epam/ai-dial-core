@@ -365,9 +365,9 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(2, parsed.get("applied").asInt(), () -> "Body: " + response.body());
         assertEquals(0, parsed.get("failed").asInt());
-        verify(send(HttpMethod.GET, "/v1/applications/public/apply-app-1", null, "",
+        verify(send(HttpMethod.GET, "/v1/applications/platform/apply-app-1", null, "",
                 "authorization", "admin"), 200);
-        verify(send(HttpMethod.GET, "/v1/toolsets/public/apply-toolset-1", null, "",
+        verify(send(HttpMethod.GET, "/v1/toolsets/platform/apply-toolset-1", null, "",
                 "authorization", "admin"), 200);
     }
 

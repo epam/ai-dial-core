@@ -62,6 +62,24 @@ public class ToolSetService {
         return Pair.of(meta, toolSet);
     }
 
+    /**
+     * Like {@link #getToolSet(ResourceDescriptor, EtagHeader)} but with {@code authSettings}
+     * decrypted — the read-after-write counterpart to {@link ApplicationService
+     * .getApplicationWithDecryptedSecrets}, used after a PUT so the value applied into the merged
+     * {@link com.epam.aidial.core.config.Config} carries plaintext secrets.
+     */
+    public Pair<ResourceItemMetadata, ToolSet> getToolSetWithDecryptedAuthSettings(ResourceDescriptor resource) {
+        Pair<ResourceItemMetadata, ToolSet> result = getToolSet(resource, true, EtagHeader.ANY);
+        ToolSet toolSet = result.getValue();
+        ResourceItemMetadata meta = result.getKey();
+
+        toolSet.setAuthor(meta.getAuthor());
+        toolSet.setCreatedAt(meta.getCreatedAt());
+        toolSet.setUpdatedAt(meta.getUpdatedAt());
+
+        return Pair.of(meta, toolSet);
+    }
+
     private Pair<ResourceItemMetadata, ToolSet> getToolSet(ResourceDescriptor resource, boolean decryptAuthSettings, EtagHeader etagHeader) {
         verifyToolSet(resource);
         Pair<ResourceItemMetadata, String> result = resourceService.getResourceWithMetadata(resource, etagHeader);

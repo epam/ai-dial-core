@@ -230,12 +230,33 @@ public class AiDial {
             SecretFieldProcessor secretFieldProcessor = new SecretFieldProcessor(
                     credentialEncryptionService,
                     new BucketInfo(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION));
+
+            // Hoisted ahead of MergedConfigStore construction: platform-bucket application/toolset
+            // materialization (MergedConfigStore.rebuild's MANAGED_TYPES loop) needs
+            // externalServiceService/resourceAuthSettingsEncryptionService to decrypt secrets read
+            // from blob storage. Neither this block nor its transitive dependencies reference
+            // configStore/mergedConfigStore, so hoisting is safe; ApplicationSchemaService/
+            // CatalogSchemaService below (which DO depend on configStore) stay after it.
+            TimeProvider timeProvider = new TimeProvider();
+            TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);
+            ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient(httpProxySelector);
+            List<String> allowedRedirectUris = getAllowedRedirectUris();
+            TokenService tokenService = new TokenService(resourceAuthorizationClient, allowedRedirectUris);
+            ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient, allowedRedirectUris);
+            ResourceCredentialsService resourceCredentialsService = getResourceCredentialsService(
+                    tokenRefreshStrategyFactory, credentialEncryptionService, timeProvider, tokenService);
+            ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
+                    credentialEncryptionService);
+            ExternalServiceService externalServiceService = new ExternalServiceService(
+                    resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService);
+
             String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
             boolean softValidation = settings("config").getJsonObject("write", new JsonObject())
                     .getBoolean("softValidation", false);
             MergedConfigStore mergedConfigStore = new MergedConfigStore(
                     vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                    secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId);
+                    secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId,
+                    externalServiceService, resourceAuthSettingsEncryptionService);
             FileConfigStore fileConfigStore = new FileConfigStore(
                     vertx, settings("config"), null,
                     List.of(cfg -> mergedConfigStore.requestRebuild()));
@@ -245,19 +266,9 @@ public class AiDial {
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(resourceService, configStore, encryptionService, httpProxySelector);
             CatalogSchemaService catalogSchemaService = new CatalogSchemaService(resourceService, configStore, encryptionService);
 
-            TimeProvider timeProvider = new TimeProvider();
-            TokenRefreshStrategyFactory tokenRefreshStrategyFactory = new TokenRefreshStrategyFactory(timeProvider);
-            ResourceAuthorizationClient resourceAuthorizationClient = new ResourceAuthorizationClient(httpProxySelector);
-            List<String> allowedRedirectUris = getAllowedRedirectUris();
-            TokenService tokenService = new TokenService(resourceAuthorizationClient, allowedRedirectUris);
-            ResourceRegistrationService resourceRegistrationService = getResourceRegistrationService(resourceAuthorizationClient, allowedRedirectUris);
-            ResourceCredentialsService resourceCredentialsService = getResourceCredentialsService(
-                    tokenRefreshStrategyFactory, credentialEncryptionService, timeProvider, tokenService);
             ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
                     resourceCredentialsService, tokenRefreshStrategyFactory, resourceRegistrationService);
             AuthorizationHeaderProvider authorizationHeaderProvider = new AuthorizationHeaderProvider(resourceCredentialsService);
-            ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
-                    credentialEncryptionService);
             AuthSettingsResolver authSettingsResolver = new AuthSettingsResolver(
                     encryptionService, resourceAuthSettingsEncryptionService);
             ToolSetService toolSetService = new ToolSetService(resourceService, resourceAuthSettingsService,
@@ -270,8 +281,6 @@ public class AiDial {
                     resourceAuthSettingsEncryptionService, resourceCredentialsService,
                     resourceRegistrationService, resourceAuthSettingsService);
 
-            ExternalServiceService externalServiceService = new ExternalServiceService(
-                    resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService);
             UserExternalServiceService userExternalServiceService = new UserExternalServiceService(
                     resourceService, resourceAuthSettingsEncryptionService, encryptionService);
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
