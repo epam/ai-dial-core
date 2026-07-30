@@ -546,48 +546,6 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
-    public void testHandleRequestBody_InterfacesBaseUrl_DeploymentNameAlias() {
-        when(context.getRequest()).thenReturn(request);
-        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
-        when(upstreamRoute.next()).thenReturn(new Upstream());
-        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
-        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
-        when(context.getRequest()).thenReturn(request);
-        when(request.uri()).thenReturn("/openai/deployments/als-1/chat/completions");
-        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
-        when(proxy.getClient()).thenReturn(httpClient);
-        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
-        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
-        ApiKeyData proxyApiKeyData = new ApiKeyData();
-        proxyApiKeyData.setInterceptorIndex(0);
-        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
-
-        Model model = new Model();
-        model.setName("als-1");
-        model.setInterfaces(Map.of(
-                InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(),
-                new DeploymentInterface("http://host", "openai-gpt-5.4-mini")));
-        when(context.getDeployment()).thenReturn(model);
-        String body = """
-                {
-                    "model": "als-1",
-                    "messages": [],
-                    "stream": false
-                }
-                """;
-        Buffer requestBody = Buffer.buffer(body);
-
-        controller.handleRequestBody(requestBody);
-
-        ArgumentCaptor<RequestOptions> captor = ArgumentCaptor.forClass(RequestOptions.class);
-        verify(httpClient).request(captor.capture());
-        // deployment_name rewrites the ingress path's deployment segment, so the alias's own base_url
-        // (which may loop back to Core) lands on the aliased deployment instead of itself
-        assertEquals("/openai/deployments/openai-gpt-5.4-mini/chat/completions", captor.getValue().getURI());
-        assertEquals("host", captor.getValue().getHost());
-    }
-
-    @Test
     public void testHandleProxyRequest_PropagateAuthHeader() {
         when(context.getRequest()).thenReturn(request);
         Application application = new Application();

@@ -12859,8 +12859,6 @@ components:
       properties:
         base_url:
           type: string
-        deployment_name:
-          type: string
     Embedding:
       required:
       - embedding

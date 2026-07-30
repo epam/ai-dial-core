@@ -20,31 +20,15 @@ public class DeploymentInterface {
     @JsonProperty("base_url")
     private String baseUrl;
 
-    /**
-     * Deployment id to route to instead of the deployment declaring this interface. Restores the legacy
-     * alias pattern (a deployment whose {@code endpoint} pointed at another deployment's route) for the
-     * base_url flow, where the request otherwise carries the alias's own id back to {@code base_url}.
-     */
-    @JsonProperty("deployment_name")
-    private String deploymentName;
-
-    public DeploymentInterface(String baseUrl) {
-        this(baseUrl, null);
-    }
-
     @JsonCreator
     public DeploymentInterface(
             @JsonProperty(value = "base_url", required = true)
             @JsonAlias({"baseUrl", "base_url"})
-            String baseUrl,
-            @JsonProperty("deployment_name")
-            @JsonAlias({"deploymentName", "deployment_name"})
-            String deploymentName
+            String baseUrl
     ) {
         if (baseUrl == null || baseUrl.isEmpty()) {
             throw new IllegalArgumentException("baseUrl cannot be null or empty");
         }
         this.baseUrl = baseUrl;
-        this.deploymentName = deploymentName;
     }
 }
