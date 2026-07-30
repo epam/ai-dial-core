@@ -90,7 +90,8 @@ public class GfLogStore implements LogStore {
         return null;
     }
 
-    private void append(AnalyticsLogContext logContext, LogEntry entry) throws JsonProcessingException {
+    @VisibleForTesting
+    void append(AnalyticsLogContext logContext, LogEntry entry) throws JsonProcessingException {
         append(entry, "{\"apiType\":\"DialOpenAI\",\"chat\":{\"id\":\"", false);
         append(entry, logContext.getConversationId(), true);
 
