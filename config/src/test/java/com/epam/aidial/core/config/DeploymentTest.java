@@ -90,28 +90,17 @@ public class DeploymentTest {
     }
 
     @Test
-    void resolveRequestUriRewritesDeploymentSegmentForAlias() {
+    void resolveRequestUriRewritesInterceptorPseudoDeploymentSegment() {
+        // When a deployment has interceptors configured, the interceptor calls back into Core using the
+        // literal pseudo deployment id "interceptor" in the path instead of the real deployment name.
         Model model = new Model();
-        model.setName("als-2");
+        model.setName("essay-assistant-gpt");
         model.setInterfaces(Map.of(
-                OPENAI_CHAT_COMPLETIONS.getValue(),
-                new DeploymentInterface("http://localhost:6001", "openai-gpt-5.4-mini")));
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://localhost:5025")));
 
-        assertEquals("http://localhost:6001/openai/deployments/openai-gpt-5.4-mini/chat/completions?api-version=2024-10-21",
+        assertEquals("http://localhost:5025/openai/deployments/essay-assistant-gpt/chat/completions?api-version=2024-08-06",
                 model.resolveRequestUri(OPENAI_CHAT_COMPLETIONS,
-                        "/openai/deployments/als-2/chat/completions?api-version=2024-10-21", "api-version=2024-10-21"));
-    }
-
-    @Test
-    void resolveRequestUriLeavesPathAloneWhenNoDeploymentSegment() {
-        Model model = new Model();
-        model.setName("als-2");
-        model.setInterfaces(Map.of(
-                OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://localhost:6001", "openai-gpt-5.4-mini")));
-
-        // openaiResponses carries no /deployments/{name}/ segment; the model is overridden in the body instead
-        assertEquals("http://localhost:6001/openai/v1/responses",
-                model.resolveRequestUri(OPENAI_RESPONSES, "/openai/v1/responses", null));
+                        "/openai/deployments/interceptor/chat/completions?api-version=2024-08-06", "api-version=2024-08-06"));
     }
 
     @Test

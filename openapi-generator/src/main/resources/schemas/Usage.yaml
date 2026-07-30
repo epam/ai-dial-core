@@ -8,3 +8,5 @@ properties:
     type: integer
   prompt_tokens_details:
     $ref: '#/components/schemas/PromptTokensDetails'
+  completion_tokens_details:
+    $ref: '#/components/schemas/CompletionTokensDetails'

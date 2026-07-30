@@ -6,12 +6,14 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.deser.DeserializationProblemHandler;
+import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.json.schema.JsonSchemaValidator;
 import lombok.experimental.UtilityClass;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.Map;
 
 @UtilityClass
@@ -24,6 +26,25 @@ public class McpClientUtils {
     public static final McpJsonMapper MCP_JSON_MAPPER = createLenientMcpJsonMapper();
 
     private static final String ADDITIONAL_PROPERTIES_FIELD = "additionalProperties";
+
+    /**
+     * The SDK's transport builder defaults to endpoint "/mcp", and since it resolves as an absolute-path
+     * reference, it replaces (rather than appends to) the base URI's path - silently dropping any path
+     * configured on the endpoint. Splitting origin/path here and always setting endpoint(...) explicitly
+     * ensures the configured endpoint is what actually gets requested.
+     */
+    public static HttpClientStreamableHttpTransport.Builder transportBuilder(String endpoint) {
+        URI uri = URI.create(endpoint);
+        String path = uri.getRawPath();
+        if (path == null || path.isEmpty()) {
+            path = "/";
+        }
+        if (uri.getRawQuery() != null) {
+            path = path + "?" + uri.getRawQuery();
+        }
+        String origin = uri.getScheme() + "://" + uri.getRawAuthority();
+        return HttpClientStreamableHttpTransport.builder(origin).endpoint(path);
+    }
 
     private static McpJsonMapper createLenientMcpJsonMapper() {
         ObjectMapper mapper = new ObjectMapper();
