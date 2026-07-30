@@ -13,7 +13,8 @@ import lombok.extern.slf4j.Slf4j;
  * {@code input_tokens} EXCLUDES the cache counters. DIAL accounting follows the OpenAI semantics
  * that {@link TokenUsage} consumers (rate limiter, usage logs) are built around, so prompt tokens
  * here are {@code input + cache_read + cache_creation}, with {@code cache_read_input_tokens} exposed
- * as the {@link PromptTokensDetails#getCachedTokens()} subset.
+ * as the {@link PromptTokensDetails#getCachedTokens()} subset and {@code cache_creation_input_tokens}
+ * as the {@link PromptTokensDetails#getCacheWriteTokens()} subset.
  */
 @Slf4j
 @UtilityClass
@@ -55,9 +56,10 @@ public class MessagesTokenUsageParser {
         tokenUsage.setPromptTokens(promptTokens);
         tokenUsage.setCompletionTokens(outputTokens);
         tokenUsage.setTotalTokens(promptTokens + outputTokens);
-        if (cacheReadTokens > 0) {
+        if (cacheReadTokens > 0 || cacheCreationTokens > 0) {
             PromptTokensDetails details = new PromptTokensDetails();
             details.setCachedTokens(cacheReadTokens);
+            details.setCacheWriteTokens(cacheCreationTokens);
             tokenUsage.setPromptTokensDetails(details);
         }
         return tokenUsage;

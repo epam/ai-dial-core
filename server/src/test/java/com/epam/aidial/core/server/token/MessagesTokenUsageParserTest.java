@@ -26,6 +26,7 @@ public class MessagesTokenUsageParserTest {
         assertEquals(20, usage.getTotalTokens());
         assertNotNull(usage.getPromptTokensDetails());
         assertEquals(2, usage.getPromptTokensDetails().getCachedTokens());
+        assertEquals(0, usage.getPromptTokensDetails().getCacheWriteTokens());
     }
 
     @Test
@@ -38,8 +39,23 @@ public class MessagesTokenUsageParserTest {
         assertNotNull(usage);
         assertEquals(20, usage.getPromptTokens());
         assertEquals(25, usage.getTotalTokens());
-        // Only cache reads count as "cached" (subset semantics); cache writes are ordinary prompt tokens.
+        // Cache reads and cache writes are disjoint subsets of prompt tokens.
         assertEquals(7, usage.getPromptTokensDetails().getCachedTokens());
+        assertEquals(3, usage.getPromptTokensDetails().getCacheWriteTokens());
+    }
+
+    @Test
+    void parseCountsCacheCreationTokensWithoutCacheReads() {
+        Buffer body = Buffer.buffer(
+                "{\"usage\":{\"input_tokens\":10,\"output_tokens\":5,\"cache_creation_input_tokens\":3}}");
+
+        TokenUsage usage = MessagesTokenUsageParser.parse(body);
+
+        assertNotNull(usage);
+        assertEquals(13, usage.getPromptTokens());
+        assertNotNull(usage.getPromptTokensDetails());
+        assertEquals(0, usage.getPromptTokensDetails().getCachedTokens());
+        assertEquals(3, usage.getPromptTokensDetails().getCacheWriteTokens());
     }
 
     @Test

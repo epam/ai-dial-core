@@ -20,6 +20,7 @@ import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResponseMappingService;
+import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -298,6 +299,9 @@ public class ResponsesControllerTest {
         PromptTokensDetails promptTokensDetails = new PromptTokensDetails();
         promptTokensDetails.setCachedTokens(0);
         tokenUsage.setPromptTokensDetails(promptTokensDetails);
+        CompletionTokensDetails completionTokensDetails = new CompletionTokensDetails();
+        completionTokensDetails.setReasoningTokens(0);
+        tokenUsage.setCompletionTokensDetails(completionTokensDetails);
         tokenUsage.setTotalTokens(28);
 
         when(request.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
