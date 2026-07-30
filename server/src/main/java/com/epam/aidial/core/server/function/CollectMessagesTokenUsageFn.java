@@ -21,6 +21,7 @@ public class CollectMessagesTokenUsageFn extends BaseResponseFunction {
     private long outputTokens;
     private long cacheReadTokens;
     private long cacheCreationTokens;
+    private long thinkingTokens;
 
     public CollectMessagesTokenUsageFn(Proxy proxy, ProxyContext context) {
         super(proxy, context);
@@ -39,7 +40,9 @@ public class CollectMessagesTokenUsageFn extends BaseResponseFunction {
             outputTokens = usage.path("output_tokens").asLong(outputTokens);
             cacheReadTokens = usage.path("cache_read_input_tokens").asLong(cacheReadTokens);
             cacheCreationTokens = usage.path("cache_creation_input_tokens").asLong(cacheCreationTokens);
-            context.setTokenUsage(MessagesTokenUsageParser.build(inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens));
+            thinkingTokens = usage.path("output_tokens_details").path("thinking_tokens").asLong(thinkingTokens);
+            context.setTokenUsage(MessagesTokenUsageParser.build(
+                    inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, thinkingTokens));
         }
         return Future.succeededFuture(tree);
     }
