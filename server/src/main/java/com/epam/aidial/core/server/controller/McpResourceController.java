@@ -132,31 +132,21 @@ public class McpResourceController implements Controller {
             Deployment deployment = deploymentService.findDeployment(context, applicationId);
             consentService.verifyUserConsent(context, deployment);
             context.setDeployment(deployment);
-            Map<String, String> authHeaders = new LinkedHashMap<>();
             if (deployment instanceof Application app) {
-                Application.Mcp mcp;
                 if (app.hasApplicationTypeSchemaId()) {
-                    mcp = applicationSchemaService.getMcp(app);
-                    app.setMcp(mcp);
-                } else {
-                    mcp = app.getMcp();
+                    app.setMcp(applicationSchemaService.getMcp(app));
                 }
-                if (mcp == null) {
+                if (app.getMcp() == null) {
                     throw new IllegalArgumentException("Application doesn't support MCP protocol: " + applicationId);
                 }
-                authInjector.inject(authHeaders::put, app, context);
-            } else if (deployment instanceof ToolSet toolSet) {
-                CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
-                        UrlUtil.encodePath(applicationId), context, ResourceTypes.TOOL_SET);
-                authInjector.inject(authHeaders::put, toolSet, context, credentialsLocator);
-            } else {
+            } else if (!(deployment instanceof ToolSet)) {
                 throw new ResourceNotFoundException("Application or ToolSet is not found: " + applicationId);
             }
-            return new FetchContext(deployment, authHeaders);
-        }).compose(fc -> rateLimiter.limit(context, fc.deployment())
+            return deployment;
+        }).compose(deployment -> rateLimiter.limit(context, deployment)
                 .compose(rateLimitResult -> {
                     if (rateLimitResult.status() == HttpStatus.OK) {
-                        return fetchResource(fc, resourceUri);
+                        return fetchResource(deployment, resourceUri);
                     }
                     handleRateLimitHit(rateLimitResult);
                     return Future.succeededFuture();
@@ -168,19 +158,26 @@ public class McpResourceController implements Controller {
                 .onComplete(ignored -> finalizeRequest());
     }
 
-    private record FetchContext(Deployment deployment, Map<String, String> authHeaders) {}
-
-    private Future<?> fetchResource(FetchContext fc, String resourceUri) {
+    private Future<?> fetchResource(Deployment deployment, String resourceUri) {
         return taskExecutor.submit(() -> {
-            String endpoint = fc.deployment() instanceof Application app
-                    ? app.getMcp().getEndpoint()
-                    : fc.deployment().getEndpoint();
+            Map<String, String> authHeaders = new LinkedHashMap<>();
+            String endpoint;
+            if (deployment instanceof Application app) {
+                authInjector.inject(authHeaders::put, app, context);
+                endpoint = app.getMcp().getEndpoint();
+            } else {
+                ToolSet toolSet = (ToolSet) deployment;
+                CredentialsLocator credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
+                        UrlUtil.encodePath(applicationId), context, ResourceTypes.TOOL_SET);
+                authInjector.inject(authHeaders::put, toolSet, context, credentialsLocator);
+                endpoint = toolSet.getEndpoint();
+            }
             try {
                 McpClientUtils.withSyncClient(
                         endpoint,
                         Duration.ofMillis(proxy.getClientOptions().getIdleTimeout()),
                         mcpHttpClientBuilderService.httpClientBuilder(),
-                        builder -> fc.authHeaders().forEach(builder::header),
+                        builder -> authHeaders.forEach(builder::header),
                         client -> {
                             McpSchema.ReadResourceResult result = client.readResource(
                                     new McpSchema.ReadResourceRequest(resourceUri));
