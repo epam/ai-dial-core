@@ -153,9 +153,6 @@ Applications support only one interface type:
 Each value is an object with the following fields:
 
 * `base_url`: The application adapter root that the matching ingress path is appended to.
-* `deployment_name` (optional): Routes the request as if it had been sent to a different deployment name, instead of the name this application was actually called by. The `{name}` segment of the ingress path (`/openai/deployments/{name}/...`) is rewritten to `deployment_name` before it's appended to `base_url`. This restores the "alias deployment" pattern from before `interfaces` existed — a lightweight, catalog-facing application name that just forwards to another, "real" deployment — without it looping back onto itself when `base_url` points back at DIAL Core.
-
-  DIAL Core does not currently detect or reject self-referencing or cyclic `deployment_name` values, so avoid pointing one back at itself (directly or through another alias).
 
 **Example**
 
@@ -164,12 +161,6 @@ Each value is an object with the following fields:
     "app-via-interfaces": {
         "interfaces": {
             "openaiChatCompletions": { "base_url": "http://localhost:7005" }
-        }
-    },
-    "app-alias": {
-        "displayName": "App (friendly alias)",
-        "interfaces": {
-            "openaiChatCompletions": { "base_url": "http://localhost:8080", "deployment_name": "app-via-interfaces" }
         }
     }
 }
