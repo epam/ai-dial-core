@@ -59,6 +59,21 @@ public class MessagesTokenUsageParserTest {
     }
 
     @Test
+    void parseMapsThinkingTokensToReasoningTokens() {
+        Buffer body = Buffer.buffer(
+                "{\"usage\":{\"input_tokens\":10,\"output_tokens\":8,\"output_tokens_details\":{\"thinking_tokens\":6}}}");
+
+        TokenUsage usage = MessagesTokenUsageParser.parse(body);
+
+        assertNotNull(usage);
+        // Thinking tokens are a subset of output tokens, so prompt/total accounting is unchanged.
+        assertEquals(8, usage.getCompletionTokens());
+        assertEquals(18, usage.getTotalTokens());
+        assertNotNull(usage.getCompletionTokensDetails());
+        assertEquals(6, usage.getCompletionTokensDetails().getReasoningTokens());
+    }
+
+    @Test
     void parseWithoutCacheLeavesDetailsNull() {
         Buffer body = Buffer.buffer("{\"usage\":{\"input_tokens\":3,\"output_tokens\":4}}");
 
@@ -67,6 +82,7 @@ public class MessagesTokenUsageParserTest {
         assertNotNull(usage);
         assertEquals(7, usage.getTotalTokens());
         assertNull(usage.getPromptTokensDetails());
+        assertNull(usage.getCompletionTokensDetails());
     }
 
     @Test
