@@ -300,6 +300,10 @@ public enum RouteTemplate {
             "^/v1/deployments/(?<id>.+?)/mcp$",
             "/v1/deployments/{id}/mcp"
     ),
+    MCP_RESOURCE(
+            "^/v1/deployments/(?<id>.+?)/mcp/resources$",
+            "/v1/deployments/{id}/mcp/resources"
+    ),
     TOOL_SET_PROXY_METADATA(
             "^/\\.well-known/oauth-protected-resource/v1/toolset/(?<id>.+?)/mcp$",
             "/.well-known/oauth-protected-resource/v1/toolset/{id}/mcp"
