@@ -476,8 +476,14 @@ public class AdminApplyController {
         // Bulk admin apply is always admin context — preserve forwardAuthToken if the manifest set it.
         applicationService.putApplication(descriptor, EtagHeader.ANY, null, application, true,
                 AdminManagedFieldsWriteMode.AUTHORITATIVE);
-        Application decrypted = applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
-        pending.add(new EntityChange(ResourceTypes.APPLICATION, MergedConfigStore.canonicalId(descriptor), decrypted));
+        // Only the platform bucket is materialized into MergedConfigStore (see EntityLocationStrategy) —
+        // public-bucket apps stay outside it and are served lazily by ApplicationService, so pushing
+        // them into `pending` here would spuriously duplicate them in config.getApplications()-backed
+        // listings (e.g. ApplicationController/DeploymentController) until the next full rebuild.
+        if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
+            Application decrypted = applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
+            pending.add(new EntityChange(ResourceTypes.APPLICATION, MergedConfigStore.canonicalId(descriptor), decrypted));
+        }
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
@@ -486,8 +492,12 @@ public class AdminApplyController {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.TOOL_SET, parsed.bucket(), parsed.location(), parsed.name());
         toolSetService.putToolSet(descriptor, EtagHeader.ANY, null, toolSet, true);
-        ToolSet decrypted = toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
-        pending.add(new EntityChange(ResourceTypes.TOOL_SET, MergedConfigStore.canonicalId(descriptor), decrypted));
+        // Same rationale as applyApplication above — only platform-bucket toolsets belong in
+        // MergedConfigStore.
+        if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
+            ToolSet decrypted = toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
+            pending.add(new EntityChange(ResourceTypes.TOOL_SET, MergedConfigStore.canonicalId(descriptor), decrypted));
+        }
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 

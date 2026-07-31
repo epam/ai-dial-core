@@ -185,13 +185,25 @@ public class AccessService {
         if (hasAdminAccess(context)) {
             return resources.stream()
                     .filter(resource -> resource.isPublic()
-                            || resource.getBucketLocation().equals(ResourceDescriptor.PLATFORM_LOCATION)
+                            || isPlatformBucketAppOrToolSet(resource)
                             || PublicationService.isReviewBucket(resource)
                             || ApplicationService.isPublicApplicationSourceDirectory(resource))
                     .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.ALL));
         }
 
         return Map.of();
+    }
+
+    /**
+     * Platform-bucket Applications/ToolSets are the only platform-bucket resource types whose
+     * write path (external-service sign-in/credentials controllers) checks access via
+     * {@link #lookupPermissions} rather than {@code AdminRoleAuthorizationService} — so admin ALL
+     * access is extended here only for those two types, not every platform-bucket resource (models,
+     * interceptors, roles, routes, keys are already fully admin-gated elsewhere and don't need this).
+     */
+    private static boolean isPlatformBucketAppOrToolSet(ResourceDescriptor resource) {
+        return resource.getBucketLocation().equals(ResourceDescriptor.PLATFORM_LOCATION)
+                && (resource.getType() == ResourceTypes.APPLICATION || resource.getType() == ResourceTypes.TOOL_SET);
     }
 
     @VisibleForTesting

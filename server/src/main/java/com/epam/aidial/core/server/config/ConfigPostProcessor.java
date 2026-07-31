@@ -356,7 +356,7 @@ public final class ConfigPostProcessor {
             if (skipOnDuplicate(name, ResourceTypes.TOOL_SET, deploymentIds, onSkip, iterator)) {
                 continue;
             }
-            if (isValidResourceKey(name)) {
+            if (isValidToolSetKey(name)) {
                 ToolSet toolSet = entry.getValue();
                 toolSet.setName(name);
                 log.debug("Loading {}", entry.getValue());
@@ -388,10 +388,16 @@ public final class ConfigPostProcessor {
         return true;
     }
 
-    // Bare file-sourced names have no '/'; API-managed toolsets are keyed by their canonical id
-    // ("toolsets/platform/name") — validate only the trailing short-name segment in that case, same
-    // as the plain-name case would validate the whole (slash-free) string.
     private static boolean isValidResourceKey(String resourceKey) {
+        return RESOURCE_KEY_PATTERN.matcher(resourceKey).matches();
+    }
+
+    // Bare file-sourced toolset names have no '/'; API-managed toolsets are keyed by their canonical
+    // id ("toolsets/platform/name") — validate only the trailing short-name segment in that case, same
+    // as the plain-name case would validate the whole (slash-free) string. Only ToolSet map keys are
+    // ever canonical-id-shaped this way — other RESOURCE_KEY_PATTERN callers (e.g. external-service
+    // ids) must keep going through the strict isValidResourceKey above.
+    private static boolean isValidToolSetKey(String resourceKey) {
         int slash = resourceKey.lastIndexOf('/');
         String candidate = slash < 0 ? resourceKey : resourceKey.substring(slash + 1);
         return RESOURCE_KEY_PATTERN.matcher(candidate).matches();
