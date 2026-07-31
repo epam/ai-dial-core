@@ -12144,6 +12144,8 @@ components:
         catalogSchemaId:
           type: string
           format: uri
+        overrideName:
+          type: string
     ApplicationData:
       type: object
       properties:
@@ -13319,6 +13321,8 @@ components:
         catalogSchemaId:
           type: string
           format: uri
+        overrideName:
+          type: string
     Invitation:
       type: object
       properties:
@@ -14942,6 +14946,8 @@ components:
         catalogSchemaId:
           type: string
           format: uri
+        overrideName:
+          type: string
     ToolSetData:
       type: object
       properties:

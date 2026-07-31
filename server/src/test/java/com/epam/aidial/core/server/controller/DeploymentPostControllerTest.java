@@ -473,6 +473,47 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
+    public void testHandleRequestBody_OverrideModelName_Application() throws IOException {
+        when(context.getRequest()).thenReturn(request);
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(upstreamRoute.next()).thenReturn(new Upstream("endpoint", null, null, null, null, 0, 0, null));
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(context.getRequest()).thenReturn(request);
+        when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
+        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setInterceptorIndex(0);
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+
+        Application application = new Application();
+        application.setName("name");
+        application.setEndpoint("http://host/app");
+        application.setOverrideName("overrideName");
+        when(context.getDeployment()).thenReturn(application);
+        String body = """
+                {
+                    "model": "name",
+                    "messages": [],
+                    "stream": false
+                }
+                """;
+        Buffer requestBody = Buffer.buffer(body);
+        when(context.getRequestBody()).thenCallRealMethod();
+        doCallRealMethod().when(context).setRequestBody(any());
+
+        controller.handleRequestBody(requestBody);
+
+        Buffer updatedBody = context.getRequestBody();
+        assertNotNull(updatedBody);
+
+        byte[] content = updatedBody.getBytes();
+        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(content);
+        assertEquals(tree.get("model").asText(), "overrideName");
+    }
+
+    @Test
     public void testHandleRequestBody_UseUpstreamWithoutEndpoint() {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);

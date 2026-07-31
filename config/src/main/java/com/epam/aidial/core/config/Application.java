@@ -178,6 +178,7 @@ public class Application extends Deployment {
         this.setDescription(source.getDescription());
         this.setIntro(source.getIntro());
         this.setReference(source.getReference());
+        this.setOverrideName(source.getOverrideName());
         this.setUserRoles(source.getUserRoles());
         this.setForwardAuthToken(source.isForwardAuthToken());
         this.setFeatures(source.getFeatures());

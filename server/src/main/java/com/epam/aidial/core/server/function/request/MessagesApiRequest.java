@@ -12,7 +12,7 @@ import java.util.Set;
 
 /**
  * Anthropic Messages API request. Pure pass-through: the body is forwarded verbatim except for the
- * model-name override applied by {@code EnhanceModelRequestFn}.
+ * model-name override applied by {@code EnhanceDeploymentRequestFn}.
  */
 @RequiredArgsConstructor
 public class MessagesApiRequest implements RequestObject {

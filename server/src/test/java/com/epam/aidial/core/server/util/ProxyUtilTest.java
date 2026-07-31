@@ -1,9 +1,13 @@
 package com.epam.aidial.core.server.util;
 
+import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.data.Conversation;
 import com.epam.aidial.core.server.data.Prompt;
+import io.vertx.core.MultiMap;
 import io.vertx.core.http.HttpConnection;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import io.vertx.core.net.SocketAddress;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -216,5 +220,37 @@ public class ProxyUtilTest {
         when(socketAddress.isInetSocket()).thenReturn(true);
         when(socketAddress.host()).thenReturn("203.0.113.195");
         assertEquals("203.0.113.195", ProxyUtil.getClientIpAddress(request, 3));
+    }
+
+    @Test
+    public void testSetOverrideNameHeader_NullDeployment_DoesNotThrowAndDoesNotSetHeader() {
+        MultiMap headers = new HeadersMultiMap();
+
+        assertDoesNotThrow(() -> ProxyUtil.setOverrideNameHeader(headers, null));
+
+        assertNull(headers.get(Proxy.HEADER_OVERRIDE_NAME));
+    }
+
+    @Test
+    public void testSetOverrideNameHeader_OverrideNameSet_SetsHeader() {
+        MultiMap headers = new HeadersMultiMap();
+        Model model = new Model();
+        model.setName("name");
+        model.setOverrideName("overrideName");
+
+        ProxyUtil.setOverrideNameHeader(headers, model);
+
+        assertEquals("overrideName", headers.get(Proxy.HEADER_OVERRIDE_NAME));
+    }
+
+    @Test
+    public void testSetOverrideNameHeader_OverrideNameNull_DoesNotSetHeader() {
+        MultiMap headers = new HeadersMultiMap();
+        Model model = new Model();
+        model.setName("name");
+
+        ProxyUtil.setOverrideNameHeader(headers, model);
+
+        assertNull(headers.get(Proxy.HEADER_OVERRIDE_NAME));
     }
 }
