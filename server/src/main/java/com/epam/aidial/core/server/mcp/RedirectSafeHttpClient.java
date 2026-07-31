@@ -1,6 +1,4 @@
-package com.epam.aidial.core.server.service;
-
-import com.epam.aidial.core.server.util.McpClientUtils;
+package com.epam.aidial.core.server.mcp;
 
 import java.io.IOException;
 import java.net.Authenticator;

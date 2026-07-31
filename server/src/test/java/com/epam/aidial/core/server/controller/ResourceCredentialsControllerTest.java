@@ -12,10 +12,10 @@ import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.DeploymentService;
-import com.epam.aidial.core.server.service.McpHttpClientBuilderService;
 import com.epam.aidial.core.server.service.SecuredResourceService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -71,7 +71,7 @@ class ResourceCredentialsControllerTest {
     @Mock
     private ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
     @Mock
-    private McpHttpClientBuilderService mcpHttpClientBuilderService;
+    private McpHttpClientBuilder mcpHttpClientBuilder;
 
     private ResourceCredentialsController controller;
 
@@ -83,7 +83,7 @@ class ResourceCredentialsControllerTest {
         when(proxy.getDeploymentService()).thenReturn(deploymentService);
         when(proxy.getResourceAuthSettingsEncryptionService()).thenReturn(resourceAuthSettingsEncryptionService);
         when(proxy.getSecuredResourceService()).thenReturn(
-                new SecuredResourceService(resourceCredentialsService, mcpHttpClientBuilderService));
+                new SecuredResourceService(resourceCredentialsService, mcpHttpClientBuilder));
 
         doAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);

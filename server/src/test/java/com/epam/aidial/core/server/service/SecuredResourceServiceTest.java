@@ -12,6 +12,7 @@ import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -46,20 +47,20 @@ class SecuredResourceServiceTest {
     @Mock
     private ResourceCredentialsService resourceCredentialsService;
 
-    private McpHttpClientBuilderService mcpHttpClientBuilderService;
+    private McpHttpClientBuilder mcpHttpClientBuilder;
     private SecuredResourceService service;
 
     @BeforeEach
     void setup() {
-        McpHttpClientBuilderService.Settings settings = new McpHttpClientBuilderService.Settings();
+        McpHttpClientBuilder.Settings settings = new McpHttpClientBuilder.Settings();
         settings.setConnectTimeout(1000);
-        mcpHttpClientBuilderService = new McpHttpClientBuilderService(settings);
-        service = new SecuredResourceService(resourceCredentialsService, mcpHttpClientBuilderService);
+        mcpHttpClientBuilder = new McpHttpClientBuilder(settings);
+        service = new SecuredResourceService(resourceCredentialsService, mcpHttpClientBuilder);
     }
 
     @AfterEach
     void tearDown() {
-        mcpHttpClientBuilderService.close();
+        mcpHttpClientBuilder.close();
     }
 
     @Test

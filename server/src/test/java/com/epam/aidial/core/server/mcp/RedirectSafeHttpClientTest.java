@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.service;
+package com.epam.aidial.core.server.mcp;
 
 import com.epam.aidial.core.server.TestWebServer;
 import okhttp3.mockwebserver.MockResponse;

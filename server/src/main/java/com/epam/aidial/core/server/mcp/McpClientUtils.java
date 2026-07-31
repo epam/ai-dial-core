@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.util;
+package com.epam.aidial.core.server.mcp;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;

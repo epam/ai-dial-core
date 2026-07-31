@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.service;
+package com.epam.aidial.core.server.mcp;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
@@ -20,12 +20,12 @@ import javax.net.ssl.SSLParameters;
  * {@code HttpClient.Builder} slot the third-party code exposes; every {@code build()} call on it
  * returns this shared client unchanged.
  */
-public class McpHttpClientBuilderService implements AutoCloseable {
+public class McpHttpClientBuilder implements AutoCloseable {
 
     private final HttpClient httpClient;
     private final HttpClient redirectSafeHttpClient;
 
-    public McpHttpClientBuilderService(Settings settings) {
+    public McpHttpClientBuilder(Settings settings) {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(settings.getConnectTimeout()))
                 // the SDK's own default client builder requests HTTP/1.1; that preference is otherwise
