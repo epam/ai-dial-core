@@ -447,7 +447,7 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Application",
-                      "name": "gov-applied-app",
+                      "name": "applications/public/gov-applied-app",
                       "spec": {
                         "endpoint": "http://localhost:7001/v1/x",
                         "display_name": "Gov Applied App",
@@ -485,7 +485,7 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Application",
-                      "name": "gov-edit-app",
+                      "name": "applications/public/gov-edit-app",
                       "spec": {
                         "endpoint": "http://localhost:7001/v1/x",
                         "display_name": "Gov Edit App",
@@ -654,7 +654,7 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Application",
-                      "name": "%s",
+                      "name": "applications/public/%s",
                       "spec": {
                         "endpoint": "http://localhost:7001/v1/x",
                         "display_name": "Gov Reapply App",
@@ -862,7 +862,7 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Application",
-                      "name": "raw-user-svc-app",
+                      "name": "applications/public/raw-user-svc-app",
                       "spec": {
                         "endpoint": "http://localhost:7001/v1/x",
                         "display_name": "Raw User Svc App",

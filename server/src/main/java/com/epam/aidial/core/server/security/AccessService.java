@@ -185,6 +185,7 @@ public class AccessService {
         if (hasAdminAccess(context)) {
             return resources.stream()
                     .filter(resource -> resource.isPublic()
+                            || resource.getBucketLocation().equals(ResourceDescriptor.PLATFORM_LOCATION)
                             || PublicationService.isReviewBucket(resource)
                             || ApplicationService.isPublicApplicationSourceDirectory(resource))
                     .collect(Collectors.toUnmodifiableMap(Function.identity(), resource -> ResourceAccessType.ALL));

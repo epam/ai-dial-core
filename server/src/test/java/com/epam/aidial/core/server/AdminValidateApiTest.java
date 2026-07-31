@@ -28,7 +28,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Model",
-                      "name": "validate-happy-model",
+                      "name": "models/platform/validate-happy-model",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
@@ -55,37 +55,37 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Settings",
-                      "name": "global",
+                      "name": "settings/platform/global",
                       "spec": {"globalInterceptors": [], "retriableErrorCodes": []}
                     },
                     {
                       "kind": "Schema",
-                      "name": "validate-schema",
+                      "name": "schemas/platform/validate-schema",
                       "spec": {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"}
                     },
                     {
                       "kind": "Interceptor",
-                      "name": "validate-int",
+                      "name": "interceptors/platform/validate-int",
                       "spec": {"endpoint": "http://localhost:4088/api/v1/interceptor/handle"}
                     },
                     {
                       "kind": "Role",
-                      "name": "validate-role",
+                      "name": "roles/platform/validate-role",
                       "spec": {"limits": {}}
                     },
                     {
                       "kind": "Key",
-                      "name": "validate-key",
+                      "name": "keys/platform/validate-key",
                       "spec": {"key": "validateSecret123", "project": "EPM-RTC-VALIDATE", "role": "default"}
                     },
                     {
                       "kind": "Route",
-                      "name": "validate-route",
+                      "name": "routes/platform/validate-route",
                       "spec": {"paths": ["/route/.*"], "methods": ["GET"], "response": {"status": 200, "body": "ok"}}
                     },
                     {
                       "kind": "Model",
-                      "name": "validate-model",
+                      "name": "models/platform/validate-model",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
@@ -93,7 +93,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                     },
                     {
                       "kind": "ToolSet",
-                      "name": "validate-toolset",
+                      "name": "toolsets/public/validate-toolset",
                       "spec": {
                         "transport": "http",
                         "endpoint": "http://localhost:9876",
@@ -102,7 +102,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                     },
                     {
                       "kind": "Application",
-                      "name": "validate-app",
+                      "name": "applications/public/validate-app",
                       "spec": {"endpoint": "http://example.com/v1/completions", "display_name": "Validate App"}
                     }
                   ]
@@ -143,7 +143,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Model",
-                      "name": "validate-precheck-bad",
+                      "name": "models/platform/validate-precheck-bad",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
@@ -171,12 +171,12 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Interceptor",
-                      "name": "validate-mixed-int",
+                      "name": "interceptors/platform/validate-mixed-int",
                       "spec": {"endpoint": "http://localhost:4088/api/v1/interceptor/handle"}
                     },
                     {
                       "kind": "Model",
-                      "name": "validate-mixed-bad",
+                      "name": "models/platform/validate-mixed-bad",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
@@ -221,7 +221,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Model",
-                      "name": "validate-soft-bad",
+                      "name": "models/platform/validate-soft-bad",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
@@ -250,7 +250,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Model",
-                      "name": "validate-partial-good",
+                      "name": "models/platform/validate-partial-good",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
@@ -258,7 +258,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                     },
                     {
                       "kind": "Model",
-                      "name": "validate-partial-bad",
+                      "name": "models/platform/validate-partial-bad",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
@@ -347,7 +347,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Model",
-                      "name": "validate-order-model",
+                      "name": "models/platform/validate-order-model",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
@@ -356,7 +356,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                     },
                     {
                       "kind": "Interceptor",
-                      "name": "validate-order-int",
+                      "name": "interceptors/platform/validate-order-int",
                       "spec": {"endpoint": "http://localhost:4088/api/v1/interceptor/handle"}
                     }
                   ]
@@ -409,7 +409,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Model",
-                      "name": "validate-jackson-bad",
+                      "name": "models/platform/validate-jackson-bad",
                       "spec": {"type": "chat", "limits": "not-an-object"}
                     }
                   ]
@@ -436,7 +436,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Settings",
-                      "name": "global",
+                      "name": "settings/platform/global",
                       "spec": {"globalInterceptors": [], "retriableErrorCodes": [599]}
                     }
                   ]
@@ -488,7 +488,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                       "manifests": [
                         {
                           "kind": "Model",
-                          "name": "validate-soft-mode",
+                          "name": "models/platform/validate-soft-mode",
                           "spec": {
                             "type": "chat",
                             "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
