@@ -30,6 +30,7 @@ import com.epam.aidial.core.server.controller.FileConfigController;
 import com.epam.aidial.core.server.controller.FileMetadataController;
 import com.epam.aidial.core.server.controller.InvitationController;
 import com.epam.aidial.core.server.controller.LimitController;
+import com.epam.aidial.core.server.controller.McpResourceController;
 import com.epam.aidial.core.server.controller.ModelController;
 import com.epam.aidial.core.server.controller.NotificationController;
 import com.epam.aidial.core.server.controller.PerRequestPermissionController;
@@ -65,6 +66,7 @@ public final class AnnotationEndpointCollector {
             AdminValidateController.class,
             ApplicationController.class,
             ApplicationMcpProxyController.class,
+            McpResourceController.class,
             ApplicationTypeSchemaController.class,
             BucketController.class,
             CatalogSchemaController.class,

@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
@@ -7,7 +8,9 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.function.FilterAllowedToolsFn;
+import com.epam.aidial.core.server.function.RewriteMcpUiDomainFn;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
@@ -48,6 +51,7 @@ import org.apache.commons.lang3.Strings;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -271,11 +275,10 @@ public class McpProxyController implements Controller {
     }
 
     private void handleSseProxyResponse(HttpClientResponse proxyResponse) {
-        BufferingReadStream.BaseEventListener eventListener = null;
-        if (requireToolFiltering()) {
-            FilterAllowedToolsFn fn = new FilterAllowedToolsFn(proxy, context);
-            eventListener = new BufferingReadStream.BaseEventListener(List.of(fn));
-        }
+        List<BaseResponseFunction> fns = buildToolsListResponseFunctions();
+        BufferingReadStream.BaseEventListener eventListener = fns.isEmpty()
+                ? null
+                : new BufferingReadStream.BaseEventListener(fns);
 
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024), eventListener);
@@ -353,12 +356,16 @@ public class McpProxyController implements Controller {
 
     private void handleResponse(int responseStatus, Buffer proxyResponseBody, List<String> contentEncodings) {
         Future<Buffer> future;
-        if (requireToolFiltering()) {
+        List<BaseResponseFunction> fns = buildToolsListResponseFunctions();
+        if (!fns.isEmpty()) {
             try {
                 byte[] decoded = Compression.decodeHttpBody(contentEncodings, proxyResponseBody.getBytes());
                 JsonNode tree = ProxyUtil.MAPPER.readTree(decoded);
-                FilterAllowedToolsFn fn = new FilterAllowedToolsFn(proxy, context);
-                future = fn.apply(tree).map(result -> Buffer.buffer(result.toString()));
+                Future<JsonNode> chain = Future.succeededFuture(tree);
+                for (BaseResponseFunction fn : fns) {
+                    chain = chain.compose(fn);
+                }
+                future = chain.map(result -> Buffer.buffer(result.toString()));
                 // We re-serialize the filtered tool list as plain JSON, so the Content-Encoding
                 // copied from the origin no longer describes the body we send to the client.
                 context.getResponse().headers().remove(HttpHeaders.CONTENT_ENCODING);
@@ -384,8 +391,27 @@ public class McpProxyController implements Controller {
         });
     }
 
-    private boolean requireToolFiltering() {
-        return "tools/list".equalsIgnoreCase(mcpMethodName) && useAllowedTools;
+    private List<BaseResponseFunction> buildToolsListResponseFunctions() {
+        if (!"tools/list".equalsIgnoreCase(mcpMethodName)) {
+            return List.of();
+        }
+        List<BaseResponseFunction> fns = new ArrayList<>();
+        if (useAllowedTools) {
+            fns.add(new FilterAllowedToolsFn(proxy, context));
+        }
+        if (hasMcpAppsDomain()) {
+            fns.add(new RewriteMcpUiDomainFn(proxy, context));
+        }
+        return fns;
+    }
+
+    private boolean hasMcpAppsDomain() {
+        if (context.getDeployment() instanceof Application app
+                && app.getMcp() != null
+                && app.getMcp().getMcpApps() != null) {
+            return app.getMcp().getMcpApps().getDomainOverride() != null;
+        }
+        return false;
     }
 
     private boolean isToolCallAllowed(JsonNode tree) {
