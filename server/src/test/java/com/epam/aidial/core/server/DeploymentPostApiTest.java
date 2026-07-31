@@ -167,34 +167,6 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
     }
 
     @Test
-    public void testDeploymentNameAliasRewritesIngressPathSegment() {
-        MutableObject<String> capturedPath = new MutableObject<>();
-        try (TestWebServer server = new TestWebServer(4848)) {
-            // chat-alias declares deployment_name=gpt-3-turbo: without it, base_url + the exact ingress
-            // path would forward "/openai/deployments/chat-alias/chat/completions" verbatim, which is
-            // the infinite-loop shape reported when an alias's base_url pointed back at Core itself.
-            server.map(HttpMethod.POST, "/openai/deployments/gpt-3-turbo/chat/completions", request -> {
-                capturedPath.setValue(request.getPath());
-                return new MockResponse().setResponseCode(200).setBody("""
-                        {"id":"id1","object":"chat.completion","created":1,"model":"gpt-35-turbo",
-                         "choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],
-                         "usage":{"completion_tokens":1,"prompt_tokens":1,"total_tokens":2}}
-                        """);
-            });
-
-            Response response = send(HttpMethod.POST,
-                    "/openai/deployments/chat-alias/chat/completions", null,
-                    """
-                    {"model":"chat-alias","messages":[{"role":"user","content":"hi"}]}
-                    """,
-                    "content-type", Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
-
-            verify(response, 200);
-            assertEquals("/openai/deployments/gpt-3-turbo/chat/completions", capturedPath.getValue());
-        }
-    }
-
-    @Test
     public void testAutoShareAnnotationCitationAttachment() {
         // Register a public application that internally calls gpt-3-turbo.
         // Auto-sharing of annotation citation attachments only activates when the

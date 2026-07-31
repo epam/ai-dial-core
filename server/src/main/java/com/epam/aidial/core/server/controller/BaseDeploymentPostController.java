@@ -238,23 +238,6 @@ public class BaseDeploymentPostController {
                 .resolveRequestUri(type, request.uri(), request.query()));
     }
 
-    /**
-     * Rewrites the request's {@code model} field to the interface's configured alias target, when declared.
-     * For interfaces that resolve the deployment from the request body (openaiResponses, anthropicMessages)
-     * rather than the ingress path, this is what makes an alias deployment's base_url loop back onto the
-     * aliased deployment instead of itself.
-     */
-    protected void applyInterfaceDeploymentNameOverride(RequestObject request, InterfaceType type) {
-        Deployment deployment = context.getDeployment();
-        if (deployment.getInterfaceBaseUrl(type) == null) {
-            return;
-        }
-        String targetDeploymentName = deployment.getInterfaceDeploymentName(type);
-        if (targetDeploymentName != null) {
-            request.setModel(targetDeploymentName);
-        }
-    }
-
     protected Future<HttpClientResponse> sendProxyRequest(
             HttpClientRequest proxyRequest, Function<Upstream, String> upstreamSelector) {
         log.info("Connected to origin. Deployment: {}. Address: {}",

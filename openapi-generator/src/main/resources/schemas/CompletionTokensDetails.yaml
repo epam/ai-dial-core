@@ -1,0 +1,4 @@
+type: object
+properties:
+  reasoning_tokens:
+    type: integer

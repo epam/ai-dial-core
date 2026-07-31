@@ -12645,6 +12645,11 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/MetadataBase"
+    CompletionTokensDetails:
+      type: object
+      properties:
+        reasoning_tokens:
+          type: integer
     CompletionUsage:
       type: object
       properties:
@@ -12654,6 +12659,10 @@ components:
           type: integer
         total_tokens:
           type: integer
+        prompt_tokens_details:
+          $ref: "#/components/schemas/PromptTokensDetails"
+        completion_tokens_details:
+          $ref: "#/components/schemas/CompletionTokensDetails"
     Config:
       type: object
       properties:
@@ -12904,8 +12913,6 @@ components:
       type: object
       properties:
         base_url:
-          type: string
-        deployment_name:
           type: string
     Embedding:
       required:
@@ -14058,6 +14065,8 @@ components:
       properties:
         cached_tokens:
           type: integer
+        cache_write_tokens:
+          type: integer
     ProxyRequest:
       type: object
       additionalProperties: true
@@ -15169,6 +15178,8 @@ components:
           type: integer
         prompt_tokens_details:
           $ref: "#/components/schemas/PromptTokensDetails"
+        completion_tokens_details:
+          $ref: "#/components/schemas/CompletionTokensDetails"
     UsagePerModel:
       type: object
       properties:
@@ -15182,6 +15193,10 @@ components:
           type: integer
         total_tokens:
           type: integer
+        prompt_tokens_details:
+          $ref: "#/components/schemas/PromptTokensDetails"
+        completion_tokens_details:
+          $ref: "#/components/schemas/CompletionTokensDetails"
     UserInfoResponse:
       type: object
       properties:

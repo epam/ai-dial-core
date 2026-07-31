@@ -151,7 +151,6 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         ApiKeyData.initFromContext(proxyApiKeyData, context);
 
         ProxyUtil.processChain(request, enhancementFunctions);
-        applyInterfaceDeploymentNameOverride(request, InterfaceType.ANTHROPIC_MESSAGES);
         // Enhancement functions update the api key, and it should be saved after that
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
 
