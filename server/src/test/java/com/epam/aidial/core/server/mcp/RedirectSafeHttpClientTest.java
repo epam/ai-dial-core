@@ -2,6 +2,8 @@ package com.epam.aidial.core.server.mcp;
 
 import com.epam.aidial.core.server.TestWebServer;
 import okhttp3.mockwebserver.MockResponse;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
@@ -20,6 +22,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RedirectSafeHttpClientTest {
 
+    // Shared by every test below that makes a real network call, mirroring the production
+    // McpHttpClientBuilder's single-shared-client design instead of spinning up a fresh
+    // SelectorManager/socket per test method.
+    private static HttpClient delegate;
+    private static HttpClient client;
+
+    @BeforeAll
+    static void setUpSharedClient() {
+        delegate = HttpClient.newBuilder().build();
+        client = new RedirectSafeHttpClient(delegate);
+    }
+
+    @AfterAll
+    static void tearDownSharedClient() {
+        delegate.close();
+    }
+
     @Test
     void followsSameOriginRedirect_307_andForwardsHeaders() throws Exception {
         AtomicInteger requestCount = new AtomicInteger();
@@ -31,9 +50,7 @@ class RedirectSafeHttpClientTest {
             }
             return new MockResponse().setResponseCode(200).setBody("ok");
         };
-        try (TestWebServer server = new TestWebServer(19870, handler);
-                HttpClient delegate = HttpClient.newBuilder().build()) {
-            HttpClient client = new RedirectSafeHttpClient(delegate);
+        try (TestWebServer server = new TestWebServer(19870, handler)) {
             HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:19870/mcp"))
                     .header("API-KEY", "secret")
                     .GET()
@@ -59,9 +76,7 @@ class RedirectSafeHttpClientTest {
             }
             return new MockResponse().setResponseCode(200).setBody("ok");
         };
-        try (TestWebServer server = new TestWebServer(19871, handler);
-                HttpClient delegate = HttpClient.newBuilder().build()) {
-            HttpClient client = new RedirectSafeHttpClient(delegate);
+        try (TestWebServer server = new TestWebServer(19871, handler)) {
             HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:19871/mcp"))
                     .POST(HttpRequest.BodyPublishers.ofString("{\"payload\":\"foo\"}"))
                     .build();
@@ -84,9 +99,7 @@ class RedirectSafeHttpClientTest {
             return new MockResponse().setResponseCode(200).setBody("should never be reached");
         };
         try (TestWebServer serverA = new TestWebServer(19880, handlerA);
-                TestWebServer serverB = new TestWebServer(19881, handlerB);
-                HttpClient delegate = HttpClient.newBuilder().build()) {
-            HttpClient client = new RedirectSafeHttpClient(delegate);
+                TestWebServer serverB = new TestWebServer(19881, handlerB)) {
             HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:19880/mcp"))
                     .header("API-KEY", "secret")
                     .GET()
@@ -107,9 +120,7 @@ class RedirectSafeHttpClientTest {
             requestCount.incrementAndGet();
             return new MockResponse().setResponseCode(307).setHeader("Location", "?redirected=1");
         };
-        try (TestWebServer server = new TestWebServer(19882, handler);
-                HttpClient delegate = HttpClient.newBuilder().build()) {
-            HttpClient client = new RedirectSafeHttpClient(delegate);
+        try (TestWebServer server = new TestWebServer(19882, handler)) {
             HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:19882/mcp")).GET().build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -123,9 +134,7 @@ class RedirectSafeHttpClientTest {
     void ignoresMalformedLocation_andReturnsPromptly() throws Exception {
         TestWebServer.Handler handler = request ->
                 new MockResponse().setResponseCode(307).setHeader("Location", "http://[malformed");
-        try (TestWebServer server = new TestWebServer(19883, handler);
-                HttpClient delegate = HttpClient.newBuilder().build()) {
-            HttpClient client = new RedirectSafeHttpClient(delegate);
+        try (TestWebServer server = new TestWebServer(19883, handler)) {
             HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:19883/mcp")).GET().build();
 
             HttpResponse<String> response = assertTimeoutPreemptively(Duration.ofSeconds(10),
@@ -138,9 +147,7 @@ class RedirectSafeHttpClientTest {
     @Test
     void missingLocationHeaderReturnsRedirectAsIs() throws Exception {
         TestWebServer.Handler handler = request -> new MockResponse().setResponseCode(307);
-        try (TestWebServer server = new TestWebServer(19884, handler);
-                HttpClient delegate = HttpClient.newBuilder().build()) {
-            HttpClient client = new RedirectSafeHttpClient(delegate);
+        try (TestWebServer server = new TestWebServer(19884, handler)) {
             HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:19884/mcp")).GET().build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -153,9 +160,7 @@ class RedirectSafeHttpClientTest {
     void doesNotFollow302Redirect() throws Exception {
         TestWebServer.Handler handler = request ->
                 new MockResponse().setResponseCode(302).setHeader("Location", "/redirected");
-        try (TestWebServer server = new TestWebServer(19885, handler);
-                HttpClient delegate = HttpClient.newBuilder().build()) {
-            HttpClient client = new RedirectSafeHttpClient(delegate);
+        try (TestWebServer server = new TestWebServer(19885, handler)) {
             HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:19885/mcp")).GET().build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -168,9 +173,7 @@ class RedirectSafeHttpClientTest {
     void nonRedirectResponsePassesThroughUnchanged() throws Exception {
         TestWebServer.Handler handler = request ->
                 new MockResponse().setResponseCode(200).setBody("hello").setHeader("X-Test", "value");
-        try (TestWebServer server = new TestWebServer(19886, handler);
-                HttpClient delegate = HttpClient.newBuilder().build()) {
-            HttpClient client = new RedirectSafeHttpClient(delegate);
+        try (TestWebServer server = new TestWebServer(19886, handler)) {
             HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:19886/mcp")).GET().build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -183,22 +186,22 @@ class RedirectSafeHttpClientTest {
 
     @Test
     void followRedirectsReportsNormal_otherGettersDelegate() {
-        try (HttpClient delegate = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()) {
-            HttpClient client = new RedirectSafeHttpClient(delegate);
+        try (HttpClient ownDelegate = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()) {
+            HttpClient ownClient = new RedirectSafeHttpClient(ownDelegate);
 
-            assertEquals(HttpClient.Redirect.NORMAL, client.followRedirects());
-            assertEquals(HttpClient.Version.HTTP_1_1, client.version());
-            assertEquals(delegate.connectTimeout(), client.connectTimeout());
+            assertEquals(HttpClient.Redirect.NORMAL, ownClient.followRedirects());
+            assertEquals(HttpClient.Version.HTTP_1_1, ownClient.version());
+            assertEquals(ownDelegate.connectTimeout(), ownClient.connectTimeout());
         }
     }
 
     @Test
     void closeTerminatesTheDelegate() {
-        HttpClient delegate = HttpClient.newBuilder().build();
-        HttpClient client = new RedirectSafeHttpClient(delegate);
+        HttpClient ownDelegate = HttpClient.newBuilder().build();
+        HttpClient ownClient = new RedirectSafeHttpClient(ownDelegate);
 
-        client.close();
+        ownClient.close();
 
-        assertTrue(delegate.isTerminated());
+        assertTrue(ownDelegate.isTerminated());
     }
 }
