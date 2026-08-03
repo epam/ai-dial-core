@@ -2,14 +2,9 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Upstream;
-import com.epam.aidial.core.credentials.data.credentials.AuthorizationHeader;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
-import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
-import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
-import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
@@ -27,9 +22,9 @@ import com.epam.aidial.core.server.service.McpHttpClientBuilderService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
-import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.McpClientUtils;
+import com.epam.aidial.core.server.util.McpUpstreamAuthInjector;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -41,9 +36,6 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.modelcontextprotocol.client.McpClient;
-import io.modelcontextprotocol.client.McpSyncClient;
-import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.McpHttpClientTransportAuthorizationException;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.vertx.core.Future;
@@ -65,14 +57,12 @@ public class ToolSetToolsController implements Controller {
     private final ProxyContext context;
     private final AsyncTaskExecutor taskExecutor;
     private final DeploymentService deploymentService;
-    private final AuthorizationHeaderProvider authorizationHeaderProvider;
     private final UpstreamRouteProvider upstreamRouteProvider;
     private final ApiKeyStore apiKeyStore;
     private final AccessService accessService;
-    private final ResourceCredentialsService resourceCredentialsService;
     private final ApplicationSchemaService applicationSchemaService;
-    private final AuthSettingsResolver authSettingsResolver;
     private final McpHttpClientBuilderService mcpHttpClientBuilderService;
+    private final McpUpstreamAuthInjector authInjector;
 
     public ToolSetToolsController(Proxy proxy, ProxyContext context, String toolSetId, boolean filterAllowed) {
         this.proxy = proxy;
@@ -81,16 +71,14 @@ public class ToolSetToolsController implements Controller {
         this.filterAllowed = filterAllowed;
         this.taskExecutor = proxy.getTaskExecutor();
         this.deploymentService = proxy.getDeploymentService();
-        this.authorizationHeaderProvider = proxy.getAuthorizationHeaderProvider();
         this.upstreamRouteProvider = proxy.getUpstreamRouteProvider();
         this.apiKeyStore = proxy.getApiKeyStore();
         this.accessService = proxy.getAccessService();
-        this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.applicationSchemaService = proxy.getApplicationSchemaService();
-        this.authSettingsResolver = proxy.getAuthSettingsResolver();
         this.mcpHttpClientBuilderService = proxy.getMcpHttpClientBuilderService();
         this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
                 UrlUtil.encodePath(toolSetId), context, ResourceTypes.TOOL_SET);
+        this.authInjector = new McpUpstreamAuthInjector(proxy);
     }
 
     @Override
@@ -190,28 +178,23 @@ public class ToolSetToolsController implements Controller {
         Objects.requireNonNull(upstream);
         Deployment deployment = context.getDeployment();
 
-        HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
-                .builder(upstream.getEndpoint())
-                .clientBuilder(mcpHttpClientBuilderService.httpClientBuilder())
-                .jsonMapper(McpClientUtils.MCP_JSON_MAPPER)
-                .httpRequestCustomizer((builder, method, endpoint, body, transportContext) ->
-                        customizeRequest(builder, deployment))
-                .build();
-
-        try (McpSyncClient client = McpClient.sync(transport)
-                .clientInfo(new McpSchema.Implementation("DIAL", "1.0"))
-                .requestTimeout(Duration.ofMillis(proxy.getClientOptions().getIdleTimeout()))
-                .jsonSchemaValidator(McpClientUtils.NOOP_SCHEMA_VALIDATOR)
-                .build()) {
-            client.initialize();
-            if (filterAllowed) {
-                // listTools() auto-paginates all pages via the SDK's expand() chain
-                processUserToolsResult(client.listTools().tools());
-            } else {
-                // listTools(cursor) fetches exactly one page; null = first page
-                String cursor = context.getRequest().getParam("nextCursor");
-                processAdminToolsResult(client.listTools(cursor));
-            }
+        try {
+            McpClientUtils.withSyncClient(
+                    upstream.getEndpoint(),
+                    Duration.ofMillis(proxy.getClientOptions().getIdleTimeout()),
+                    mcpHttpClientBuilderService.httpClientBuilder(),
+                    builder -> customizeRequest(builder, deployment),
+                    client -> {
+                        if (filterAllowed) {
+                            // listTools() auto-paginates all pages via the SDK's expand() chain
+                            processUserToolsResult(client.listTools().tools());
+                        } else {
+                            // listTools(cursor) fetches exactly one page; null = first page
+                            String cursor = context.getRequest().getParam("nextCursor");
+                            processAdminToolsResult(client.listTools(cursor));
+                        }
+                        return null;
+                    });
         } catch (Exception e) {
             McpHttpClientTransportAuthorizationException authError =
                     ExceptionUtils.throwableOfType(e, McpHttpClientTransportAuthorizationException.class);
@@ -228,25 +211,9 @@ public class ToolSetToolsController implements Controller {
 
     private void customizeRequest(HttpRequest.Builder builder, Deployment deployment) {
         if (deployment instanceof ToolSet toolSet) {
-            ResourceAuthSettings authSettings = authSettingsResolver.resolve(toolSet, context);
-            ResourceCredentials resourceCredentials = resourceCredentialsService.getRefreshedResourceCredentials(
-                    credentialsLocator, authSettings, context.getInitiatorId()
-            );
-            if (resourceCredentials != null) {
-                AuthorizationHeader authorizationHeader =
-                        authorizationHeaderProvider.createAuthorizationHeader(resourceCredentials);
-                if (authorizationHeader != null) {
-                    builder.header(authorizationHeader.getHeaderName(), authorizationHeader.getHeaderValue());
-                }
-            }
-            if (toolSet.isForwardPerRequestKey()) {
-                builder.header(Proxy.HEADER_API_KEY, assignPerRequestKey());
-            }
+            authInjector.inject(builder::header, toolSet, context, credentialsLocator);
         } else if (deployment instanceof Application application) {
-            Application.Mcp mcp = application.getMcp();
-            if (mcp.isForwardPerRequestKey()) {
-                builder.header(Proxy.HEADER_API_KEY, assignPerRequestKey());
-            }
+            authInjector.inject(builder::header, application, context);
         }
     }
 
@@ -290,14 +257,6 @@ public class ToolSetToolsController implements Controller {
             return application.getMcp().getEndpoint();
         }
         return deployment.getEndpoint();
-    }
-
-    private String assignPerRequestKey() {
-        ApiKeyData proxyApiKeyData = new ApiKeyData();
-        context.setProxyApiKeyData(proxyApiKeyData);
-        ApiKeyData.initFromContext(proxyApiKeyData, context);
-        apiKeyStore.assignPerRequestApiKey(proxyApiKeyData);
-        return proxyApiKeyData.getPerRequestKey();
     }
 
     private void handleError(Throwable error) {

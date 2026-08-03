@@ -9,11 +9,14 @@ import lombok.Data;
 public class PromptTokensDetails {
     @JsonAlias({"cached_tokens", "cachedTokens"})
     private long cachedTokens;
+    @JsonAlias({"cache_write_tokens", "cacheWriteTokens"})
+    private long cacheWriteTokens;
 
     public void increase(PromptTokensDetails other) {
         if (other == null) {
             return;
         }
         cachedTokens += other.cachedTokens;
+        cacheWriteTokens += other.cacheWriteTokens;
     }
 }

@@ -181,10 +181,11 @@ class TokenUsageParserTest {
                     "total_tokens": 1539,
                     "prompt_tokens_details": {
                       "cached_tokens": 1024,
+                      "cache_write_tokens": 256,
                       "audio_tokens": 0
                     },
                     "completion_tokens_details": {
-                      "reasoning_tokens": 0,
+                      "reasoning_tokens": 64,
                       "audio_tokens": 0,
                       "accepted_prediction_tokens": 0,
                       "rejected_prediction_tokens": 0,
@@ -194,19 +195,31 @@ class TokenUsageParserTest {
                     }
                   }
                 }
-                """, 119, 1420, 1024, 1539);
+                """, 119, 1420, 1024, 256, 64, 1539);
     }
 
     private void valid(String body, long completion, long prompt, long cachedPrompt, long total) {
+        valid(body, completion, prompt, cachedPrompt, 0, 0, total);
+    }
+
+    private void valid(String body, long completion, long prompt, long cachedPrompt, long cacheWritePrompt, long reasoning, long total) {
         TokenUsage usage = TokenUsageParser.parse(Buffer.buffer(body));
         Assertions.assertNotNull(usage);
         Assertions.assertEquals(usage.getCompletionTokens(), completion);
         Assertions.assertEquals(usage.getPromptTokens(), prompt);
         Assertions.assertEquals(usage.getTotalTokens(), total);
         long actualCachedPrompt = 0;
+        long actualCacheWritePrompt = 0;
         if (usage.getPromptTokensDetails() != null) {
             actualCachedPrompt = usage.getPromptTokensDetails().getCachedTokens();
+            actualCacheWritePrompt = usage.getPromptTokensDetails().getCacheWriteTokens();
         }
         Assertions.assertEquals(actualCachedPrompt, cachedPrompt);
+        Assertions.assertEquals(actualCacheWritePrompt, cacheWritePrompt);
+        long actualReasoning = 0;
+        if (usage.getCompletionTokensDetails() != null) {
+            actualReasoning = usage.getCompletionTokensDetails().getReasoningTokens();
+        }
+        Assertions.assertEquals(actualReasoning, reasoning);
     }
 }
