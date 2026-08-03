@@ -4129,6 +4129,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/deployments/{deployment_name}/mcp/resources:
+    get:
+      tags:
+      - Deployments
+      - MCP
+      summary: "/v1/deployments/{deployment_name}/mcp/resources"
+      operationId: getApplicationMcpResources
+      parameters:
+      - name: deployment_name
+        in: path
+        description: Deployment identifier.
+        required: true
+        schema:
+          type: string
+      - name: uri
+        in: query
+        description: URI of the MCP resource to retrieve
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: HTML widget content
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/deployments/{deployment_name}/tokenize:
     post:
       summary: "/v1/deployments/{deployment_name}/tokenize"
@@ -12275,6 +12328,8 @@ components:
           type: boolean
         transport:
           $ref: "#/components/schemas/ToolSetTransport"
+        mcpApps:
+          $ref: "#/components/schemas/McpMcpApps"
     ApplicationMcpConfigDelivery:
       type: string
       enum:
@@ -13594,6 +13649,11 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/ToolSet"
+    McpMcpApps:
+      type: object
+      properties:
+        domainOverride:
+          type: string
     McpTool:
       required:
       - name

@@ -156,6 +156,14 @@ public class Application extends Deployment {
         private McpConfigDelivery configDelivery = McpConfigDelivery.META;
         @JsonAlias({"forwardAuthToken", "forward_auth_token", "dial:forwardPerRequestKey"})
         private boolean forwardPerRequestKey = true;
+        @JsonAlias({"mcpApps", "mcp_apps"})
+        private McpApps mcpApps;
+
+        @Data
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public static class McpApps {
+            private String domainOverride;
+        }
     }
 
     public enum McpConfigDelivery {
