@@ -14,7 +14,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.enhancement.InjectApplicationPropsToMcpRequest;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
-import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.McpUpstreamAuthInjector;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -30,6 +30,7 @@ public class ApplicationMcpProxyController extends McpProxyController {
 
     private final List<BaseRequestFunction<ObjectNode>> enhancementFunctions;
     private final ApplicationSchemaService applicationSchemaService;
+    private final McpUpstreamAuthInjector authInjector;
 
     private Application application;
 
@@ -37,6 +38,7 @@ public class ApplicationMcpProxyController extends McpProxyController {
         super(proxy, context, toolSetId);
         this.applicationSchemaService = proxy.getApplicationSchemaService();
         this.enhancementFunctions = List.of(new InjectApplicationPropsToMcpRequest(proxy, context));
+        this.authInjector = new McpUpstreamAuthInjector(proxy);
     }
 
     @Override
@@ -93,22 +95,7 @@ public class ApplicationMcpProxyController extends McpProxyController {
     protected void injectProxyRequestHeaders(HttpClientRequest proxyRequest, MultiMap excludeHeaders) {
         excludeHeaders.add(HEADER_APPLICATION_PROPERTIES, "whatever");
         excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
-        Application.Mcp mcp = application.getMcp();
-        if (mcp.isForwardPerRequestKey()) {
-            String perRequestKey = assignPerRequestKey();
-            proxyRequest.putHeader(Proxy.HEADER_API_KEY, perRequestKey);
-        }
-
-        proxyRequest.putHeader(HEADER_APPLICATION_ID, application.getName());
-
-        if (application.getMcp().getConfigDelivery() == Application.McpConfigDelivery.HEADER) {
-            applicationSchemaService.consumeMetadataProperties(application, (properties, appendApplicationPropertiesHeader) -> {
-                if (appendApplicationPropertiesHeader) {
-                    String propsString = ProxyUtil.MAPPER.writeValueAsString(properties);
-                    proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, propsString);
-                }
-            });
-        }
+        authInjector.inject(proxyRequest::putHeader, application, context);
     }
 
     @Override

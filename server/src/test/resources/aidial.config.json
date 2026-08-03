@@ -225,18 +225,6 @@
     "claude-no-iface": {
       "type": "chat",
       "endpoint": "http://localhost:4848/v1/chat/completions"
-    },
-    "claude-alias": {
-      "type": "chat",
-      "interfaces": {
-        "anthropicMessages": {"base_url": "http://localhost:4848", "deployment_name": "claude-ns"}
-      }
-    },
-    "chat-alias": {
-      "type": "chat",
-      "interfaces": {
-        "openaiChatCompletions": {"base_url": "http://localhost:4848", "deployment_name": "gpt-3-turbo"}
-      }
     }
   },
   "toolsets": {
@@ -325,9 +313,7 @@
         "claude-limited": {"minute": "10", "day": "10"},
         "claude-upstream": {"minute": "100000", "day": "10000000"},
         "claude-override": {"minute": "100000", "day": "10000000"},
-        "claude-no-iface": {"minute": "100000", "day": "10000000"},
-        "claude-alias": {"minute": "100000", "day": "10000000"},
-        "chat-alias": {"minute": "100000", "day": "10000000"}
+        "claude-no-iface": {"minute": "100000", "day": "10000000"}
       }
     },
     "vstore_user": {

@@ -2872,6 +2872,50 @@ public class ToolSetApiTest extends ResourceBaseTest {
         }
     }
 
+    // The SDK's transport defaults to endpoint("/mcp") and would otherwise silently replace any
+    // configured path; McpClientUtils#transportBuilder must always honor the configured path instead.
+    @Test
+    void testGetAllTools_ExplicitPathEndpointIsHonored() throws JsonProcessingException {
+        Response response = send(HttpMethod.PUT,
+                "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-endpoint-test", null, """
+                {
+                    "endpoint": "http://localhost:9876/call",
+                    "transport": "HTTP",
+                    "allowedTools": []
+                }
+                """);
+        verify(response, 200);
+
+        String mcpToolsListResponse = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 2,
+                   "result": {
+                     "tools": [
+                       {"name": "tool1", "description": "Tool 1"}
+                     ]
+                   }
+                 }
+                """;
+        TestWebServer.Handler handler = mcpToolsHandler(mcpToolsListResponse);
+        // strict fallback: only "/call" is mapped, so a request wrongly sent to "/mcp" 404s
+        try (TestWebServer server = new TestWebServer(9876, request -> TestWebServer.createResponse(404, "not found"))) {
+            server.map(HttpMethod.GET, "/call", handler);
+            server.map(HttpMethod.POST, "/call", handler);
+
+            Response resp = send(HttpMethod.GET,
+                    "/v1/toolset/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-endpoint-test/tools");
+
+            assertEquals(200, resp.status());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            assertEquals(1, tools.size());
+            assertEquals("tool1", tools.get(0).get("name").asText());
+        }
+    }
+
     @Test
     void testGetAllTools_Pagination() throws JsonProcessingException {
         String page1Response = """

@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.log;
 
+import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -89,7 +90,8 @@ public class GfLogStore implements LogStore {
         return null;
     }
 
-    private void append(AnalyticsLogContext logContext, LogEntry entry) throws JsonProcessingException {
+    @VisibleForTesting
+    void append(AnalyticsLogContext logContext, LogEntry entry) throws JsonProcessingException {
         append(entry, "{\"apiType\":\"DialOpenAI\",\"chat\":{\"id\":\"", false);
         append(entry, logContext.getConversationId(), true);
 
@@ -124,6 +126,14 @@ public class GfLogStore implements LogStore {
                 PromptTokensDetails details = tokenUsage.getPromptTokensDetails();
                 append(entry, ",\"prompt_tokens_details\":{\"cached_tokens\":", false);
                 append(entry, Long.toString(details.getCachedTokens()), true);
+                append(entry, ",\"cache_write_tokens\":", false);
+                append(entry, Long.toString(details.getCacheWriteTokens()), true);
+                append(entry, "}", false);
+            }
+            if (tokenUsage.getCompletionTokensDetails() != null) {
+                CompletionTokensDetails details = tokenUsage.getCompletionTokensDetails();
+                append(entry, ",\"completion_tokens_details\":{\"reasoning_tokens\":", false);
+                append(entry, Long.toString(details.getReasoningTokens()), true);
                 append(entry, "}", false);
             }
             if (tokenUsage.getCost() != null) {

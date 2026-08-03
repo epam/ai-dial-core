@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.annotation.Nullable;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -121,16 +120,6 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
-     * Deployment id this interface should route to instead of this deployment's own id, or null when not
-     * declared. Only meaningful alongside {@link #getInterfaceBaseUrl}.
-     */
-    @Nullable
-    public String getInterfaceDeploymentName(InterfaceType type) {
-        DeploymentInterface deploymentInterface = interfaces == null ? null : interfaces.get(type.getValue());
-        return deploymentInterface == null ? null : deploymentInterface.getDeploymentName();
-    }
-
-    /**
      * Legacy fully-qualified endpoint configured for the type, or null.
      */
     public String getLegacyEndpoint(InterfaceType type) {
@@ -162,9 +151,9 @@ public abstract class Deployment extends RoleBasedEntity {
 
     /**
      * Dual-mode: the absolute URI a request for the type is forwarded to. When the deployment declares an
-     * {@code interfaces} base URL, that base URL plus the exact ingress path (with the {@code deployment_name}
-     * alias applied when declared); otherwise the verbatim legacy endpoint plus the original query,
-     * byte-identical to the legacy flow.
+     * {@code interfaces} base URL, that base URL plus the exact ingress path (with the {@code /deployments/{id}/}
+     * segment rewritten to this deployment's own name); otherwise the verbatim legacy endpoint plus the
+     * original query, byte-identical to the legacy flow.
      *
      * @param ingressUri the inbound request URI, already including path and query
      * @param query      the inbound query string, or null when absent
@@ -174,22 +163,16 @@ public abstract class Deployment extends RoleBasedEntity {
         if (baseUrl == null) {
             return getLegacyEndpoint(type) + (query == null ? "" : "?" + query);
         }
-        String targetDeploymentName = getInterfaceDeploymentName(type);
-        return baseUrl + rewriteDeploymentPathSegment(
-                ingressUri,
-                targetDeploymentName == null ? getName() : targetDeploymentName
-        );
+        return baseUrl + rewriteDeploymentPathSegment(ingressUri, getName());
     }
 
     /**
-     * Rewrites the {@code /deployments/{id}/} ingress path segment to the target deployment id, whatever id
-     * it currently carries. Two cases need this: an alias deployment whose base_url loops back to Core must
-     * land on the aliased deployment instead of itself, and a request forwarded through an interceptor
-     * carries the literal pseudo id {@code interceptor} in the path (see
-     * {@code DeploymentPostController#handle}) rather than this deployment's own name. No-op for interfaces
-     * whose ingress path carries no deployment segment (openaiResponses and anthropicMessages resolve the
-     * deployment from the request body instead, so the caller overrides the body's model field there rather
-     * than the path).
+     * Rewrites the {@code /deployments/{id}/} ingress path segment to this deployment's own name, whatever id
+     * it currently carries. A request forwarded through an interceptor carries the literal pseudo id
+     * {@code interceptor} in the path (see {@code DeploymentPostController#handle}) rather than this
+     * deployment's own name, so it needs rewriting back. No-op for interfaces whose ingress path carries no
+     * deployment segment (openaiResponses and anthropicMessages resolve the deployment from the request body
+     * instead).
      */
     private static String rewriteDeploymentPathSegment(String path, String targetName) {
         Matcher matcher = DEPLOYMENT_SEGMENT.matcher(path);

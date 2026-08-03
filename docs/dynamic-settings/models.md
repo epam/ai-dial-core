@@ -157,13 +157,6 @@ Supported interface types for models:
 Each value is an object with the following fields:
 
 * `base_url`: The model adapter root that the matching ingress path is appended to.
-* `deployment_name` (optional): Routes the request as if it had been sent to a different deployment name, instead of the name this model was actually called by. This restores the "alias deployment" pattern from before `interfaces` existed — a lightweight, catalog-facing model name (its own `displayName`, `iconUrl`, etc.) that just forwards to another, "real" model — without it looping back onto itself.
-
-  How the rewrite is applied depends on how the interface locates the deployment in the forwarded request:
-  * `openaiChatCompletions` carries the deployment name in the ingress path (`/openai/deployments/{name}/...`), so DIAL Core rewrites that path segment to `deployment_name` before appending it to `base_url`.
-  * `openaiResponses` and `anthropicMessages` carry the deployment name in the request body's `model` field instead, so DIAL Core rewrites `model` to `deployment_name` there before forwarding.
-
-  Without `deployment_name`, an alias whose `base_url` points back at DIAL Core itself would forward the request under its own name again, causing an infinite loop. DIAL Core does not currently detect or reject self-referencing or cyclic `deployment_name` values, so avoid pointing one back at itself (directly or through another alias).
 
 **Example**
 
@@ -174,13 +167,6 @@ Each value is an object with the following fields:
         "interfaces": {
             "openaiChatCompletions": { "base_url": "http://localhost:7005" },
             "openaiResponses": { "base_url": "http://localhost:7005" }
-        }
-    },
-    "gpt-4-alias": {
-        "type": "chat",
-        "displayName": "GPT-4 (friendly alias)",
-        "interfaces": {
-            "openaiChatCompletions": { "base_url": "http://localhost:8080", "deployment_name": "gpt-4-via-interfaces" }
         }
     }
 }

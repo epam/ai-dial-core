@@ -1,11 +1,15 @@
 package com.epam.aidial.core.server.log;
 
+import com.epam.aidial.core.server.token.CompletionTokensDetails;
+import com.epam.aidial.core.server.token.PromptTokensDetails;
+import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.LogEntry;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -249,6 +253,63 @@ public class GfLogStoreTest {
         JsonNode headerNode = parseWrapped(buffer.toString());
         assertFalse(headerNode.has("Authorization"));
         assertEquals("00-abc-def-01", headerNode.get("traceparent").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendTokenUsage() {
+        PromptTokensDetails promptDetails = new PromptTokensDetails();
+        promptDetails.setCachedTokens(11);
+        promptDetails.setCacheWriteTokens(22);
+
+        CompletionTokensDetails completionDetails = new CompletionTokensDetails();
+        completionDetails.setReasoningTokens(33);
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setPromptTokens(100);
+        tokenUsage.setCompletionTokens(200);
+        tokenUsage.setTotalTokens(300);
+        tokenUsage.setPromptTokensDetails(promptDetails);
+        tokenUsage.setCompletionTokensDetails(completionDetails);
+        tokenUsage.setCost(new BigDecimal("1.5"));
+        tokenUsage.setAggCost(new BigDecimal("2.5"));
+
+        assertEquals("""
+                {"completion_tokens":200,\
+                "prompt_tokens":100,\
+                "total_tokens":300,\
+                "prompt_tokens_details":{"cached_tokens":11,"cache_write_tokens":22},\
+                "completion_tokens_details":{"reasoning_tokens":33},\
+                "deployment_price":1.5,"price":2.5}""",
+                logTokenUsage(tokenUsage));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendTokenUsageWithoutDetails() {
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setPromptTokens(100);
+        tokenUsage.setCompletionTokens(200);
+        tokenUsage.setTotalTokens(300);
+
+        assertEquals("""
+                {"completion_tokens":200,"prompt_tokens":100,"total_tokens":300}""",
+                logTokenUsage(tokenUsage));
+    }
+
+    /**
+     * Writes a whole log line for the given usage and returns its "token_usage" member, so the
+     * surrounding line has to stay parseable too. Field order is preserved by the parser.
+     */
+    @SneakyThrows
+    private static String logTokenUsage(TokenUsage tokenUsage) {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getTokenUsage()).thenReturn(tokenUsage);
+
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(false, false, List.of(), null).append(context, capturingEntry(buffer));
+
+        return ProxyUtil.MAPPER.readTree(buffer.toString()).get("token_usage").toString();
     }
 
     private static AnalyticsLogContext mockHeaders(Map<String, List<String>> headers) {
