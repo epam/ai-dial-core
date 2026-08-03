@@ -2,6 +2,8 @@ package com.epam.aidial.core.server.service.clientchannel;
 
 import com.epam.aidial.core.server.data.clientchannel.topic.PubSubRequest;
 import com.epam.aidial.core.server.jsonrpc.domain.RpcRequest;
+import com.epam.aidial.core.storage.service.TimerService;
+import com.fasterxml.jackson.databind.node.TextNode;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
@@ -19,9 +21,17 @@ public class RpcRequestTopic {
     private final RTopic topic;
     private final Map<String, Set<RpcRequestSubscription>> subscriptions = new ConcurrentHashMap<>();
 
-    public RpcRequestTopic(RedissonClient redis, String topicKey) {
+    public RpcRequestTopic(RedissonClient redis, String topicKey, TimerService timerService, long watchdogPeriod) {
         this.topic = redis.getTopic(topicKey, new TypedJsonJacksonCodec(PubSubRequest.class));
-        topic.addListener(PubSubRequest.class, (channel, message) -> handle(message));
+        new RedisTopicWatchdog<>(topic, PubSubRequest.class, "RpcRequestTopic", timerService, watchdogPeriod,
+                (channelId, nonce) -> {
+                    RpcRequest canary = new RpcRequest();
+                    canary.setId(new TextNode(nonce));
+                    return new PubSubRequest(channelId, canary);
+                },
+                PubSubRequest::getChannelId,
+                request -> request.getRequest().getId().asText(),
+                this::handle);
     }
 
     public void publish(PubSubRequest request) {
