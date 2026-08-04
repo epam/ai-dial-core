@@ -56,7 +56,20 @@ class RedisTopicWatchdog<T> {
         this.nonceExtractor = nonceExtractor;
         this.messageHandler = messageHandler;
 
-        this.listenerId = registerListener();
+        registerListeners();
+        timerService.scheduleWithFixedDelay(watchdogPeriod, watchdogPeriod, this::checkWatchdog);
+    }
+
+    /**
+     * Registers both the message listener and a diagnostic {@link StatusListener}. A plain
+     * {@code removeListener(id)} + re-{@code addListener} is not enough to force a real resubscribe:
+     * Redisson only sends UNSUBSCRIBE/SUBSCRIBE to Redis when a channel transitions to/from having zero
+     * listeners, and the StatusListener registered here keeps that count above zero forever. So recovery
+     * must go through {@code removeAllListeners()} (which unsubscribes unconditionally) and then
+     * re-register everything from scratch.
+     */
+    private void registerListeners() {
+        this.listenerId = topic.addListener(messageType, (channel, message) -> handle(message));
         topic.addListener(new StatusListener() {
             @Override
             public void onSubscribe(String channel) {
@@ -68,11 +81,6 @@ class RedisTopicWatchdog<T> {
                 log.warn("{} subscription lost. Channel {}", topicName, channel);
             }
         });
-        timerService.scheduleWithFixedDelay(watchdogPeriod, watchdogPeriod, this::checkWatchdog);
-    }
-
-    private int registerListener() {
-        return topic.addListener(messageType, (channel, message) -> handle(message));
     }
 
     private void handle(T message) {
@@ -92,16 +100,22 @@ class RedisTopicWatchdog<T> {
         }
         try {
             String missedNonce = pendingCanary.getAndSet(null);
-            if (missedNonce != null) {
-                log.warn("{} watchdog canary {} was not received back. Resubscribing listener {}",
-                        topicName, missedNonce, listenerId);
-                topic.removeListener(listenerId);
-                listenerId = registerListener();
+            try {
+                if (missedNonce != null) {
+                    log.warn("{} watchdog canary {} was not received back. Resubscribing listener {}",
+                            topicName, missedNonce, listenerId);
+                    topic.removeAllListeners();
+                    registerListeners();
+                }
+            } catch (Exception e) {
+                // still fall through to publish a fresh canary below, so the next tick can retry
+                // detection instead of silently skipping a cycle because pendingCanary was left empty
+                log.warn("{} failed to resubscribe after a missed watchdog canary", topicName, e);
+            } finally {
+                String nonce = UUID.randomUUID().toString();
+                pendingCanary.set(nonce);
+                topic.publish(canaryFactory.apply(WATCHDOG_CHANNEL_ID, nonce));
             }
-
-            String nonce = UUID.randomUUID().toString();
-            pendingCanary.set(nonce);
-            topic.publish(canaryFactory.apply(WATCHDOG_CHANNEL_ID, nonce));
         } finally {
             watchdogRunning.set(false);
         }
