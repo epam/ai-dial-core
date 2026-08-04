@@ -275,6 +275,17 @@ public final class MergedConfigStore implements ConfigStore {
                 && descriptor.getType() != ResourceTypes.GLOBAL_SETTINGS) {
             return;
         }
+        // MANAGED_TYPES gates the type but not the bucket, whereas rebuild() only scans the platform
+        // bucket (via locationStrategy). Scope the replica fast path the same way: APPLICATION/TOOL_SET
+        // (and, harmlessly, the other managed types) also resolve for the public bucket, so without
+        // this a public-bucket app/toolset publication event would be applied into the merged Config on
+        // peer pods — leaking a public resource into deployment/short-name resolution until the next
+        // platform-only rebuild.
+        ResourceTypes managedType = (ResourceTypes) descriptor.getType();
+        String managedBucket = locationStrategy.resolveBucket(managedType, EntityLocationStrategy.PLATFORM_SCOPE);
+        if (managedBucket == null || !managedBucket.equals(descriptor.getBucketName())) {
+            return;
+        }
         ResourceEvent.Action action = event.getAction();
         taskExecutor.submit(() -> {
             applyReplicaEvent(descriptor, action);

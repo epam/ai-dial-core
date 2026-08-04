@@ -957,6 +957,19 @@ public class ConfigResourceController implements Controller {
                     "Invalid entity name segment: must match " + ENTITY_NAME_PATTERN.pattern());
             return Future.succeededFuture();
         }
+        // TOOL_SET names are further constrained than ENTITY_NAME_PATTERN: the merged-config rebuild
+        // validates them with ConfigPostProcessor.isValidToolSetKey (processToolSets) and silently
+        // drops non-conforming ones. Reject such names up front on both PUT and DELETE — same as the
+        // ENTITY_NAME_PATTERN gate above — so a PUT can't create a blob that serves until the next
+        // rebuild and then vanishes (200-on-PUT / 404-on-GET orphan). Applications aren't key-validated
+        // by the rebuild, so they stay on ENTITY_NAME_PATTERN only.
+        if (resourceType() == ResourceTypes.TOOL_SET
+                && (method == HttpMethod.PUT || method == HttpMethod.DELETE)
+                && !ConfigPostProcessor.isValidToolSetKey(path == null ? "" : path)) {
+            context.respond(HttpStatus.BAD_REQUEST,
+                    "Invalid toolset name segment: must match " + ConfigPostProcessor.resourceKeyPattern());
+            return Future.succeededFuture();
+        }
         if (resourceType() == ResourceTypes.GLOBAL_SETTINGS) {
             // Singleton has its own write surface: PUT-upsert + idempotent DELETE; POST is 405.
             if (method == HttpMethod.PUT) {

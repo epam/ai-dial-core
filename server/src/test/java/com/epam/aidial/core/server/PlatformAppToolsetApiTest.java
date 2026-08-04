@@ -79,6 +79,21 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testInvalidToolSetNameRejectedOnWrite() {
+        // '.' passes ENTITY_NAME_PATTERN but fails the rebuild's isValidToolSetKey (RESOURCE_KEY_PATTERN),
+        // so the write must be rejected up front instead of creating a blob that serves until the next
+        // rebuild and then vanishes (200-on-PUT / 404-on-GET orphan).
+        Response put = send(HttpMethod.PUT, "/v1/toolsets/platform/my.toolset", null, TOOLSET_BODY,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 400);
+
+        // DELETE validates the name too, consistent with the adjacent ENTITY_NAME_PATTERN gate.
+        Response del = send(HttpMethod.DELETE, "/v1/toolsets/platform/my.toolset", null, "",
+                "authorization", "admin");
+        verify(del, 400);
+    }
+
+    @Test
     void testApplicationPut403ForNonAdmin() {
         Response put = send(HttpMethod.PUT, "/v1/applications/platform/no-admin-app", null, APP_BODY,
                 "authorization", "user");

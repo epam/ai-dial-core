@@ -14,6 +14,7 @@ import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -120,6 +121,72 @@ public class MergedConfigStoreReplicaUpdateTest {
 
         verifyNoInteractions(taskExecutor);
         verifyNoInteractions(resourceService);
+    }
+
+    @Test
+    public void publicBucketApplicationEventIsFilteredByBucket() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        Mockito.reset(taskExecutor, resourceService);
+
+        // APPLICATION is a MANAGED_TYPE and fromAnyUrl resolves the public bucket, so this passes the
+        // type filter; rebuild() only scans platform, so the bucket scope must drop the event on peer
+        // pods rather than materialize a public app into the merged Config.
+        ResourceEvent event = new ResourceEvent()
+                .setUrl("applications/public/my-app")
+                .setAction(ResourceEvent.Action.UPDATE)
+                .setSenderPodId("pod-other");
+        invokeOnResourceEvent(store, event);
+
+        verifyNoInteractions(taskExecutor);
+        verifyNoInteractions(resourceService);
+    }
+
+    @Test
+    public void publicBucketToolSetEventIsFilteredByBucket() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        Mockito.reset(taskExecutor, resourceService);
+
+        ResourceEvent event = new ResourceEvent()
+                .setUrl("toolsets/public/my-toolset")
+                .setAction(ResourceEvent.Action.UPDATE)
+                .setSenderPodId("pod-other");
+        invokeOnResourceEvent(store, event);
+
+        verifyNoInteractions(taskExecutor);
+        verifyNoInteractions(resourceService);
+    }
+
+    @Test
+    public void platformBucketApplicationEventIsDispatched() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        Mockito.reset(taskExecutor, resourceService);
+        when(taskExecutor.submit(any())).thenReturn(Future.succeededFuture());
+
+        // Positive control: a platform-bucket app event passes the bucket scope and is dispatched,
+        // proving the filter does not over-drop legitimate managed events.
+        ResourceEvent event = new ResourceEvent()
+                .setUrl("applications/platform/my-app")
+                .setAction(ResourceEvent.Action.UPDATE)
+                .setSenderPodId("pod-other");
+        invokeOnResourceEvent(store, event);
+
+        verify(taskExecutor).submit(any());
+    }
+
+    @Test
+    public void platformBucketToolSetEventIsDispatched() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        Mockito.reset(taskExecutor, resourceService);
+        when(taskExecutor.submit(any())).thenReturn(Future.succeededFuture());
+
+        // Positive control: a platform-bucket toolset event passes the bucket scope and is dispatched.
+        ResourceEvent event = new ResourceEvent()
+                .setUrl("toolsets/platform/my-toolset")
+                .setAction(ResourceEvent.Action.UPDATE)
+                .setSenderPodId("pod-other");
+        invokeOnResourceEvent(store, event);
+
+        verify(taskExecutor).submit(any());
     }
 
     @Test
