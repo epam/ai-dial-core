@@ -320,7 +320,10 @@ public class AiDial {
             boolean printAuthorizationHeader = settings.getBoolean("printAuthorizationHeader", false);
 
             Duration clientChannelTtl = Duration.ofMillis(resourceServiceSettings.getResourceTypesExpiration().get(ResourceTypes.CLIENT_CHANNEL.name()));
-            ClientChannelService clientChannelService = new ClientChannelService(lockService, redis, taskExecutor, clock, storage.getPrefix(), clientChannelTtl);
+            long clientChannelWatchdogPeriod = settings("clientChannel")
+                    .getJsonObject("watchdog", new JsonObject()).getLong("period", 10_000L);
+            ClientChannelService clientChannelService = new ClientChannelService(lockService, redis, taskExecutor, clock,
+                    storage.getPrefix(), clientChannelTtl, timerService, clientChannelWatchdogPeriod);
 
             ResponseMappingService responseMappingService = new ResponseMappingService(vertx, generator, resourceService);
             responseMappingService.init(taskExecutor);
