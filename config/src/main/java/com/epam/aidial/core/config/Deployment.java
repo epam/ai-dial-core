@@ -129,7 +129,9 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
-     * Legacy fully-qualified endpoint configured for the type, or null.
+     * Legacy fully-qualified endpoint configured for the type, or null. Only the two types that predate
+     * the {@code interfaces} map have a legacy peer field; {@code openaiEmbeddings} reaches the legacy
+     * {@link #endpoint} through its fallback instead (see {@link #resolveServingInterface(InterfaceType)}).
      */
     public String getLegacyEndpoint(InterfaceType type) {
         if (type == InterfaceType.OPENAI_CHAT_COMPLETIONS) {
@@ -151,11 +153,27 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
-     * True when the deployment can serve the type via the new interfaces map OR a legacy endpoint.
+     * True when the deployment declares the type, via the new interfaces map OR a legacy endpoint.
      * This restores the legacy {@code getEndpoint() != null} semantics while also honouring interfaces.
+     * Declaration-based on purpose: it drives what the listing APIs advertise, so it never reports a
+     * type the deployment would merely serve through the fallback below.
      */
     public boolean supportsInterface(InterfaceType type) {
         return getInterfaceBaseUrl(type) != null || getLegacyEndpoint(type) != null;
+    }
+
+    /**
+     * The interface a request for {@code type} is served through: {@code type} itself, except that an
+     * embeddings request falls back to {@code openaiChatCompletions} when the deployment declares no
+     * {@code openaiEmbeddings} — that endpoint served {@code /embeddings} before the two were split, so
+     * deployments configured back then keep routing unchanged. A deployment that declares neither is
+     * answered with {@code type}, which it does not {@link #supportsInterface support}.
+     */
+    public InterfaceType resolveServingInterface(InterfaceType type) {
+        return (type == InterfaceType.OPENAI_EMBEDDINGS && !supportsInterface(type)
+                && supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS))
+                ? InterfaceType.OPENAI_CHAT_COMPLETIONS
+                : type;
     }
 
     /**

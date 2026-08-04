@@ -1,0 +1,49 @@
+{
+  "applications": {
+    "app-chat": {
+      "displayName": "Application exposing chat completions only",
+      "interfaces": {
+        "openaiChatCompletions": {
+          "base_url": "http://localhost:4848"
+        }
+      }
+    }
+  },
+  "models": {
+    "embeddings-iface": {
+      "type": "embedding",
+      "interfaces": {
+        "openaiEmbeddings": {
+          "base_url": "http://localhost:4848"
+        }
+      }
+    },
+    "embeddings-fallback": {
+      "type": "embedding",
+      "interfaces": {
+        "openaiChatCompletions": {
+          "base_url": "http://localhost:4848"
+        }
+      }
+    },
+    "embeddings-legacy": {
+      "type": "embedding",
+      "endpoint": "http://localhost:4848/openai/deployments/ada/embeddings"
+    },
+    "embeddings-override": {
+      "type": "embedding",
+      "overrideName": "text-embedding-ada-002",
+      "interfaces": {
+        "openaiEmbeddings": {
+          "base_url": "http://localhost:4848"
+        }
+      }
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    }
+  }
+}

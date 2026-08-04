@@ -156,9 +156,14 @@ If both `interfaces` and a legacy field are declared for the same interface type
 
 Supported interface types for models:
 
-* `openaiChatCompletions`: the OpenAI deployments POST family (`chat/completions`, `completions`, `embeddings`). Peer of `endpoint`.
+* `openaiChatCompletions`: the OpenAI deployments POST family (`chat/completions`, `completions`). Peer of `endpoint`.
+* `openaiEmbeddings`: the OpenAI deployments `embeddings` endpoint.
 * `openaiResponses`: the OpenAI Responses API. Peer of `responsesEndpoint`.
 * `anthropicMessages`: the Anthropic Messages API (`/anthropic/v1/messages`, `/anthropic/v1/messages/count_tokens`).
+
+`openaiEmbeddings` was split out of `openaiChatCompletions`, which used to serve `embeddings` as well, so it falls back to it: an `embeddings` request is routed to `openaiEmbeddings` when declared, otherwise to `openaiChatCompletions`, otherwise to the legacy `endpoint`. Models configured before the split therefore keep working unchanged, and there is no reason to declare `openaiEmbeddings` unless the embeddings adapter differs from the chat-completions one. Note that the fallback is one-way: a model declaring only `openaiEmbeddings` answers `503` to `chat/completions` and `completions`.
+
+Only the interface types a model declares are reported in the `interfaces` array of the `/v1/deployments` listing; a model that serves embeddings through its `openaiChatCompletions` configuration is listed under that key alone.
 
 Each value is an object with the following fields:
 
@@ -173,6 +178,12 @@ Each value is an object with the following fields:
         "interfaces": {
             "openaiChatCompletions": { "base_url": "http://localhost:7005" },
             "openaiResponses": { "base_url": "http://localhost:7005" }
+        }
+    },
+    "text-embedding-3-small": {
+        "type": "embedding",
+        "interfaces": {
+            "openaiEmbeddings": { "base_url": "http://localhost:7006" }
         }
     }
 }

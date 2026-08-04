@@ -190,7 +190,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                         dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(app);
                     }
 
-                    if (!dep.supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS)) {
+                    if (!dep.supportsInterface(servingInterface(dep))) {
                         throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
                     }
 
@@ -284,10 +284,25 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         }
     }
 
+    /**
+     * The interface serving this request: {@code /embeddings} is handled by {@code openaiEmbeddings},
+     * {@code /chat/completions} and {@code /completions} by {@code openaiChatCompletions}, and a
+     * deployment declaring no {@code openaiEmbeddings} falls back to its chat-completions configuration.
+     * Taken from the path rather than from a named group in {@code RouteTemplate.POST_DEPLOYMENT}: named
+     * groups are replaced with placeholders in the server span name, which would stop telling the three
+     * actions apart.
+     */
+    private InterfaceType servingInterface(Deployment deployment) {
+        InterfaceType requested = context.getRequest().path().endsWith("/embeddings")
+                ? InterfaceType.OPENAI_EMBEDDINGS
+                : InterfaceType.OPENAI_CHAT_COMPLETIONS;
+        return deployment.resolveServingInterface(requested);
+    }
+
     @SneakyThrows
     private void sendRequest() {
         if (nextUpstream()) {
-            createProxyRequest(InterfaceType.OPENAI_CHAT_COMPLETIONS)
+            createProxyRequest(servingInterface(context.getDeployment()))
                     .onSuccess(this::handleProxyRequest)
                     .onFailure(this::handleProxyConnectionError);
         }
@@ -323,7 +338,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         UpstreamRoute upstreamRoute;
         try {
             upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext(),
-                    dep -> dep.resolveEndpoint(InterfaceType.OPENAI_CHAT_COMPLETIONS), upstreamId);
+                    dep -> dep.resolveEndpoint(servingInterface(dep)), upstreamId);
         } catch (HttpException e) {
             respond(e.getStatus(), e.getMessage());
             return;

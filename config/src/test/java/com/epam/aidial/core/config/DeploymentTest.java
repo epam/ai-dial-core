@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
+import static com.epam.aidial.core.config.InterfaceType.OPENAI_EMBEDDINGS;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -76,6 +77,84 @@ public class DeploymentTest {
         assertFalse(model.supportsInterface(OPENAI_RESPONSES));
         assertNull(model.resolveEndpoint(OPENAI_CHAT_COMPLETIONS));
         assertNull(model.resolveEndpoint(OPENAI_RESPONSES));
+    }
+
+    @Test
+    void embeddingsDeclaredExplicitly() {
+        Model model = new Model();
+        model.setType(ModelType.EMBEDDING);
+        model.setInterfaces(Map.of(
+                OPENAI_EMBEDDINGS.getValue(), new DeploymentInterface("http://adapter:5000/")));
+
+        assertTrue(model.supportsInterface(OPENAI_EMBEDDINGS));
+        assertEquals(OPENAI_EMBEDDINGS, model.resolveServingInterface(OPENAI_EMBEDDINGS));
+        assertEquals("http://adapter:5000", model.resolveEndpoint(OPENAI_EMBEDDINGS));
+
+        // declaring embeddings alone does not make the deployment a chat-completions one: the fallback
+        // is one-way, so a chat-completions request finds no interface to serve it
+        assertFalse(model.supportsInterface(model.resolveServingInterface(OPENAI_CHAT_COMPLETIONS)));
+    }
+
+    @Test
+    void embeddingsFallsBackToChatCompletionsInterface() {
+        Model model = new Model();
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://adapter:5000")));
+
+        // the type is not declared, so it is not advertised...
+        assertFalse(model.supportsInterface(OPENAI_EMBEDDINGS));
+        assertNull(model.getInterfaceBaseUrl(OPENAI_EMBEDDINGS));
+        // ...but the chat-completions entry keeps serving embeddings as it did before the split
+        assertEquals(OPENAI_CHAT_COMPLETIONS, model.resolveServingInterface(OPENAI_EMBEDDINGS));
+    }
+
+    @Test
+    void embeddingsFallsBackToLegacyEndpoint() {
+        Model model = new Model();
+        model.setType(ModelType.EMBEDDING);
+        model.setEndpoint("http://host/openai/deployments/ada/embeddings");
+
+        assertFalse(model.supportsInterface(OPENAI_EMBEDDINGS));
+        assertNull(model.getLegacyEndpoint(OPENAI_EMBEDDINGS));
+        assertEquals(OPENAI_CHAT_COMPLETIONS, model.resolveServingInterface(OPENAI_EMBEDDINGS));
+        assertEquals("http://host/openai/deployments/ada/embeddings",
+                model.resolveRequestUri(model.resolveServingInterface(OPENAI_EMBEDDINGS),
+                        "/openai/deployments/embedding-ada/embeddings", null));
+    }
+
+    @Test
+    void embeddingsNotServedWhenNothingDeclared() {
+        Model model = new Model();
+        model.setResponsesEndpoint("http://host/openai/v1/responses");
+
+        assertFalse(model.supportsInterface(model.resolveServingInterface(OPENAI_EMBEDDINGS)));
+    }
+
+    @Test
+    void embeddingsPrefersOwnInterfaceOverChatCompletions() {
+        Model model = new Model();
+        model.setName("embedding-ada");
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://chat-adapter"),
+                OPENAI_EMBEDDINGS.getValue(), new DeploymentInterface("http://embeddings-adapter")));
+
+        assertEquals(OPENAI_EMBEDDINGS, model.resolveServingInterface(OPENAI_EMBEDDINGS));
+        assertEquals("http://embeddings-adapter/openai/deployments/embedding-ada/embeddings",
+                model.resolveRequestUri(OPENAI_EMBEDDINGS, "/openai/deployments/embedding-ada/embeddings", null));
+        assertEquals("http://chat-adapter/openai/deployments/embedding-ada/chat/completions",
+                model.resolveRequestUri(OPENAI_CHAT_COMPLETIONS,
+                        "/openai/deployments/embedding-ada/chat/completions", null));
+    }
+
+    @Test
+    void fallbackAppliesToEmbeddingsOnly() {
+        Model model = new Model();
+        model.setEndpoint("http://host/chat/completions");
+
+        // embeddings is the only type a chat-completions endpoint stands in for: the Responses API
+        // keeps requiring its own configuration
+        assertEquals(OPENAI_RESPONSES, model.resolveServingInterface(OPENAI_RESPONSES));
+        assertFalse(model.supportsInterface(model.resolveServingInterface(OPENAI_RESPONSES)));
     }
 
     @Test
