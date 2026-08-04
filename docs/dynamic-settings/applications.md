@@ -29,6 +29,7 @@ An object containing parameters for each [application](#applications).
 * `applications.<application_name>.applicationProperties`: Properties of a schema-rich application. Specified properties must conform to the JSON schema referenced by `applicationTypeSchemaId`. Refer to [DIAL Documentation](https://docs.dialx.ai/platform/core/apps#application-types) to learn more about schema-rich apps.
 * `endpoint`: The application's API endpoint for chat completion requests.
 * `interfaces`: A typed alternative to the flat `endpoint` field for declaring the routing target. For applications, only the `openaiChatCompletions` interface is supported; the Responses API and other interfaces are not. Refer to [applications.<application_name>.interfaces](#applicationsapplication_nameinterfaces).
+* `overrideName`: If set, the application is called under this name: the outgoing chat completion request body's `model` field (and the `X-DIAL-OVERRIDE-NAME` header) are rewritten to this value before the request reaches the application's endpoint. Doesn't change routing — only the value the endpoint receives.
 * `iconUrl`: A string with URL of the icon to display for the app in the UI.
 * `description`: A string with a brief description of the application.
 * `intro`: A string with a short introductory/onboarding text for the application, shown to end users separately from `description`.

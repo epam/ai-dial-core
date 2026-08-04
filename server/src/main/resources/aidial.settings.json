@@ -76,6 +76,11 @@
     "activeBatches": 5,
     "gracePeriod": 3600000
   },
+  "clientChannel": {
+    "watchdog": {
+      "period": 10000
+    }
+  },
   "mcpHttpClient": {
     "connectTimeout": 10000
   },

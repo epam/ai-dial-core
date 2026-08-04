@@ -16,6 +16,7 @@ import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
+import com.epam.aidial.core.storage.service.TimerService;
 import com.epam.aidial.core.storage.util.RedisUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RBucket;
@@ -48,7 +49,8 @@ public class ClientChannelService {
     private final AsyncTaskExecutor asyncTaskExecutor;
 
     public ClientChannelService(LockService lockService, RedissonClient redis, AsyncTaskExecutor asyncTaskExecutor,
-                                LongSupplier clock, String prefix, Duration ttl) {
+                                LongSupplier clock, String prefix, Duration ttl, TimerService timerService,
+                                long watchdogPeriod) {
         this.redis = redis;
         this.lockService = lockService;
         this.clock = clock;
@@ -57,8 +59,8 @@ public class ClientChannelService {
         this.ttl = ttl;
         String rpcRequestTopicKey = "topic:" + BlobStorageUtil.toStoragePath(prefix, "CLIENT_CHANNEL/JSON_RPC_REQUESTS");
         String rpcResponseTopicKey = "topic:" + BlobStorageUtil.toStoragePath(prefix, "CLIENT_CHANNEL/JSON_RPC_RESPONSES");
-        this.rpcRequestTopic = new RpcRequestTopic(redis, rpcRequestTopicKey);
-        this.rpcResponseTopic = new RpcResponseTopic(redis, rpcResponseTopicKey);
+        this.rpcRequestTopic = new RpcRequestTopic(redis, rpcRequestTopicKey, timerService, watchdogPeriod);
+        this.rpcResponseTopic = new RpcResponseTopic(redis, rpcResponseTopicKey, timerService, watchdogPeriod);
     }
 
     public RpcRequestTopic.RpcRequestSubscription subscribe(String channelId, Consumer<RpcRequest> subscriber, ProxyContext context) {

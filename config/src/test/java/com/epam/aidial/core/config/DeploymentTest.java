@@ -104,6 +104,55 @@ public class DeploymentTest {
     }
 
     @Test
+    void resolveRequestUriUsesOverrideNameForPathSegmentWhenSet() {
+        // overrideName rewrites the model field/header, but the outgoing URL must match too: some
+        // adapters route on the deployment-name path segment (e.g. an Azure-style FastAPI app registering
+        // routes per deployment name), so the URL has to carry the same name as the body.
+        Application application = new Application();
+        application.setName("app-tst");
+        application.setOverrideName("essay-assistant-gpt");
+        application.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://localhost:5025")));
+
+        assertEquals("http://localhost:5025/openai/deployments/essay-assistant-gpt/chat/completions?api-version=2024-08-06",
+                application.resolveRequestUri(OPENAI_CHAT_COMPLETIONS,
+                        "/openai/deployments/app-tst/chat/completions?api-version=2024-08-06", "api-version=2024-08-06"));
+    }
+
+    @Test
+    void resolveRequestUriUsesOverrideNameForPathSegmentWhenSet_Model() {
+        // Same scenario as resolveRequestUriUsesOverrideNameForPathSegmentWhenSet, but for a Model:
+        // the interfaces/base_url flow rewrites the chat-completions URL's deployment-name segment to
+        // overrideName, matching what EnhanceDeploymentRequestFn already does to the body's model field.
+        Model model = new Model();
+        model.setName("openai-gpt-5.4-mini");
+        model.setOverrideName("gpt-5.4-mini");
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://localhost:6001")));
+
+        assertEquals("http://localhost:6001/openai/deployments/gpt-5.4-mini/chat/completions?api-version=2025-01-01-preview",
+                model.resolveRequestUri(OPENAI_CHAT_COMPLETIONS,
+                        "/openai/deployments/openai-gpt-5.4-mini/chat/completions?api-version=2025-01-01-preview",
+                        "api-version=2025-01-01-preview"));
+    }
+
+    @Test
+    void resolveRequestUriLegacyEndpointIgnoresOverrideName() {
+        // The legacy `endpoint` flow must behave exactly as before this change: it's a verbatim,
+        // fully-qualified URL with no deployment-name path-segment rewriting, so overrideName has no
+        // effect on it even when set.
+        Model model = new Model();
+        model.setName("openai-gpt-5.4-mini");
+        model.setOverrideName("gpt-5.4-mini");
+        model.setEndpoint("http://localhost:6001/openai/deployments/gpt-5.4-mini/chat/completions");
+
+        assertEquals("http://localhost:6001/openai/deployments/gpt-5.4-mini/chat/completions?api-version=2025-01-01-preview",
+                model.resolveRequestUri(OPENAI_CHAT_COMPLETIONS,
+                        "/openai/deployments/openai-gpt-5.4-mini/chat/completions?api-version=2025-01-01-preview",
+                        "api-version=2025-01-01-preview"));
+    }
+
+    @Test
     void resolveRequestUriFallsBackToLegacyEndpointWithQuery() {
         Model model = new Model();
         model.setName("als-2");
@@ -153,6 +202,28 @@ public class DeploymentTest {
 
         assertEquals(source.getInterfaces(), copy.getInterfaces());
         assertEquals("http://adapter", copy.resolveEndpoint(OPENAI_RESPONSES));
+    }
+
+    @Test
+    void overrideNameAvailableOnApplicationAndInterceptor() {
+        Application application = new Application();
+        application.setOverrideName("app-override");
+        assertEquals("app-override", application.getOverrideName());
+
+        Interceptor interceptor = new Interceptor();
+        interceptor.setOverrideName("interceptor-override");
+        assertEquals("interceptor-override", interceptor.getOverrideName());
+    }
+
+    @Test
+    void applicationCopyConstructorPreservesOverrideName() {
+        Application source = new Application();
+        source.setName("app1");
+        source.setOverrideName("app-override");
+
+        Application copy = new Application(source);
+
+        assertEquals("app-override", copy.getOverrideName());
     }
 
     @Test

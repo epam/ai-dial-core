@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.storage.util.EtagHeader;
@@ -87,11 +86,12 @@ public class ProxyUtil {
     }
 
     public static void setOverrideNameHeader(MultiMap headers, Deployment deployment) {
-        if (deployment instanceof Model model) {
-            String overrideName = model.getOverrideName();
-            if (overrideName != null) {
-                headers.set(Proxy.HEADER_OVERRIDE_NAME, overrideName);
-            }
+        if (deployment == null) {
+            return;
+        }
+        String overrideName = deployment.getOverrideName();
+        if (overrideName != null) {
+            headers.set(Proxy.HEADER_OVERRIDE_NAME, overrideName);
         }
     }
 
