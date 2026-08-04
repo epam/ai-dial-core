@@ -5,13 +5,13 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
+import com.epam.aidial.core.server.mcp.McpClientUtils;
+import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
-import com.epam.aidial.core.server.service.McpHttpClientBuilderService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.util.McpClientUtils;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -67,7 +67,7 @@ class McpResourceControllerTest {
     @Mock
     private HttpClientOptions clientOptions;
     @Mock
-    private McpHttpClientBuilderService mcpHttpClientBuilderService;
+    private McpHttpClientBuilder mcpHttpClientBuilder;
 
     private McpResourceController controller;
 
@@ -81,7 +81,7 @@ class McpResourceControllerTest {
         when(proxy.getRateLimiter()).thenReturn(rateLimiter);
         lenient().when(proxy.getClientOptions()).thenReturn(clientOptions);
         lenient().when(clientOptions.getIdleTimeout()).thenReturn(5000);
-        lenient().when(proxy.getMcpHttpClientBuilderService()).thenReturn(mcpHttpClientBuilderService);
+        lenient().when(proxy.getMcpHttpClientBuilder()).thenReturn(mcpHttpClientBuilder);
         lenient().when(rateLimiter.limit(any(), any()))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         lenient().doAnswer(invocation -> {

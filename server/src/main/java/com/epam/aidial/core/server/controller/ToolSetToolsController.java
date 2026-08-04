@@ -14,16 +14,16 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.mcp.McpClientUtils;
+import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.DeploymentService;
-import com.epam.aidial.core.server.service.McpHttpClientBuilderService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
-import com.epam.aidial.core.server.util.McpClientUtils;
 import com.epam.aidial.core.server.util.McpUpstreamAuthInjector;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -61,7 +61,7 @@ public class ToolSetToolsController implements Controller {
     private final ApiKeyStore apiKeyStore;
     private final AccessService accessService;
     private final ApplicationSchemaService applicationSchemaService;
-    private final McpHttpClientBuilderService mcpHttpClientBuilderService;
+    private final McpHttpClientBuilder mcpHttpClientBuilder;
     private final McpUpstreamAuthInjector authInjector;
 
     public ToolSetToolsController(Proxy proxy, ProxyContext context, String toolSetId, boolean filterAllowed) {
@@ -75,7 +75,7 @@ public class ToolSetToolsController implements Controller {
         this.apiKeyStore = proxy.getApiKeyStore();
         this.accessService = proxy.getAccessService();
         this.applicationSchemaService = proxy.getApplicationSchemaService();
-        this.mcpHttpClientBuilderService = proxy.getMcpHttpClientBuilderService();
+        this.mcpHttpClientBuilder = proxy.getMcpHttpClientBuilder();
         this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
                 UrlUtil.encodePath(toolSetId), context, ResourceTypes.TOOL_SET);
         this.authInjector = new McpUpstreamAuthInjector(proxy);
@@ -182,7 +182,7 @@ public class ToolSetToolsController implements Controller {
             McpClientUtils.withSyncClient(
                     upstream.getEndpoint(),
                     Duration.ofMillis(proxy.getClientOptions().getIdleTimeout()),
-                    mcpHttpClientBuilderService.httpClientBuilder(),
+                    mcpHttpClientBuilder.httpClientBuilder(),
                     builder -> customizeRequest(builder, deployment),
                     client -> {
                         if (filterAllowed) {

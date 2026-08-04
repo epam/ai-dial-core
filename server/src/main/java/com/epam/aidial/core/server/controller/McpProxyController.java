@@ -15,6 +15,7 @@ import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
+import com.epam.aidial.core.server.mcp.McpClientUtils;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ConsentService;
@@ -59,8 +60,6 @@ import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_
 
 @Slf4j
 public class McpProxyController implements Controller {
-
-    private static final int MAX_MCP_REDIRECTS = 5;
 
     protected final String deploymentId;
 
@@ -315,7 +314,7 @@ public class McpProxyController implements Controller {
      */
     private boolean tryFollowRedirect(HttpClientResponse proxyResponse) {
         String location = proxyResponse.getHeader(HttpHeaders.LOCATION);
-        if (location == null || redirectCount >= MAX_MCP_REDIRECTS) {
+        if (location == null || redirectCount >= McpClientUtils.MAX_MCP_REDIRECTS) {
             return false;
         }
 
@@ -332,7 +331,7 @@ public class McpProxyController implements Controller {
             return false;
         }
 
-        if (!isSameOrigin(currentUri, redirectUri)) {
+        if (!McpClientUtils.isSameOrigin(currentUri, redirectUri)) {
             log.warn("Refusing to follow cross-origin MCP redirect from {} to {}", currentUri, redirectUri);
             return false;
         }
@@ -343,18 +342,6 @@ public class McpProxyController implements Controller {
         // drain the redirect body so the connection can be released before re-issuing the request
         proxyResponse.body().onComplete(ignored -> sendRequest(target));
         return true;
-    }
-
-    private static boolean isSameOrigin(URI a, URI b) {
-        return a.getHost() != null && b.getHost() != null
-                && a.getScheme().equalsIgnoreCase(b.getScheme())
-                && a.getHost().equalsIgnoreCase(b.getHost())
-                && resolvePort(a) == resolvePort(b);
-    }
-
-    private static int resolvePort(URI uri) {
-        int port = uri.getPort();
-        return port != -1 ? port : ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80);
     }
 
     /**

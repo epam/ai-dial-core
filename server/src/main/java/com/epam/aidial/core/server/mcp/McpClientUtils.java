@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.util;
+package com.epam.aidial.core.server.mcp;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
@@ -23,6 +23,11 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.function.Consumer;
 
+/**
+ * Shared helpers for talking to MCP servers, used by both the Vert.x-based MCP proxy path
+ * ({@code McpProxyController}) and the MCP-SDK/java.net.http-based toolset paths
+ * ({@code RedirectSafeHttpClient}).
+ */
 @UtilityClass
 public class McpClientUtils {
 
@@ -31,6 +36,12 @@ public class McpClientUtils {
                     JsonSchemaValidator.ValidationResponse.asValid(null);
 
     public static final McpJsonMapper MCP_JSON_MAPPER = createLenientMcpJsonMapper();
+
+    /**
+     * Cap on the number of same-origin redirects to follow for a single MCP request, matching the
+     * JDK HttpClient's own default ({@code jdk.httpclient.redirects.retrylimit}).
+     */
+    public static final int MAX_MCP_REDIRECTS = 5;
 
     private static final String ADDITIONAL_PROPERTIES_FIELD = "additionalProperties";
 
@@ -51,6 +62,23 @@ public class McpClientUtils {
         }
         String origin = uri.getScheme() + "://" + uri.getRawAuthority();
         return HttpClientStreamableHttpTransport.builder(origin).endpoint(path);
+    }
+
+    /**
+     * True if {@code a} and {@code b} share the same scheme, host, and (resolved) port - used to
+     * decide whether a redirect may be followed with the original request's headers intact, since
+     * auth headers (Authorization, API keys) must never be forwarded to a different origin.
+     */
+    public static boolean isSameOrigin(URI a, URI b) {
+        return a.getHost() != null && b.getHost() != null
+                && a.getScheme().equalsIgnoreCase(b.getScheme())
+                && a.getHost().equalsIgnoreCase(b.getHost())
+                && resolvePort(a) == resolvePort(b);
+    }
+
+    public static int resolvePort(URI uri) {
+        int port = uri.getPort();
+        return port != -1 ? port : ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80);
     }
 
     /**
