@@ -15,6 +15,8 @@ import com.epam.aidial.core.server.data.ApiKeyValidation;
 import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
+import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
+import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -163,6 +165,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final WellKnownResourceMetadataController resourceMetadataController;
     private final ToolSetService toolSetService;
     private final SecuredResourceService securedResourceService;
+    private final McpHttpClientBuilder mcpHttpClientBuilder;
     private final ToolSetRepairService toolSetRepairService;
     private final ApplicationSchemaService applicationSchemaService;
     private final AuthorizationHeaderProvider authorizationHeaderProvider;

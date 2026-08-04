@@ -19,6 +19,8 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.mcp.McpClientUtils;
+import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -28,7 +30,6 @@ import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
-import com.epam.aidial.core.server.util.McpClientUtils;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -40,9 +41,6 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.modelcontextprotocol.client.McpClient;
-import io.modelcontextprotocol.client.McpSyncClient;
-import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.McpHttpClientTransportAuthorizationException;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.vertx.core.Future;
@@ -71,6 +69,7 @@ public class ToolSetToolsController implements Controller {
     private final ResourceCredentialsService resourceCredentialsService;
     private final ApplicationSchemaService applicationSchemaService;
     private final AuthSettingsResolver authSettingsResolver;
+    private final McpHttpClientBuilder mcpHttpClientBuilder;
 
     public ToolSetToolsController(Proxy proxy, ProxyContext context, String toolSetId, boolean filterAllowed) {
         this.proxy = proxy;
@@ -86,6 +85,7 @@ public class ToolSetToolsController implements Controller {
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.applicationSchemaService = proxy.getApplicationSchemaService();
         this.authSettingsResolver = proxy.getAuthSettingsResolver();
+        this.mcpHttpClientBuilder = proxy.getMcpHttpClientBuilder();
         this.credentialsLocator = CredentialsLocatorFactory.fromAnyUrl(
                 UrlUtil.encodePath(toolSetId), context, ResourceTypes.TOOL_SET);
     }
@@ -187,26 +187,23 @@ public class ToolSetToolsController implements Controller {
         Objects.requireNonNull(upstream);
         Deployment deployment = context.getDeployment();
 
-        HttpClientStreamableHttpTransport transport = McpClientUtils.transportBuilder(upstream.getEndpoint())
-                .jsonMapper(McpClientUtils.MCP_JSON_MAPPER)
-                .httpRequestCustomizer((builder, method, endpoint, body, transportContext) ->
-                        customizeRequest(builder, deployment))
-                .build();
-
-        try (McpSyncClient client = McpClient.sync(transport)
-                .clientInfo(new McpSchema.Implementation("DIAL", "1.0"))
-                .requestTimeout(Duration.ofMillis(proxy.getClientOptions().getIdleTimeout()))
-                .jsonSchemaValidator(McpClientUtils.NOOP_SCHEMA_VALIDATOR)
-                .build()) {
-            client.initialize();
-            if (filterAllowed) {
-                // listTools() auto-paginates all pages via the SDK's expand() chain
-                processUserToolsResult(client.listTools().tools());
-            } else {
-                // listTools(cursor) fetches exactly one page; null = first page
-                String cursor = context.getRequest().getParam("nextCursor");
-                processAdminToolsResult(client.listTools(cursor));
-            }
+        try {
+            McpClientUtils.withSyncClient(
+                    upstream.getEndpoint(),
+                    Duration.ofMillis(proxy.getClientOptions().getIdleTimeout()),
+                    mcpHttpClientBuilder.httpClientBuilder(),
+                    builder -> customizeRequest(builder, deployment),
+                    client -> {
+                        if (filterAllowed) {
+                            // listTools() auto-paginates all pages via the SDK's expand() chain
+                            processUserToolsResult(client.listTools().tools());
+                        } else {
+                            // listTools(cursor) fetches exactly one page; null = first page
+                            String cursor = context.getRequest().getParam("nextCursor");
+                            processAdminToolsResult(client.listTools(cursor));
+                        }
+                        return null;
+                    });
         } catch (Exception e) {
             McpHttpClientTransportAuthorizationException authError =
                     ExceptionUtils.throwableOfType(e, McpHttpClientTransportAuthorizationException.class);

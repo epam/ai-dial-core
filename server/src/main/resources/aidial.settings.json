@@ -81,6 +81,9 @@
       "period": 10000
     }
   },
+  "mcpHttpClient": {
+    "connectTimeout": 10000
+  },
   "applications": {
     "includeCustomApps": true
   },
