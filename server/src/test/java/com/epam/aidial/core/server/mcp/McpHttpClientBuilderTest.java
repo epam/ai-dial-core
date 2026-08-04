@@ -46,7 +46,7 @@ class McpHttpClientBuilderTest {
     }
 
     @Test
-    void followRedirectsThrowsInsteadOfSilentlyDiscardingTheRequestedPolicy() throws Exception {
+    void followRedirectsThrowsOnlyWhenTheRequestedPolicyDiffers() throws Exception {
         try (McpHttpClientBuilder service = new McpHttpClientBuilder(settings(5000))) {
             assertThrows(UnsupportedOperationException.class,
                     () -> service.httpClientBuilder().followRedirects(HttpClient.Redirect.ALWAYS));
@@ -54,10 +54,40 @@ class McpHttpClientBuilderTest {
     }
 
     @Test
-    void versionThrowsInsteadOfSilentlyDiscardingTheRequestedVersion() throws Exception {
+    void versionThrowsOnlyWhenTheRequestedVersionDiffers() throws Exception {
         try (McpHttpClientBuilder service = new McpHttpClientBuilder(settings(5000))) {
             assertThrows(UnsupportedOperationException.class,
                     () -> service.httpClientBuilder().version(HttpClient.Version.HTTP_2));
+        }
+    }
+
+    @Test
+    void followRedirectsAcceptsTheAlreadyConfiguredPolicyAsNoOp() throws Exception {
+        // guards against a future MCP SDK release calling .followRedirects(NORMAL) on the supplied
+        // builder itself (instead of only on its own now-discarded default) - it must not 500
+        try (McpHttpClientBuilder service = new McpHttpClientBuilder(settings(5000))) {
+            HttpClient shared = service.httpClientBuilder().build();
+
+            HttpClient viaMatchingPolicy = service.httpClientBuilder()
+                    .followRedirects(HttpClient.Redirect.NORMAL)
+                    .build();
+
+            assertSame(shared, viaMatchingPolicy);
+        }
+    }
+
+    @Test
+    void versionAcceptsTheAlreadyConfiguredVersionAsNoOp() throws Exception {
+        // guards against a future MCP SDK release calling .version(HTTP_1_1) on the supplied builder
+        // itself (instead of only on its own now-discarded default) - it must not 500
+        try (McpHttpClientBuilder service = new McpHttpClientBuilder(settings(5000))) {
+            HttpClient shared = service.httpClientBuilder().build();
+
+            HttpClient viaMatchingVersion = service.httpClientBuilder()
+                    .version(HttpClient.Version.HTTP_1_1)
+                    .build();
+
+            assertSame(shared, viaMatchingVersion);
         }
     }
 

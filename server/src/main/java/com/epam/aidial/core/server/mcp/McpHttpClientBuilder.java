@@ -58,10 +58,14 @@ public class McpHttpClientBuilder implements AutoCloseable {
      * A {@code HttpClient.Builder} whose {@link #build()} always returns the same, already-built
      * {@code HttpClient}. Most configuration methods are a no-op that returns {@code this}, so callers
      * that chain configuration calls onto the builder before calling {@code build()} are unaffected.
-     * {@link #followRedirects} and {@link #version} instead throw: unlike the other settings, silently
-     * discarding a caller's requested redirect policy or HTTP version would be a correctness/security
-     * trap rather than a harmless no-op (see issue #1768) - a future caller relying on either taking
-     * effect deserves a loud failure, not silent divergence from the shared client's fixed behavior.
+     * {@link #followRedirects} and {@link #version} instead throw when the requested value actually
+     * differs from what the shared client is already configured with: unlike the other settings,
+     * silently discarding a caller's requested redirect policy or HTTP version would be a
+     * correctness/security trap rather than a harmless no-op (see issue #1768) - a future caller
+     * relying on either taking effect deserves a loud failure on a real conflict, not silent
+     * divergence from the shared client's fixed behavior. A matching request (e.g. the MCP SDK's own
+     * default builder asking for the same HTTP/1.1 preference already baked into the shared client)
+     * is accepted as the no-op it already is.
      */
     private static final class HttpClientBuilder implements HttpClient.Builder {
 
@@ -98,14 +102,20 @@ public class McpHttpClientBuilder implements AutoCloseable {
 
         @Override
         public HttpClient.Builder followRedirects(HttpClient.Redirect policy) {
-            throw new UnsupportedOperationException(
-                    "the shared HttpClient's redirect policy is fixed and cannot be overridden per caller");
+            if (policy != httpClient.followRedirects()) {
+                throw new UnsupportedOperationException(
+                        "the shared HttpClient's redirect policy is fixed and cannot be overridden per caller");
+            }
+            return this;
         }
 
         @Override
         public HttpClient.Builder version(HttpClient.Version version) {
-            throw new UnsupportedOperationException(
-                    "the shared HttpClient's HTTP version is fixed and cannot be overridden per caller");
+            if (version != httpClient.version()) {
+                throw new UnsupportedOperationException(
+                        "the shared HttpClient's HTTP version is fixed and cannot be overridden per caller");
+            }
+            return this;
         }
 
         @Override
