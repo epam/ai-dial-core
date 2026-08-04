@@ -35,6 +35,7 @@ An object containing parameters for each [interceptor](#interceptors).
 
 * `endpoint`: The URL of the interceptor service. This URL is used to handle requests and responses for the interceptor. **Required** unless `interfaces` is used instead.
 * `interfaces`: A typed alternative to the flat `endpoint` field for declaring the interceptor service target. For interceptors, only the `openaiChatCompletions` interface is supported; the Responses API and other interfaces are not. Refer to [interceptors.<interceptor_name>.interfaces](#interceptorsinterceptor_nameinterfaces).
+* `overrideName`: If set, the interceptor is called under this name: the outgoing chat completion request body's `model` field (and the `X-DIAL-OVERRIDE-NAME` header) are rewritten to this value before the request reaches the interceptor's endpoint. Only applied when the interceptor is invoked as part of a chat-completions request; interceptors are also invoked when processing Responses API requests, but that flow ignores `overrideName`. Doesn't change routing — only the value the endpoint receives.
 * `iconUrl`: A string with the URL with the icon location to display for the interceptor on UI.
 * `description`: A brief summary of what this interceptor does and any parameters it uses (e.g. BLACKLIST=bar or Logs request/response payloads).
 * `displayName`: A string with the interceptor's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs so operators can quickly identify the interceptor.

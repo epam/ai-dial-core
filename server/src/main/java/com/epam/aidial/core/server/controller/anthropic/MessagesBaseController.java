@@ -14,7 +14,7 @@ import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
-import com.epam.aidial.core.server.function.enhancement.EnhanceModelRequestFn;
+import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
@@ -50,7 +50,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
 
     /**
      * The {@code model} value as it arrived in the request body, i.e. the DIAL deployment id. Captured before
-     * {@link EnhanceModelRequestFn} rewrites the body model to the deployment's {@code overrideName}, and
+     * {@link EnhanceDeploymentRequestFn} rewrites the body model to the deployment's {@code overrideName}, and
      * forwarded upstream as {@link Proxy#HEADER_DEPLOYMENT_ID}.
      */
     private String deploymentId;
@@ -60,7 +60,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         this.enhancementFunctions = List.of(
                 new CollectRequestStandardAttachmentsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
-                new EnhanceModelRequestFn(proxy, context),
+                new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
                 new CollectDeploymentsFn(proxy, context));
     }

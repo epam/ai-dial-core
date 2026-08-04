@@ -660,7 +660,7 @@ public class PublicationService {
             verifyResourceType(descriptor);
 
             if (resource.getAction() != Publication.ResourceAction.ADD_IF_ABSENT && hasResource(descriptor) != exists) {
-                String errorMessage = exists ? "Target resource does not exists: " + url : "Target resource  exists: " + url;
+                String errorMessage = exists ? "Target resource does not exists: " + url : "Target resource exists: " + url;
                 throw new IllegalArgumentException(errorMessage);
             }
         }

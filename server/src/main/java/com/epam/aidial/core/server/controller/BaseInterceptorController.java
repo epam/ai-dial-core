@@ -4,16 +4,14 @@ import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.function.AutoShareDeploymentFn;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
-import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
-import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -32,12 +30,10 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
     private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
     private final int interceptorIndex;
 
-    protected BaseInterceptorController(Proxy proxy, ProxyContext context, int interceptorIndex) {
+    protected BaseInterceptorController(Proxy proxy, ProxyContext context, int interceptorIndex,
+            List<BaseRequestFunction<RequestObject>> enhancementFunctions) {
         super(proxy, context);
-        this.enhancementFunctions = List.of(
-                new ApplyDefaultDeploymentSettingsFn(proxy, context),
-                new CollectRequestStandardAttachmentsFn(proxy, context),
-                new AutoShareDeploymentFn(proxy, context));
+        this.enhancementFunctions = enhancementFunctions;
         this.interceptorIndex = interceptorIndex;
     }
 
@@ -86,7 +82,8 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
         respond(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    private void handleRequestBody(Buffer requestBody) {
+    @VisibleForTesting
+    void handleRequestBody(Buffer requestBody) {
         context.setRequestBody(requestBody);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         try {
@@ -130,6 +127,8 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, proxyApiKeyData.getPerRequestKey());
 
         proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, context.getInitialDeployment());
+
+        enrichProxyRequestHeaders(proxyRequest);
 
         Buffer requestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(requestBody.length()));

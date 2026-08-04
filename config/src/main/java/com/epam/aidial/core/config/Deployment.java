@@ -25,6 +25,14 @@ public abstract class Deployment extends RoleBasedEntity {
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     private Map<String, DeploymentInterface> interfaces = Map.of();
+    /**
+     * If set, the deployment is called under this name instead of its own: the outgoing request body's
+     * {@code model} field (and the {@code X-DIAL-OVERRIDE-NAME} header) are rewritten to this value before
+     * the request reaches the deployment's endpoint/adapter. Routing is unaffected — only the value the
+     * endpoint receives changes.
+     */
+    @JsonAlias({"overrideName", "override_name"})
+    private String overrideName;
     @JsonAlias({"displayName", "display_name"})
     private LocalizedValue displayName;
     @JsonAlias({"displayVersion", "display_version"})
@@ -152,8 +160,8 @@ public abstract class Deployment extends RoleBasedEntity {
     /**
      * Dual-mode: the absolute URI a request for the type is forwarded to. When the deployment declares an
      * {@code interfaces} base URL, that base URL plus the exact ingress path (with the {@code /deployments/{id}/}
-     * segment rewritten to this deployment's own name); otherwise the verbatim legacy endpoint plus the
-     * original query, byte-identical to the legacy flow.
+     * segment rewritten to this deployment's own name, or to {@link #overrideName} when set); otherwise the
+     * verbatim legacy endpoint plus the original query, byte-identical to the legacy flow.
      *
      * @param ingressUri the inbound request URI, already including path and query
      * @param query      the inbound query string, or null when absent
@@ -163,16 +171,24 @@ public abstract class Deployment extends RoleBasedEntity {
         if (baseUrl == null) {
             return getLegacyEndpoint(type) + (query == null ? "" : "?" + query);
         }
-        return baseUrl + rewriteDeploymentPathSegment(ingressUri, getName());
+        return baseUrl + rewriteDeploymentPathSegment(ingressUri, getTargetName());
     }
 
     /**
-     * Rewrites the {@code /deployments/{id}/} ingress path segment to this deployment's own name, whatever id
-     * it currently carries. A request forwarded through an interceptor carries the literal pseudo id
-     * {@code interceptor} in the path (see {@code DeploymentPostController#handle}) rather than this
-     * deployment's own name, so it needs rewriting back. No-op for interfaces whose ingress path carries no
-     * deployment segment (openaiResponses and anthropicMessages resolve the deployment from the request body
-     * instead).
+     * The name under which this deployment is called: {@link #overrideName} when set, otherwise its own name.
+     */
+    @JsonIgnore
+    public String getTargetName() {
+        return overrideName != null ? overrideName : getName();
+    }
+
+    /**
+     * Rewrites the {@code /deployments/{id}/} ingress path segment to this deployment's own name (or
+     * {@link #overrideName} when set), whatever id it currently carries. A request forwarded through an
+     * interceptor carries the literal pseudo id {@code interceptor} in the path (see
+     * {@code DeploymentPostController#handle}) rather than this deployment's own name, so it needs rewriting
+     * back. No-op for interfaces whose ingress path carries no deployment segment (openaiResponses and
+     * anthropicMessages resolve the deployment from the request body instead).
      */
     private static String rewriteDeploymentPathSegment(String path, String targetName) {
         Matcher matcher = DEPLOYMENT_SEGMENT.matcher(path);

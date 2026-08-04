@@ -1,12 +1,19 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.DeploymentInterface;
+import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,6 +27,9 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -186,5 +196,43 @@ public class ResponsesInterceptorControllerTest {
         ResponsesInterceptorController controller = new ResponsesInterceptorController(proxy, context, 0);
 
         assertEquals("http://adapter/openai/v1/responses", controller.buildUri(context));
+    }
+
+    @Test
+    void handleRequestBody_doesNotOverrideModelName() throws IOException {
+        Interceptor interceptor = new Interceptor();
+        interceptor.setName("interceptor1");
+        interceptor.setResponsesEndpoint("http://localhost:4088/openai/v1/responses");
+        interceptor.setOverrideName("overrideName");
+
+        when(context.getDeployment()).thenReturn(interceptor);
+        when(context.getRequest()).thenReturn(request);
+        when(request.query()).thenReturn(null);
+
+        when(proxy.getClient()).thenReturn(mock(HttpClient.class, Answers.RETURNS_DEEP_STUBS));
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
+
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setInterceptorIndex(0);
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+
+        when(context.getRequestBody()).thenCallRealMethod();
+        doCallRealMethod().when(context).setRequestBody(any());
+
+        ResponsesInterceptorController controller = new ResponsesInterceptorController(proxy, context, 0);
+
+        String body = """
+                {
+                    "model": "name",
+                    "input": []
+                }
+                """;
+        controller.handleRequestBody(Buffer.buffer(body));
+
+        Buffer updatedBody = context.getRequestBody();
+        assertNotNull(updatedBody);
+        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(updatedBody.getBytes());
+        assertEquals("name", tree.get("model").asText());
     }
 }
