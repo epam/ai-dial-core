@@ -24,11 +24,12 @@ public class DeploymentTest {
         model.setEndpoint("http://host/chat/completions");
 
         assertTrue(model.supportsInterface(OPENAI_CHAT_COMPLETIONS));
+        assertTrue(model.canServeInterface(OPENAI_CHAT_COMPLETIONS));
         assertNull(model.getInterfaceBaseUrl(OPENAI_CHAT_COMPLETIONS));
-        assertEquals("http://host/chat/completions", model.getLegacyEndpoint(OPENAI_CHAT_COMPLETIONS));
         assertEquals("http://host/chat/completions", model.resolveEndpoint(OPENAI_CHAT_COMPLETIONS));
 
         assertFalse(model.supportsInterface(OPENAI_RESPONSES));
+        assertFalse(model.canServeInterface(OPENAI_RESPONSES));
         assertNull(model.resolveEndpoint(OPENAI_RESPONSES));
     }
 
@@ -39,7 +40,6 @@ public class DeploymentTest {
 
         assertTrue(model.supportsInterface(OPENAI_RESPONSES));
         assertNull(model.getInterfaceBaseUrl(OPENAI_RESPONSES));
-        assertEquals("http://host/openai/v1/responses", model.getLegacyEndpoint(OPENAI_RESPONSES));
         assertEquals("http://host/openai/v1/responses", model.resolveEndpoint(OPENAI_RESPONSES));
 
         assertFalse(model.supportsInterface(OPENAI_CHAT_COMPLETIONS));
@@ -53,7 +53,7 @@ public class DeploymentTest {
 
         assertTrue(model.supportsInterface(OPENAI_CHAT_COMPLETIONS));
         assertEquals("http://adapter:5000", model.getInterfaceBaseUrl(OPENAI_CHAT_COMPLETIONS));
-        assertNull(model.getLegacyEndpoint(OPENAI_CHAT_COMPLETIONS));
+        assertNull(model.getEndpoint());
         assertEquals("http://adapter:5000", model.resolveEndpoint(OPENAI_CHAT_COMPLETIONS));
     }
 
@@ -67,7 +67,7 @@ public class DeploymentTest {
         assertTrue(model.supportsInterface(OPENAI_RESPONSES));
         assertEquals("http://adapter", model.resolveEndpoint(OPENAI_RESPONSES));
         // legacy field is left untouched in config
-        assertEquals("http://legacy/openai/v1/responses", model.getLegacyEndpoint(OPENAI_RESPONSES));
+        assertEquals("http://legacy/openai/v1/responses", model.getResponsesEndpoint());
     }
 
     @Test
@@ -87,17 +87,18 @@ public class DeploymentTest {
                 OPENAI_EMBEDDINGS.getValue(), new DeploymentInterface("http://adapter:5000/")));
 
         assertTrue(model.supportsInterface(OPENAI_EMBEDDINGS));
-        assertEquals(OPENAI_EMBEDDINGS, model.resolveServingInterface(OPENAI_EMBEDDINGS));
+        assertTrue(model.canServeInterface(OPENAI_EMBEDDINGS));
         assertEquals("http://adapter:5000", model.resolveEndpoint(OPENAI_EMBEDDINGS));
 
         // declaring embeddings alone does not make the deployment a chat-completions one: the fallback
-        // is one-way, so a chat-completions request finds no interface to serve it
-        assertFalse(model.supportsInterface(model.resolveServingInterface(OPENAI_CHAT_COMPLETIONS)));
+        // is one-way, so a chat-completions request finds no configuration to serve it
+        assertFalse(model.canServeInterface(OPENAI_CHAT_COMPLETIONS));
     }
 
     @Test
     void embeddingsFallsBackToChatCompletionsInterface() {
         Model model = new Model();
+        model.setName("embedding-ada");
         model.setInterfaces(Map.of(
                 OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://adapter:5000")));
 
@@ -105,7 +106,10 @@ public class DeploymentTest {
         assertFalse(model.supportsInterface(OPENAI_EMBEDDINGS));
         assertNull(model.getInterfaceBaseUrl(OPENAI_EMBEDDINGS));
         // ...but the chat-completions entry keeps serving embeddings as it did before the split
-        assertEquals(OPENAI_CHAT_COMPLETIONS, model.resolveServingInterface(OPENAI_EMBEDDINGS));
+        assertTrue(model.canServeInterface(OPENAI_EMBEDDINGS));
+        assertEquals("http://adapter:5000", model.resolveEndpoint(OPENAI_EMBEDDINGS));
+        assertEquals("http://adapter:5000/openai/deployments/embedding-ada/embeddings",
+                model.resolveRequestUri(OPENAI_EMBEDDINGS, "/openai/deployments/embedding-ada/embeddings", null));
     }
 
     @Test
@@ -114,12 +118,12 @@ public class DeploymentTest {
         model.setType(ModelType.EMBEDDING);
         model.setEndpoint("http://host/openai/deployments/ada/embeddings");
 
+        // the untyped legacy endpoint declares chat completions only, yet it is what serves embeddings
         assertFalse(model.supportsInterface(OPENAI_EMBEDDINGS));
-        assertNull(model.getLegacyEndpoint(OPENAI_EMBEDDINGS));
-        assertEquals(OPENAI_CHAT_COMPLETIONS, model.resolveServingInterface(OPENAI_EMBEDDINGS));
+        assertTrue(model.canServeInterface(OPENAI_EMBEDDINGS));
+        assertEquals("http://host/openai/deployments/ada/embeddings", model.resolveEndpoint(OPENAI_EMBEDDINGS));
         assertEquals("http://host/openai/deployments/ada/embeddings",
-                model.resolveRequestUri(model.resolveServingInterface(OPENAI_EMBEDDINGS),
-                        "/openai/deployments/embedding-ada/embeddings", null));
+                model.resolveRequestUri(OPENAI_EMBEDDINGS, "/openai/deployments/embedding-ada/embeddings", null));
     }
 
     @Test
@@ -127,7 +131,8 @@ public class DeploymentTest {
         Model model = new Model();
         model.setResponsesEndpoint("http://host/openai/v1/responses");
 
-        assertFalse(model.supportsInterface(model.resolveServingInterface(OPENAI_EMBEDDINGS)));
+        assertFalse(model.canServeInterface(OPENAI_EMBEDDINGS));
+        assertNull(model.resolveEndpoint(OPENAI_EMBEDDINGS));
     }
 
     @Test
@@ -138,7 +143,7 @@ public class DeploymentTest {
                 OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://chat-adapter"),
                 OPENAI_EMBEDDINGS.getValue(), new DeploymentInterface("http://embeddings-adapter")));
 
-        assertEquals(OPENAI_EMBEDDINGS, model.resolveServingInterface(OPENAI_EMBEDDINGS));
+        assertEquals("http://embeddings-adapter", model.resolveEndpoint(OPENAI_EMBEDDINGS));
         assertEquals("http://embeddings-adapter/openai/deployments/embedding-ada/embeddings",
                 model.resolveRequestUri(OPENAI_EMBEDDINGS, "/openai/deployments/embedding-ada/embeddings", null));
         assertEquals("http://chat-adapter/openai/deployments/embedding-ada/chat/completions",
@@ -153,8 +158,8 @@ public class DeploymentTest {
 
         // embeddings is the only type a chat-completions endpoint stands in for: the Responses API
         // keeps requiring its own configuration
-        assertEquals(OPENAI_RESPONSES, model.resolveServingInterface(OPENAI_RESPONSES));
-        assertFalse(model.supportsInterface(model.resolveServingInterface(OPENAI_RESPONSES)));
+        assertFalse(model.canServeInterface(OPENAI_RESPONSES));
+        assertNull(model.resolveEndpoint(OPENAI_RESPONSES));
     }
 
     @Test

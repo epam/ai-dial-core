@@ -190,7 +190,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                         dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(app);
                     }
 
-                    if (!dep.supportsInterface(servingInterface(dep))) {
+                    if (!dep.canServeInterface(requestedInterface())) {
                         throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
                     }
 
@@ -285,24 +285,24 @@ public class DeploymentPostController extends BaseDeploymentPostController {
     }
 
     /**
-     * The interface serving this request: {@code /embeddings} is handled by {@code openaiEmbeddings},
-     * {@code /chat/completions} and {@code /completions} by {@code openaiChatCompletions}, and a
-     * deployment declaring no {@code openaiEmbeddings} falls back to its chat-completions configuration.
+     * The interface this request targets: {@code openaiEmbeddings} for {@code /embeddings},
+     * {@code openaiChatCompletions} for {@code /chat/completions} and {@code /completions}. A deployment
+     * declaring no {@code openaiEmbeddings} still serves embeddings through its chat-completions
+     * configuration; that fallback lives in {@link Deployment} itself.
      * Taken from the path rather than from a named group in {@code RouteTemplate.POST_DEPLOYMENT}: named
      * groups are replaced with placeholders in the server span name, which would stop telling the three
      * actions apart.
      */
-    private InterfaceType servingInterface(Deployment deployment) {
-        InterfaceType requested = context.getRequest().path().endsWith("/embeddings")
+    private InterfaceType requestedInterface() {
+        return context.getRequest().path().endsWith("/embeddings")
                 ? InterfaceType.OPENAI_EMBEDDINGS
                 : InterfaceType.OPENAI_CHAT_COMPLETIONS;
-        return deployment.resolveServingInterface(requested);
     }
 
     @SneakyThrows
     private void sendRequest() {
         if (nextUpstream()) {
-            createProxyRequest(servingInterface(context.getDeployment()))
+            createProxyRequest(requestedInterface())
                     .onSuccess(this::handleProxyRequest)
                     .onFailure(this::handleProxyConnectionError);
         }
@@ -335,10 +335,11 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         }
 
         String upstreamId = context.getRequest().headers().get(HEADER_UPSTREAM_ID);
+        InterfaceType type = requestedInterface();
         UpstreamRoute upstreamRoute;
         try {
             upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext(),
-                    dep -> dep.resolveEndpoint(servingInterface(dep)), upstreamId);
+                    dep -> dep.resolveEndpoint(type), upstreamId);
         } catch (HttpException e) {
             respond(e.getStatus(), e.getMessage());
             return;

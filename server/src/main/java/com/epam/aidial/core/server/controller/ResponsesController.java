@@ -161,7 +161,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
         }
 
-        if (!deployment.supportsInterface(InterfaceType.OPENAI_RESPONSES)) {
+        if (!deployment.canServeInterface(InterfaceType.OPENAI_RESPONSES)) {
             throw new HttpException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "OpenAI responses not supported for this deployment type"

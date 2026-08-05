@@ -143,7 +143,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
             deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
         }
 
-        if (!deployment.supportsInterface(InterfaceType.ANTHROPIC_MESSAGES)) {
+        if (!deployment.canServeInterface(InterfaceType.ANTHROPIC_MESSAGES)) {
             throw new HttpException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "Anthropic messages not supported for this deployment type"

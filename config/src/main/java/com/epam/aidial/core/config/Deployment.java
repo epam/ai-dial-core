@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.annotation.Nullable;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -119,6 +120,7 @@ public abstract class Deployment extends RoleBasedEntity {
     /**
      * New-flow base URL for the type (trailing slash stripped), or null when not declared.
      */
+    @Nullable
     public String getInterfaceBaseUrl(InterfaceType type) {
         DeploymentInterface deploymentInterface = interfaces == null ? null : interfaces.get(type.getValue());
         if (deploymentInterface == null) {
@@ -129,11 +131,12 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
-     * Legacy fully-qualified endpoint configured for the type, or null. Only the two types that predate
-     * the {@code interfaces} map have a legacy peer field; {@code openaiEmbeddings} reaches the legacy
-     * {@link #endpoint} through its fallback instead (see {@link #resolveServingInterface(InterfaceType)}).
+     * The legacy peer field of the type: {@link #endpoint} for chat completions, {@link #responsesEndpoint}
+     * for responses. Types introduced together with the {@code interfaces} map have no legacy field of their
+     * own — {@code openaiEmbeddings} reaches {@link #endpoint} through {@link #routedInterface} instead.
      */
-    public String getLegacyEndpoint(InterfaceType type) {
+    @Nullable
+    private String getLegacyEndpoint(InterfaceType type) {
         if (type == InterfaceType.OPENAI_CHAT_COMPLETIONS) {
             return endpoint;
         }
@@ -144,36 +147,49 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
-     * Routing identifier for the type: interfaces base_url when declared (new flow), else the legacy
-     * endpoint (verbatim flow). Used as the synthetic upstream id when a deployment has no upstreams.
+     * The interface whose configuration carries a request for {@code type}: {@code type} itself, unless it
+     * is {@code openaiEmbeddings} and the deployment does not declare it. {@code /embeddings} was served by
+     * the chat-completions configuration — the untyped legacy {@link #endpoint} or the chat-completions
+     * {@code base_url} — before the two interfaces were split, so deployments configured back then keep
+     * routing unchanged. The fallback is one-way and applies to routing only, never to what
+     * {@link #supportsInterface} advertises.
      */
+    private InterfaceType routedInterface(InterfaceType type) {
+        return type == InterfaceType.OPENAI_EMBEDDINGS && !supportsInterface(type)
+                ? InterfaceType.OPENAI_CHAT_COMPLETIONS
+                : type;
+    }
+
+    /**
+     * Routing identifier for the type: interfaces base_url when declared (new flow), else the legacy
+     * endpoint (verbatim flow), else null. Used as the synthetic upstream id when a deployment has no
+     * upstreams.
+     */
+    @Nullable
     public String resolveEndpoint(InterfaceType type) {
-        String baseUrl = getInterfaceBaseUrl(type);
-        return baseUrl != null ? baseUrl : getLegacyEndpoint(type);
+        InterfaceType routed = routedInterface(type);
+        String baseUrl = getInterfaceBaseUrl(routed);
+        return baseUrl != null ? baseUrl : getLegacyEndpoint(routed);
     }
 
     /**
      * True when the deployment declares the type, via the new interfaces map OR a legacy endpoint.
      * This restores the legacy {@code getEndpoint() != null} semantics while also honouring interfaces.
-     * Declaration-based on purpose: it drives what the listing APIs advertise, so it never reports a
-     * type the deployment would merely serve through the fallback below.
+     * Declaration-based on purpose: it drives what the listing APIs advertise, so — unlike
+     * {@link #canServeInterface} — it never reports a type the deployment would merely serve through
+     * {@link #routedInterface the embeddings fallback}.
      */
     public boolean supportsInterface(InterfaceType type) {
         return getInterfaceBaseUrl(type) != null || getLegacyEndpoint(type) != null;
     }
 
     /**
-     * The interface a request for {@code type} is served through: {@code type} itself, except that an
-     * embeddings request falls back to {@code openaiChatCompletions} when the deployment declares no
-     * {@code openaiEmbeddings} — that endpoint served {@code /embeddings} before the two were split, so
-     * deployments configured back then keep routing unchanged. A deployment that declares neither is
-     * answered with {@code type}, which it does not {@link #supportsInterface support}.
+     * True when a request for the type can be routed, i.e. the deployment either declares the type or
+     * serves it through {@link #routedInterface the embeddings fallback}. This is what a request is gated
+     * on; {@link #supportsInterface} is what the listing APIs advertise.
      */
-    public InterfaceType resolveServingInterface(InterfaceType type) {
-        return (type == InterfaceType.OPENAI_EMBEDDINGS && !supportsInterface(type)
-                && supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS))
-                ? InterfaceType.OPENAI_CHAT_COMPLETIONS
-                : type;
+    public boolean canServeInterface(InterfaceType type) {
+        return resolveEndpoint(type) != null;
     }
 
     /**
@@ -186,9 +202,10 @@ public abstract class Deployment extends RoleBasedEntity {
      * @param query      the inbound query string, or null when absent
      */
     public String resolveRequestUri(InterfaceType type, String ingressUri, String query) {
-        String baseUrl = getInterfaceBaseUrl(type);
+        InterfaceType routed = routedInterface(type);
+        String baseUrl = getInterfaceBaseUrl(routed);
         if (baseUrl == null) {
-            return getLegacyEndpoint(type) + (query == null ? "" : "?" + query);
+            return getLegacyEndpoint(routed) + (query == null ? "" : "?" + query);
         }
         return baseUrl + rewriteDeploymentPathSegment(ingressUri, getTargetName());
     }
