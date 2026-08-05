@@ -1110,11 +1110,12 @@ public final class MergedConfigStore implements ConfigStore {
         // stays at the previous value because we only swap below).
         BiConsumer<ResourceTypes, InvalidEntityException> onSkip = MODE_SKIP.equals(onInvalidEntity)
                 ? (type, error) -> {
-                    // Only types ConfigPostProcessor.processSemantic actually validates surface through
-                    // the invalidEntities sibling store (design 02 §4.3 layered model) — it has no
-                    // semantic-validation step for APPLICATION/TOOL_SET (materialized here, but still
-                    // validated lazily by ApplicationService/ToolSetService's own write paths), so onSkip
-                    // is never invoked for them even though they're now in MANAGED_TYPES.
+                    // Skips surface through the invalidEntities sibling store only for MANAGED_TYPES
+                    // (design 02 §4.3 layered model). APPLICATION/TOOL_SET have no cross-reference
+                    // validation in processSemantic (they're validated lazily by ApplicationService/
+                    // ToolSetService on write), but processApplications/processToolSets can still route a
+                    // duplicate deployment-id skip here via skipOnDuplicate — and since they're now in
+                    // MANAGED_TYPES that skip is recorded by recordSkippedByMapKey below, not just logged.
                     if (!MANAGED_TYPES.contains(type)) {
                         log.warn("Skipped {} '{}' from merged Config: {}", type.urlSegment(),
                                 error.getMapKey(), error.getMessage());
