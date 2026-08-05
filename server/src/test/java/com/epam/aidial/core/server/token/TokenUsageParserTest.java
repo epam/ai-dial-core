@@ -198,6 +198,168 @@ class TokenUsageParserTest {
                 """, 119, 1420, 1024, 256, 64, 1539);
     }
 
+    @Test
+    void testStatisticsWithNestedUsageDoesNotMaskRealUsage_StatisticsAfterUsage() {
+        // without excluding statistics.usage_per_model[].usage from the scan, the backward search
+        // would find this nested usage (999/999/1998) instead of the real top-level one (33/19/52)
+        valid("""
+                {
+                  "id": "chatcmpl-1",
+                  "object": "chat.completion",
+                  "model": "my-app",
+                  "usage": {
+                    "completion_tokens": 33,
+                    "prompt_tokens": 19,
+                    "total_tokens": 52
+                  },
+                  "statistics": {
+                    "usage_per_model": [
+                      {
+                        "index": 0,
+                        "model": "gpt-4",
+                        "usage": {
+                          "completion_tokens": 999,
+                          "prompt_tokens": 999,
+                          "total_tokens": 1998
+                        }
+                      }
+                    ]
+                  }
+                }
+                """, 33, 19, 0, 52);
+    }
+
+    @Test
+    void testStatisticsWithNestedUsageDoesNotMaskRealUsage_StatisticsBeforeUsage() {
+        // the exclusion range must be bounded to the statistics value only - it must not swallow
+        // the real usage that immediately follows it
+        valid("""
+                {
+                  "id": "chatcmpl-1",
+                  "object": "chat.completion",
+                  "model": "my-app",
+                  "statistics": {
+                    "usage_per_model": [
+                      {
+                        "index": 0,
+                        "model": "gpt-4",
+                        "usage": {
+                          "completion_tokens": 999,
+                          "prompt_tokens": 999,
+                          "total_tokens": 1998
+                        }
+                      }
+                    ]
+                  },
+                  "usage": {
+                    "completion_tokens": 33,
+                    "prompt_tokens": 19,
+                    "total_tokens": 52
+                  }
+                }
+                """, 33, 19, 0, 52);
+    }
+
+    @Test
+    void testStatisticsKeyToleratesWhitespaceAroundColonAndBrace() {
+        valid("""
+                {
+                  "id": "chatcmpl-1",
+                  "usage": {
+                    "completion_tokens": 33,
+                    "prompt_tokens": 19,
+                    "total_tokens": 52
+                  },
+                  "statistics" \t\r\n : \t\r\n {
+                    "usage_per_model": [
+                      {
+                        "index": 0,
+                        "model": "gpt-4",
+                        "usage": {
+                          "completion_tokens": 999,
+                          "prompt_tokens": 999,
+                          "total_tokens": 1998
+                        }
+                      }
+                    ]
+                  }
+                }
+                """, 33, 19, 0, 52);
+    }
+
+    @Test
+    void testStatisticsBraceMatchingIgnoresBracesAndEscapedQuotesInsideStringValues() {
+        // brace/quote characters inside a JSON string value (including an escaped quote) must not
+        // confuse the string-literal-aware forward scan that locates the end of the statistics value
+        valid("""
+                {
+                  "id": "chatcmpl-1",
+                  "usage": {
+                    "completion_tokens": 33,
+                    "prompt_tokens": 19,
+                    "total_tokens": 52
+                  },
+                  "statistics": {
+                    "usage_per_model": [
+                      {
+                        "index": 0,
+                        "model": "he said \\"hi{there}\\"",
+                        "usage": {
+                          "completion_tokens": 999,
+                          "prompt_tokens": 999,
+                          "total_tokens": 1998
+                        }
+                      }
+                    ]
+                  }
+                }
+                """, 33, 19, 0, 52);
+    }
+
+    @Test
+    void testStreamingStatisticsNestedUsageAcrossMultipleChunks() {
+        // mirrors production: Core appends its own statistics.usage_per_model chunk right before
+        // [DONE], after the real usage chunk - the descendant entry's usage must not be picked up
+        valid("""
+                data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"my-app","choices":[{"index":0,"delta":{"content":"Hi"}}]}
+
+                data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"my-app","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"completion_tokens":8,"prompt_tokens":10,"total_tokens":18}}
+
+                data: {"object":"chat.completion.chunk","choices":[],"statistics":{"usage_per_model":[{"index":0,"model":"my-app","usage":{"completion_tokens":8,"prompt_tokens":10,"total_tokens":18}},{"index":1,"model":"gpt-4","usage":{"completion_tokens":999,"prompt_tokens":999,"total_tokens":1998}}]}}
+
+                data: [DONE]
+
+                """, 8, 10, 0, 18);
+    }
+
+    @Test
+    void testMultipleStatisticsBlocksAcrossChunksAreAllExcluded() {
+        // a statistics block can appear in more than one chunk - every occurrence must be excluded,
+        // not just the last (or first) one found
+        valid("""
+                data: {"id":"chatcmpl-1","object":"chat.completion.chunk","statistics":{"usage_per_model":[{"index":0,"model":"embedding-ada","usage":{"prompt_tokens":5,"total_tokens":5}}]}}
+
+                data: {"id":"chatcmpl-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"completion_tokens":8,"prompt_tokens":10,"total_tokens":18}}
+
+                data: {"object":"chat.completion.chunk","choices":[],"statistics":{"usage_per_model":[{"index":0,"model":"embedding-ada","usage":{"prompt_tokens":5,"total_tokens":5}},{"index":1,"model":"gpt-4","usage":{"completion_tokens":999,"prompt_tokens":999,"total_tokens":1998}}]}}
+
+                data: [DONE]
+
+                """, 8, 10, 0, 18);
+    }
+
+    @Test
+    void testMalformedStatisticsBlockDoesNotThrow() {
+        // an unclosed/truncated statistics value can't be bounded by the brace matcher (returns no
+        // exclusion range); parsing must still degrade gracefully rather than throw
+        String body = """
+                {
+                  "id": "chatcmpl-1",
+                  "statistics": {"usage_per_model": [{"index": 0, "model": "gpt-4", "usage": {"completion_tokens": 999
+                """;
+        Assertions.assertDoesNotThrow(() -> TokenUsageParser.parse(Buffer.buffer(body)));
+    }
+
     private void valid(String body, long completion, long prompt, long cachedPrompt, long total) {
         valid(body, completion, prompt, cachedPrompt, 0, 0, total);
     }
