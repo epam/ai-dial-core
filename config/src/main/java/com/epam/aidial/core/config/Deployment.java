@@ -138,16 +138,15 @@ public abstract class Deployment extends RoleBasedEntity {
     @Nullable
     private String declaredEndpoint(InterfaceType type) {
         String baseUrl = getInterfaceBaseUrl(type);
-        if (baseUrl != null) {
-            return baseUrl;
+        if (baseUrl == null) {
+            if (type == InterfaceType.OPENAI_CHAT_COMPLETIONS) {
+                baseUrl =  endpoint;
+            }
+            else if (type == InterfaceType.OPENAI_RESPONSES) {
+                baseUrl =  responsesEndpoint;
+            }
         }
-        if (type == InterfaceType.OPENAI_CHAT_COMPLETIONS) {
-            return endpoint;
-        }
-        if (type == InterfaceType.OPENAI_RESPONSES) {
-            return responsesEndpoint;
-        }
-        return null;
+        return baseUrl;
     }
 
     /**
