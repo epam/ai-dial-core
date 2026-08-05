@@ -26,12 +26,12 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Interceptor",
-                      "name": "apply-int-1",
+                      "name": "interceptors/platform/apply-int-1",
                       "spec": {"endpoint": "http://localhost:4088/api/v1/interceptor/handle"}
                     },
                     {
                       "kind": "Model",
-                      "name": "apply-model-1",
+                      "name": "models/platform/apply-model-1",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
@@ -40,7 +40,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                     },
                     {
                       "kind": "Settings",
-                      "name": "global",
+                      "name": "settings/platform/global",
                       "spec": {"globalInterceptors": [], "retriableErrorCodes": [502, 503]}
                     }
                   ]
@@ -68,7 +68,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Model",
-                      "name": "apply-precheck-bad",
+                      "name": "models/platform/apply-precheck-bad",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
@@ -97,12 +97,12 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Interceptor",
-                      "name": "apply-mixed-int",
+                      "name": "interceptors/platform/apply-mixed-int",
                       "spec": {"endpoint": "http://localhost:4088/api/v1/interceptor/handle"}
                     },
                     {
                       "kind": "Model",
-                      "name": "apply-mixed-bad",
+                      "name": "models/platform/apply-mixed-bad",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
@@ -147,7 +147,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Model",
-                      "name": "apply-partial-good",
+                      "name": "models/platform/apply-partial-good",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
@@ -155,7 +155,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                     },
                     {
                       "kind": "Model",
-                      "name": "apply-partial-bad",
+                      "name": "models/platform/apply-partial-bad",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
@@ -187,7 +187,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Model",
-                      "name": "apply-overlap-bad",
+                      "name": "models/platform/apply-overlap-bad",
                       "spec": {
                         "type": "chat",
                         "upstreams": [
@@ -235,7 +235,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                     {"kind": "Whatever", "name": "x", "spec": {}},
                     {
                       "kind": "Model",
-                      "name": "apply-unknown-sibling",
+                      "name": "models/platform/apply-unknown-sibling",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
@@ -276,7 +276,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                     {"kind": "Whatever", "name": "x", "spec": {}},
                     {
                       "kind": "Model",
-                      "name": "apply-unknown-pf-sibling",
+                      "name": "models/platform/apply-unknown-pf-sibling",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
@@ -312,7 +312,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Model",
-                      "name": "apply-order-model",
+                      "name": "models/platform/apply-order-model",
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
@@ -321,7 +321,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                     },
                     {
                       "kind": "Interceptor",
-                      "name": "apply-order-int",
+                      "name": "interceptors/platform/apply-order-int",
                       "spec": {"endpoint": "http://localhost:4088/api/v1/interceptor/handle"}
                     }
                   ]
@@ -342,7 +342,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Application",
-                      "name": "apply-app-1",
+                      "name": "applications/platform/apply-app-1",
                       "spec": {
                         "endpoint": "http://example.com/v1/completions",
                         "display_name": "Apply App"
@@ -350,7 +350,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                     },
                     {
                       "kind": "ToolSet",
-                      "name": "apply-toolset-1",
+                      "name": "toolsets/platform/apply-toolset-1",
                       "spec": {
                         "transport": "http",
                         "endpoint": "http://localhost:9876",
@@ -365,9 +365,9 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(2, parsed.get("applied").asInt(), () -> "Body: " + response.body());
         assertEquals(0, parsed.get("failed").asInt());
-        verify(send(HttpMethod.GET, "/v1/applications/public/apply-app-1", null, "",
+        verify(send(HttpMethod.GET, "/v1/applications/platform/apply-app-1", null, "",
                 "authorization", "admin"), 200);
-        verify(send(HttpMethod.GET, "/v1/toolsets/public/apply-toolset-1", null, "",
+        verify(send(HttpMethod.GET, "/v1/toolsets/platform/apply-toolset-1", null, "",
                 "authorization", "admin"), 200);
     }
 
@@ -381,7 +381,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Key",
-                      "name": "apply-rotate-key",
+                      "name": "keys/platform/apply-rotate-key",
                       "spec": {"key": "apply-secret-old", "project": "projA", "roles": ["admin"]}
                     }
                   ]
@@ -395,7 +395,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Key",
-                      "name": "apply-rotate-key",
+                      "name": "keys/platform/apply-rotate-key",
                       "spec": {"key": "apply-secret-new", "project": "projA", "roles": ["admin"]}
                     }
                   ]
@@ -432,7 +432,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Settings",
-                      "name": "global",
+                      "name": "settings/platform/global",
                       "spec": {"globalInterceptors": ["interceptor1"], "retriableErrorCodes": []}
                     }
                   ]
@@ -464,7 +464,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Key",
-                      "name": "apply-key-1",
+                      "name": "keys/platform/apply-key-1",
                       "spec": {
                         "key": "applySecret123",
                         "project": "EPM-RTC-APPLY",
@@ -502,7 +502,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                       "manifests": [
                         {
                           "kind": "Model",
-                          "name": "apply-soft-invalid",
+                          "name": "models/platform/apply-soft-invalid",
                           "spec": {
                             "type": "chat",
                             "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",

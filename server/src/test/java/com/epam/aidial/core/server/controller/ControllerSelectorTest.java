@@ -2,8 +2,11 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.controller.route.GlobalRouteController;
+import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.ToolSetService;
 import io.vertx.core.Context;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpMethod;
@@ -397,6 +400,91 @@ public class ControllerSelectorTest {
         Object arg2 = lambda.getCapturedArg(1);
         assertInstanceOf(ResourceController.class, arg1);
         assertEquals("/v1/metadata/conversations/bucket/path", arg2);
+    }
+
+    @Test
+    public void testSelectGetPlatformApplicationRoutesToConfigResourceController() {
+        when(request.path()).thenReturn("/v1/applications/platform/my-app");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        stubConfigResourceControllerDependencies();
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertInstanceOf(ConfigResourceController.class, controller);
+    }
+
+    @Test
+    public void testSelectGetPlatformToolSetRoutesToConfigResourceController() {
+        when(request.path()).thenReturn("/v1/toolsets/platform/my-toolset");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        stubConfigResourceControllerDependencies();
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertInstanceOf(ConfigResourceController.class, controller);
+    }
+
+    @Test
+    public void testSelectGetPlatformApplicationMetadataRoutesToConfigResourceMetadataController() {
+        when(request.path()).thenReturn("/v1/metadata/applications/platform/my-app");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        when(proxy.getAccessService()).thenReturn(mock(AccessService.class));
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertInstanceOf(ConfigResourceMetadataController.class, controller);
+    }
+
+    @Test
+    public void testSelectPutPlatformApplicationRoutesToConfigResourceController() {
+        when(request.path()).thenReturn("/v1/applications/platform/my-app");
+        when(request.method()).thenReturn(HttpMethod.PUT);
+        stubConfigResourceControllerDependencies();
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertInstanceOf(ConfigResourceController.class, controller);
+    }
+
+    @Test
+    public void testSelectDeletePlatformToolSetRoutesToConfigResourceController() {
+        when(request.path()).thenReturn("/v1/toolsets/platform/my-toolset");
+        when(request.method()).thenReturn(HttpMethod.DELETE);
+        stubConfigResourceControllerDependencies();
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertInstanceOf(ConfigResourceController.class, controller);
+    }
+
+    @Test
+    public void testSelectGetPublicApplicationStillRoutesToResourceController() {
+        // public-bucket applications/toolsets are unaffected by the platform-bucket routes —
+        // they must keep going through the generic RESOURCE route (first match still wins).
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/v1/applications/public/my-app");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        Object arg1 = lambda.getCapturedArg(0);
+        Object arg2 = lambda.getCapturedArg(1);
+        assertInstanceOf(ResourceController.class, arg1);
+        assertEquals("/v1/applications/public/my-app", arg2);
+    }
+
+    @Test
+    public void testSelectGetPublicToolSetStillRoutesToResourceController() {
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/v1/toolsets/public/my-toolset");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        Object arg1 = lambda.getCapturedArg(0);
+        Object arg2 = lambda.getCapturedArg(1);
+        assertInstanceOf(ResourceController.class, arg1);
+        assertEquals("/v1/toolsets/public/my-toolset", arg2);
+    }
+
+    private void stubConfigResourceControllerDependencies() {
+        when(proxy.getAccessService()).thenReturn(mock(AccessService.class));
+        MergedConfigStore mergedConfigStore = mock(MergedConfigStore.class);
+        when(proxy.getConfigStore()).thenReturn(mergedConfigStore);
+        when(proxy.getApplicationService()).thenReturn(mock(ApplicationService.class));
+        when(proxy.getToolSetService()).thenReturn(mock(ToolSetService.class));
     }
 
     @Test

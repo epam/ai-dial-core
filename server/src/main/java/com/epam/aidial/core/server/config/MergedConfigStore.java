@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.config;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
@@ -7,8 +8,12 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.ToolSet;
+import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -80,7 +85,9 @@ public final class MergedConfigStore implements ConfigStore {
             ResourceTypes.INTERCEPTOR,
             ResourceTypes.ROLE,
             ResourceTypes.PROJECT_KEY,
-            ResourceTypes.ROUTE);
+            ResourceTypes.ROUTE,
+            ResourceTypes.APPLICATION,
+            ResourceTypes.TOOL_SET);
 
     private static final Set<String> MANAGED_URL_SEGMENTS = managedUrlSegments();
 
@@ -119,6 +126,8 @@ public final class MergedConfigStore implements ConfigStore {
     private final ApiKeyStore apiKeyStore;
     private final EntityLocationStrategy locationStrategy;
     private final SecretFieldProcessor secretFieldProcessor;
+    private final ExternalServiceService externalServiceService;
+    private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
     private final LockService lockService;
     private final String onInvalidEntity;
     private final boolean softValidation;
@@ -143,19 +152,11 @@ public final class MergedConfigStore implements ConfigStore {
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
                              SecretFieldProcessor secretFieldProcessor,
                              LockService lockService,
-                             String onInvalidEntity) {
-        this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
-                lockService, onInvalidEntity, false, "");
-    }
-
-    public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
-                             ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
-                             SecretFieldProcessor secretFieldProcessor,
-                             LockService lockService,
                              String onInvalidEntity,
-                             boolean softValidation) {
+                             ExternalServiceService externalServiceService,
+                             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService) {
         this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
-                lockService, onInvalidEntity, softValidation, "");
+                lockService, onInvalidEntity, false, "", externalServiceService, resourceAuthSettingsEncryptionService);
     }
 
     public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
@@ -164,7 +165,21 @@ public final class MergedConfigStore implements ConfigStore {
                              LockService lockService,
                              String onInvalidEntity,
                              boolean softValidation,
-                             String thisPodId) {
+                             ExternalServiceService externalServiceService,
+                             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService) {
+        this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
+                lockService, onInvalidEntity, softValidation, "", externalServiceService, resourceAuthSettingsEncryptionService);
+    }
+
+    public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
+                             ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
+                             SecretFieldProcessor secretFieldProcessor,
+                             LockService lockService,
+                             String onInvalidEntity,
+                             boolean softValidation,
+                             String thisPodId,
+                             ExternalServiceService externalServiceService,
+                             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService) {
         this.vertx = vertx;
         this.taskExecutor = taskExecutor;
         this.resourceService = resourceService;
@@ -174,6 +189,8 @@ public final class MergedConfigStore implements ConfigStore {
                 "apiKeyStore.getMutationLock() must not be null (mock fixtures must stub it with a real ReentrantLock)");
         this.locationStrategy = locationStrategy;
         this.secretFieldProcessor = secretFieldProcessor;
+        this.externalServiceService = externalServiceService;
+        this.resourceAuthSettingsEncryptionService = resourceAuthSettingsEncryptionService;
         this.lockService = lockService;
         this.onInvalidEntity = MODE_SKIP.equalsIgnoreCase(onInvalidEntity) ? MODE_SKIP : MODE_ABORT;
         this.softValidation = softValidation;
@@ -258,6 +275,17 @@ public final class MergedConfigStore implements ConfigStore {
                 && descriptor.getType() != ResourceTypes.GLOBAL_SETTINGS) {
             return;
         }
+        // MANAGED_TYPES gates the type but not the bucket, whereas rebuild() only scans the platform
+        // bucket (via locationStrategy). Scope the replica fast path the same way: APPLICATION/TOOL_SET
+        // (and, harmlessly, the other managed types) also resolve for the public bucket, so without
+        // this a public-bucket app/toolset publication event would be applied into the merged Config on
+        // peer pods — leaking a public resource into deployment/short-name resolution until the next
+        // platform-only rebuild.
+        ResourceTypes managedType = (ResourceTypes) descriptor.getType();
+        String managedBucket = locationStrategy.resolveBucket(managedType, EntityLocationStrategy.PLATFORM_SCOPE);
+        if (managedBucket == null || !managedBucket.equals(descriptor.getBucketName())) {
+            return;
+        }
         ResourceEvent.Action action = event.getAction();
         taskExecutor.submit(() -> {
             applyReplicaEvent(descriptor, action);
@@ -332,7 +360,7 @@ public final class MergedConfigStore implements ConfigStore {
                 }
                 Object entity = deserializeReplicaEntity(type, node);
                 if (!(entity instanceof String)) {
-                    secretFieldProcessor.decryptFields(entity, descriptor);
+                    decryptManagedEntity(type, entity, descriptor);
                 }
                 if (type == ResourceTypes.PROJECT_KEY) {
                     Key key = (Key) entity;
@@ -396,9 +424,30 @@ public final class MergedConfigStore implements ConfigStore {
             case ROLE -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Role.class);
             case PROJECT_KEY -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Key.class);
             case ROUTE -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Route.class);
+            case APPLICATION -> ProxyUtil.BLOB_MAPPER.treeToValue(node, Application.class);
+            case TOOL_SET -> ProxyUtil.BLOB_MAPPER.treeToValue(node, ToolSet.class);
             case APP_TYPE_SCHEMA, CATALOG_SCHEMA -> node.toString();
             default -> throw new IllegalArgumentException("Unsupported replica type: " + type);
         };
+    }
+
+    /**
+     * Decrypts a managed entity read from blob storage before it enters the merged {@link Config}.
+     * {@code APPLICATION}/{@code TOOL_SET} secrets are not {@code @EncryptedField}-annotated — they
+     * are encrypted per-resource by their own write paths ({@link ExternalServiceService}/
+     * {@link ResourceAuthSettingsEncryptionService}), keyed by the entity's own bucket — so they
+     * must be decrypted the same way here rather than via {@link SecretFieldProcessor}, which is a
+     * no-op for these two types (no {@code @EncryptedField} fields). Every other managed type keeps
+     * going through {@link SecretFieldProcessor}.
+     */
+    private void decryptManagedEntity(ResourceTypes type, Object entity, ResourceDescriptor descriptor) {
+        switch (type) {
+            case APPLICATION -> externalServiceService.decryptSecrets(descriptor, (Application) entity);
+            case TOOL_SET -> resourceAuthSettingsEncryptionService.decrypt(descriptor.getUrl(),
+                    new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation()),
+                    ((ToolSet) entity).getAuthSettings());
+            default -> secretFieldProcessor.decryptFields(entity, descriptor);
+        }
     }
 
     @Override
@@ -662,7 +711,7 @@ public final class MergedConfigStore implements ConfigStore {
                     resurrectInvalidModels(next, nextInvalid);
                 }
                 case ROLE -> ConfigPostProcessor.validateSingleRole(next, canonicalId);
-                case PROJECT_KEY, APP_TYPE_SCHEMA, CATALOG_SCHEMA -> { /* no post-processing */ }
+                case PROJECT_KEY, APP_TYPE_SCHEMA, CATALOG_SCHEMA, APPLICATION, TOOL_SET -> { /* no post-processing */ }
                 case ROUTE -> ConfigPostProcessor.sortRoutesInPlace(next);
                 default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
             }
@@ -876,6 +925,8 @@ public final class MergedConfigStore implements ConfigStore {
             case ROUTE -> config.setRoutes(new LinkedHashMap<>(config.getRoutes()));
             case APP_TYPE_SCHEMA -> config.setApplicationTypeSchemas(new LinkedHashMap<>(config.getApplicationTypeSchemas()));
             case CATALOG_SCHEMA -> config.setCatalogSchemas(new LinkedHashMap<>(config.getCatalogSchemas()));
+            case APPLICATION -> config.setApplications(new LinkedHashMap<>(config.getApplications()));
+            case TOOL_SET -> config.setToolsets(new LinkedHashMap<>(config.getToolsets()));
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -889,6 +940,8 @@ public final class MergedConfigStore implements ConfigStore {
             case ROUTE -> config.getRoutes().get(canonicalId);
             case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas().get(canonicalId);
             case CATALOG_SCHEMA -> config.getCatalogSchemas().get(canonicalId);
+            case APPLICATION -> config.getApplications().get(canonicalId);
+            case TOOL_SET -> config.getToolsets().get(canonicalId);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         };
     }
@@ -902,6 +955,8 @@ public final class MergedConfigStore implements ConfigStore {
             case ROUTE -> config.getRoutes().put(canonicalId, (Route) entity);
             case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas().put(canonicalId, schemaBody(entity));
             case CATALOG_SCHEMA -> config.getCatalogSchemas().put(canonicalId, schemaBody(entity));
+            case APPLICATION -> config.getApplications().put(canonicalId, (Application) entity);
+            case TOOL_SET -> config.getToolsets().put(canonicalId, (ToolSet) entity);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -915,6 +970,8 @@ public final class MergedConfigStore implements ConfigStore {
             case ROUTE -> config.getRoutes().remove(canonicalId);
             case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas().remove(canonicalId);
             case CATALOG_SCHEMA -> config.getCatalogSchemas().remove(canonicalId);
+            case APPLICATION -> config.getApplications().remove(canonicalId);
+            case TOOL_SET -> config.getToolsets().remove(canonicalId);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -956,8 +1013,8 @@ public final class MergedConfigStore implements ConfigStore {
         LinkedHashMap<String, Route> routes = new LinkedHashMap<>(base.getRoutes());
         Map<String, String> schemas = new LinkedHashMap<>(base.getApplicationTypeSchemas());
         Map<String, String> catalogSchemas = new LinkedHashMap<>(base.getCatalogSchemas());
-        merged.setApplications(base.getApplications());
-        merged.setToolsets(new LinkedHashMap<>(base.getToolsets()));
+        Map<String, Application> applications = new LinkedHashMap<>(base.getApplications());
+        Map<String, ToolSet> toolsets = new LinkedHashMap<>(base.getToolsets());
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
         merged.setGlobalInterceptors(base.getGlobalInterceptors());
 
@@ -1005,7 +1062,8 @@ public final class MergedConfigStore implements ConfigStore {
                     AddedEntity added;
                     try {
                         added = addBlobEntity(type, canonicalId, node,
-                                models, interceptors, roles, keys, routes, schemas, catalogSchemas);
+                                models, interceptors, roles, keys, routes, schemas, catalogSchemas,
+                                applications, toolsets);
                     } catch (Exception parseError) {
                         recordInvalid(pendingInvalid, type, canonicalId, name,
                                 "JSON parse failure: " + parseError.getMessage(),
@@ -1016,11 +1074,12 @@ public final class MergedConfigStore implements ConfigStore {
 
                     if (added != null && added.entity() != null) {
                         try {
-                            secretFieldProcessor.decryptFields(added.entity(), descriptor);
+                            decryptManagedEntity(type, added.entity(), descriptor);
                         } catch (Exception decryptError) {
                             // Roll back the partial insertion so decryption-failure entities never
                             // reach addProjectKeys (locked 2S.9 invariant).
-                            removeAddedEntity(type, canonicalId, models, interceptors, roles, keys, routes, schemas, catalogSchemas);
+                            removeAddedEntity(type, canonicalId, models, interceptors, roles, keys, routes, schemas, catalogSchemas,
+                                    applications, toolsets);
                             recordInvalid(pendingInvalid, type, canonicalId, name,
                                     "Decryption failure: " + decryptError.getMessage(),
                                     List.of(new ValidationWarning("body", decryptError.getMessage())),
@@ -1043,14 +1102,20 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setRoutes(routes);
         merged.setApplicationTypeSchemas(schemas);
         merged.setCatalogSchemas(catalogSchemas);
+        merged.setApplications(applications);
+        merged.setToolsets(toolsets);
 
         // Semantic pass — under MODE_SKIP, route per-entity violations to invalidEntities and
         // continue; under MODE_ABORT, the post-processor throws and the rebuild aborts (this.config
         // stays at the previous value because we only swap below).
         BiConsumer<ResourceTypes, InvalidEntityException> onSkip = MODE_SKIP.equals(onInvalidEntity)
                 ? (type, error) -> {
-                    // Only MANAGED_TYPES surface through the invalidEntities sibling store (design 02 §4.3
-                    // layered model). APPLICATION and TOOL_SET use lazy validation in 3S.1, not this path.
+                    // Skips surface through the invalidEntities sibling store only for MANAGED_TYPES
+                    // (design 02 §4.3 layered model). APPLICATION/TOOL_SET have no cross-reference
+                    // validation in processSemantic (they're validated lazily by ApplicationService/
+                    // ToolSetService on write), but processApplications/processToolSets can still route a
+                    // duplicate deployment-id skip here via skipOnDuplicate — and since they're now in
+                    // MANAGED_TYPES that skip is recorded by recordSkippedByMapKey below, not just logged.
                     if (!MANAGED_TYPES.contains(type)) {
                         log.warn("Skipped {} '{}' from merged Config: {}", type.urlSegment(),
                                 error.getMapKey(), error.getMessage());
@@ -1175,7 +1240,8 @@ public final class MergedConfigStore implements ConfigStore {
                                              Map<String, Model> models, Map<String, Interceptor> interceptors,
                                              Map<String, Role> roles, Map<String, Key> keys,
                                              LinkedHashMap<String, Route> routes, Map<String, String> schemas,
-                                             Map<String, String> catalogSchemas)
+                                             Map<String, String> catalogSchemas,
+                                             Map<String, Application> applications, Map<String, ToolSet> toolsets)
             throws JsonProcessingException {
         switch (type) {
             case MODEL -> {
@@ -1211,6 +1277,16 @@ public final class MergedConfigStore implements ConfigStore {
                 warnIfReplaced(type, canonicalId, catalogSchemas.put(canonicalId, node.toString()));
                 return null;
             }
+            case APPLICATION -> {
+                Application entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Application.class);
+                warnIfReplaced(type, canonicalId, applications.put(canonicalId, entity));
+                return new AddedEntity(entity);
+            }
+            case TOOL_SET -> {
+                ToolSet entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, ToolSet.class);
+                warnIfReplaced(type, canonicalId, toolsets.put(canonicalId, entity));
+                return new AddedEntity(entity);
+            }
             default -> {
                 /* GLOBAL_SETTINGS is a singleton — design 02 §4 leaves union-by-key out of scope. */
                 return null;
@@ -1229,7 +1305,8 @@ public final class MergedConfigStore implements ConfigStore {
                                           Map<String, Model> models, Map<String, Interceptor> interceptors,
                                           Map<String, Role> roles, Map<String, Key> keys,
                                           LinkedHashMap<String, Route> routes, Map<String, String> schemas,
-                                          Map<String, String> catalogSchemas) {
+                                          Map<String, String> catalogSchemas,
+                                          Map<String, Application> applications, Map<String, ToolSet> toolsets) {
         switch (type) {
             case MODEL -> models.remove(canonicalId);
             case INTERCEPTOR -> interceptors.remove(canonicalId);
@@ -1238,6 +1315,8 @@ public final class MergedConfigStore implements ConfigStore {
             case ROUTE -> routes.remove(canonicalId);
             case APP_TYPE_SCHEMA -> schemas.remove(canonicalId);
             case CATALOG_SCHEMA -> catalogSchemas.remove(canonicalId);
+            case APPLICATION -> applications.remove(canonicalId);
+            case TOOL_SET -> toolsets.remove(canonicalId);
             default -> { /* no-op */ }
         }
     }

@@ -138,7 +138,7 @@ public class AdminValidateController implements Controller {
         boolean anyFailure = false;
 
         for (AdminManifest entry : entries) {
-            String entityId = AdminApplyController.entityId(entry);
+            String entityId = entry.name();
             String error = null;
             // Unknown kinds FAIL on both surfaces: validateOnly returns FAILED (apply precheck
             // rejects the batch with 422), so this explicit branch is redundant but kept as a

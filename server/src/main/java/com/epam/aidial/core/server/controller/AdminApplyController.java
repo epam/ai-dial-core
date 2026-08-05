@@ -235,7 +235,7 @@ public class AdminApplyController {
             try {
                 result = applySingle(entry, scratch, pendingChanges);
             } catch (Exception ex) {
-                result = new EntityResult(entityId(entry), AdminApplyStatus.FAILED, ex.getMessage());
+                result = new EntityResult(entry.name(), AdminApplyStatus.FAILED, ex.getMessage());
             }
             results.add(result);
             if (AdminApplyStatus.APPLIED.equals(result.status()) || AdminApplyStatus.APPLIED_INVALID.equals(result.status())) {
@@ -281,25 +281,17 @@ public class AdminApplyController {
     }
 
     static ValidationResult validateOnly(AdminManifest entry, Config scratch, boolean softValidation) {
-        String id = entityId(entry);
-        if (!KIND_URL_SEGMENT.containsKey(entry.kind())) {
-            return new ValidationResult(id, ValidationStatus.FAILED, "Unknown kind: " + entry.kind());
-        }
-        if (!"Settings".equals(entry.kind())) {
-            if (StringUtils.isBlank(entry.name())) {
-                return new ValidationResult(id, ValidationStatus.FAILED, "Missing or empty 'name'");
-            }
-            if (entry.spec() == null) {
-                return new ValidationResult(id, ValidationStatus.FAILED, "Missing 'spec'");
-            }
+        String id = entry.name();
+        ParsedName parsed;
+        try {
+            parsed = parseName(entry);
+        } catch (IllegalArgumentException ex) {
+            return new ValidationResult(id, ValidationStatus.FAILED, ex.getMessage());
         }
         try {
             switch (entry.kind()) {
                 case "Settings" -> {
-                    if (entry.spec() == null) {
-                        return new ValidationResult(id, ValidationStatus.FAILED, "Missing 'spec'");
-                    }
-                    if (!SETTINGS_SINGLETON_NAME.equals(entry.name())) {
+                    if (!SETTINGS_SINGLETON_NAME.equals(parsed.name())) {
                         return new ValidationResult(id, ValidationStatus.FAILED, "Settings name must be 'global'");
                     }
                     ConfigResourceController.treeToEntity(entry.spec(), GlobalSettings.class);
@@ -347,60 +339,45 @@ public class AdminApplyController {
     }
 
     private EntityResult applySingle(AdminManifest entry, Config scratch, List<EntityChange> pending) {
-        String id = entityId(entry);
-        if (!KIND_URL_SEGMENT.containsKey(entry.kind())) {
-            return new EntityResult(id, AdminApplyStatus.FAILED, "Unknown kind: " + entry.kind());
-        }
-        if (!"Settings".equals(entry.kind())) {
-            if (StringUtils.isBlank(entry.name())) {
-                return new EntityResult(id, AdminApplyStatus.FAILED, "Missing or empty 'name'");
-            }
-            if (entry.spec() == null) {
-                return new EntityResult(id, AdminApplyStatus.FAILED, "Missing 'spec'");
-            }
-        } else if (entry.spec() == null) {
-            return new EntityResult(id, AdminApplyStatus.FAILED, "Missing 'spec'");
+        String id = entry.name();
+        ParsedName parsed;
+        try {
+            parsed = parseName(entry);
+        } catch (IllegalArgumentException ex) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, ex.getMessage());
         }
         return switch (entry.kind()) {
-            case "Settings" -> applySettings(entry, id);
-            case "Schema" -> applySchema(entry, id, pending);
-            case "Interceptor" -> applyManagedEntity(entry, id, ResourceTypes.INTERCEPTOR,
-                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
-                    Interceptor.class, pending);
-            case "Role" -> applyManagedEntity(entry, id, ResourceTypes.ROLE,
-                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
-                    Role.class, pending);
-            case "Route" -> applyManagedEntity(entry, id, ResourceTypes.ROUTE,
-                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
-                    Route.class, pending);
-            case "Key" -> applyKey(entry, id, pending);
-            case "Model" -> applyModel(entry, id, scratch, pending);
-            case "ToolSet" -> applyToolSet(entry, id);
-            case "Application" -> applyApplication(entry, id);
+            case "Settings" -> applySettings(entry, id, parsed);
+            case "Schema" -> applySchema(entry, id, parsed, pending);
+            case "Interceptor" -> applyManagedEntity(entry, id, parsed, ResourceTypes.INTERCEPTOR, Interceptor.class, pending);
+            case "Role" -> applyManagedEntity(entry, id, parsed, ResourceTypes.ROLE, Role.class, pending);
+            case "Route" -> applyManagedEntity(entry, id, parsed, ResourceTypes.ROUTE, Route.class, pending);
+            case "Key" -> applyKey(entry, id, parsed, pending);
+            case "Model" -> applyModel(entry, id, parsed, scratch, pending);
+            case "ToolSet" -> applyToolSet(entry, id, parsed, pending);
+            case "Application" -> applyApplication(entry, id, parsed, pending);
             default -> new EntityResult(id, AdminApplyStatus.FAILED, "Unknown kind: " + entry.kind());
         };
     }
 
-    private EntityResult applySettings(AdminManifest entry, String id) {
-        if (!SETTINGS_SINGLETON_NAME.equals(entry.name())) {
+    private EntityResult applySettings(AdminManifest entry, String id, ParsedName parsed) {
+        if (!SETTINGS_SINGLETON_NAME.equals(parsed.name())) {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Settings name must be 'global'");
         }
         GlobalSettings settings = ConfigResourceController.treeToEntity(entry.spec(), GlobalSettings.class);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.GLOBAL_SETTINGS, ResourceDescriptor.PLATFORM_BUCKET,
-                ResourceDescriptor.PLATFORM_LOCATION, SETTINGS_SINGLETON_NAME);
+                ResourceTypes.GLOBAL_SETTINGS, parsed.bucket(), parsed.location(), parsed.name());
         String blobBody = ConfigResourceController.serializeForBlob(settings);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applySchema(AdminManifest entry, String id, List<EntityChange> pending) {
+    private EntityResult applySchema(AdminManifest entry, String id, ParsedName parsed, List<EntityChange> pending) {
         if (!entry.spec().isObject()) {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Schema spec must be a JSON object");
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.APP_TYPE_SCHEMA, ResourceDescriptor.PLATFORM_BUCKET,
-                ResourceDescriptor.PLATFORM_LOCATION, entry.name());
+                ResourceTypes.APP_TYPE_SCHEMA, parsed.bucket(), parsed.location(), parsed.name());
         String blobBody;
         try {
             blobBody = ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec());
@@ -414,19 +391,18 @@ public class AdminApplyController {
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private <T> EntityResult applyManagedEntity(AdminManifest entry, String id,
-                                                ResourceTypes type, String bucket, String location,
-                                                Class<T> entityClass, List<EntityChange> pending) {
+    private <T> EntityResult applyManagedEntity(AdminManifest entry, String id, ParsedName parsed,
+                                                ResourceTypes type, Class<T> entityClass, List<EntityChange> pending) {
         T entity = ConfigResourceController.treeToEntity(entry.spec(), entityClass);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
-                type, bucket, location, entry.name());
+                type, parsed.bucket(), parsed.location(), parsed.name());
         String blobBody = ConfigResourceController.serializeForBlob(entity);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
         pending.add(new EntityChange(type, MergedConfigStore.canonicalId(descriptor), entity));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyKey(AdminManifest entry, String id, List<EntityChange> pending) {
+    private EntityResult applyKey(AdminManifest entry, String id, ParsedName parsed, List<EntityChange> pending) {
         Key key = ConfigResourceController.treeToEntity(entry.spec(), Key.class);
         if (StringUtils.isBlank(key.getKey())) {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Key.key must be provided explicitly");
@@ -439,8 +415,7 @@ public class AdminApplyController {
                     "Invalid key: at least one role must be assigned to the key " + key.getProject());
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.PROJECT_KEY, ResourceDescriptor.PLATFORM_BUCKET,
-                ResourceDescriptor.PLATFORM_LOCATION, entry.name());
+                ResourceTypes.PROJECT_KEY, parsed.bucket(), parsed.location(), parsed.name());
         String secret = key.getKey();
         // Recover the prior plaintext secret so a rotation can revoke the old auth bearer
         // (FINDING #2). Deliberately non-fatal: a corrupt prior blob must NOT abort the rotation —
@@ -474,7 +449,7 @@ public class AdminApplyController {
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyModel(AdminManifest entry, String id, Config scratch, List<EntityChange> pending) {
+    private EntityResult applyModel(AdminManifest entry, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
         Model model = ConfigResourceController.treeToEntity(entry.spec(), Model.class);
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
@@ -484,8 +459,7 @@ public class AdminApplyController {
             return new EntityResult(id, AdminApplyStatus.FAILED, joinWarnings(warnings));
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.MODEL, ResourceDescriptor.PLATFORM_BUCKET,
-                ResourceDescriptor.PLATFORM_LOCATION, entry.name());
+                ResourceTypes.MODEL, parsed.bucket(), parsed.location(), parsed.name());
         secretFieldProcessor.encryptFields(model, descriptor);
         String blobBody = ConfigResourceController.serializeForBlob(model);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
@@ -495,23 +469,35 @@ public class AdminApplyController {
         return new EntityResult(id, invalid ? AdminApplyStatus.APPLIED_INVALID : AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyApplication(AdminManifest entry, String id) {
+    private EntityResult applyApplication(AdminManifest entry, String id, ParsedName parsed, List<EntityChange> pending) {
         Application application = ConfigResourceController.treeToEntity(entry.spec(), Application.class);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.APPLICATION, ResourceDescriptor.PUBLIC_BUCKET,
-                ResourceDescriptor.PUBLIC_LOCATION, entry.name());
+                ResourceTypes.APPLICATION, parsed.bucket(), parsed.location(), parsed.name());
         // Bulk admin apply is always admin context — preserve forwardAuthToken if the manifest set it.
         applicationService.putApplication(descriptor, EtagHeader.ANY, null, application, true,
                 AdminManagedFieldsWriteMode.AUTHORITATIVE);
+        // Only the platform bucket is materialized into MergedConfigStore (see EntityLocationStrategy) —
+        // public-bucket apps stay outside it and are served lazily by ApplicationService, so pushing
+        // them into `pending` here would spuriously duplicate them in config.getApplications()-backed
+        // listings (e.g. ApplicationController/DeploymentController) until the next full rebuild.
+        if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
+            Application decrypted = applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
+            pending.add(new EntityChange(ResourceTypes.APPLICATION, MergedConfigStore.canonicalId(descriptor), decrypted));
+        }
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyToolSet(AdminManifest entry, String id) {
+    private EntityResult applyToolSet(AdminManifest entry, String id, ParsedName parsed, List<EntityChange> pending) {
         ToolSet toolSet = ConfigResourceController.treeToEntity(entry.spec(), ToolSet.class);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.TOOL_SET, ResourceDescriptor.PUBLIC_BUCKET,
-                ResourceDescriptor.PUBLIC_LOCATION, entry.name());
+                ResourceTypes.TOOL_SET, parsed.bucket(), parsed.location(), parsed.name());
         toolSetService.putToolSet(descriptor, EtagHeader.ANY, null, toolSet, true);
+        // Same rationale as applyApplication above — only platform-bucket toolsets belong in
+        // MergedConfigStore.
+        if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
+            ToolSet decrypted = toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
+            pending.add(new EntityChange(ResourceTypes.TOOL_SET, MergedConfigStore.canonicalId(descriptor), decrypted));
+        }
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
@@ -525,31 +511,31 @@ public class AdminApplyController {
                 }
                 case "Interceptor" -> {
                     Interceptor interceptor = ConfigResourceController.treeToEntity(entry.spec(), Interceptor.class);
-                    scratch.getInterceptors().put(canonical("interceptors", entry.name()), interceptor);
+                    scratch.getInterceptors().put(entry.name(), interceptor);
                 }
                 case "Role" -> {
                     Role role = ConfigResourceController.treeToEntity(entry.spec(), Role.class);
-                    scratch.getRoles().put(canonical("roles", entry.name()), role);
+                    scratch.getRoles().put(entry.name(), role);
                 }
                 case "Route" -> {
                     Route route = ConfigResourceController.treeToEntity(entry.spec(), Route.class);
-                    scratch.getRoutes().put(canonical("routes", entry.name()), route);
+                    scratch.getRoutes().put(entry.name(), route);
                 }
                 case "Key" -> {
                     Key key = ConfigResourceController.treeToEntity(entry.spec(), Key.class);
-                    scratch.getKeys().put(canonical("keys", entry.name()), key);
+                    scratch.getKeys().put(entry.name(), key);
                 }
                 case "Model" -> {
                     Model model = ConfigResourceController.treeToEntity(entry.spec(), Model.class);
-                    scratch.getModels().put(canonical("models", entry.name()), model);
+                    scratch.getModels().put(entry.name(), model);
                 }
                 case "Application" -> {
                     Application application = ConfigResourceController.treeToEntity(entry.spec(), Application.class);
-                    scratch.getApplications().put(canonical("applications", entry.name()), application);
+                    scratch.getApplications().put(entry.name(), application);
                 }
                 case "ToolSet" -> {
                     ToolSet toolSet = ConfigResourceController.treeToEntity(entry.spec(), ToolSet.class);
-                    scratch.getToolsets().put(canonical("toolsets", entry.name()), toolSet);
+                    scratch.getToolsets().put(entry.name(), toolSet);
                 }
                 case "Schema" -> {
                     String json;
@@ -558,7 +544,7 @@ public class AdminApplyController {
                     } catch (JsonProcessingException e) {
                         return;
                     }
-                    scratch.getApplicationTypeSchemas().put(canonical("schemas", entry.name()), json);
+                    scratch.getApplicationTypeSchemas().put(entry.name(), json);
                 }
                 default -> { /* unknown kinds never reach this code path */ }
             }
@@ -567,19 +553,57 @@ public class AdminApplyController {
         }
     }
 
-    static String entityId(AdminManifest entry) {
-        String segment = KIND_URL_SEGMENT.getOrDefault(entry.kind(), entry.kind().toLowerCase());
-        String name = entry.name() != null ? entry.name()
-                : ("Settings".equals(entry.kind()) ? SETTINGS_SINGLETON_NAME : "");
-        String bucket = "Application".equals(entry.kind()) || "ToolSet".equals(entry.kind())
-                ? ResourceDescriptor.PUBLIC_BUCKET : ResourceDescriptor.PLATFORM_BUCKET;
-        return segment + "/" + bucket + "/" + name;
-    }
+    /**
+     * {@code name} is the canonical resource id ({@code <kind-segment>/<bucket>/<name>}), e.g.
+     * {@code models/platform/gpt-4} or {@code applications/public/my-app} — the client picks the
+     * bucket explicitly rather than it being implied by {@code kind} alone.
+     */
+    private record ParsedName(String bucket, String location, String name) {}
 
-    private static String canonical(String segment, String name) {
-        String bucket = "applications".equals(segment) || "toolsets".equals(segment)
-                ? ResourceDescriptor.PUBLIC_BUCKET : ResourceDescriptor.PLATFORM_BUCKET;
-        return segment + "/" + bucket + "/" + name;
+    private static ParsedName parseName(AdminManifest entry) {
+        String segment = KIND_URL_SEGMENT.get(entry.kind());
+        if (segment == null) {
+            throw new IllegalArgumentException("Unknown kind: " + entry.kind());
+        }
+        if (StringUtils.isBlank(entry.name())) {
+            throw new IllegalArgumentException("Missing or empty 'name'");
+        }
+        if (entry.spec() == null) {
+            throw new IllegalArgumentException("Missing 'spec'");
+        }
+        String raw = entry.name();
+        String prefix = segment + "/";
+        if (!raw.startsWith(prefix)) {
+            throw new IllegalArgumentException("'name' must start with '" + prefix + "' for kind " + entry.kind());
+        }
+        String afterSegment = raw.substring(prefix.length());
+        int slash = afterSegment.indexOf('/');
+        if (slash < 0) {
+            throw new IllegalArgumentException(
+                    "'name' must include a bucket segment, e.g. '" + prefix + "platform/<name>'");
+        }
+        String bucket = afterSegment.substring(0, slash);
+        String rest = afterSegment.substring(slash + 1);
+        if (StringUtils.isBlank(rest)) {
+            throw new IllegalArgumentException("'name' is missing the entity name after the bucket segment");
+        }
+
+        if (ResourceDescriptor.PLATFORM_BUCKET.equals(bucket)) {
+            if (rest.contains("/")) {
+                throw new IllegalArgumentException(
+                        "'name' in the platform bucket must not contain nested path segments: " + raw);
+            }
+            return new ParsedName(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, rest);
+        }
+
+        boolean allowPublicBucket = "Application".equals(entry.kind()) || "ToolSet".equals(entry.kind());
+        if (allowPublicBucket && ResourceDescriptor.PUBLIC_BUCKET.equals(bucket)) {
+            return new ParsedName(ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, rest);
+        }
+
+        throw new IllegalArgumentException(
+                "'name' bucket segment must be 'platform'" + (allowPublicBucket ? " or 'public'" : "")
+                        + ", got '" + bucket + "'");
     }
 
     private static String locationOf(JsonProcessingException e) {

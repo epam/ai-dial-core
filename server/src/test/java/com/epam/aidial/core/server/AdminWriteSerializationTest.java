@@ -35,7 +35,7 @@ public class AdminWriteSerializationTest extends ResourceBaseTest {
                   "manifests": [
                     {
                       "kind": "Interceptor",
-                      "name": "lock-test-int",
+                      "name": "interceptors/platform/lock-test-int",
                       "spec": {"endpoint": "http://localhost:4088/api/v1/interceptor/handle"}
                     }
                   ]

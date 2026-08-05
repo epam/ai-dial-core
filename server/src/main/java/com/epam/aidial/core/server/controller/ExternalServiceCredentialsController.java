@@ -365,10 +365,21 @@ public class ExternalServiceCredentialsController {
 
     /** Resolves only the application for a scope's app part — never the owner's bucket — so the OBO gate can run first. */
     private ResolvedApplication resolveApplication(String appPart) {
+        // appPart carries no "applications/" type prefix (the URL is already under /v1/applications/),
+        // whereas materialized Config keys do. Resolve verbatim first (config-file bare names, and —
+        // once short-name addressing lands — short-name platform apps via derivation), then by
+        // canonical id so a platform-bucket reference like "platform/my-app" hits its materialized
+        // in-memory entry ("applications/platform/my-app"), which already carries decrypted secrets,
+        // instead of being read back from blob. A config-managed (platform) app is access-controlled
+        // by its userRoles, so it resolves as a static app and verifyAccess uses hasAccess(userRoles).
         Deployment deployment = context.getConfig().selectDeployment(appPart);
+        if (deployment == null) {
+            deployment = context.getConfig().selectDeployment(CredentialsLocatorFactory.APPLICATIONS_PREFIX + appPart);
+        }
         if (deployment instanceof Application configApp) {
             return new ResolvedApplication(configApp, null, true);
         }
+        // Dynamic (public / user-bucket) app — not materialized; read from blob, rule-based access.
         ResourceDescriptor appDescriptor;
         try {
             appDescriptor = ResourceDescriptorFactory.fromAnyUrl(
