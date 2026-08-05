@@ -281,6 +281,21 @@ reclaiming resources tombstoned by DELETE and GCs stale versions left behind by 
 </details>
 
 <details> 
+<summary><b>Client Channel Configurations</b></summary>
+
+Server-Sent Events channel used to relay JSON-RPC requests/responses between a toolset deployment and
+its subscribed client (e.g. the toolset sign-in pop-up flow). A background watchdog periodically
+verifies the underlying Redis pub/sub subscription is still alive and forces a resubscribe if Redis
+silently dropped it (e.g. an idle connection killed by a NAT/load balancer), which otherwise would leave
+the client subscribed with no events ever reaching it.
+
+| Setting                       | Default | Required | Description                                                                                                                                                    |
+|--------------------------------|:-------:|:--------:|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| clientChannel.watchdog.period | 10000   |    No    | Period in milliseconds between watchdog checks of the Redis pub/sub subscription used to relay JSON-RPC requests/responses for the client channel feature.   |
+
+</details>
+
+<details> 
 <summary><b>Redis Configurations</b></summary>
 
 | Setting                                  | Default | Required | Description                                                                                                                                                                                                                                                                                                                                                                                    |
