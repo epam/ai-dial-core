@@ -64,6 +64,17 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                       "spec": {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"}
                     },
                     {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/validate-catalog-schema",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/validate-model",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    },
+                    {
                       "kind": "Interceptor",
                       "name": "interceptors/platform/validate-int",
                       "spec": {"endpoint": "http://localhost:4088/api/v1/interceptor/handle"}
@@ -111,13 +122,15 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
         verify(response, 200);
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals(9, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(10, parsed.get("valid").asInt(), () -> "Body: " + response.body());
         assertEquals(0, parsed.get("failed").asInt());
         for (JsonNode r : parsed.get("results")) {
             assertEquals("VALID", r.get("status").asText(), () -> "Body: " + response.body());
         }
         // None of these were written.
         verify(send(HttpMethod.GET, "/v1/schemas/platform/validate-schema", null, "",
+                "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/validate-catalog-schema", null, "",
                 "authorization", "admin"), 404);
         verify(send(HttpMethod.GET, "/v1/interceptors/platform/validate-int", null, "",
                 "authorization", "admin"), 404);
@@ -423,6 +436,31 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
         verify(send(HttpMethod.GET, "/v1/models/platform/validate-jackson-bad", null, "",
                 "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testV15bCatalogSchemaNonObjectSpecFails() {
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/validate-catalog-schema-bad",
+                      "spec": "not-an-object"
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+        JsonNode result = parsed.get("results").get(0);
+        assertEquals("FAILED", result.get("status").asText());
+        assertEquals("CatalogSchema spec must be a JSON object", result.get("error").asText());
     }
 
     @Test

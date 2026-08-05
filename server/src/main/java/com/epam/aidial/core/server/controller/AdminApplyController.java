@@ -65,6 +65,7 @@ public class AdminApplyController {
     static final Map<String, Integer> DEPENDENCY_ORDER = Map.of(
             "Settings", 0,
             "Schema", 1,
+            "CatalogSchema", 1,
             "Interceptor", 2,
             "Role", 3,
             "Key", 4,
@@ -76,6 +77,7 @@ public class AdminApplyController {
     static final Map<String, String> KIND_URL_SEGMENT = Map.of(
             "Settings", "settings",
             "Schema", "schemas",
+            "CatalogSchema", "catalog_schemas",
             "Interceptor", "interceptors",
             "Role", "roles",
             "Key", "keys",
@@ -269,6 +271,7 @@ public class AdminApplyController {
             scratch.setModels(new HashMap<>(live.getModels()));
             scratch.setInterceptors(new HashMap<>(live.getInterceptors()));
             scratch.setApplicationTypeSchemas(new HashMap<>(live.getApplicationTypeSchemas()));
+            scratch.setCatalogSchemas(new HashMap<>(live.getCatalogSchemas()));
             scratch.setApplications(new HashMap<>(live.getApplications()));
             scratch.setToolsets(new HashMap<>(live.getToolsets()));
             scratch.setRoles(new HashMap<>(live.getRoles()));
@@ -328,6 +331,11 @@ public class AdminApplyController {
                         return new ValidationResult(id, ValidationStatus.FAILED, "Schema spec must be a JSON object");
                     }
                 }
+                case "CatalogSchema" -> {
+                    if (!entry.spec().isObject()) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, "CatalogSchema spec must be a JSON object");
+                    }
+                }
                 default -> {
                     return new ValidationResult(id, ValidationStatus.FAILED, "Unknown kind: " + entry.kind());
                 }
@@ -348,7 +356,8 @@ public class AdminApplyController {
         }
         return switch (entry.kind()) {
             case "Settings" -> applySettings(entry, id, parsed);
-            case "Schema" -> applySchema(entry, id, parsed, pending);
+            case "Schema" -> applySchema(entry, id, parsed, pending, ResourceTypes.APP_TYPE_SCHEMA);
+            case "CatalogSchema" -> applySchema(entry, id, parsed, pending, ResourceTypes.CATALOG_SCHEMA);
             case "Interceptor" -> applyManagedEntity(entry, id, parsed, ResourceTypes.INTERCEPTOR, Interceptor.class, pending);
             case "Role" -> applyManagedEntity(entry, id, parsed, ResourceTypes.ROLE, Role.class, pending);
             case "Route" -> applyManagedEntity(entry, id, parsed, ResourceTypes.ROUTE, Route.class, pending);
@@ -372,12 +381,13 @@ public class AdminApplyController {
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applySchema(AdminManifest entry, String id, ParsedName parsed, List<EntityChange> pending) {
+    private EntityResult applySchema(AdminManifest entry, String id, ParsedName parsed, List<EntityChange> pending,
+                                     ResourceTypes type) {
         if (!entry.spec().isObject()) {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Schema spec must be a JSON object");
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
-                ResourceTypes.APP_TYPE_SCHEMA, parsed.bucket(), parsed.location(), parsed.name());
+                type, parsed.bucket(), parsed.location(), parsed.name());
         String blobBody;
         try {
             blobBody = ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec());
@@ -387,7 +397,7 @@ public class AdminApplyController {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Failed to serialize schema for " + id);
         }
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-        pending.add(new EntityChange(ResourceTypes.APP_TYPE_SCHEMA, MergedConfigStore.canonicalId(descriptor), entry.spec()));
+        pending.add(new EntityChange(type, MergedConfigStore.canonicalId(descriptor), entry.spec()));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
@@ -545,6 +555,15 @@ public class AdminApplyController {
                         return;
                     }
                     scratch.getApplicationTypeSchemas().put(entry.name(), json);
+                }
+                case "CatalogSchema" -> {
+                    String json;
+                    try {
+                        json = ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec());
+                    } catch (JsonProcessingException e) {
+                        return;
+                    }
+                    scratch.getCatalogSchemas().put(entry.name(), json);
                 }
                 default -> { /* unknown kinds never reach this code path */ }
             }

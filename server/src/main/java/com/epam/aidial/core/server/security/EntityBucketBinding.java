@@ -28,6 +28,7 @@ public class EntityBucketBinding {
             Map.entry("applications", Set.of(ResourceDescriptor.PUBLIC_BUCKET, PLATFORM_BUCKET)),
             Map.entry("toolsets", Set.of(ResourceDescriptor.PUBLIC_BUCKET, PLATFORM_BUCKET)),
             Map.entry("schemas", Set.of(PLATFORM_BUCKET)),
+            Map.entry("catalog_schemas", Set.of(PLATFORM_BUCKET)),
             Map.entry(ResourceTypes.FILE.group(), Set.of(ResourceDescriptor.PUBLIC_BUCKET, USER_BUCKET_WILDCARD)),
             Map.entry(ResourceTypes.PROMPT.group(), Set.of(ResourceDescriptor.PUBLIC_BUCKET, USER_BUCKET_WILDCARD)),
             Map.entry(ResourceTypes.CONVERSATION.group(), Set.of(ResourceDescriptor.PUBLIC_BUCKET, USER_BUCKET_WILDCARD)),
