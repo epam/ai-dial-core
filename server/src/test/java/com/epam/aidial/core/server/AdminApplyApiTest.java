@@ -365,6 +365,52 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testApplyCatalogSchemaSurvivesUnrelatedApply() {
+        // Regression for MergedConfigStore#shallowClone: partial-update writes (applyBatch et al.)
+        // clone the merged Config off a fresh `new Config()`. Any Config map not explicitly carried
+        // over in shallowClone reverts to its field-initializer default on the very next unrelated
+        // admin write, silently wiping previously-applied entries of that type.
+        String catalogSchemaBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-survive",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-survive-model",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, catalogSchemaBody, "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-survive", null, "",
+                "authorization", "admin"), 200);
+
+        String unrelatedBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Interceptor",
+                      "name": "interceptors/platform/apply-catalog-unrelated-int",
+                      "spec": {"endpoint": "http://localhost:4088/api/v1/interceptor/handle"}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, unrelatedBody, "authorization", "admin"), 200);
+
+        // The unrelated write must not have dropped the previously-applied catalog schema.
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-survive", null, "",
+                "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
     void testApplyCatalogSchemaPublicBucketRejected() {
         String body = """
                 {
