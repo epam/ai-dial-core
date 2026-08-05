@@ -560,7 +560,6 @@ public class DeploymentPostControllerTest {
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
-        when(request.uri()).thenReturn("/openai/deployments/name/chat/completions");
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
@@ -587,7 +586,7 @@ public class DeploymentPostControllerTest {
 
         ArgumentCaptor<RequestOptions> captor = ArgumentCaptor.forClass(RequestOptions.class);
         verify(httpClient).request(captor.capture());
-        // new flow: base_url + exact ingress path (request.uri())
+        // new flow: base_url + exact ingress path
         assertEquals("/openai/deployments/name/chat/completions", captor.getValue().getURI());
         assertEquals("host", captor.getValue().getHost());
     }
@@ -654,7 +653,6 @@ public class DeploymentPostControllerTest {
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
         when(request.path()).thenReturn("/openai/deployments/name/embeddings");
-        when(request.uri()).thenReturn("/openai/deployments/name/embeddings");
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));

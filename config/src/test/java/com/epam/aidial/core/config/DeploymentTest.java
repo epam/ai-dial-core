@@ -24,7 +24,6 @@ public class DeploymentTest {
         model.setEndpoint("http://host/chat/completions");
 
         assertTrue(model.supportsInterface(OPENAI_CHAT_COMPLETIONS));
-        assertNull(model.getInterfaceBaseUrl(OPENAI_CHAT_COMPLETIONS));
         assertEquals("http://host/chat/completions", model.resolveEndpoint(OPENAI_CHAT_COMPLETIONS));
 
         assertFalse(model.supportsInterface(OPENAI_RESPONSES));
@@ -37,7 +36,6 @@ public class DeploymentTest {
         model.setResponsesEndpoint("http://host/openai/v1/responses");
 
         assertTrue(model.supportsInterface(OPENAI_RESPONSES));
-        assertNull(model.getInterfaceBaseUrl(OPENAI_RESPONSES));
         assertEquals("http://host/openai/v1/responses", model.resolveEndpoint(OPENAI_RESPONSES));
 
         assertFalse(model.supportsInterface(OPENAI_CHAT_COMPLETIONS));
@@ -50,7 +48,6 @@ public class DeploymentTest {
                 OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://adapter:5000/")));
 
         assertTrue(model.supportsInterface(OPENAI_CHAT_COMPLETIONS));
-        assertEquals("http://adapter:5000", model.getInterfaceBaseUrl(OPENAI_CHAT_COMPLETIONS));
         assertNull(model.getEndpoint());
         assertEquals("http://adapter:5000", model.resolveEndpoint(OPENAI_CHAT_COMPLETIONS));
     }
@@ -101,7 +98,6 @@ public class DeploymentTest {
 
         // the type is not declared, so it is not advertised...
         assertFalse(model.supportsInterface(OPENAI_EMBEDDINGS));
-        assertNull(model.getInterfaceBaseUrl(OPENAI_EMBEDDINGS));
         // ...but the chat-completions entry keeps serving embeddings as it did before the split
         assertEquals("http://adapter:5000", model.resolveEndpoint(OPENAI_EMBEDDINGS));
         assertEquals("http://adapter:5000/openai/deployments/embedding-ada/embeddings",
@@ -156,6 +152,21 @@ public class DeploymentTest {
     }
 
     @Test
+    void resolveUriAppendsPathInNewFlowAndIgnoresItInLegacyFlow() {
+        Model interfaced = new Model();
+        interfaced.setInterfaces(Map.of(
+                OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://adapter/")));
+        assertEquals("http://adapter/openai/v1/responses",
+                interfaced.resolveUri(OPENAI_RESPONSES, "/openai/v1/responses"));
+
+        Model legacy = new Model();
+        legacy.setResponsesEndpoint("http://legacy/custom/responses");
+        // the legacy endpoint already encodes the path, so the passed path is ignored
+        assertEquals("http://legacy/custom/responses",
+                legacy.resolveUri(OPENAI_RESPONSES, "/openai/v1/responses"));
+    }
+
+    @Test
     void resolveRequestUriAppendsIngressPathToBaseUrl() {
         Model model = new Model();
         model.setName("als-2");
@@ -177,7 +188,7 @@ public class DeploymentTest {
 
         assertEquals("http://localhost:5025/openai/deployments/essay-assistant-gpt/chat/completions?api-version=2024-08-06",
                 model.resolveRequestUri(OPENAI_CHAT_COMPLETIONS,
-                        "/openai/deployments/interceptor/chat/completions?api-version=2024-08-06", "api-version=2024-08-06"));
+                        "/openai/deployments/interceptor/chat/completions", "api-version=2024-08-06"));
     }
 
     @Test
@@ -208,7 +219,7 @@ public class DeploymentTest {
 
         assertEquals("http://localhost:5025/openai/deployments/essay-assistant-gpt/chat/completions?api-version=2024-08-06",
                 application.resolveRequestUri(OPENAI_CHAT_COMPLETIONS,
-                        "/openai/deployments/app-tst/chat/completions?api-version=2024-08-06", "api-version=2024-08-06"));
+                        "/openai/deployments/app-tst/chat/completions", "api-version=2024-08-06"));
     }
 
     @Test
@@ -224,7 +235,7 @@ public class DeploymentTest {
 
         assertEquals("http://localhost:6001/openai/deployments/gpt-5.4-mini/chat/completions?api-version=2025-01-01-preview",
                 model.resolveRequestUri(OPENAI_CHAT_COMPLETIONS,
-                        "/openai/deployments/openai-gpt-5.4-mini/chat/completions?api-version=2025-01-01-preview",
+                        "/openai/deployments/openai-gpt-5.4-mini/chat/completions",
                         "api-version=2025-01-01-preview"));
     }
 
@@ -240,7 +251,7 @@ public class DeploymentTest {
 
         assertEquals("http://localhost:6001/openai/deployments/gpt-5.4-mini/chat/completions?api-version=2025-01-01-preview",
                 model.resolveRequestUri(OPENAI_CHAT_COMPLETIONS,
-                        "/openai/deployments/openai-gpt-5.4-mini/chat/completions?api-version=2025-01-01-preview",
+                        "/openai/deployments/openai-gpt-5.4-mini/chat/completions",
                         "api-version=2025-01-01-preview"));
     }
 
@@ -252,7 +263,7 @@ public class DeploymentTest {
 
         assertEquals("http://legacy/openai/deployments/1/chat/completions?api-version=2024-10-21",
                 model.resolveRequestUri(OPENAI_CHAT_COMPLETIONS,
-                        "/openai/deployments/als-2/chat/completions?api-version=2024-10-21", "api-version=2024-10-21"));
+                        "/openai/deployments/als-2/chat/completions", "api-version=2024-10-21"));
         assertEquals("http://legacy/openai/deployments/1/chat/completions",
                 model.resolveRequestUri(OPENAI_CHAT_COMPLETIONS, "/openai/deployments/als-2/chat/completions", null));
     }
@@ -279,7 +290,7 @@ public class DeploymentTest {
         assertTrue(model.supportsInterface(OPENAI_CHAT_COMPLETIONS));
         assertEquals(2, model.getInterfaces().size());
         // unknown keys parse but never resolve to a routed interface type
-        assertNull(model.getInterfaceBaseUrl(OPENAI_RESPONSES));
+        assertNull(model.resolveEndpoint(OPENAI_RESPONSES));
     }
 
     @Test
@@ -343,6 +354,6 @@ public class DeploymentTest {
 
         // legacy field is not stripped, interfaces survive
         assertEquals("http://host/chat/completions", restored.getEndpoint());
-        assertEquals("http://adapter", restored.getInterfaceBaseUrl(OPENAI_RESPONSES));
+        assertEquals("http://adapter", restored.resolveEndpoint(OPENAI_RESPONSES));
     }
 }

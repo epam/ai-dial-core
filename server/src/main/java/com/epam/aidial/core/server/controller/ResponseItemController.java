@@ -51,12 +51,8 @@ public class ResponseItemController implements Controller {
     private final String dialResponseId;
     private final Operation operation;
 
-    /**
-     * New flow: base_url + /openai/v1/responses. Legacy flow: the verbatim responsesEndpoint.
-     */
     private static String responsesBase(Deployment deployment) {
-        String baseUrl = deployment.getInterfaceBaseUrl(InterfaceType.OPENAI_RESPONSES);
-        return baseUrl != null ? baseUrl + OPENAI_RESPONSES_BASE_PATH : deployment.getResponsesEndpoint();
+        return deployment.resolveUri(InterfaceType.OPENAI_RESPONSES, OPENAI_RESPONSES_BASE_PATH);
     }
 
     @Override

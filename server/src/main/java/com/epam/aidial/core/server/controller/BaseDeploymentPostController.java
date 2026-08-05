@@ -292,13 +292,12 @@ public class BaseDeploymentPostController {
 
     /**
      * Routes by interface type, forwarding to the URI resolved by
-     * {@link Deployment#resolveRequestUri(InterfaceType, String, String)}. {@code request.uri()} already
-     * includes path and query.
+     * {@link Deployment#resolveRequestUri(InterfaceType, String, String)}.
      */
     protected Future<HttpClientRequest> createProxyRequest(InterfaceType type) {
         HttpServerRequest request = context.getRequest();
         return createProxyRequest(context.getDeployment()
-                .resolveRequestUri(type, request.uri(), request.query()));
+                .resolveRequestUri(type, request.path(), request.query()));
     }
 
     protected Future<HttpClientResponse> sendProxyRequest(

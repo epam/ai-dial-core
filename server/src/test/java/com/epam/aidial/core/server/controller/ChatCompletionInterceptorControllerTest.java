@@ -72,6 +72,7 @@ public class ChatCompletionInterceptorControllerTest {
 
         when(context.getDeployment()).thenReturn(deployment);
         when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/original-model/chat/completions");
         when(request.query()).thenReturn(null);
 
         ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0);
@@ -89,6 +90,7 @@ public class ChatCompletionInterceptorControllerTest {
 
         when(context.getDeployment()).thenReturn(deployment);
         when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/original-model/chat/completions");
         when(request.query()).thenReturn("api-version=2024-05");
 
         ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0);
@@ -220,6 +222,7 @@ public class ChatCompletionInterceptorControllerTest {
 
         when(context.getDeployment()).thenReturn(interceptor);
         when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/interceptor/chat/completions");
         when(request.query()).thenReturn(null);
 
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, Answers.RETURNS_DEEP_STUBS));

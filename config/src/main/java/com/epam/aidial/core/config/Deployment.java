@@ -121,7 +121,7 @@ public abstract class Deployment extends RoleBasedEntity {
      * New-flow base URL for the type (trailing slash stripped), or null when not declared.
      */
     @Nullable
-    public String getInterfaceBaseUrl(InterfaceType type) {
+    private String getInterfaceBaseUrl(InterfaceType type) {
         DeploymentInterface deploymentInterface = interfaces == null ? null : interfaces.get(type.getValue());
         if (deploymentInterface == null) {
             return null;
@@ -140,10 +140,9 @@ public abstract class Deployment extends RoleBasedEntity {
         String baseUrl = getInterfaceBaseUrl(type);
         if (baseUrl == null) {
             if (type == InterfaceType.OPENAI_CHAT_COMPLETIONS) {
-                baseUrl =  endpoint;
-            }
-            else if (type == InterfaceType.OPENAI_RESPONSES) {
-                baseUrl =  responsesEndpoint;
+                baseUrl = endpoint;
+            } else if (type == InterfaceType.OPENAI_RESPONSES) {
+                baseUrl = responsesEndpoint;
             }
         }
         return baseUrl;
@@ -181,21 +180,29 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
-     * Dual-mode: the absolute URI a request for the type is forwarded to. When the deployment declares an
-     * {@code interfaces} base URL, that base URL plus the exact ingress path (with the {@code /deployments/{id}/}
-     * segment rewritten to this deployment's own name, or to {@link #overrideName} when set); otherwise the
-     * verbatim legacy endpoint plus the original query, byte-identical to the legacy flow.
-     *
-     * @param ingressUri the inbound request URI, already including path and query
-     * @param query      the inbound query string, or null when absent
+     * The single dual-mode decision: base URL plus {@code path} in the new flow, the verbatim legacy
+     * endpoint in the legacy flow (where the path is already baked into the endpoint and {@code path} is
+     * ignored). Callers append their own suffix/query. Keeping this the only place that branches on the
+     * flow lets callers compose URIs without ever seeing which flow the deployment is configured for.
      */
-    public String resolveRequestUri(InterfaceType type, String ingressUri, String query) {
+    public String resolveUri(InterfaceType type, String path) {
         InterfaceType served = servedBy(type);
         String baseUrl = getInterfaceBaseUrl(served);
-        if (baseUrl == null) {
-            return declaredEndpoint(served) + (query == null ? "" : "?" + query);
-        }
-        return baseUrl + rewriteDeploymentPathSegment(ingressUri, getTargetName());
+        return baseUrl != null ? baseUrl + path : declaredEndpoint(served);
+    }
+
+    /**
+     * The absolute URI a deployments-POST request for the type is forwarded to: {@link #resolveUri} of the
+     * ingress path with the {@code /deployments/{id}/} segment rewritten to this deployment's own name (or
+     * {@link #overrideName} when set), plus the original query. In the legacy flow this is byte-identical
+     * to the pre-interfaces behaviour: verbatim endpoint plus query.
+     *
+     * @param ingressPath the inbound request path, without the query
+     * @param query       the inbound query string, or null when absent
+     */
+    public String resolveRequestUri(InterfaceType type, String ingressPath, String query) {
+        String uri = resolveUri(type, rewriteDeploymentPathSegment(ingressPath, getTargetName()));
+        return query == null ? uri : uri + "?" + query;
     }
 
     /**

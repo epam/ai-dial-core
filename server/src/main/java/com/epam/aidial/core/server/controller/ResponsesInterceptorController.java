@@ -48,14 +48,9 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
     @Override
     protected String buildUri(ProxyContext context) {
         Deployment deployment = context.getDeployment();
+        String uri = deployment.resolveUri(InterfaceType.OPENAI_RESPONSES, "/openai/v1/responses") + uriSuffix;
         String query = context.getRequest().query();
-        String baseUrl = deployment.getInterfaceBaseUrl(InterfaceType.OPENAI_RESPONSES);
-        if (baseUrl != null) {
-            String path = "/openai/v1/responses" + uriSuffix;
-            return query == null ? baseUrl + path : baseUrl + path + "?" + query;
-        }
-        String endpoint = deployment.getResponsesEndpoint() + uriSuffix;
-        return query == null ? endpoint : endpoint + "?" + query;
+        return query == null ? uri : uri + "?" + query;
     }
 
     @Override

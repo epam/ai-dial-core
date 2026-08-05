@@ -51,16 +51,13 @@ public class ChatCompletionInterceptorController extends BaseInterceptorControll
     protected String buildUri(ProxyContext context) {
         Deployment deployment = context.getDeployment();
         HttpServerRequest request = context.getRequest();
+        // Rewrite the {id} segment to the interceptor's own name (or overrideName, if set); the legacy
+        // flow ignores the path, so the verbatim endpoint is used as before.
+        String name = UrlUtil.encodePathSegment(deployment.getTargetName());
+        String path = rewriteDeploymentSegment(request.path(), name);
+        String uri = deployment.resolveUri(InterfaceType.OPENAI_CHAT_COMPLETIONS, path);
         String query = request.query();
-        String baseUrl = deployment.getInterfaceBaseUrl(InterfaceType.OPENAI_CHAT_COMPLETIONS);
-        if (baseUrl != null) {
-            // Rewrite the {id} segment to the interceptor's own name (or overrideName, if set), then base_url + path.
-            String name = UrlUtil.encodePathSegment(deployment.getTargetName());
-            String path = rewriteDeploymentSegment(request.path(), name);
-            return query == null ? baseUrl + path : baseUrl + path + "?" + query;
-        }
-        // Legacy flow: verbatim endpoint + query.
-        return query == null ? deployment.getEndpoint() : deployment.getEndpoint() + "?" + query;
+        return query == null ? uri : uri + "?" + query;
     }
 
     @Override
