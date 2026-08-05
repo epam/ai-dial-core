@@ -131,12 +131,16 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
-     * The legacy peer field of the type: {@link #endpoint} for chat completions, {@link #responsesEndpoint}
-     * for responses. Types introduced together with the {@code interfaces} map have no legacy field of their
-     * own — {@code openaiEmbeddings} reaches {@link #endpoint} through {@link #routedInterface} instead.
+     * The endpoint the deployment declares for the type: the {@code interfaces} base URL when present,
+     * else the type's legacy peer field — {@link #endpoint} for chat completions, {@link #responsesEndpoint}
+     * for responses ({@code openaiEmbeddings} postdates the legacy fields and has no peer).
      */
     @Nullable
-    private String getLegacyEndpoint(InterfaceType type) {
+    private String declaredEndpoint(InterfaceType type) {
+        String baseUrl = getInterfaceBaseUrl(type);
+        if (baseUrl != null) {
+            return baseUrl;
+        }
         if (type == InterfaceType.OPENAI_CHAT_COMPLETIONS) {
             return endpoint;
         }
@@ -147,49 +151,34 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
-     * The interface whose configuration carries a request for {@code type}: {@code type} itself, unless it
-     * is {@code openaiEmbeddings} and the deployment does not declare it. {@code /embeddings} was served by
-     * the chat-completions configuration — the untyped legacy {@link #endpoint} or the chat-completions
-     * {@code base_url} — before the two interfaces were split, so deployments configured back then keep
-     * routing unchanged. The fallback is one-way and applies to routing only, never to what
-     * {@link #supportsInterface} advertises.
+     * The interface whose declared configuration serves a request for the type. Identity, with one
+     * exception: embeddings requests are served by the chat-completions configuration unless the
+     * deployment declares {@code openaiEmbeddings} — the two were a single interface before the split,
+     * so deployments configured back then keep routing {@code /embeddings} unchanged.
      */
-    private InterfaceType routedInterface(InterfaceType type) {
+    private InterfaceType servedBy(InterfaceType type) {
         return type == InterfaceType.OPENAI_EMBEDDINGS && !supportsInterface(type)
                 ? InterfaceType.OPENAI_CHAT_COMPLETIONS
                 : type;
     }
 
     /**
-     * Routing identifier for the type: interfaces base_url when declared (new flow), else the legacy
-     * endpoint (verbatim flow), else null. Used as the synthetic upstream id when a deployment has no
-     * upstreams.
+     * The endpoint a request for the type is routed to, or null when the deployment has no configuration
+     * to serve it (callers answer 503). Also used as the synthetic upstream id when a deployment declares
+     * no upstreams.
      */
     @Nullable
     public String resolveEndpoint(InterfaceType type) {
-        InterfaceType routed = routedInterface(type);
-        String baseUrl = getInterfaceBaseUrl(routed);
-        return baseUrl != null ? baseUrl : getLegacyEndpoint(routed);
+        return declaredEndpoint(servedBy(type));
     }
 
     /**
-     * True when the deployment declares the type, via the new interfaces map OR a legacy endpoint.
-     * This restores the legacy {@code getEndpoint() != null} semantics while also honouring interfaces.
-     * Declaration-based on purpose: it drives what the listing APIs advertise, so — unlike
-     * {@link #canServeInterface} — it never reports a type the deployment would merely serve through
-     * {@link #routedInterface the embeddings fallback}.
+     * True when the deployment declares the type itself — what the listing APIs advertise. A deployment
+     * serving embeddings only through the chat-completions fallback reports {@code false} for
+     * {@code openaiEmbeddings} while {@link #resolveEndpoint} still routes it.
      */
     public boolean supportsInterface(InterfaceType type) {
-        return getInterfaceBaseUrl(type) != null || getLegacyEndpoint(type) != null;
-    }
-
-    /**
-     * True when a request for the type can be routed, i.e. the deployment either declares the type or
-     * serves it through {@link #routedInterface the embeddings fallback}. This is what a request is gated
-     * on; {@link #supportsInterface} is what the listing APIs advertise.
-     */
-    public boolean canServeInterface(InterfaceType type) {
-        return resolveEndpoint(type) != null;
+        return declaredEndpoint(type) != null;
     }
 
     /**
@@ -202,10 +191,10 @@ public abstract class Deployment extends RoleBasedEntity {
      * @param query      the inbound query string, or null when absent
      */
     public String resolveRequestUri(InterfaceType type, String ingressUri, String query) {
-        InterfaceType routed = routedInterface(type);
-        String baseUrl = getInterfaceBaseUrl(routed);
+        InterfaceType served = servedBy(type);
+        String baseUrl = getInterfaceBaseUrl(served);
         if (baseUrl == null) {
-            return getLegacyEndpoint(routed) + (query == null ? "" : "?" + query);
+            return declaredEndpoint(served) + (query == null ? "" : "?" + query);
         }
         return baseUrl + rewriteDeploymentPathSegment(ingressUri, getTargetName());
     }

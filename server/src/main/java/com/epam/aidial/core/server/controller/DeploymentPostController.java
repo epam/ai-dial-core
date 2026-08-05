@@ -190,7 +190,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                         dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(app);
                     }
 
-                    if (!dep.canServeInterface(requestedInterface())) {
+                    if (dep.resolveEndpoint(requestedInterface()) == null) {
                         throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
                     }
 
@@ -285,10 +285,9 @@ public class DeploymentPostController extends BaseDeploymentPostController {
     }
 
     /**
-     * The interface this request targets: {@code openaiEmbeddings} for {@code /embeddings},
-     * {@code openaiChatCompletions} for {@code /chat/completions} and {@code /completions}. A deployment
-     * declaring no {@code openaiEmbeddings} still serves embeddings through its chat-completions
-     * configuration; that fallback lives in {@link Deployment} itself.
+     * The interface the request path targets: {@code openaiEmbeddings} for {@code /embeddings},
+     * {@code openaiChatCompletions} for {@code /chat/completions} and {@code /completions}. The
+     * embeddings-to-chat-completions fallback lives in {@link Deployment}, not here.
      * Taken from the path rather than from a named group in {@code RouteTemplate.POST_DEPLOYMENT}: named
      * groups are replaced with placeholders in the server span name, which would stop telling the three
      * actions apart.

@@ -158,7 +158,7 @@ public class ResponseItemController implements Controller {
 
     private Future<Void> dispatch(ResponseMapping mapping) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName());
-        if (!deployment.canServeInterface(InterfaceType.OPENAI_RESPONSES)) {
+        if (!deployment.supportsInterface(InterfaceType.OPENAI_RESPONSES)) {
             return context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API")
                     .mapEmpty();
         }
