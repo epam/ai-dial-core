@@ -1,8 +1,10 @@
 package com.epam.aidial.core.server;
 
 import io.vertx.core.http.HttpMethod;
+import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -188,6 +190,87 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
                 () -> "Plaintext client_secret must never appear on GET: " + get.body());
         assertFalse(get.body().contains("\"client_secret\""),
                 () -> "client_secret field must be absent from GET response: " + get.body());
+    }
+
+    @Test
+    void testPlatformAppExternalServiceAccessAllowedByUserRoles() throws Exception {
+        // Regression (#1773 review): external-service access on a platform app must go through the
+        // app's userRoles like a config app, not folder rules. This app is open (no user_roles), so a
+        // non-admin user can sign in; before the fix the folder-rules branch returned 403.
+        String body = """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Ext-Svc Platform App",
+                  "external_services": {
+                    "svc1": {
+                      "display_name": "Salesforce",
+                      "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "cid",
+                        "client_secret": "csecret",
+                        "redirect_uri": "http://localhost:3000/auth/signin",
+                        "authorization_endpoint": "http://localhost:9876/authorize",
+                        "token_endpoint": "http://localhost:9876"
+                      }
+                    }
+                  }
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/applications/platform/extsvc-open-app", null, body,
+                "authorization", "admin", "If-None-Match", "*"), 200);
+
+        TestWebServer.Handler handler = request -> new MockResponse()
+                .setBody("{\"access_token\":\"t\",\"refresh_token\":\"r\",\"expires_in\":3600}")
+                .setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                    {
+                        "url": "applications/platform/extsvc-open-app/external_services/svc1",
+                        "credentials_level": "USER",
+                        "authentication_type": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "user");
+            verify(signIn, 200, "true");
+        }
+    }
+
+    @Test
+    void testPlatformAppExternalServiceDeniedWithoutUserRole() {
+        // Denial still works via the userRoles branch: a user lacking the app's user_roles is 403, and
+        // verifyAccess short-circuits before any OAuth call (no mock server needed).
+        String body = """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Restricted Ext-Svc App",
+                  "user_roles": ["role-the-user-lacks"],
+                  "external_services": {
+                    "svc1": {
+                      "display_name": "Salesforce",
+                      "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "cid",
+                        "client_secret": "csecret",
+                        "redirect_uri": "http://localhost:3000/auth/signin",
+                        "authorization_endpoint": "http://localhost:9876/authorize",
+                        "token_endpoint": "http://localhost:9876"
+                      }
+                    }
+                  }
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/applications/platform/extsvc-restricted-app", null, body,
+                "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "applications/platform/extsvc-restricted-app/external_services/svc1",
+                    "credentials_level": "USER",
+                    "authentication_type": "OAUTH",
+                    "code": "auth-code"
+                }
+                """, "authorization", "user");
+        assertEquals(403, signIn.status());
     }
 
     @Test
