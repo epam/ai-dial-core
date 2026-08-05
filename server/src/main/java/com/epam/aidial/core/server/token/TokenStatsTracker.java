@@ -137,8 +137,12 @@ public class TokenStatsTracker {
             if (tokenStats == null) {
                 return;
             }
-            tokenStats.tokenUsage.increase(tokenUsage);
-            mergeUsagePerModel(tokenStats, deploymentName, tokenUsage);
+            // self: the reporting deployment's own usage replaces whatever was here, except
+            // aggCost, which keeps accumulating (a descendant may have already rolled its
+            // cost into this span before this deployment self-reported). usagePerModel is
+            // not self-merged: a deployment's own usage is already visible via tokenUsage,
+            // so its own breakdown only needs to cover what its descendants contributed.
+            tokenStats.tokenUsage.assign(tokenUsage);
 
             String parentSpanId = tokenStats.parentSpanId;
             while (parentSpanId != null) {
@@ -147,7 +151,9 @@ public class TokenStatsTracker {
                     log.warn("Parent span {} was not added to the trace context.", parentSpanId);
                     break;
                 }
-                tokenStats.tokenUsage.increase(tokenUsage);
+                // ancestors: only aggCost and the per-model breakdown roll up - raw token
+                // counts are never accumulated into an ancestor's own tokenUsage.
+                tokenStats.tokenUsage.increaseAggCost(tokenUsage.getAggCost());
                 mergeUsagePerModel(tokenStats, deploymentName, tokenUsage);
                 parentSpanId = tokenStats.parentSpanId;
             }

@@ -45,10 +45,28 @@ public class TokenUsage {
         } else {
             completionTokensDetails.increase(other.completionTokensDetails);
         }
-        aggCost(other.aggCost);
+        increaseAggCost(other.aggCost);
     }
 
-    private void aggCost(BigDecimal val) {
+    /**
+     * Overwrites every field from {@code other} except {@code aggCost}, which keeps
+     * accumulating - an ancestor may have already rolled a descendant's cost into this
+     * span before its own deployment self-reports.
+     */
+    public void assign(TokenUsage other) {
+        if (other == null) {
+            return;
+        }
+        completionTokens = other.completionTokens;
+        promptTokens = other.promptTokens;
+        totalTokens = other.totalTokens;
+        promptTokensDetails = other.promptTokensDetails;
+        completionTokensDetails = other.completionTokensDetails;
+        cost = other.cost;
+        increaseAggCost(other.aggCost);
+    }
+
+    public void increaseAggCost(BigDecimal val) {
         if (val == null) {
             return;
         }
