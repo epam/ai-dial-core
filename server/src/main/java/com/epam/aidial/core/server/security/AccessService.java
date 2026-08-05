@@ -320,7 +320,7 @@ public class AccessService {
         }
 
         // Collecting declared resources re-validates the application against its schema, so ask only for the kinds actually requested.
-        List<ResourceDescriptor> declaredResources = new ArrayList<>();
+        Set<ResourceDescriptor> declaredResources = new HashSet<>();
         if (ownResources.stream().anyMatch(resource -> resource.getType() == ResourceTypes.FILE)) {
             declaredResources.addAll(applicationSchemaService.getFiles(application));
         }
