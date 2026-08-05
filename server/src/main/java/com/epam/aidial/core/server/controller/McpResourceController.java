@@ -16,14 +16,14 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
+import com.epam.aidial.core.server.mcp.McpClientUtils;
+import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
-import com.epam.aidial.core.server.service.McpHttpClientBuilderService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
-import com.epam.aidial.core.server.util.McpClientUtils;
 import com.epam.aidial.core.server.util.McpUpstreamAuthInjector;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -81,7 +81,7 @@ public class McpResourceController implements Controller {
     private final ApiKeyStore apiKeyStore;
     private final RateLimiter rateLimiter;
     private final McpUpstreamAuthInjector authInjector;
-    private final McpHttpClientBuilderService mcpHttpClientBuilderService;
+    private final McpHttpClientBuilder mcpHttpClientBuilder;
 
     public McpResourceController(Proxy proxy, ProxyContext context, String applicationId) {
         this.proxy = proxy;
@@ -94,7 +94,7 @@ public class McpResourceController implements Controller {
         this.apiKeyStore = proxy.getApiKeyStore();
         this.rateLimiter = proxy.getRateLimiter();
         this.authInjector = new McpUpstreamAuthInjector(proxy);
-        this.mcpHttpClientBuilderService = proxy.getMcpHttpClientBuilderService();
+        this.mcpHttpClientBuilder = proxy.getMcpHttpClientBuilder();
     }
 
     @Override
@@ -176,7 +176,7 @@ public class McpResourceController implements Controller {
                 McpClientUtils.withSyncClient(
                         endpoint,
                         Duration.ofMillis(proxy.getClientOptions().getIdleTimeout()),
-                        mcpHttpClientBuilderService.httpClientBuilder(),
+                        mcpHttpClientBuilder.httpClientBuilder(),
                         builder -> authHeaders.forEach(builder::header),
                         client -> {
                             McpSchema.ReadResourceResult result = client.readResource(
