@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.resource.ResourceUtil;
 import com.google.common.annotations.VisibleForTesting;
@@ -53,6 +54,8 @@ public class AccessService {
     private final List<String> createCodeAppRoles;
 
     private final ApplicationSchemaService applicationSchemaService;
+
+    private static final Set<ResourceType> DEPLOYMENT_TYPES = Set.of(ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET);
 
     private final List<PermissionRule> permissionRules = List.of(
             AccessService::getOwnResourcesAccess,
@@ -305,19 +308,33 @@ public class AccessService {
 
     public Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccessForChainedSchemaRichApplication(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        if (context.getDeployment() instanceof Application application && application.hasApplicationTypeSchemaId()) {
-            List<ResourceDescriptor> applicationFiles = applicationSchemaService.getFiles(application);
-            String location = BucketBuilder.buildInitiatorBucket(context);
-            Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
-            for (ResourceDescriptor resource : resources) {
-                if (resource.getBucketLocation().equals(location) && applicationFiles.contains(resource)) {
-                    result.put(resource, ResourceAccessType.READ_ONLY);
-                }
-            }
-            return result;
-        } else {
+        if (!(context.getDeployment() instanceof Application application) || !application.hasApplicationTypeSchemaId()) {
             return Map.of();
         }
+        String location = BucketBuilder.buildInitiatorBucket(context);
+        Set<ResourceDescriptor> ownResources = resources.stream()
+                .filter(resource -> resource.getBucketLocation().equals(location))
+                .collect(Collectors.toSet());
+        if (ownResources.isEmpty()) {
+            return Map.of();
+        }
+
+        // Collecting declared resources re-validates the application against its schema, so ask only for the kinds actually requested.
+        Set<ResourceDescriptor> declaredResources = new HashSet<>();
+        if (ownResources.stream().anyMatch(resource -> resource.getType() == ResourceTypes.FILE)) {
+            declaredResources.addAll(applicationSchemaService.getFiles(application));
+        }
+        if (ownResources.stream().anyMatch(resource -> DEPLOYMENT_TYPES.contains(resource.getType()))) {
+            declaredResources.addAll(applicationSchemaService.getDeployments(application));
+        }
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
+        for (ResourceDescriptor resource : ownResources) {
+            if (declaredResources.contains(resource)) {
+                result.put(resource, ResourceAccessType.READ_ONLY);
+            }
+        }
+        return result;
     }
 
     public static Map<ResourceDescriptor, Set<ResourceAccessType>> getAppResourceAccess(
