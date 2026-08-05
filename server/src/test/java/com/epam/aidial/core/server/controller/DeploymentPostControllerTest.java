@@ -611,25 +611,6 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
-    public void testHandleRequestBody_EmbeddingsFallsBackToChatCompletionsInterface() {
-        HttpClient httpClient = mockEmbeddingsRequest();
-
-        Model model = new Model();
-        model.setName("name");
-        model.setInterfaces(Map.of(
-                InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://chat-host")));
-        when(context.getDeployment()).thenReturn(model);
-
-        controller.handleRequestBody(Buffer.buffer("{\"model\": \"name\", \"input\": \"text\"}"));
-
-        ArgumentCaptor<RequestOptions> captor = ArgumentCaptor.forClass(RequestOptions.class);
-        verify(httpClient).request(captor.capture());
-        // deployments configured before the split keep routing embeddings through chat completions
-        assertEquals("/openai/deployments/name/embeddings", captor.getValue().getURI());
-        assertEquals("chat-host", captor.getValue().getHost());
-    }
-
-    @Test
     public void testHandleRequestBody_EmbeddingsFallsBackToLegacyEndpoint() {
         HttpClient httpClient = mockEmbeddingsRequest();
 

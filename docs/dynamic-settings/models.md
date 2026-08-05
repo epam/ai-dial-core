@@ -161,9 +161,9 @@ Supported interface types for models:
 * `openaiResponses`: the OpenAI Responses API. Peer of `responsesEndpoint`.
 * `anthropicMessages`: the Anthropic Messages API (`/anthropic/v1/messages`, `/anthropic/v1/messages/count_tokens`).
 
-`openaiEmbeddings` was split out of `openaiChatCompletions`, which used to serve `embeddings` as well, so it falls back to it: an `embeddings` request is routed to `openaiEmbeddings` when declared, otherwise to `openaiChatCompletions`, otherwise to the legacy `endpoint`. Models configured before the split therefore keep working unchanged, and there is no reason to declare `openaiEmbeddings` unless the embeddings adapter differs from the chat-completions one. Note that the fallback is one-way: a model declaring only `openaiEmbeddings` answers `503` to `chat/completions` and `completions`.
+The `interfaces` map is strict: chat completions is configured via `openaiChatCompletions` and embeddings via `openaiEmbeddings`, and one never stands in for the other — a model declaring only `openaiChatCompletions` answers `503` to `embeddings`, and a model declaring only `openaiEmbeddings` answers `503` to `chat/completions` and `completions`. The untyped legacy `endpoint` predates the split and keeps serving `embeddings` requests verbatim, so models configured before the split keep working unchanged.
 
-Only the interface types a model declares are reported in the `interfaces` array of the `/v1/deployments` listing; a model that serves embeddings through its `openaiChatCompletions` configuration is listed under that key alone.
+Only the interface types a model declares are reported in the `interfaces` array of the `/v1/deployments` listing; a model that serves embeddings through the legacy `endpoint` is listed under `openaiChatCompletions` alone.
 
 Each value is an object with the following fields:
 

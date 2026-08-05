@@ -90,31 +90,41 @@ public class DeploymentTest {
     }
 
     @Test
-    void embeddingsFallsBackToChatCompletionsInterface() {
+    void embeddingsNotServedByChatCompletionsInterface() {
         Model model = new Model();
-        model.setName("embedding-ada");
         model.setInterfaces(Map.of(
                 OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://adapter:5000")));
 
-        // the type is not declared, so it is not advertised...
+        // the typed interfaces map is strict: chat completions is configured via openaiChatCompletions
+        // and embeddings via openaiEmbeddings, so a chat-only declaration does not serve /embeddings
         assertFalse(model.supportsInterface(OPENAI_EMBEDDINGS));
-        // ...but the chat-completions entry keeps serving embeddings as it did before the split
-        assertEquals("http://adapter:5000", model.resolveEndpoint(OPENAI_EMBEDDINGS));
-        assertEquals("http://adapter:5000/openai/deployments/embedding-ada/embeddings",
-                model.resolveRequestUri(OPENAI_EMBEDDINGS, "/openai/deployments/embedding-ada/embeddings", null));
+        assertNull(model.resolveEndpoint(OPENAI_EMBEDDINGS));
     }
 
     @Test
-    void embeddingsFallsBackToLegacyEndpoint() {
+    void embeddingsServedByLegacyEndpoint() {
         Model model = new Model();
         model.setType(ModelType.EMBEDDING);
         model.setEndpoint("http://host/openai/deployments/ada/embeddings");
 
-        // the untyped legacy endpoint declares chat completions only, yet it is what serves embeddings
+        // the untyped legacy endpoint predates the split, so it keeps serving embeddings; it declares
+        // chat completions only, hence openaiEmbeddings is still not advertised
         assertFalse(model.supportsInterface(OPENAI_EMBEDDINGS));
         assertEquals("http://host/openai/deployments/ada/embeddings", model.resolveEndpoint(OPENAI_EMBEDDINGS));
         assertEquals("http://host/openai/deployments/ada/embeddings",
                 model.resolveRequestUri(OPENAI_EMBEDDINGS, "/openai/deployments/embedding-ada/embeddings", null));
+    }
+
+    @Test
+    void embeddingsPreferLegacyEndpointOverChatInterface() {
+        Model model = new Model();
+        model.setEndpoint("http://host/openai/deployments/ada/embeddings");
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://chat-adapter")));
+
+        // the chat-completions interface never serves embeddings; the untyped legacy endpoint does
+        assertEquals("http://chat-adapter", model.resolveEndpoint(OPENAI_CHAT_COMPLETIONS));
+        assertEquals("http://host/openai/deployments/ada/embeddings", model.resolveEndpoint(OPENAI_EMBEDDINGS));
     }
 
     @Test
@@ -126,7 +136,7 @@ public class DeploymentTest {
     }
 
     @Test
-    void embeddingsPrefersOwnInterfaceOverChatCompletions() {
+    void embeddingsAndChatInterfacesRouteToTheirOwnAdapters() {
         Model model = new Model();
         model.setName("embedding-ada");
         model.setInterfaces(Map.of(
@@ -142,12 +152,13 @@ public class DeploymentTest {
     }
 
     @Test
-    void fallbackAppliesToEmbeddingsOnly() {
+    void legacyEndpointBacksEmbeddingsButNotResponses() {
         Model model = new Model();
         model.setEndpoint("http://host/chat/completions");
 
-        // embeddings is the only type a chat-completions endpoint stands in for: the Responses API
+        // the untyped legacy endpoint serves the deployments-POST family only: the Responses API
         // keeps requiring its own configuration
+        assertEquals("http://host/chat/completions", model.resolveEndpoint(OPENAI_EMBEDDINGS));
         assertNull(model.resolveEndpoint(OPENAI_RESPONSES));
     }
 

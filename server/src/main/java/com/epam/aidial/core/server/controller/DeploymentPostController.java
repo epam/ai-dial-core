@@ -287,7 +287,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
     /**
      * The interface the request path targets: {@code openaiEmbeddings} for {@code /embeddings},
      * {@code openaiChatCompletions} for {@code /chat/completions} and {@code /completions}. The
-     * embeddings-to-chat-completions fallback lives in {@link Deployment}, not here.
+     * legacy-endpoint backing for {@code /embeddings} lives in {@link Deployment}, not here.
      * Taken from the path rather than from a named group in {@code RouteTemplate.POST_DEPLOYMENT}: named
      * groups are replaced with placeholders in the server span name, which would stop telling the three
      * actions apart.

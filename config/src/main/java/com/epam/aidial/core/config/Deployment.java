@@ -149,30 +149,22 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
-     * The interface whose declared configuration serves a request for the type. Identity, with one
-     * exception: embeddings requests are served by the chat-completions configuration unless the
-     * deployment declares {@code openaiEmbeddings} — the two were a single interface before the split,
-     * so deployments configured back then keep routing {@code /embeddings} unchanged.
-     */
-    private InterfaceType servedBy(InterfaceType type) {
-        return type == InterfaceType.OPENAI_EMBEDDINGS && !supportsInterface(type)
-                ? InterfaceType.OPENAI_CHAT_COMPLETIONS
-                : type;
-    }
-
-    /**
      * The endpoint a request for the type is routed to, or null when the deployment has no configuration
-     * to serve it (callers answer 503). Also used as the synthetic upstream id when a deployment declares
-     * no upstreams.
+     * to serve it (callers answer 503). The typed {@code interfaces} map is strict — chat completions is
+     * configured via {@code openaiChatCompletions} and embeddings via {@code openaiEmbeddings}, one never
+     * stands in for the other — but the untyped legacy {@link #endpoint} predates the split and keeps
+     * serving {@code /embeddings} requests. Also used as the synthetic upstream id when a deployment
+     * declares no upstreams.
      */
     @Nullable
     public String resolveEndpoint(InterfaceType type) {
-        return declaredEndpoint(servedBy(type));
+        String declared = declaredEndpoint(type);
+        return declared == null && type == InterfaceType.OPENAI_EMBEDDINGS ? endpoint : declared;
     }
 
     /**
      * True when the deployment declares the type itself — what the listing APIs advertise. A deployment
-     * serving embeddings only through the chat-completions fallback reports {@code false} for
+     * serving embeddings only through the untyped legacy {@link #endpoint} reports {@code false} for
      * {@code openaiEmbeddings} while {@link #resolveEndpoint} still routes it.
      */
     public boolean supportsInterface(InterfaceType type) {
@@ -186,9 +178,8 @@ public abstract class Deployment extends RoleBasedEntity {
      * flow lets callers compose URIs without ever seeing which flow the deployment is configured for.
      */
     public String resolveUri(InterfaceType type, String path) {
-        InterfaceType served = servedBy(type);
-        String baseUrl = getInterfaceBaseUrl(served);
-        return baseUrl != null ? baseUrl + path : declaredEndpoint(served);
+        String baseUrl = getInterfaceBaseUrl(type);
+        return baseUrl != null ? baseUrl + path : resolveEndpoint(type);
     }
 
     /**

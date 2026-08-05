@@ -18,7 +18,7 @@
         }
       }
     },
-    "embeddings-fallback": {
+    "embeddings-chat-only": {
       "type": "embedding",
       "interfaces": {
         "openaiChatCompletions": {

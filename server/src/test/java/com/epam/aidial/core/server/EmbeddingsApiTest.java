@@ -19,9 +19,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * End-to-end coverage of the {@code openaiEmbeddings} interface: deployments that declare it, and the
- * ones configured before the split that keep reaching their embeddings endpoint through
- * {@code openaiChatCompletions} or the legacy {@code endpoint}.
+ * End-to-end coverage of the {@code openaiEmbeddings} interface. The typed {@code interfaces} map is
+ * strict — chat completions is configured via {@code openaiChatCompletions} and embeddings via
+ * {@code openaiEmbeddings} — while deployments configured before the split keep reaching their
+ * embeddings endpoint through the untyped legacy {@code endpoint}.
  */
 public class EmbeddingsApiTest extends ResourceBaseTest {
 
@@ -51,19 +52,14 @@ public class EmbeddingsApiTest extends ResourceBaseTest {
 
     @DialConfigLocation("dial-config/openai-embeddings.json")
     @Test
-    public void testChatCompletionsInterfaceStillServesEmbeddings() throws IOException {
-        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+    public void testChatOnlyInterfaceRefusesEmbeddings() throws IOException {
         try (TestWebServer server = new TestWebServer(4848)) {
-            String path = "/openai/deployments/embeddings-fallback/embeddings";
-            server.map(HttpMethod.POST, path, request -> {
-                captured.set(request);
-                return TestWebServer.createResponse(200, RESPONSE, "Content-Type", "application/json");
-            });
+            // the typed map is strict: a model declaring only openaiChatCompletions does not serve
+            // /embeddings — declaring openaiEmbeddings is the correct configuration
+            Response response = post("/openai/deployments/embeddings-chat-only/embeddings",
+                    REQUEST.formatted("embeddings-chat-only"));
 
-            Response response = post(path, REQUEST.formatted("embeddings-fallback"));
-
-            verify(response, 200, RESPONSE);
-            assertEquals(path, captured.get().getPath());
+            assertEquals(503, response.status());
         }
     }
 
@@ -117,17 +113,13 @@ public class EmbeddingsApiTest extends ResourceBaseTest {
 
     @DialConfigLocation("dial-config/openai-embeddings.json")
     @Test
-    public void testChatOnlyApplicationStillServesEmbeddings() throws IOException {
+    public void testChatOnlyApplicationRefusesEmbeddings() throws IOException {
         try (TestWebServer server = new TestWebServer(4848)) {
-            String path = "/openai/deployments/app-chat/embeddings";
-            server.map(HttpMethod.POST, path,
-                    request -> TestWebServer.createResponse(200, RESPONSE, "Content-Type", "application/json"));
+            // the strict typed map applies to applications too: an app declaring only
+            // openaiChatCompletions does not serve /embeddings (a legacy `endpoint` still would)
+            Response response = post("/openai/deployments/app-chat/embeddings", REQUEST.formatted("app-chat"));
 
-            // openaiEmbeddings is a model-only interface type: applications keep serving embeddings
-            // through their chat-completions configuration, exactly as before the split
-            Response response = post(path, REQUEST.formatted("app-chat"));
-
-            verify(response, 200, RESPONSE);
+            assertEquals(503, response.status());
         }
     }
 
@@ -139,8 +131,8 @@ public class EmbeddingsApiTest extends ResourceBaseTest {
         Map<String, Set<String>> interfaces = collectInterfaces(ProxyUtil.MAPPER.readTree(response.body()));
 
         assertEquals(Set.of("embedding", "openaiEmbeddings"), interfaces.get("embeddings-iface"));
-        // a deployment that only falls back to chat completions advertises what it declares
-        assertEquals(Set.of("embedding", "openaiChatCompletions"), interfaces.get("embeddings-fallback"));
+        // every deployment advertises exactly what it declares
+        assertEquals(Set.of("embedding", "openaiChatCompletions"), interfaces.get("embeddings-chat-only"));
         assertEquals(Set.of("chat", "openaiChatCompletions"), interfaces.get("app-chat"));
     }
 
@@ -152,7 +144,7 @@ public class EmbeddingsApiTest extends ResourceBaseTest {
         Set<String> ids = collectInterfaces(ProxyUtil.MAPPER.readTree(response.body())).keySet();
 
         assertTrue(ids.contains("embeddings-iface"), ids.toString());
-        assertTrue(ids.contains("embeddings-fallback"), ids.toString());
+        assertTrue(ids.contains("embeddings-chat-only"), ids.toString());
         assertFalse(ids.contains("app-chat"), ids.toString());
     }
 
