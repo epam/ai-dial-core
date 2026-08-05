@@ -596,6 +596,19 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "completion_tokens": 33,
                     "prompt_tokens": 19,
                     "total_tokens": 52
+                  },
+                  "statistics": {
+                    "usage_per_model": [
+                      {
+                        "index": 0,
+                        "model": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                        "usage": {
+                          "prompt_tokens": 19,
+                          "completion_tokens": 33,
+                          "total_tokens": 52
+                        }
+                      }
+                    ]
                   }
                 }
                 """;
@@ -619,7 +632,54 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                           "stream": true
                         }
                         """, "content-type", "application/json");
-        verify(response, 200, answer);
+        // the app self-reports usage matching its own model call, and the response is now a
+        // non-streaming JSON body parsed and re-serialized to inject statistics.usage_per_model
+        // (issue #1753), so compare semantically rather than byte-for-byte
+        verifyJson(response, 200, answer);
+    }
+
+    @Test
+    void testApiWhenStarted_Streaming() {
+        testApplicationStarted();
+
+        // the last chunk carries both the app's own real usage AND a bogus usage_per_model the
+        // upstream already streamed - Core must strip the latter and inject its own instead
+        String sse = "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1687781517,"
+                + "\"model\":\"gpt-35-turbo\",\"choices\":[{\"index\":0,\"finish_reason\":null,"
+                + "\"delta\":{\"role\":\"assistant\",\"content\":\"Hi\"}}]}\n\n"
+                + "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1687781517,"
+                + "\"model\":\"gpt-35-turbo\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],"
+                + "\"usage\":{\"completion_tokens\":5,\"prompt_tokens\":10,\"total_tokens\":15},"
+                + "\"statistics\":{\"usage_per_model\":[{\"index\":0,\"name\":\"upstream-echoed-entry\",\"prompt_tokens\":999}]}}\n\n"
+                + "data: [DONE]\n\n";
+        webServer.map(HttpMethod.POST, "/application",
+                new MockResponse().setResponseCode(200).setHeader("Content-Type", "text/event-stream").setBody(sse));
+
+        Response response = send(HttpMethod.POST, "/openai/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/chat/completions", null,
+                """
+                        {
+                          "messages": [
+                            {
+                              "role": "user",
+                              "content": "How are you?"
+                            }
+                          ],
+                          "max_tokens": 500,
+                          "stream": true
+                        }
+                        """, "content-type", "application/json");
+
+        verify(response, 200);
+        String body = response.body();
+
+        // the upstream's own (bogus) usage_per_model entry never reaches the client - Core strips it
+        Assertions.assertFalse(body.contains("upstream-echoed-entry"), body);
+
+        // Core's own statistics.usage_per_model arrives as an extra chunk right before the terminator
+        int doneIndex = body.indexOf("data: [DONE]");
+        int usagePerModelIndex = body.indexOf("\"usage_per_model\"");
+        Assertions.assertTrue(usagePerModelIndex >= 0 && usagePerModelIndex < doneIndex, body);
+        Assertions.assertTrue(body.contains("\"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app\""), body);
     }
 
     @Test

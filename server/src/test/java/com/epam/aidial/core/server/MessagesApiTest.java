@@ -2,6 +2,7 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -51,11 +52,25 @@ public class MessagesApiTest extends ResourceBaseTest {
                     "api-key", "proxyKey1", "anthropic-version", "2023-06-01");
 
             assertEquals(200, response.status());
-            assertEquals(NON_STREAM_RESPONSE, response.body());
             // exact ingress path is forwarded (base_url + request.uri())
             assertEquals(MESSAGES_PATH, captured.get().getPath());
             // Anthropic-specific headers pass through to the adapter
             assertEquals("2023-06-01", captured.get().getHeader("anthropic-version"));
+
+            // body content is unchanged; Core additionally injects statistics.usage_per_model -
+            // even a Model deployment with no descendants gets a 1-entry breakdown (issue #1753)
+            JsonNode originalJson = ProxyUtil.MAPPER.readTree(NON_STREAM_RESPONSE);
+            JsonNode responseJson = ProxyUtil.MAPPER.readTree(response.body());
+            assertEquals(originalJson.get("id"), responseJson.get("id"));
+            assertEquals(originalJson.get("content"), responseJson.get("content"));
+            assertEquals(originalJson.get("usage"), responseJson.get("usage"));
+            JsonNode usagePerModel = responseJson.path("statistics").path("usage_per_model");
+            assertEquals(1, usagePerModel.size());
+            assertEquals("claude-ns", usagePerModel.get(0).path("model").asText());
+            assertEquals(12, usagePerModel.get(0).path("usage").path("prompt_tokens").asLong());
+            assertEquals(8, usagePerModel.get(0).path("usage").path("completion_tokens").asLong());
+            assertEquals(20, usagePerModel.get(0).path("usage").path("total_tokens").asLong());
+            assertEquals(2, usagePerModel.get(0).path("usage").path("prompt_tokens_details").path("cached_tokens").asLong());
 
             Thread.sleep(1000); // wait for core to save usage
             assertUsed("claude-ns", 20);
@@ -82,6 +97,13 @@ public class MessagesApiTest extends ResourceBaseTest {
             assertTrue(body.contains("message_start"), body);
             assertTrue(body.contains("message_stop"), body);
             assertTrue(body.contains("Who"), body);
+
+            // the withheld message_stop event is rewritten in place to carry Core's own
+            // statistics.usage_per_model (issue #1753)
+            int messageStopIndex = body.indexOf("message_stop");
+            int usagePerModelIndex = body.indexOf("\"usage_per_model\"");
+            assertTrue(usagePerModelIndex > messageStopIndex, body);
+            assertTrue(body.contains("\"claude-stream\""), body);
 
             Thread.sleep(1000);
             // input_tokens (10) + cache_read (3) from message_start + output_tokens (8, message_delta);

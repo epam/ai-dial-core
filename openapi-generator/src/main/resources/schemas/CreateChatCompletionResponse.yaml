@@ -23,3 +23,6 @@ properties:
       $ref: "#/components/schemas/ChatCompletionChoice"
   usage:
     $ref: "#/components/schemas/CompletionUsage"
+  statistics:
+    $ref: "#/components/schemas/Statistics"
+    nullable: true

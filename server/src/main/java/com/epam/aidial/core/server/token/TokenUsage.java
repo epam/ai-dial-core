@@ -23,6 +23,11 @@ public class TokenUsage {
     private BigDecimal cost;
     private BigDecimal aggCost;
 
+    public boolean isEmpty() {
+        return completionTokens == 0 && promptTokens == 0 && totalTokens == 0
+                && promptTokensDetails == null && completionTokensDetails == null;
+    }
+
     public void increase(TokenUsage other) {
         if (other == null) {
             return;

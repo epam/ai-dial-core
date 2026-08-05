@@ -23,6 +23,7 @@ import redis.embedded.RedisServer;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -128,24 +129,94 @@ public class TokenStatsTrackerTest {
         modelTokenUsage.setAggCost(new BigDecimal("10.0"));
 
         // core receives response from model
-        tracker.updateModelStats(traceId, "app", modelTokenUsage);
+        TokenStatsTracker.UsageStats modelStats = tracker.updateDeploymentStats(traceId, "app", "gpt-4", modelTokenUsage).result();
+        assertNotNull(modelStats);
+        assertEquals(100, modelStats.total().getTotalTokens());
+        assertEquals(1, modelStats.usagePerModel().size());
+        assertEquals(0, modelStats.usagePerModel().get(0).getIndex());
+        assertEquals("gpt-4", modelStats.usagePerModel().get(0).getModel());
+
+        // the app also self-reports its own usage in its response body. The old assign-based
+        // updateStats would have wiped the model's contribution to the app's aggregate here
+        // instead of adding to it - this is the regression case for that bug.
+        TokenUsage appOwnUsage = new TokenUsage();
+        appOwnUsage.setTotalTokens(5);
+        appOwnUsage.setPromptTokens(5);
+        tracker.updateDeploymentStats(traceId, "app", "my-app", appOwnUsage);
 
         // core ends span for request to model
         tracker.endSpan(app);
 
-        // core receives response from app
+        // core receives response from app: aggregate must be model + app's own (105), not just 5
         Future<TokenUsage> appStatsFuture = tracker.getTokenStats(chatBackend);
         assertNotNull(appStatsFuture);
         TokenUsage tokenUsage = appStatsFuture.result();
-        assertEquals(100, tokenUsage.getTotalTokens());
+        assertEquals(105, tokenUsage.getTotalTokens());
         assertEquals(80, tokenUsage.getCompletionTokens());
-        assertEquals(20, tokenUsage.getPromptTokens());
+        assertEquals(25, tokenUsage.getPromptTokens());
         assertEquals(new BigDecimal("10.0"), tokenUsage.getAggCost());
         assertNull(tokenUsage.getCost());
+
+        // the breakdown at the chat span shows both contributors, additively (no suppression)
+        TokenStatsTracker.UsageStats chatStats = tracker.getUsageStats(chatBackend).result();
+        assertEquals(2, chatStats.usagePerModel().size());
+        assertEquals("gpt-4", chatStats.usagePerModel().get(0).getModel());
+        assertEquals(100, chatStats.usagePerModel().get(0).getUsage().getTotalTokens());
+        assertEquals("my-app", chatStats.usagePerModel().get(1).getModel());
+        assertEquals(5, chatStats.usagePerModel().get(1).getUsage().getTotalTokens());
 
         // core ends span for request to app
         tracker.endSpan(chatBackend);
         assertNull(tracker.getTokenStats(chatBackend).result());
+    }
+
+    @Test
+    public void testSameDeploymentCalledTwiceMergesIntoOneEntry() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        final String traceId = "trace-id-repeat";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        tracker.startSpan(root);
+
+        TokenUsage firstCall = new TokenUsage();
+        firstCall.setTotalTokens(10);
+        firstCall.setPromptTokens(10);
+        tracker.updateDeploymentStats(traceId, "root", "gpt-4", firstCall);
+
+        TokenUsage secondCall = new TokenUsage();
+        secondCall.setTotalTokens(20);
+        secondCall.setCompletionTokens(20);
+        TokenStatsTracker.UsageStats stats = tracker.updateDeploymentStats(traceId, "root", "gpt-4", secondCall).result();
+
+        assertEquals(1, stats.usagePerModel().size());
+        UsagePerModel entry = stats.usagePerModel().get(0);
+        assertEquals("gpt-4", entry.getModel());
+        assertEquals(0, entry.getIndex());
+        assertEquals(30, entry.getUsage().getTotalTokens());
+        assertEquals(10, entry.getUsage().getPromptTokens());
+        assertEquals(20, entry.getUsage().getCompletionTokens());
+        assertEquals(30, stats.total().getTotalTokens());
+    }
+
+    @Test
+    public void testMissingTraceReturnsEmptyUsageStats() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        ProxyContext ctx = mock(ProxyContext.class);
+        when(ctx.getTraceId()).thenReturn("nonexistent-trace");
+
+        TokenStatsTracker.UsageStats stats = tracker.getUsageStats(ctx).result();
+        assertNotNull(stats);
+        assertNull(stats.total());
+        assertEquals(List.of(), stats.usagePerModel());
     }
 
 }

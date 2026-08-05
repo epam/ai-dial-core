@@ -333,10 +333,10 @@ public class ResponsesController extends BaseDeploymentPostController {
                     HttpServerResponse response = context.getResponse();
                     ProxyUtil.copyResponse(response, proxyResponse);
                     response.setChunked(false);
-                    response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
                     response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
 
                     if (context.isBackgroundJob() && dialId != null) {
+                        response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
                         return proxy.getBackgroundJobService().saveJob(dialId, context)
                                 .onComplete(result -> {
                                     if (result.failed()) {
@@ -356,7 +356,9 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     if (result.failed()) {
                                         log.warn("Failed to collect attachments from response", result.cause());
                                     }
-                                    response.end(rewritten);
+                                    Buffer withUsage = maybeInjectUsagePerModel(rewritten);
+                                    response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(withUsage.length()));
+                                    response.end(withUsage);
                                     completeProxyResponse(null);
                                 });
                     }
@@ -420,6 +422,10 @@ public class ResponsesController extends BaseDeploymentPostController {
             if (result.failed()) {
                 log.warn("Failed to collect token usage", result.cause());
             }
+            injectUsagePerModelIntoLastChunk(responseStream, tree -> {
+                JsonNode inner = tree.get("response");
+                return inner instanceof ObjectNode object ? object : null;
+            });
             responseStream.end(context.getResponse());
             completeProxyResponse(assembledStreamingResponse);
         });
