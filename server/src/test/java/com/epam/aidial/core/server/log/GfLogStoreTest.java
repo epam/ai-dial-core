@@ -2,12 +2,14 @@ package com.epam.aidial.core.server.log;
 
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
+import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.LogEntry;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpVersion;
@@ -118,7 +120,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(true, false, false, List.of(), null).appendClaims(context, entry);
+        new GfLogStore(AnalyticsSettings.builder().collectClaims(true).build()).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
         assertEquals("user-1", claims.get("user_id").asText());
@@ -138,7 +140,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(true, false, false, List.of(), null).appendClaims(context, entry);
+        new GfLogStore(AnalyticsSettings.builder().collectClaims(true).build()).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
         assertEquals("user-1", claims.get("user_id").asText());
@@ -158,7 +160,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(true, true, false, List.of(), null).appendClaims(context, entry);
+        new GfLogStore(AnalyticsSettings.builder().collectClaims(true).collectEmail(true).build()).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
         assertEquals("user-1", claims.get("user_id").asText());
@@ -177,7 +179,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(true, false, false, List.of(), null).appendClaims(context, entry);
+        new GfLogStore(AnalyticsSettings.builder().collectClaims(true).build()).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
         assertEquals("user-1", claims.get("user_id").asText());
@@ -196,7 +198,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(false, true, false, List.of(), null).appendClaims(context, entry);
+        new GfLogStore(AnalyticsSettings.builder().collectEmail(true).build()).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
         assertEquals("jane.doe@example.com", claims.get("user_email").asText());
@@ -215,7 +217,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(true, true, false, List.of(), null).appendClaims(context, entry);
+        new GfLogStore(AnalyticsSettings.builder().collectClaims(true).collectEmail(true).build()).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
         assertEquals("user-1", claims.get("user_id").asText());
@@ -237,7 +239,8 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(false, false, true, patterns("authorization", "api-key"), null).appendHeaders(context, entry);
+        new GfLogStore(AnalyticsSettings.builder().collectHeaders(true)
+                .headersBlacklist(patterns("authorization", "api-key")).build()).appendHeaders(context, entry);
 
         JsonNode headerNode = parseWrapped(buffer.toString());
         assertFalse(headerNode.has("Authorization"));
@@ -261,7 +264,8 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        GfLogStore store = new GfLogStore(true, false, true, patterns("authorization"), null);
+        GfLogStore store = new GfLogStore(AnalyticsSettings.builder().collectClaims(true).collectHeaders(true)
+                .headersBlacklist(patterns("authorization")).build());
         // mirror the order/position used by the real log line: both sections follow a preceding object member
         store.appendClaims(context, entry);
         store.appendHeaders(context, entry);
@@ -287,7 +291,8 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(false, false, true, patterns("x-stainless-.*"), null).appendHeaders(context, entry);
+        new GfLogStore(AnalyticsSettings.builder().collectHeaders(true)
+                .headersBlacklist(patterns("x-stainless-.*")).build()).appendHeaders(context, entry);
 
         JsonNode headerNode = parseWrapped(buffer.toString());
         assertFalse(headerNode.has("X-Stainless-Lang"));
@@ -310,7 +315,8 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(false, false, true, List.of(), patterns("traceparent", "user-agent")).appendHeaders(context, entry);
+        new GfLogStore(AnalyticsSettings.builder().collectHeaders(true)
+                .headersAllowlist(patterns("traceparent", "user-agent")).build()).appendHeaders(context, entry);
 
         JsonNode headerNode = parseWrapped(buffer.toString());
         assertEquals("00-abc-def-01", headerNode.get("traceparent").asText());
@@ -332,7 +338,8 @@ public class GfLogStoreTest {
         LogEntry entry = capturingEntry(buffer);
 
         // "authorization" matches both lists; the blacklist must win
-        new GfLogStore(false, false, true, patterns("authorization"), patterns(".*")).appendHeaders(context, entry);
+        new GfLogStore(AnalyticsSettings.builder().collectHeaders(true)
+                .headersBlacklist(patterns("authorization")).headersAllowlist(patterns(".*")).build()).appendHeaders(context, entry);
 
         JsonNode headerNode = parseWrapped(buffer.toString());
         assertFalse(headerNode.has("Authorization"));
@@ -388,7 +395,7 @@ public class GfLogStoreTest {
         when(context.getOperationDurationMs()).thenReturn(1234L);
 
         StringBuilder buffer = new StringBuilder();
-        new GfLogStore(false, false, false, List.of(), null).append(context, capturingEntry(buffer));
+        new GfLogStore(AnalyticsSettings.builder().build()).append(context, capturingEntry(buffer));
 
         JsonNode duration = ProxyUtil.MAPPER.readTree(buffer.toString()).get("operation_duration_ms");
         assertTrue(duration.isNumber());
@@ -434,6 +441,44 @@ public class GfLogStoreTest {
         assertTrue(AnalyticsLogContext.from(record, null).getOperationDurationMs() >= 60_000);
     }
 
+    @Test
+    public void testOperationDurationPrefersUpstreamCompletionOverPollTime() {
+        // finalized 10 minutes after the request, but the upstream reports it finished after 5 seconds
+        long requestTimestamp = System.currentTimeMillis() - 600_000;
+        BackgroundJobRecord record = backgroundJobRecord(requestTimestamp);
+        ResponsesApiClient.TerminalResult result =
+                new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), null, requestTimestamp + 5_000);
+
+        assertEquals(5_000, AnalyticsLogContext.from(record, result).getOperationDurationMs());
+    }
+
+    @Test
+    public void testOperationDurationIgnoresUpstreamCompletionBeforeRequest() {
+        long requestTimestamp = System.currentTimeMillis() - 600_000;
+        BackgroundJobRecord record = backgroundJobRecord(requestTimestamp);
+        // an upstream clock skewed into the past must not shorten the duration
+        ResponsesApiClient.TerminalResult result =
+                new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), null, requestTimestamp - 5_000);
+
+        assertTrue(AnalyticsLogContext.from(record, result).getOperationDurationMs() >= 600_000);
+    }
+
+    @Test
+    public void testOperationDurationWhenUpstreamReportsNoCompletion() {
+        long requestTimestamp = System.currentTimeMillis() - 600_000;
+        BackgroundJobRecord record = backgroundJobRecord(requestTimestamp);
+        ResponsesApiClient.TerminalResult result = new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), null);
+
+        assertTrue(AnalyticsLogContext.from(record, result).getOperationDurationMs() >= 600_000);
+    }
+
+    private static BackgroundJobRecord backgroundJobRecord(long requestTimestamp) {
+        return BackgroundJobRecord.builder()
+                .requestTimestamp(requestTimestamp)
+                .requestBody("{}")
+                .build();
+    }
+
     private static ProxyContext mockProxyContext() {
         ProxyContext context = mock(ProxyContext.class, RETURNS_DEEP_STUBS);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
@@ -455,7 +500,7 @@ public class GfLogStoreTest {
         when(context.getTokenUsage()).thenReturn(tokenUsage);
 
         StringBuilder buffer = new StringBuilder();
-        new GfLogStore(false, false, false, List.of(), null).append(context, capturingEntry(buffer));
+        new GfLogStore(AnalyticsSettings.builder().build()).append(context, capturingEntry(buffer));
 
         return ProxyUtil.MAPPER.readTree(buffer.toString()).get("token_usage").toString();
     }

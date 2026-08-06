@@ -129,13 +129,25 @@ public class AnalyticsLogContext {
                 .responseStatusCode(result == null ? 500 : 200) // 500 when expired
                 .responseBody(result == null ? null : result.body())
                 .tokenUsage(result == null ? null : result.usage())
-                // the job is being finalized right now, so the duration covers the whole asynchronous wait
-                .operationDurationMs(duration(record.requestTimestamp(), System.currentTimeMillis()))
+                .operationDurationMs(operationDurationMs(record, result))
                 .build();
     }
 
+    /**
+     * The job is finalized once the poller notices it reached a terminal state, which may lag the actual completion by
+     * up to a whole poll interval, so the upstream completion timestamp is preferred when the upstream reports one.
+     * An expired job has no result at all and reports the time until the core gave up, i.e. the job TTL.
+     */
+    private static long operationDurationMs(BackgroundJobRecord record, ResponsesApiClient.TerminalResult result) {
+        Long completedAtMs = result == null ? null : result.completedAtMs();
+        long end = completedAtMs != null && completedAtMs >= record.requestTimestamp()
+                ? completedAtMs
+                : System.currentTimeMillis();
+        return duration(record.requestTimestamp(), end);
+    }
+
     private static long operationDurationMs(ProxyContext context) {
-        // some callers save the log entry without stamping the response body timestamp
+        // guard for paths that respond without ever producing a response body, e.g. a forbidden deployment
         long end = context.getResponseBodyTimestamp() == 0
                 ? System.currentTimeMillis()
                 : context.getResponseBodyTimestamp();

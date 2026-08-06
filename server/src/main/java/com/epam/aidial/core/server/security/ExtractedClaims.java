@@ -1,11 +1,14 @@
 package com.epam.aidial.core.server.security;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
 
+// tolerate members written by a newer core version, so per-request keys survive a rolling upgrade
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ExtractedClaims(String userId, List<String> userRoles, String userHash,
                               ObjectNode userClaims, String project, String userDisplayName, String userEmail) {
 

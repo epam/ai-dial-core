@@ -445,9 +445,7 @@ public class IdentityProvider {
             map.put(e.getKey(), e.getValue().as(Object.class));
         }
         logClaims(map);
-        return new ExtractedClaims(extractStringClaim(map, userIdPath), extractUserRoles(map), extractUserHash(userKey),
-                extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName),
-                extractStringClaim(map, userEmailPath));
+        return toExtractedClaims(map, extractUserRoles(map), userKey);
     }
 
     private void from(String accessToken, JsonObject userInfo, Promise<ExtractedClaims> promise) {
@@ -456,19 +454,23 @@ public class IdentityProvider {
         if (getUserRoleFn != null) {
             getUserRoleFn.apply(accessToken, map).onFailure(promise::fail).onSuccess(roles -> {
                 logClaims(map);
-                ExtractedClaims extractedClaims = new ExtractedClaims(extractStringClaim(map, userIdPath), roles, extractUserHash(userKey),
-                        extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName),
-                        extractStringClaim(map, userEmailPath));
-                promise.complete(extractedClaims);
+                promise.complete(toExtractedClaims(map, roles, userKey));
             });
         } else {
             logClaims(map);
-            ExtractedClaims extractedClaims =
-                    new ExtractedClaims(extractStringClaim(map, userIdPath), extractUserRoles(map), extractUserHash(userKey),
-                            extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName),
-                            extractStringClaim(map, userEmailPath));
-            promise.complete(extractedClaims);
+            promise.complete(toExtractedClaims(map, extractUserRoles(map), userKey));
         }
+    }
+
+    private ExtractedClaims toExtractedClaims(Map<String, Object> map, List<String> roles, String userKey) {
+        return new ExtractedClaims(
+                extractStringClaim(map, userIdPath),
+                roles,
+                extractUserHash(userKey),
+                extractUserClaims(map),
+                extractStringClaim(map, projectPath),
+                extractStringClaim(map, userDisplayName),
+                extractStringClaim(map, userEmailPath));
     }
 
     private void logClaims(Map<String, Object> claims) {

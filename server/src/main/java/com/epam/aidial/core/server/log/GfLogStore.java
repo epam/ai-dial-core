@@ -45,21 +45,10 @@ public class GfLogStore implements LogStore {
     }
 
     private final ExecutorService executor;
-    private final boolean collectClaims;
-    private final boolean collectEmail;
-    private final boolean collectHeaders;
-    // never null; empty = block nothing
-    private final List<Pattern> headersBlacklist;
-    // null = allowlist disabled (collect all non-blocked headers)
-    private final List<Pattern> headersAllowlist;
+    private final AnalyticsSettings settings;
 
-    public GfLogStore(boolean collectClaims, boolean collectEmail, boolean collectHeaders,
-                      List<Pattern> headersBlacklist, List<Pattern> headersAllowlist) {
-        this.collectClaims = collectClaims;
-        this.collectEmail = collectEmail;
-        this.collectHeaders = collectHeaders;
-        this.headersBlacklist = headersBlacklist == null ? List.of() : headersBlacklist;
-        this.headersAllowlist = headersAllowlist;
+    public GfLogStore(AnalyticsSettings settings) {
+        this.settings = settings;
         BasicThreadFactory factory = BasicThreadFactory.builder()
                 .namingPattern("gflog-store-%d")
                 .daemon(true)
@@ -108,11 +97,11 @@ public class GfLogStore implements LogStore {
         append(entry, logContext.getJobTitle(), true);
         append(entry, "\"}", false);
 
-        if (collectClaims || collectEmail) {
+        if (settings.collectClaims() || settings.collectEmail()) {
             appendClaims(logContext, entry);
         }
 
-        if (collectHeaders) {
+        if (settings.collectHeaders()) {
             appendHeaders(logContext, entry);
         }
 
@@ -262,7 +251,7 @@ public class GfLogStore implements LogStore {
     void appendClaims(AnalyticsLogContext context, LogEntry entry) throws JsonProcessingException {
         append(entry, ",\"claims\":{", false);
         MutableBoolean firstMember = new MutableBoolean(true);
-        if (collectClaims) {
+        if (settings.collectClaims()) {
             appendStringMember(entry, "user_id", context.getUserId(), firstMember);
             List<String> roles = context.getUserRoles();
             if (roles != null) {
@@ -272,7 +261,7 @@ public class GfLogStore implements LogStore {
             }
             appendStringMember(entry, "user_display_name", context.getUserDisplayName(), firstMember);
         }
-        if (collectEmail) {
+        if (settings.collectEmail()) {
             appendStringMember(entry, "user_email", context.getUserEmail(), firstMember);
         }
         append(entry, "}", false);
@@ -310,10 +299,11 @@ public class GfLogStore implements LogStore {
     }
 
     private boolean isHeaderCollectable(String name) {
-        if (headersAllowlist != null && !matchesAny(headersAllowlist, name)) {
+        List<Pattern> allowlist = settings.headersAllowlist();
+        if (allowlist != null && !matchesAny(allowlist, name)) {
             return false;
         }
-        return !matchesAny(headersBlacklist, name);
+        return !matchesAny(settings.headersBlacklist(), name);
     }
 
     private static boolean matchesAny(List<Pattern> patterns, String name) {

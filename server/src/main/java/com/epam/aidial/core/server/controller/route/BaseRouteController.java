@@ -121,6 +121,7 @@ abstract class BaseRouteController implements Controller {
                     });
         } else {
             context.getResponse().send(context.getResponseBody());
+            context.setResponseBodyTimestamp(System.currentTimeMillis());
             proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
             return Future.succeededFuture();
         }
