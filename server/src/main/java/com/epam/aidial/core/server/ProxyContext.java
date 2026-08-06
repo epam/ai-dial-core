@@ -94,6 +94,8 @@ public class ProxyContext {
     private String traceOperation;
     // userName to be extracted from JWT or project name belongs to API key
     private String userDisplayName;
+    // raw user email extracted from JWT; null for API key requests
+    private String userEmail;
     private CacheBreakpointContext cacheBreakpointContext;
     private ServerWebSocket serverWebSocket;
     private boolean isStoreResponse;
@@ -132,6 +134,7 @@ public class ProxyContext {
             this.userId = extractedClaims.userId();
             this.userProject = extractedClaims.project();
             this.userDisplayName = extractedClaims.userDisplayName();
+            this.userEmail = extractedClaims.userEmail();
         } else {
             this.userRoles = Objects.requireNonNull(originalKey, "API key must be provided if user claims are missed")
                     .getMergedRoles();

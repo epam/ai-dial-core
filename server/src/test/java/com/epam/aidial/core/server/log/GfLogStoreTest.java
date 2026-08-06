@@ -110,7 +110,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(true, false, List.of(), null).appendClaims(context, entry);
+        new GfLogStore(true, false, false, List.of(), null).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
         assertEquals("user-1", claims.get("user_id").asText());
@@ -130,12 +130,88 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(true, false, List.of(), null).appendClaims(context, entry);
+        new GfLogStore(true, false, false, List.of(), null).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
         assertEquals("user-1", claims.get("user_id").asText());
         assertFalse(claims.has("roles"));
         assertFalse(claims.has("user_display_name"));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendClaimsWithEmail() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getUserId()).thenReturn("user-1");
+        when(context.getUserRoles()).thenReturn(List.of("admin"));
+        when(context.getUserDisplayName()).thenReturn("Jane Doe");
+        when(context.getUserEmail()).thenReturn("jane.doe@example.com");
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        new GfLogStore(true, true, false, List.of(), null).appendClaims(context, entry);
+
+        JsonNode claims = parseWrapped(buffer.toString());
+        assertEquals("user-1", claims.get("user_id").asText());
+        assertEquals("admin", claims.get("roles").get(0).asText());
+        assertEquals("Jane Doe", claims.get("user_display_name").asText());
+        assertEquals("jane.doe@example.com", claims.get("user_email").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendClaimsOmitsEmailWhenCollectEmailDisabled() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getUserId()).thenReturn("user-1");
+        when(context.getUserEmail()).thenReturn("jane.doe@example.com");
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        new GfLogStore(true, false, false, List.of(), null).appendClaims(context, entry);
+
+        JsonNode claims = parseWrapped(buffer.toString());
+        assertEquals("user-1", claims.get("user_id").asText());
+        assertFalse(claims.has("user_email"));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testCollectEmailIsIndependentOfCollectClaims() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getUserId()).thenReturn("user-1");
+        when(context.getUserRoles()).thenReturn(List.of("admin"));
+        when(context.getUserDisplayName()).thenReturn("Jane Doe");
+        when(context.getUserEmail()).thenReturn("jane.doe@example.com");
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        new GfLogStore(false, true, false, List.of(), null).appendClaims(context, entry);
+
+        JsonNode claims = parseWrapped(buffer.toString());
+        assertEquals("jane.doe@example.com", claims.get("user_email").asText());
+        assertFalse(claims.has("user_id"));
+        assertFalse(claims.has("roles"));
+        assertFalse(claims.has("user_display_name"));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendClaimsSkipsNullEmail() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getUserId()).thenReturn("user-1");
+        when(context.getUserEmail()).thenReturn(null);
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        new GfLogStore(true, true, false, List.of(), null).appendClaims(context, entry);
+
+        JsonNode claims = parseWrapped(buffer.toString());
+        assertEquals("user-1", claims.get("user_id").asText());
+        assertFalse(claims.has("user_email"));
     }
 
     @SneakyThrows
@@ -153,7 +229,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(false, true, patterns("authorization", "api-key"), null).appendHeaders(context, entry);
+        new GfLogStore(false, false, true, patterns("authorization", "api-key"), null).appendHeaders(context, entry);
 
         JsonNode headerNode = parseWrapped(buffer.toString());
         assertFalse(headerNode.has("Authorization"));
@@ -177,7 +253,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        GfLogStore store = new GfLogStore(true, true, patterns("authorization"), null);
+        GfLogStore store = new GfLogStore(true, false, true, patterns("authorization"), null);
         // mirror the order/position used by the real log line: both sections follow a preceding object member
         store.appendClaims(context, entry);
         store.appendHeaders(context, entry);
@@ -203,7 +279,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(false, true, patterns("x-stainless-.*"), null).appendHeaders(context, entry);
+        new GfLogStore(false, false, true, patterns("x-stainless-.*"), null).appendHeaders(context, entry);
 
         JsonNode headerNode = parseWrapped(buffer.toString());
         assertFalse(headerNode.has("X-Stainless-Lang"));
@@ -226,7 +302,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(false, true, List.of(), patterns("traceparent", "user-agent")).appendHeaders(context, entry);
+        new GfLogStore(false, false, true, List.of(), patterns("traceparent", "user-agent")).appendHeaders(context, entry);
 
         JsonNode headerNode = parseWrapped(buffer.toString());
         assertEquals("00-abc-def-01", headerNode.get("traceparent").asText());
@@ -248,7 +324,7 @@ public class GfLogStoreTest {
         LogEntry entry = capturingEntry(buffer);
 
         // "authorization" matches both lists; the blacklist must win
-        new GfLogStore(false, true, patterns("authorization"), patterns(".*")).appendHeaders(context, entry);
+        new GfLogStore(false, false, true, patterns("authorization"), patterns(".*")).appendHeaders(context, entry);
 
         JsonNode headerNode = parseWrapped(buffer.toString());
         assertFalse(headerNode.has("Authorization"));
@@ -307,7 +383,7 @@ public class GfLogStoreTest {
         when(context.getTokenUsage()).thenReturn(tokenUsage);
 
         StringBuilder buffer = new StringBuilder();
-        new GfLogStore(false, false, List.of(), null).append(context, capturingEntry(buffer));
+        new GfLogStore(false, false, false, List.of(), null).append(context, capturingEntry(buffer));
 
         return ProxyUtil.MAPPER.readTree(buffer.toString()).get("token_usage").toString();
     }

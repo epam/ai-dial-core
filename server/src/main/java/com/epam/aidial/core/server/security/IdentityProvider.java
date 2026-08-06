@@ -113,6 +113,12 @@ public class IdentityProvider {
     private final String[] userIdPath;
 
     /**
+     * The path to the claim to extract the raw user email. Unlike {@link #loggingKey} the value is never hashed,
+     * so it's only written to analytics logs when {@code analytics.collectEmail} is enabled.
+     */
+    private final String[] userEmailPath;
+
+    /**
      * Claim paths to log for debugging purposes
      */
     private final Map<String, String[]> claimPathsToLog;
@@ -205,6 +211,8 @@ public class IdentityProvider {
         userDisplayName = getClaimPath(settings, "userDisplayName", null);
 
         userIdPath = getClaimPath(settings, "userIdPath", new String[]{USER_SUB});
+
+        userEmailPath = getClaimPath(settings, "userEmailPath", new String[]{USER_EMAIL});
 
         claimPathsToLog = getAsStringList(settings, "claimPathsToLog", List.of(USER_SUB, USER_OID, USER_EMAIL)).stream()
                         .collect(Collectors.toMap(
@@ -438,7 +446,8 @@ public class IdentityProvider {
         }
         logClaims(map);
         return new ExtractedClaims(extractStringClaim(map, userIdPath), extractUserRoles(map), extractUserHash(userKey),
-                extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
+                extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName),
+                extractStringClaim(map, userEmailPath));
     }
 
     private void from(String accessToken, JsonObject userInfo, Promise<ExtractedClaims> promise) {
@@ -448,14 +457,16 @@ public class IdentityProvider {
             getUserRoleFn.apply(accessToken, map).onFailure(promise::fail).onSuccess(roles -> {
                 logClaims(map);
                 ExtractedClaims extractedClaims = new ExtractedClaims(extractStringClaim(map, userIdPath), roles, extractUserHash(userKey),
-                        extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
+                        extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName),
+                        extractStringClaim(map, userEmailPath));
                 promise.complete(extractedClaims);
             });
         } else {
             logClaims(map);
             ExtractedClaims extractedClaims =
                     new ExtractedClaims(extractStringClaim(map, userIdPath), extractUserRoles(map), extractUserHash(userKey),
-                            extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
+                            extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName),
+                            extractStringClaim(map, userEmailPath));
             promise.complete(extractedClaims);
         }
     }

@@ -46,14 +46,17 @@ public class GfLogStore implements LogStore {
 
     private final ExecutorService executor;
     private final boolean collectClaims;
+    private final boolean collectEmail;
     private final boolean collectHeaders;
     // never null; empty = block nothing
     private final List<Pattern> headersBlacklist;
     // null = allowlist disabled (collect all non-blocked headers)
     private final List<Pattern> headersAllowlist;
 
-    public GfLogStore(boolean collectClaims, boolean collectHeaders, List<Pattern> headersBlacklist, List<Pattern> headersAllowlist) {
+    public GfLogStore(boolean collectClaims, boolean collectEmail, boolean collectHeaders,
+                      List<Pattern> headersBlacklist, List<Pattern> headersAllowlist) {
         this.collectClaims = collectClaims;
+        this.collectEmail = collectEmail;
         this.collectHeaders = collectHeaders;
         this.headersBlacklist = headersBlacklist == null ? List.of() : headersBlacklist;
         this.headersAllowlist = headersAllowlist;
@@ -105,7 +108,7 @@ public class GfLogStore implements LogStore {
         append(entry, logContext.getJobTitle(), true);
         append(entry, "\"}", false);
 
-        if (collectClaims) {
+        if (collectClaims || collectEmail) {
             appendClaims(logContext, entry);
         }
 
@@ -256,14 +259,19 @@ public class GfLogStore implements LogStore {
     void appendClaims(AnalyticsLogContext context, LogEntry entry) throws JsonProcessingException {
         append(entry, ",\"claims\":{", false);
         MutableBoolean firstMember = new MutableBoolean(true);
-        appendStringMember(entry, "user_id", context.getUserId(), firstMember);
-        List<String> roles = context.getUserRoles();
-        if (roles != null) {
-            appendSeparator(entry, firstMember);
-            append(entry, "\"roles\":", false);
-            append(entry, ProxyUtil.MAPPER.writeValueAsString(roles), false);
+        if (collectClaims) {
+            appendStringMember(entry, "user_id", context.getUserId(), firstMember);
+            List<String> roles = context.getUserRoles();
+            if (roles != null) {
+                appendSeparator(entry, firstMember);
+                append(entry, "\"roles\":", false);
+                append(entry, ProxyUtil.MAPPER.writeValueAsString(roles), false);
+            }
+            appendStringMember(entry, "user_display_name", context.getUserDisplayName(), firstMember);
         }
-        appendStringMember(entry, "user_display_name", context.getUserDisplayName(), firstMember);
+        if (collectEmail) {
+            appendStringMember(entry, "user_email", context.getUserEmail(), firstMember);
+        }
         append(entry, "}", false);
     }
 

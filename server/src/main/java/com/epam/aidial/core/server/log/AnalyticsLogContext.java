@@ -43,6 +43,7 @@ public class AnalyticsLogContext {
     private final String userId;
     private final List<String> userRoles;
     private final String userDisplayName;
+    private final String userEmail;
     private final Map<String, List<String>> requestHeaders;
 
     private final String deploymentName;
@@ -77,6 +78,7 @@ public class AnalyticsLogContext {
                 .userId(context.getUserId())
                 .userRoles(context.getUserRoles())
                 .userDisplayName(context.getUserDisplayName())
+                .userEmail(context.getUserEmail())
                 .requestHeaders(toHeadersMap(context.getRequest().headers()))
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
                 .parentDeployment(getParentDeployment(
@@ -111,6 +113,7 @@ public class AnalyticsLogContext {
                 .userId(record.userId())
                 .userRoles(record.userRoles())
                 .userDisplayName(record.userDisplayName())
+                .userEmail(record.userEmail())
                 .requestHeaders(record.requestHeaders())
                 .deploymentName(record.deploymentName())
                 .parentDeployment(record.parentDeployment())

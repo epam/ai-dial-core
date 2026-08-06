@@ -30,6 +30,7 @@ public record BackgroundJobRecord(
         String userId,
         List<String> userRoles,
         String userDisplayName,
+        String userEmail,
         Map<String, List<String>> requestHeaders,
         String deploymentName,
         String parentDeployment,
@@ -55,6 +56,7 @@ public record BackgroundJobRecord(
                 .userId(context.getUserId())
                 .userRoles(context.getUserRoles())
                 .userDisplayName(context.getUserDisplayName())
+                .userEmail(context.getUserEmail())
                 .requestHeaders(AnalyticsLogContext.toHeadersMap(context.getRequest().headers()))
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
                 .parentDeployment(AnalyticsLogContext.getParentDeployment(

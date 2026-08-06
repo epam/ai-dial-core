@@ -1145,6 +1145,63 @@ public class IdentityProviderTest {
         assertTrue(identityProvider.match(jwt));
     }
 
+    @Test
+    public void testExtractUserEmail_DefaultPath() {
+        settings.put("disableJwtVerification", Boolean.TRUE);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        String token = JWT.create().withHeader(Map.of("kid", "kid1"))
+                .withClaim("roles", List.of("role"))
+                .withClaim("email", "user@test.com").sign(algorithm);
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            assertEquals("user@test.com", res.result().userEmail());
+        });
+    }
+
+    @Test
+    public void testExtractUserEmail_CustomPath() {
+        settings.put("disableJwtVerification", Boolean.TRUE);
+        settings.put("userEmailPath", "profile.mail");
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        String token = JWT.create().withHeader(Map.of("kid", "kid1"))
+                .withClaim("roles", List.of("role"))
+                .withClaim("email", "ignored@test.com")
+                .withClaim("profile", Map.of("mail", "user@test.com")).sign(algorithm);
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            assertEquals("user@test.com", res.result().userEmail());
+        });
+    }
+
+    @Test
+    public void testExtractUserEmail_ClaimMissing() {
+        settings.put("disableJwtVerification", Boolean.TRUE);
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        String token = JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("roles", List.of("role")).sign(algorithm);
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
+
+        assertNotNull(result);
+        result.onComplete(res -> {
+            assertTrue(res.succeeded());
+            assertNull(res.result().userEmail());
+        });
+    }
+
     private static KeyPair generateRsa256Pair() throws NoSuchAlgorithmException {
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
         keyGen.initialize(512);

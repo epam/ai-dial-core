@@ -199,11 +199,12 @@ public class AiDial {
 
             JsonObject analyticsSettings = settings("analytics");
             boolean collectClaims = analyticsSettings.getBoolean("collectClaims", false);
+            boolean collectEmail = analyticsSettings.getBoolean("collectEmail", false);
             boolean collectHeaders = analyticsSettings.getBoolean("collectHeaders", false);
             // default is defined in the bundled aidial.settings.json and always merged in
             List<Pattern> headersBlacklist = parseHeaderPatterns(analyticsSettings.getJsonArray("headersBlacklist"));
             List<Pattern> headersAllowlist = parseHeaderPatterns(analyticsSettings.getJsonArray("headersAllowlist"));
-            LogStore logStore = new GfLogStore(collectClaims, collectHeaders, headersBlacklist, headersAllowlist);
+            LogStore logStore = new GfLogStore(collectClaims, collectEmail, collectHeaders, headersBlacklist, headersAllowlist);
 
             if (accessTokenValidator == null) {
                 String claimsLogLevel = settings.getString("claimsLogLevel", "DEBUG");

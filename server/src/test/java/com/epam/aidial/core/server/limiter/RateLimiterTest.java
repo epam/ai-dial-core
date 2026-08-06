@@ -44,7 +44,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -328,7 +327,7 @@ public class RateLimiterTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request-key");
         apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash",
-                ProxyUtil.MAPPER.createObjectNode(), null, null));
+                ProxyUtil.MAPPER.createObjectNode(), null, null, null));
         ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData,
                 null, "trace-id", "span-id", "01");
         Model model = new Model();
@@ -373,7 +372,7 @@ public class RateLimiterTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData,
                 new ExtractedClaims("sub", List.of("role1"), "user-hash",
-                        ProxyUtil.MAPPER.createObjectNode(), null, null),
+                        ProxyUtil.MAPPER.createObjectNode(), null, null, null),
                 "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");
@@ -431,7 +430,7 @@ public class RateLimiterTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData,
                 new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash",
-                        ProxyUtil.MAPPER.createObjectNode(), null, null),
+                        ProxyUtil.MAPPER.createObjectNode(), null, null, null),
                 "trace-id", "span-id", "01");
         Model model = new Model();
         model.setName("model");

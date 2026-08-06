@@ -189,7 +189,7 @@ class RuleMatcherTest {
         ProxyContext context = Mockito.mock(ProxyContext.class);
         Mockito.when(context.getUserRoles()).thenReturn(userRoles);
         ObjectNode root = ProxyUtil.MAPPER.valueToTree(userClaims);
-        ExtractedClaims claims = new ExtractedClaims("sub", userRoles, "hash", root, null, null);
+        ExtractedClaims claims = new ExtractedClaims("sub", userRoles, "hash", root, null, null, null);
         Mockito.when(context.getExtractedClaims()).thenReturn(claims);
         boolean actual = RuleMatcher.match(context, rules);
         Assertions.assertEquals(expected, actual);
