@@ -643,7 +643,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         testApplicationStarted();
 
         // the last chunk carries both the app's own real usage AND a bogus usage_per_model the
-        // upstream already streamed - Core must strip the latter and inject its own instead
+        // upstream already streamed - Core must strip the latter regardless
         String sse = "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1687781517,"
                 + "\"model\":\"gpt-35-turbo\",\"choices\":[{\"index\":0,\"finish_reason\":null,"
                 + "\"delta\":{\"role\":\"assistant\",\"content\":\"Hi\"}}]}\n\n"
@@ -675,11 +675,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         // the upstream's own (bogus) usage_per_model entry never reaches the client - Core strips it
         Assertions.assertFalse(body.contains("upstream-echoed-entry"), body);
 
-        // Core's own statistics.usage_per_model arrives as an extra chunk right before the terminator
-        int doneIndex = body.indexOf("data: [DONE]");
-        int usagePerModelIndex = body.indexOf("\"usage_per_model\"");
-        Assertions.assertTrue(usagePerModelIndex >= 0 && usagePerModelIndex < doneIndex, body);
-        Assertions.assertTrue(body.contains("\"applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app\""), body);
+        // the app has no DIAL-tracked descendants (its upstream is a raw mock endpoint, not a
+        // nested deployment call), so there's nothing for Core to report - no usage_per_model at all
+        Assertions.assertFalse(body.contains("\"usage_per_model\""), body);
     }
 
     @Test

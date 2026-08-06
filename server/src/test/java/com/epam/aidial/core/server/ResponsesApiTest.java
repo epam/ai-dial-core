@@ -17,6 +17,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertLinesMatch;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -57,7 +58,7 @@ public class ResponsesApiTest extends ResourceBaseTest {
     }
 
     @Test
-    public void testResponsesApiStreaming_InjectsUsagePerModel() throws IOException {
+    public void testResponsesApiStreaming_NoUsagePerModelForSoloModelCall() throws IOException {
         String responseBody = getResponseBody();
         try (TestWebServer server = new TestWebServer(4848)) {
             try (CloseableHttpClient client = HttpClientBuilder.create().disableAutomaticRetries().build()) {
@@ -76,14 +77,11 @@ public class ResponsesApiTest extends ResourceBaseTest {
                         httpUriRequest,
                         response -> new String(response.getEntity().getContent().readAllBytes(), StandardCharsets.UTF_8));
 
-                // the withheld response.completed event is rewritten in place to carry Core's own
-                // statistics.usage_per_model (issue #1753) - unlike chat completions, which appends
-                // an extra chunk before [DONE], the Responses API rewrites the terminal event itself
+                // a solo Model call has no DIAL-tracked descendants, so the withheld
+                // response.completed event carries no statistics.usage_per_model at all (issue #1753)
                 int completedIndex = result.indexOf("event: response.completed");
-                int usagePerModelIndex = result.indexOf("\"usage_per_model\"");
                 assertTrue(completedIndex >= 0, result);
-                assertTrue(usagePerModelIndex > completedIndex, result);
-                assertTrue(result.contains("\"model\":\"gpt-3-turbo\",\"usage\":"), result);
+                assertFalse(result.contains("\"usage_per_model\""), result);
             }
         }
     }
