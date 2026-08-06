@@ -20,7 +20,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.function.UnaryOperator;
 import javax.annotation.Nullable;
 
 @Slf4j
@@ -231,24 +230,9 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         private Handler<Buffer> chunkHandler;
         private Handler<Void> chunkEndHandler;
         private volatile Buffer lastChunk;
-        // withheld terminal event/tree, kept alongside lastChunk so rewriteLastChunk can re-render it
-        private volatile SseEvent lastEvent;
-        private volatile JsonNode lastTree;
 
         public BaseEventListener(List<BaseResponseFunction> functions) {
             this.functions = functions;
-        }
-
-        /**
-         * Rewrites the withheld terminal event before it's flushed by {@link BufferingReadStream#end}.
-         * A no-op if the terminal event isn't real JSON (chat completions withholds the literal
-         * {@code [DONE]}, see {@link #skipEvent}) - that flavor has nothing here to rewrite and
-         * injects an extra chunk instead.
-         */
-        public void rewriteLastChunk(UnaryOperator<JsonNode> fn) {
-            if (lastTree != null) {
-                lastChunk = to(lastEvent, fn.apply(lastTree));
-            }
         }
 
         @Override
@@ -312,8 +296,6 @@ public class BufferingReadStream implements ReadStream<Buffer> {
         private Void send(SseEvent event, @Nullable JsonNode tree) {
             if (isLastEvent(event, tree)) {
                 // we send the last chunk later
-                lastEvent = event;
-                lastTree = tree;
                 lastChunk = to(event, tree);
             } else if (lastChunk == null) {
                 Buffer chunk = to(event, tree);

@@ -17,10 +17,8 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertLinesMatch;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ResponsesApiTest extends ResourceBaseTest {
 
@@ -53,35 +51,6 @@ public class ResponsesApiTest extends ResourceBaseTest {
                 assertEquals(18, limitStats.getDayTokenStats().getUsed());
                 assertEquals(18, limitStats.getWeekTokenStats().getUsed());
                 assertEquals(18, limitStats.getMonthTokenStats().getUsed());
-            }
-        }
-    }
-
-    @Test
-    public void testResponsesApiStreaming_NoUsagePerModelForSoloModelCall() throws IOException {
-        String responseBody = getResponseBody();
-        try (TestWebServer server = new TestWebServer(4848)) {
-            try (CloseableHttpClient client = HttpClientBuilder.create().disableAutomaticRetries().build()) {
-                TestWebServer.Handler handler = request -> {
-                    MockResponse response = new MockResponse();
-                    response.setResponseCode(200);
-                    // a properly declared SSE content type is what engages the SSE listener/parser -
-                    // testResponsesApi() above omits it and so never exercises that path at all
-                    response.setHeader("Content-Type", "text/event-stream");
-                    response.setChunkedBody(responseBody, 200);
-                    return response;
-                };
-                server.map(HttpMethod.POST, "/openai/v1/responses", handler);
-                HttpUriRequest httpUriRequest = createHttpUriRequest();
-                String result = client.execute(
-                        httpUriRequest,
-                        response -> new String(response.getEntity().getContent().readAllBytes(), StandardCharsets.UTF_8));
-
-                // a solo Model call has no DIAL-tracked descendants, so the withheld
-                // response.completed event carries no statistics.usage_per_model at all (issue #1753)
-                int completedIndex = result.indexOf("event: response.completed");
-                assertTrue(completedIndex >= 0, result);
-                assertFalse(result.contains("\"usage_per_model\""), result);
             }
         }
     }

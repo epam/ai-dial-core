@@ -10,13 +10,14 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.Future;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -154,31 +155,38 @@ public class TokenStatsTracker {
                 // ancestors: only aggCost and the per-model breakdown roll up - raw token
                 // counts are never accumulated into an ancestor's own tokenUsage.
                 tokenStats.tokenUsage.increaseAggCost(tokenUsage.getAggCost());
-                mergeUsagePerModel(tokenStats, deploymentName, tokenUsage);
+                addUsagePerModel(tokenStats, deploymentName, tokenUsage);
                 parentSpanId = tokenStats.parentSpanId;
             }
         }
 
-        private static void mergeUsagePerModel(TokenStats tokenStats, String deploymentName, TokenUsage tokenUsage) {
-            TokenUsage existing = tokenStats.usagePerModel.get(deploymentName);
-            if (existing == null) {
-                // own copy, never the caller's reference: this node and every ancestor must be
-                // able to accumulate independently without aliasing each other
-                TokenUsage copy = new TokenUsage();
-                copy.increase(tokenUsage);
-                tokenStats.usagePerModel.put(deploymentName, copy);
-            } else {
-                existing.increase(tokenUsage);
-            }
+        /**
+         * Appends this report as a new entry - no merge-by-name: two reports from the same
+         * deployment name produce two separate entries, each carrying only that one report's usage.
+         */
+        private static void addUsagePerModel(TokenStats tokenStats, String deploymentName, TokenUsage tokenUsage) {
+            // own copy, never the caller's reference: this node and every ancestor must be
+            // able to accumulate independently without aliasing each other
+            TokenUsage copy = new TokenUsage();
+            copy.increase(tokenUsage);
+            tokenStats.usagePerModel.add(new ModelTokenUsage(deploymentName, copy));
         }
 
-        private static List<UsagePerModel> toUsagePerModelList(Map<String, TokenUsage> usagePerModel) {
+        private static List<UsagePerModel> toUsagePerModelList(List<ModelTokenUsage> usagePerModel) {
             List<UsagePerModel> result = new ArrayList<>(usagePerModel.size());
-            for (Map.Entry<String, TokenUsage> entry : usagePerModel.entrySet()) {
-                result.add(new UsagePerModel(result.size(), entry.getKey(), new Usage(entry.getValue())));
+            for (ModelTokenUsage entry : usagePerModel) {
+                result.add(new UsagePerModel(result.size(), entry.getModel(), entry.getUsage()));
             }
             return result;
         }
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ModelTokenUsage {
+        String model;
+        TokenUsage usage;
     }
 
     @Data
@@ -186,7 +194,7 @@ public class TokenStatsTracker {
     public static class TokenStats {
         TokenUsage tokenUsage;
         String parentSpanId;
-        Map<String, TokenUsage> usagePerModel = new LinkedHashMap<>();
+        List<ModelTokenUsage> usagePerModel = new ArrayList<>();
 
         public TokenStats() {
         }
@@ -199,7 +207,8 @@ public class TokenStatsTracker {
 
     /**
      * @param total scalar subtree aggregate (drives cost/aggCost propagation), as before.
-     * @param usagePerModel breakdown by reporting deployment name, indexed in insertion order.
+     * @param usagePerModel one entry per self-report from a descendant, indexed in report order;
+     *                       repeated reports from the same deployment name are not merged.
      */
     public record UsageStats(TokenUsage total, List<UsagePerModel> usagePerModel) {
         public static final UsageStats EMPTY = new UsageStats(null, List.of());

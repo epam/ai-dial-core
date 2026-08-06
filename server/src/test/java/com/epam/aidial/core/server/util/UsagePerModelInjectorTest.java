@@ -25,7 +25,7 @@ public class UsagePerModelInjectorTest {
         assertTrue(usagePerModel.isArray());
         assertEquals(1, usagePerModel.size());
         assertEquals("gpt-4", usagePerModel.get(0).path("model").asText());
-        assertEquals(10, usagePerModel.get(0).path("usage").path("prompt_tokens").asLong());
+        assertEquals(10, usagePerModel.get(0).path("prompt_tokens").asLong());
     }
 
     @Test

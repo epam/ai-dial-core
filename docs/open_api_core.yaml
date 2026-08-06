@@ -15705,8 +15705,16 @@ components:
           type: integer
         model:
           type: string
-        usage:
-          $ref: "#/components/schemas/Usage"
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        prompt_tokens_details:
+          $ref: "#/components/schemas/PromptTokensDetails"
+        completion_tokens_details:
+          $ref: "#/components/schemas/CompletionTokensDetails"
     UserInfoResponse:
       type: object
       properties:

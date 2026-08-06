@@ -148,7 +148,7 @@ public class TokenStatsTrackerTest {
         assertEquals(1, appStatsAfterModel.usagePerModel().size());
         assertEquals(0, appStatsAfterModel.usagePerModel().get(0).getIndex());
         assertEquals("gpt-4", appStatsAfterModel.usagePerModel().get(0).getModel());
-        assertEquals(100, appStatsAfterModel.usagePerModel().get(0).getUsage().getTotalTokens());
+        assertEquals(100, appStatsAfterModel.usagePerModel().get(0).getTotalTokens());
 
         // the app also self-reports its own usage in its response body. Its own counters are
         // *assigned* (5, not 100 + 5) but aggCost must keep the model's earlier contribution -
@@ -184,9 +184,9 @@ public class TokenStatsTrackerTest {
         TokenStatsTracker.UsageStats chatStats = tracker.getUsageStats(chatBackend).result();
         assertEquals(2, chatStats.usagePerModel().size());
         assertEquals("gpt-4", chatStats.usagePerModel().get(0).getModel());
-        assertEquals(100, chatStats.usagePerModel().get(0).getUsage().getTotalTokens());
+        assertEquals(100, chatStats.usagePerModel().get(0).getTotalTokens());
         assertEquals("my-app", chatStats.usagePerModel().get(1).getModel());
-        assertEquals(5, chatStats.usagePerModel().get(1).getUsage().getTotalTokens());
+        assertEquals(5, chatStats.usagePerModel().get(1).getTotalTokens());
 
         // core ends span for request to app
         tracker.endSpan(chatBackend);
@@ -194,7 +194,7 @@ public class TokenStatsTrackerTest {
     }
 
     @Test
-    public void testSameDeploymentCalledTwiceMergesIntoOneEntry() {
+    public void testSameDeploymentCalledTwiceAppendsTwoSeparateEntries() {
         when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> callable = invocation.getArgument(0);
             return Future.succeededFuture(callable.call());
@@ -233,13 +233,21 @@ public class TokenStatsTrackerTest {
 
         TokenStatsTracker.UsageStats stats = tracker.getUsageStats(root).result();
 
-        assertEquals(1, stats.usagePerModel().size());
-        UsagePerModel entry = stats.usagePerModel().get(0);
-        assertEquals("gpt-4", entry.getModel());
-        assertEquals(0, entry.getIndex());
-        assertEquals(30, entry.getUsage().getTotalTokens());
-        assertEquals(10, entry.getUsage().getPromptTokens());
-        assertEquals(20, entry.getUsage().getCompletionTokens());
+        // no merge-by-name: each report from "gpt-4" is its own entry, not summed together
+        assertEquals(2, stats.usagePerModel().size());
+        UsagePerModel first = stats.usagePerModel().get(0);
+        assertEquals("gpt-4", first.getModel());
+        assertEquals(0, first.getIndex());
+        assertEquals(10, first.getTotalTokens());
+        assertEquals(10, first.getPromptTokens());
+        assertEquals(0, first.getCompletionTokens());
+
+        UsagePerModel second = stats.usagePerModel().get(1);
+        assertEquals("gpt-4", second.getModel());
+        assertEquals(1, second.getIndex());
+        assertEquals(20, second.getTotalTokens());
+        assertEquals(0, second.getPromptTokens());
+        assertEquals(20, second.getCompletionTokens());
 
         // root is a pure ancestor of both branches - it never self-reports, so its own
         // counters stay at zero; only aggCost accumulates from both branches.

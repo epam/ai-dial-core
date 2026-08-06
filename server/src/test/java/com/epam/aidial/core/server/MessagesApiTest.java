@@ -2,7 +2,6 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -19,7 +18,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -53,20 +51,11 @@ public class MessagesApiTest extends ResourceBaseTest {
                     "api-key", "proxyKey1", "anthropic-version", "2023-06-01");
 
             assertEquals(200, response.status());
+            assertEquals(NON_STREAM_RESPONSE, response.body());
             // exact ingress path is forwarded (base_url + request.uri())
             assertEquals(MESSAGES_PATH, captured.get().getPath());
             // Anthropic-specific headers pass through to the adapter
             assertEquals("2023-06-01", captured.get().getHeader("anthropic-version"));
-
-            // body content is unchanged; a solo Model call has no DIAL-tracked descendants, so
-            // there's nothing beyond its own top-level usage to report - no usage_per_model at all
-            // (issue #1753)
-            JsonNode originalJson = ProxyUtil.MAPPER.readTree(NON_STREAM_RESPONSE);
-            JsonNode responseJson = ProxyUtil.MAPPER.readTree(response.body());
-            assertEquals(originalJson.get("id"), responseJson.get("id"));
-            assertEquals(originalJson.get("content"), responseJson.get("content"));
-            assertEquals(originalJson.get("usage"), responseJson.get("usage"));
-            assertTrue(responseJson.path("statistics").path("usage_per_model").isMissingNode(), response.body());
 
             Thread.sleep(1000); // wait for core to save usage
             assertUsed("claude-ns", 20);
@@ -93,10 +82,6 @@ public class MessagesApiTest extends ResourceBaseTest {
             assertTrue(body.contains("message_start"), body);
             assertTrue(body.contains("message_stop"), body);
             assertTrue(body.contains("Who"), body);
-
-            // a solo Model call has no DIAL-tracked descendants, so the withheld message_stop
-            // event carries no statistics.usage_per_model at all (issue #1753)
-            assertFalse(body.contains("\"usage_per_model\""), body);
 
             Thread.sleep(1000);
             // input_tokens (10) + cache_read (3) from message_start + output_tokens (8, message_delta);

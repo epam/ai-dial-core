@@ -20,7 +20,6 @@ import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientResponse;
@@ -113,15 +112,14 @@ public class MessagesController extends MessagesBaseController {
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();
         ProxyUtil.copyResponse(response, proxyResponse);
+        response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
         response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
         return collectTokenUsage(body)
                 .transform(result -> {
                     if (result.failed()) {
                         log.warn("Failed to collect token usage", result.cause());
                     }
-                    Buffer rewritten = maybeInjectUsagePerModel(body);
-                    response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
-                    completeProxyResponse(() -> response.end(rewritten));
+                    completeProxyResponse(() -> response.end(body));
                     return Future.<Void>succeededFuture();
                 });
     }
@@ -134,7 +132,6 @@ public class MessagesController extends MessagesBaseController {
             if (result.failed()) {
                 log.warn("Failed to collect token usage", result.cause());
             }
-            injectUsagePerModelIntoLastChunk(responseStream, tree -> tree instanceof ObjectNode object ? object : null);
             completeProxyResponse(() -> responseStream.end(context.getResponse()));
         });
     }

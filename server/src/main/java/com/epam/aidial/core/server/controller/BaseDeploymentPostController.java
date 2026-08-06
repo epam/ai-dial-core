@@ -254,48 +254,24 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * Rewrites {@code body} to carry {@code statistics.usage_per_model} when there's something to
-     * report; returns {@code body} unchanged (byte-identical) otherwise, including on any parse
-     * surprise - injection is best-effort, never a reason to corrupt or drop a response. Shared by
-     * every non-streaming response path (chat completions, Anthropic Messages, Responses API).
+     * Rewrites {@code body}'s {@code statistics.usage_per_model} to Core's own value, or strips it
+     * entirely when Core has nothing to report - a deployment's own response is never trusted to
+     * carry this field through untouched, the same guarantee {@code StripUsagePerModelFn} gives the
+     * streaming path (see DeploymentPostController). Returns {@code body} unchanged only on a parse
+     * surprise - injection is best-effort, never a reason to corrupt or drop a response.
      */
     protected Buffer maybeInjectUsagePerModel(Buffer body) {
-        List<UsagePerModel> usagePerModel = context.getUsagePerModel();
-        if (usagePerModel == null || usagePerModel.isEmpty()) {
-            return body;
-        }
         JsonNode tree = JsonUtil.tryParse(body.getBytes());
         if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
             return body;
         }
-        UsagePerModelInjector.inject(object, usagePerModel);
-        return Buffer.buffer(ProxyUtil.convertToString(object));
-    }
-
-    /**
-     * Injects {@code statistics.usage_per_model} into the withheld terminal SSE event of a streaming
-     * response (Anthropic's {@code message_stop}, the Responses API's {@code response.completed}/
-     * {@code incomplete}) - both are real JSON events run through the function chain, unlike chat
-     * completions' {@code [DONE]}, which injects an extra chunk instead (see DeploymentPostController).
-     * {@code targetSelector} picks the object to inject into out of the withheld event's tree: the
-     * whole tree for Anthropic, the nested {@code .response} object for the Responses API.
-     */
-    protected void injectUsagePerModelIntoLastChunk(BufferingReadStream responseStream, Function<JsonNode, ObjectNode> targetSelector) {
         List<UsagePerModel> usagePerModel = context.getUsagePerModel();
         if (usagePerModel == null || usagePerModel.isEmpty()) {
-            return;
+            UsagePerModelInjector.strip(object);
+        } else {
+            UsagePerModelInjector.inject(object, usagePerModel);
         }
-        BufferingReadStream.BaseEventListener listener = responseStream.getEventListener();
-        if (listener == null) {
-            return;
-        }
-        listener.rewriteLastChunk(tree -> {
-            ObjectNode target = targetSelector.apply(tree);
-            if (target != null) {
-                UsagePerModelInjector.inject(target, usagePerModel);
-            }
-            return tree;
-        });
+        return Buffer.buffer(ProxyUtil.convertToString(object));
     }
 
     /**

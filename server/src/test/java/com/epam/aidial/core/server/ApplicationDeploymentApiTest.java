@@ -576,7 +576,9 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
     void testApiWhenStarted() {
         testApplicationStarted();
 
-        String answer = """
+        // the upstream already carries a bogus usage_per_model entry of its own - Core must strip
+        // it regardless, the same guarantee the streaming path gives (see testApiWhenStarted_Streaming)
+        String upstreamAnswer = """
                 {
                   "id": "chatcmpl-7VfMTgj3ljKdGKS2BEIwloII3IoO0",
                   "object": "chat.completion",
@@ -601,18 +603,16 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                     "usage_per_model": [
                       {
                         "index": 0,
-                        "model": "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                        "model": "upstream-echoed-entry",
                         "usage": {
-                          "prompt_tokens": 19,
-                          "completion_tokens": 33,
-                          "total_tokens": 52
+                          "prompt_tokens": 999
                         }
                       }
                     ]
                   }
                 }
                 """;
-        webServer.map(HttpMethod.POST, "/application", 200, answer);
+        webServer.map(HttpMethod.POST, "/application", 200, upstreamAnswer);
 
         Response response = send(HttpMethod.POST, "/openai/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/chat/completions", null,
                 """
@@ -632,10 +632,33 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                           "stream": true
                         }
                         """, "content-type", "application/json");
-        // the app self-reports usage matching its own model call, and the response is now a
-        // non-streaming JSON body parsed and re-serialized to inject statistics.usage_per_model
-        // (issue #1753), so compare semantically rather than byte-for-byte
-        verifyJson(response, 200, answer);
+        // the app has no DIAL-tracked descendants (its upstream is a raw mock endpoint, not a nested
+        // deployment call), so Core has nothing of its own to report - the upstream's bogus entry
+        // never reaches the client, and no statistics.usage_per_model is added at all (issue #1753)
+        String expected = """
+                {
+                  "id": "chatcmpl-7VfMTgj3ljKdGKS2BEIwloII3IoO0",
+                  "object": "chat.completion",
+                  "created": 1687781517,
+                  "model": "gpt-35-turbo",
+                  "choices": [
+                    {
+                      "index": 0,
+                      "finish_reason": "stop",
+                      "message": {
+                        "role": "assistant",
+                        "content": "As an AI language model, I do not have emotions like humans. However, I am functioning well and ready to assist you. How can I help you today?"
+                      }
+                    }
+                  ],
+                  "usage": {
+                    "completion_tokens": 33,
+                    "prompt_tokens": 19,
+                    "total_tokens": 52
+                  }
+                }
+                """;
+        verifyJson(response, 200, expected);
     }
 
     @Test
