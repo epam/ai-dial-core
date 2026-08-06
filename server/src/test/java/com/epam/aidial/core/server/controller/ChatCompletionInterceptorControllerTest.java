@@ -56,6 +56,15 @@ public class ChatCompletionInterceptorControllerTest {
     }
 
     @Test
+    void rewritesMultiSegmentDeploymentIdToInterceptorName() {
+        // Platform-bucket entities are addressed by a multi-segment canonical id
+        // (e.g. models/platform/{name}); the whole id must collapse to the target name.
+        assertEquals("/openai/deployments/my-interceptor/chat/completions",
+                ChatCompletionInterceptorController.rewriteDeploymentSegment(
+                        "/openai/deployments/models/platform/initial-model/chat/completions", "my-interceptor"));
+    }
+
+    @Test
     void buildUri_legacyFlow_noQuery() {
         Model deployment = new Model();
         deployment.setName("my-interceptor");
@@ -143,6 +152,25 @@ public class ChatCompletionInterceptorControllerTest {
 
         assertEquals(
                 "http://adapter/openai/deployments/my-interceptor/chat/completions",
+                controller.buildUri(context));
+    }
+
+    @Test
+    void buildUri_newFlow_rewritesMultiSegmentDeploymentId() {
+        Model deployment = new Model();
+        deployment.setName("my-interceptor");
+        deployment.setInterfaces(Map.of(
+                InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://adapter")));
+
+        when(context.getDeployment()).thenReturn(deployment);
+        when(context.getRequest()).thenReturn(request);
+        when(request.query()).thenReturn("api-version=2025-01-01-preview");
+        when(request.path()).thenReturn("/openai/deployments/models/platform/original-model/chat/completions");
+
+        ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0);
+
+        assertEquals(
+                "http://adapter/openai/deployments/my-interceptor/chat/completions?api-version=2025-01-01-preview",
                 controller.buildUri(context));
     }
 
