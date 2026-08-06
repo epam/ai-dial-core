@@ -64,6 +64,8 @@ public class AnalyticsLogContext {
 
     private final TokenUsage tokenUsage;
 
+    private final long operationDurationMs;
+
     public static AnalyticsLogContext from(ProxyContext context, String assembledStreamingResponse) {
         Buffer responseBody = context.getResponseBody();
         return AnalyticsLogContext.builder()
@@ -97,6 +99,7 @@ public class AnalyticsLogContext {
                 .responseBody(responseBody)
                 .assembledStreamingResponse(assembledStreamingResponse)
                 .tokenUsage(context.getTokenUsage())
+                .operationDurationMs(operationDurationMs(context))
                 .build();
     }
 
@@ -126,7 +129,22 @@ public class AnalyticsLogContext {
                 .responseStatusCode(result == null ? 500 : 200) // 500 when expired
                 .responseBody(result == null ? null : result.body())
                 .tokenUsage(result == null ? null : result.usage())
+                // the job is being finalized right now, so the duration covers the whole asynchronous wait
+                .operationDurationMs(duration(record.requestTimestamp(), System.currentTimeMillis()))
                 .build();
+    }
+
+    private static long operationDurationMs(ProxyContext context) {
+        // some callers save the log entry without stamping the response body timestamp
+        long end = context.getResponseBodyTimestamp() == 0
+                ? System.currentTimeMillis()
+                : context.getResponseBodyTimestamp();
+        return duration(context.getRequestTimestamp(), end);
+    }
+
+    // both bounds are wall-clock, so a backwards clock adjustment in between must not produce a negative duration
+    private static long duration(long start, long end) {
+        return Math.max(0, end - start);
     }
 
     public static Map<String, List<String>> toHeadersMap(MultiMap headers) {

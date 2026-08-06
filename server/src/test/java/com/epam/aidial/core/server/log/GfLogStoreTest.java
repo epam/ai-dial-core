@@ -1,11 +1,17 @@
 package com.epam.aidial.core.server.log;
 
+import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.LogEntry;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpVersion;
+import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
@@ -19,9 +25,11 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyChar;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -371,6 +379,70 @@ public class GfLogStoreTest {
         assertEquals("""
                 {"completion_tokens":200,"prompt_tokens":100,"total_tokens":300}""",
                 logTokenUsage(tokenUsage));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendOperationDuration() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getOperationDurationMs()).thenReturn(1234L);
+
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(false, false, false, List.of(), null).append(context, capturingEntry(buffer));
+
+        JsonNode duration = ProxyUtil.MAPPER.readTree(buffer.toString()).get("operation_duration_ms");
+        assertTrue(duration.isNumber());
+        assertEquals(1234L, duration.asLong());
+    }
+
+    @Test
+    public void testOperationDurationFromProxyContext() {
+        ProxyContext context = mockProxyContext();
+        when(context.getRequestTimestamp()).thenReturn(1000L);
+        when(context.getResponseBodyTimestamp()).thenReturn(2500L);
+
+        assertEquals(1500, AnalyticsLogContext.from(context, null).getOperationDurationMs());
+    }
+
+    @Test
+    public void testOperationDurationWhenResponseBodyTimestampNotSet() {
+        ProxyContext context = mockProxyContext();
+        when(context.getRequestTimestamp()).thenReturn(System.currentTimeMillis());
+        when(context.getResponseBodyTimestamp()).thenReturn(0L);
+
+        long duration = AnalyticsLogContext.from(context, null).getOperationDurationMs();
+        assertTrue(duration >= 0 && duration < 60_000, "Unexpected duration: " + duration);
+    }
+
+    @Test
+    public void testOperationDurationIsNeverNegative() {
+        ProxyContext context = mockProxyContext();
+        when(context.getRequestTimestamp()).thenReturn(2000L);
+        // clock moved backwards between the two measurements
+        when(context.getResponseBodyTimestamp()).thenReturn(1000L);
+
+        assertEquals(0, AnalyticsLogContext.from(context, null).getOperationDurationMs());
+    }
+
+    @Test
+    public void testOperationDurationFromBackgroundJobRecord() {
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .requestTimestamp(System.currentTimeMillis() - 60_000)
+                .requestBody("{}")
+                .build();
+
+        assertTrue(AnalyticsLogContext.from(record, null).getOperationDurationMs() >= 60_000);
+    }
+
+    private static ProxyContext mockProxyContext() {
+        ProxyContext context = mock(ProxyContext.class, RETURNS_DEEP_STUBS);
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(context.getRequest()).thenReturn(request);
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.uri()).thenReturn("/test");
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        return context;
     }
 
     /**

@@ -168,6 +168,9 @@ public class GfLogStore implements LogStore {
             append(entry, ProxyUtil.MAPPER.writeValueAsString(executionPath), false);
         }
 
+        append(entry, ",\"operation_duration_ms\":", false);
+        append(entry, Long.toString(logContext.getOperationDurationMs()), true);
+
         if (!logContext.isSecuredApiKey()) {
             append(entry, ",\"assembled_response\":\"", false);
             if (logContext.getAssembledStreamingResponse() != null) {
