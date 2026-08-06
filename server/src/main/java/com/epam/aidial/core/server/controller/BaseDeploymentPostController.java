@@ -42,7 +42,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.io.InputStream;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -234,13 +233,7 @@ public class BaseDeploymentPostController {
                 return Future.succeededFuture();
             }
             TokenStatsTracker.UsageStats stats = result.result();
-            // TokenStatsTracker only persists descendants' contributions under a span (avoids a
-            // redundant self-write - ancestors already accumulate it independently); the response
-            // handed back to *this* deployment's own caller still needs to show its own usage too.
-            List<UsagePerModel> usagePerModel = hasOwnUsage
-                    ? withOwnUsage(deploymentName, ownUsage, stats.usagePerModel())
-                    : stats.usagePerModel();
-            context.setUsagePerModel(usagePerModel);
+            context.setUsagePerModel(stats.usagePerModel());
             if (updateTokenUsage) {
                 TokenUsage forLog = hasOwnUsage ? ownUsage : new TokenUsage();
                 if (stats.total() != null) {
@@ -250,16 +243,6 @@ public class BaseDeploymentPostController {
             }
             return Future.<Void>succeededFuture();
         });
-    }
-
-    private static List<UsagePerModel> withOwnUsage(String deploymentName, TokenUsage ownUsage, List<UsagePerModel> descendants) {
-        List<UsagePerModel> merged = new ArrayList<>(descendants.size() + 1);
-        merged.add(new UsagePerModel(deploymentName, ownUsage));
-        merged.addAll(descendants);
-        for (int i = 0; i < merged.size(); i++) {
-            merged.get(i).setIndex(i);
-        }
-        return merged;
     }
 
     /**
