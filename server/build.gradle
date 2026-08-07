@@ -28,7 +28,7 @@ dependencies {
         exclude group: 'com.networknt', module: 'json-schema-validator'
     }
     implementation("io.micrometer:micrometer-registry-otlp:${micrometer_version}")
-    implementation("io.micrometer:micrometer-registry-prometheus:${micrometer_version}")
+    implementation("io.micrometer:micrometer-registry-prometheus-simpleclient:${micrometer_version}")
     implementation("io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0:${opentelemetry_instrumentation_version}")
     implementation("io.opentelemetry:opentelemetry-api:${opentelemetry_version}")
     implementation("io.opentelemetry:opentelemetry-context:${opentelemetry_version}")
