@@ -10,10 +10,12 @@ import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -46,6 +48,7 @@ import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -175,6 +178,9 @@ class BackgroundJobServiceTest {
         lenient().when(proxyContext.getRequest().method()).thenReturn(HttpMethod.POST);
         lenient().when(proxyContext.getRequest().uri()).thenReturn("/v1/responses");
         lenient().when(proxyContext.getRequestBody()).thenReturn(Buffer.buffer("{}"));
+        // a real claims node: the deep-stub default is an ObjectNode mock, which serializes the record into broken JSON
+        lenient().when(proxyContext.getExtractedClaims()).thenReturn(new ExtractedClaims("sub", List.of("role"), "hash",
+                ProxyUtil.MAPPER.createObjectNode().put("email", "jane.doe@example.com"), null, "Jane Doe"));
         lenient().when(responseMappingService.getMapping(anyString())).thenReturn(buildMapping());
 
         ResponsesApiClient pollClient = new ResponsesApiClient(httpClient, new HttpClientOptions());

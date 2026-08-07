@@ -164,7 +164,7 @@ public class CostRateLimitTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request-key");
         apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash",
-                ProxyUtil.MAPPER.createObjectNode(), null, null, null));
+                ProxyUtil.MAPPER.createObjectNode(), null, null));
         ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData, null, "trace-id", "span-id", "01");
 
         // Set up a model with pricing
@@ -260,7 +260,7 @@ public class CostRateLimitTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request-key");
         apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role"), "user-hash",
-                ProxyUtil.MAPPER.createObjectNode(), null, null, null));
+                ProxyUtil.MAPPER.createObjectNode(), null, null));
         ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData, null, "trace-id", "span-id", "01");
 
         // Set up a model with pricing
@@ -365,7 +365,7 @@ public class CostRateLimitTest {
         ApiKeyData apiKeyData1 = new ApiKeyData();
         apiKeyData1.setPerRequestKey("per-request-key-1");
         apiKeyData1.setExtractedClaims(new ExtractedClaims("user1", List.of("role"), "user-hash-1",
-                ProxyUtil.MAPPER.createObjectNode(), null, null, null));
+                ProxyUtil.MAPPER.createObjectNode(), null, null));
         ProxyContext proxyContext1 = new ProxyContext(mockProxy(config), request, apiKeyData1, null, "trace-id-1", "span-id-1", "01");
         proxyContext1.setDeployment(model);
 
@@ -373,7 +373,7 @@ public class CostRateLimitTest {
         ApiKeyData apiKeyData2 = new ApiKeyData();
         apiKeyData2.setPerRequestKey("per-request-key-2");
         apiKeyData2.setExtractedClaims(new ExtractedClaims("user2", List.of("role"), "user-hash-2",
-                ProxyUtil.MAPPER.createObjectNode(), null, null, null));
+                ProxyUtil.MAPPER.createObjectNode(), null, null));
         ProxyContext proxyContext2 = new ProxyContext(mockProxy(config), request, apiKeyData2, null, "trace-id-2", "span-id-2", "01");
         proxyContext2.setDeployment(model);
 

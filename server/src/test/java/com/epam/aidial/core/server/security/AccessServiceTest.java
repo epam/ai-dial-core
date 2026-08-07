@@ -486,7 +486,7 @@ public class AccessServiceTest {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "/Users/sub", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("admin"), "hash",
-                ProxyUtil.MAPPER.createObjectNode(), null, "userName", null);
+                ProxyUtil.MAPPER.createObjectNode(), null, "userName");
         when(context.getExtractedClaims()).thenReturn(extractedClaims);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService,

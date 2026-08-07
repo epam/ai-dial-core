@@ -9,6 +9,8 @@ import com.epam.deltix.gflog.api.LogEntry;
 import com.epam.deltix.gflog.api.LogFactory;
 import com.epam.deltix.gflog.api.LogLevel;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
@@ -20,8 +22,11 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
@@ -34,6 +39,9 @@ public class GfLogStore implements LogStore {
     private static final int MAX_BODY_SIZE_BYTES = 4 * 1024 * 1024;
     // Max allowed size for a single collected request header value
     private static final int MAX_HEADER_VALUE_LENGTH = 4 * 1024;
+
+    // members written by collectClaims; an allowed claim of the same name would produce a duplicate JSON key
+    private static final Set<String> FIXED_CLAIM_MEMBERS = Set.of("user_id", "roles", "user_display_name");
 
     private static final String[] CONTROL_SYMBOLS = new String[0x1F + 1];
 
@@ -97,7 +105,7 @@ public class GfLogStore implements LogStore {
         append(entry, logContext.getJobTitle(), true);
         append(entry, "\"}", false);
 
-        if (settings.collectClaims() || settings.collectEmail()) {
+        if (settings.claimsEnabled()) {
             appendClaims(logContext, entry);
         }
 
@@ -251,6 +259,7 @@ public class GfLogStore implements LogStore {
     void appendClaims(AnalyticsLogContext context, LogEntry entry) throws JsonProcessingException {
         append(entry, ",\"claims\":{", false);
         MutableBoolean firstMember = new MutableBoolean(true);
+        Set<String> written = new HashSet<>();
         if (settings.collectClaims()) {
             appendStringMember(entry, "user_id", context.getUserId(), firstMember);
             List<String> roles = context.getUserRoles();
@@ -260,11 +269,51 @@ public class GfLogStore implements LogStore {
                 append(entry, ProxyUtil.MAPPER.writeValueAsString(roles), false);
             }
             appendStringMember(entry, "user_display_name", context.getUserDisplayName(), firstMember);
+            written.addAll(FIXED_CLAIM_MEMBERS);
         }
-        if (settings.collectEmail()) {
-            appendStringMember(entry, "user_email", context.getUserEmail(), firstMember);
-        }
+        appendAllowedClaims(context.getUserClaims(), entry, firstMember, written);
         append(entry, "}", false);
+    }
+
+    private void appendAllowedClaims(ObjectNode claims, LogEntry entry, MutableBoolean firstMember, Set<String> written)
+            throws JsonProcessingException {
+        if (claims == null) {
+            return;
+        }
+        if (settings.collectAllClaims()) {
+            Iterator<String> names = claims.fieldNames();
+            while (names.hasNext()) {
+                String name = names.next();
+                appendClaimMember(entry, name, claims.get(name), firstMember, written);
+            }
+        }
+        for (Map.Entry<String, String[]> allowed : settings.claimsAllowlist().entrySet()) {
+            appendClaimMember(entry, allowed.getKey(), resolveClaim(claims, allowed.getValue()), firstMember, written);
+        }
+    }
+
+    private static JsonNode resolveClaim(ObjectNode claims, String[] path) {
+        JsonNode node = claims;
+        for (String segment : path) {
+            node = node.get(segment);
+            if (node == null) {
+                return null;
+            }
+        }
+        return node;
+    }
+
+    private static void appendClaimMember(LogEntry entry, String name, JsonNode value, MutableBoolean firstMember,
+                                          Set<String> written) throws JsonProcessingException {
+        if (value == null || value.isNull() || !written.add(name)) {
+            return;
+        }
+        appendSeparator(entry, firstMember);
+        append(entry, "\"", false);
+        append(entry, name, true);
+        append(entry, "\":", false);
+        // already valid JSON, so it must not be escaped again
+        append(entry, ProxyUtil.MAPPER.writeValueAsString(value), false);
     }
 
     @VisibleForTesting
@@ -321,7 +370,7 @@ public class GfLogStore implements LogStore {
         }
         appendSeparator(entry, firstMember);
         append(entry, "\"", false);
-        append(entry, name, false);
+        append(entry, name, true);
         append(entry, "\":\"", false);
         append(entry, value, true);
         append(entry, "\"", false);

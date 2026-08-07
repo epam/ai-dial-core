@@ -55,19 +55,9 @@ public class ResponsesApiClient {
         JsonNode usageNode = tree.path("usage");
         TokenUsage usage = usageNode.isObject()
                 ? ProxyUtil.MAPPER.treeToValue(usageNode, TokenUsage.class) : null;
-        JsonNode completedAtNode = tree.path("completed_at");
-        // the Responses API reports completion in unix seconds; not every upstream sends the field
-        Long completedAtMs = completedAtNode.isNumber() ? completedAtNode.asLong() * 1000 : null;
-        return new TerminalResult(body, usage, completedAtMs);
+        return new TerminalResult(body, usage);
     }
 
-    /**
-     * @param completedAtMs when the upstream finished the job, in epoch millis, or {@code null} if it didn't report it.
-     */
-    public record TerminalResult(Buffer body, TokenUsage usage, @Nullable Long completedAtMs) {
-
-        public TerminalResult(Buffer body, TokenUsage usage) {
-            this(body, usage, null);
-        }
+    public record TerminalResult(Buffer body, TokenUsage usage) {
     }
 }

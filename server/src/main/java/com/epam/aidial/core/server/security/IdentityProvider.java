@@ -113,12 +113,6 @@ public class IdentityProvider {
     private final String[] userIdPath;
 
     /**
-     * The path to the claim to extract the raw user email. Unlike {@link #loggingKey} the value is never hashed,
-     * so it's only written to analytics logs when {@code analytics.collectEmail} is enabled.
-     */
-    private final String[] userEmailPath;
-
-    /**
      * Claim paths to log for debugging purposes
      */
     private final Map<String, String[]> claimPathsToLog;
@@ -211,8 +205,6 @@ public class IdentityProvider {
         userDisplayName = getClaimPath(settings, "userDisplayName", null);
 
         userIdPath = getClaimPath(settings, "userIdPath", new String[]{USER_SUB});
-
-        userEmailPath = getClaimPath(settings, "userEmailPath", new String[]{USER_EMAIL});
 
         claimPathsToLog = getAsStringList(settings, "claimPathsToLog", List.of(USER_SUB, USER_OID, USER_EMAIL)).stream()
                         .collect(Collectors.toMap(
@@ -469,8 +461,7 @@ public class IdentityProvider {
                 extractUserHash(userKey),
                 extractUserClaims(map),
                 extractStringClaim(map, projectPath),
-                extractStringClaim(map, userDisplayName),
-                extractStringClaim(map, userEmailPath));
+                extractStringClaim(map, userDisplayName));
     }
 
     private void logClaims(Map<String, Object> claims) {

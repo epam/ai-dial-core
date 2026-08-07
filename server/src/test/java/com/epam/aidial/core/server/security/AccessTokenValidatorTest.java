@@ -118,7 +118,7 @@ public class AccessTokenValidatorTest {
         when(provider2.match(any(DecodedJWT.class))).thenReturn(true);
         when(provider2.extractClaimsFromJwt(any(DecodedJWT.class))).thenReturn(Future
                 .succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash",
-                        ProxyUtil.MAPPER.createObjectNode(), null, null, null)));
+                        ProxyUtil.MAPPER.createObjectNode(), null, null)));
         List<IdentityProvider> providerList = List.of(provider1, provider2);
         validator.setProviders(providerList);
         KeyPair keyPair = generateRsa256Pair();
@@ -143,7 +143,7 @@ public class AccessTokenValidatorTest {
         when(provider.hasUserinfoUrl()).thenReturn(false);
         when(provider.extractClaimsFromJwt(any(DecodedJWT.class))).thenReturn(Future
                 .succeededFuture(new ExtractedClaims("sub", Collections.emptyList(), "hash",
-                        ProxyUtil.MAPPER.createObjectNode(), null, null, null)));
+                        ProxyUtil.MAPPER.createObjectNode(), null, null)));
         List<IdentityProvider> providerList = List.of(provider);
         validator.setProviders(providerList);
         KeyPair keyPair = generateRsa256Pair();
@@ -182,7 +182,7 @@ public class AccessTokenValidatorTest {
         IdentityProvider provider = mock(IdentityProvider.class);
         when(provider.hasUserinfoUrl()).thenReturn(true);
         ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash",
-                ProxyUtil.MAPPER.createObjectNode(), null, null, null);
+                ProxyUtil.MAPPER.createObjectNode(), null, null);
         when(provider.extractClaimsFromUserInfo(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
         List<IdentityProvider> providerList = List.of(provider);
         validator.setProviders(providerList);
@@ -201,7 +201,7 @@ public class AccessTokenValidatorTest {
         IdentityProvider provider = mock(IdentityProvider.class);
         when(provider.hasUserinfoUrl()).thenReturn(true);
         ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash",
-                ProxyUtil.MAPPER.createObjectNode(), "project1", null, null);
+                ProxyUtil.MAPPER.createObjectNode(), "project1", null);
         when(provider.extractClaimsFromUserInfo(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
         List<IdentityProvider> providerList = List.of(provider);
         validator.setProviders(providerList);

@@ -115,7 +115,7 @@
   },
   "analytics": {
     "collectClaims": false,
-    "collectEmail": false,
+    "claimsAllowlist": [],
     "collectHeaders": false,
     "headersBlacklist": ["authorization", "api-key", "cookie", "proxy-authorization"]
   },

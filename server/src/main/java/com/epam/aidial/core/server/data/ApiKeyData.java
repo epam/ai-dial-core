@@ -7,7 +7,6 @@ import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.MultiMap;
 import lombok.Data;
 
@@ -27,8 +26,6 @@ import java.util.Map;
  *     </ul>
  * </p>
  */
-// tolerate fields written by a newer core version, so per-request keys survive a rolling upgrade
-@JsonIgnoreProperties(ignoreUnknown = true)
 @Data
 public class ApiKeyData {
     private static final List<String> HTTP_HEADERS_TO_STORE = List.of(

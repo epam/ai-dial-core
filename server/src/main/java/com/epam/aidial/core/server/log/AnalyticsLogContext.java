@@ -43,7 +43,8 @@ public class AnalyticsLogContext {
     private final String userId;
     private final List<String> userRoles;
     private final String userDisplayName;
-    private final String userEmail;
+    // the whole claim payload as the identity provider returned it; filtered by analytics.claimsAllowlist on write
+    private final ObjectNode userClaims;
     private final Map<String, List<String>> requestHeaders;
 
     private final String deploymentName;
@@ -80,7 +81,7 @@ public class AnalyticsLogContext {
                 .userId(context.getUserId())
                 .userRoles(context.getUserRoles())
                 .userDisplayName(context.getUserDisplayName())
-                .userEmail(context.getUserEmail())
+                .userClaims(userClaims(context))
                 .requestHeaders(toHeadersMap(context.getRequest().headers()))
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
                 .parentDeployment(getParentDeployment(
@@ -116,7 +117,7 @@ public class AnalyticsLogContext {
                 .userId(record.userId())
                 .userRoles(record.userRoles())
                 .userDisplayName(record.userDisplayName())
-                .userEmail(record.userEmail())
+                .userClaims(record.userClaims())
                 .requestHeaders(record.requestHeaders())
                 .deploymentName(record.deploymentName())
                 .parentDeployment(record.parentDeployment())
@@ -129,21 +130,21 @@ public class AnalyticsLogContext {
                 .responseStatusCode(result == null ? 500 : 200) // 500 when expired
                 .responseBody(result == null ? null : result.body())
                 .tokenUsage(result == null ? null : result.usage())
-                .operationDurationMs(operationDurationMs(record, result))
+                .operationDurationMs(operationDurationMs(record))
                 .build();
     }
 
+    private static ObjectNode userClaims(ProxyContext context) {
+        return context.getExtractedClaims() == null ? null : context.getExtractedClaims().userClaims();
+    }
+
     /**
-     * The job is finalized once the poller notices it reached a terminal state, which may lag the actual completion by
-     * up to a whole poll interval, so the upstream completion timestamp is preferred when the upstream reports one.
-     * An expired job has no result at all and reports the time until the core gave up, i.e. the job TTL.
+     * Measured the same way as for a live request: from when the core accepted the request to when it emits the log
+     * entry. For a job that means the poller's detection lag is included — up to {@code backgroundJob.maxPollIntervalMs}
+     * once the backoff has grown — and an expired job reports the whole time the core waited before giving up.
      */
-    private static long operationDurationMs(BackgroundJobRecord record, ResponsesApiClient.TerminalResult result) {
-        Long completedAtMs = result == null ? null : result.completedAtMs();
-        long end = completedAtMs != null && completedAtMs >= record.requestTimestamp()
-                ? completedAtMs
-                : System.currentTimeMillis();
-        return duration(record.requestTimestamp(), end);
+    private static long operationDurationMs(BackgroundJobRecord record) {
+        return duration(record.requestTimestamp(), System.currentTimeMillis());
     }
 
     private static long operationDurationMs(ProxyContext context) {

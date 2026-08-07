@@ -9,11 +9,14 @@ import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.LogEntry;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpVersion;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
+import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
@@ -150,58 +153,84 @@ public class GfLogStoreTest {
 
     @SneakyThrows
     @Test
-    public void testAppendClaimsWithEmail() {
+    public void testAppendAllowedClaims() {
         AnalyticsLogContext context = mock(AnalyticsLogContext.class);
         when(context.getUserId()).thenReturn("user-1");
         when(context.getUserRoles()).thenReturn(List.of("admin"));
         when(context.getUserDisplayName()).thenReturn("Jane Doe");
-        when(context.getUserEmail()).thenReturn("jane.doe@example.com");
+        when(context.getUserClaims()).thenReturn(userClaims(
+                "{\"email\":\"jane.doe@example.com\",\"resource_access\":{\"roles\":[\"a\",\"b\"]},\"sub\":\"s-1\"}"));
 
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(AnalyticsSettings.builder().collectClaims(true).collectEmail(true).build()).appendClaims(context, entry);
+        new GfLogStore(settings(true, "email", "resource_access.roles")).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
         assertEquals("user-1", claims.get("user_id").asText());
         assertEquals("admin", claims.get("roles").get(0).asText());
         assertEquals("Jane Doe", claims.get("user_display_name").asText());
-        assertEquals("jane.doe@example.com", claims.get("user_email").asText());
+        assertEquals("jane.doe@example.com", claims.get("email").asText());
+        assertEquals(List.of("a", "b"), List.of(claims.get("resource_access.roles").get(0).asText(),
+                claims.get("resource_access.roles").get(1).asText()));
+        assertFalse(claims.has("sub"));
     }
 
     @SneakyThrows
     @Test
-    public void testAppendClaimsOmitsEmailWhenCollectEmailDisabled() {
+    public void testAppendAllowedClaimsWildcardCollectsEverything() {
         AnalyticsLogContext context = mock(AnalyticsLogContext.class);
-        when(context.getUserId()).thenReturn("user-1");
-        when(context.getUserEmail()).thenReturn("jane.doe@example.com");
+        when(context.getUserClaims()).thenReturn(userClaims(
+                "{\"email\":\"jane.doe@example.com\",\"exp\":1712345678,\"groups\":[\"g1\"]}"));
 
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(AnalyticsSettings.builder().collectClaims(true).build()).appendClaims(context, entry);
+        new GfLogStore(settings(false, "*")).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
-        assertEquals("user-1", claims.get("user_id").asText());
-        assertFalse(claims.has("user_email"));
+        assertEquals("jane.doe@example.com", claims.get("email").asText());
+        assertEquals(1712345678L, claims.get("exp").asLong());
+        assertEquals("g1", claims.get("groups").get(0).asText());
+        assertFalse(claims.has("user_id"));
     }
 
     @SneakyThrows
     @Test
-    public void testCollectEmailIsIndependentOfCollectClaims() {
+    public void testAppendAllowedClaimsOmitsMissingOnes() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getUserId()).thenReturn("user-1");
+        when(context.getUserClaims()).thenReturn(userClaims("{\"email\":null,\"sub\":\"s-1\"}"));
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        // upn is absent, email is explicitly null, resource_access has no such parent object at all
+        new GfLogStore(settings(true, "email", "upn", "resource_access.roles")).appendClaims(context, entry);
+
+        JsonNode claims = parseWrapped(buffer.toString());
+        assertEquals("user-1", claims.get("user_id").asText());
+        assertFalse(claims.has("email"));
+        assertFalse(claims.has("upn"));
+        assertFalse(claims.has("resource_access.roles"));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendAllowedClaimsIsIndependentOfCollectClaims() {
         AnalyticsLogContext context = mock(AnalyticsLogContext.class);
         when(context.getUserId()).thenReturn("user-1");
         when(context.getUserRoles()).thenReturn(List.of("admin"));
         when(context.getUserDisplayName()).thenReturn("Jane Doe");
-        when(context.getUserEmail()).thenReturn("jane.doe@example.com");
+        when(context.getUserClaims()).thenReturn(userClaims("{\"email\":\"jane.doe@example.com\"}"));
 
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(AnalyticsSettings.builder().collectEmail(true).build()).appendClaims(context, entry);
+        new GfLogStore(settings(false, "email")).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
-        assertEquals("jane.doe@example.com", claims.get("user_email").asText());
+        assertEquals("jane.doe@example.com", claims.get("email").asText());
         assertFalse(claims.has("user_id"));
         assertFalse(claims.has("roles"));
         assertFalse(claims.has("user_display_name"));
@@ -209,19 +238,50 @@ public class GfLogStoreTest {
 
     @SneakyThrows
     @Test
-    public void testAppendClaimsSkipsNullEmail() {
+    public void testAppendAllowedClaimsSkipsFixedMemberCollision() {
         AnalyticsLogContext context = mock(AnalyticsLogContext.class);
         when(context.getUserId()).thenReturn("user-1");
-        when(context.getUserEmail()).thenReturn(null);
+        when(context.getUserClaims()).thenReturn(userClaims("{\"user_id\":\"claim-value\"}"));
 
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(AnalyticsSettings.builder().collectClaims(true).collectEmail(true).build()).appendClaims(context, entry);
+        new GfLogStore(settings(true, "user_id")).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
         assertEquals("user-1", claims.get("user_id").asText());
-        assertFalse(claims.has("user_email"));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendAllowedClaimsEscapesNamesAndValues() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getUserClaims()).thenReturn(userClaims("{\"na\\\"me\":\"va\\\"lue\"}"));
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        new GfLogStore(settings(false, "*")).appendClaims(context, entry);
+
+        JsonNode claims = parseWrapped(buffer.toString());
+        assertEquals("va\"lue", claims.get("na\"me").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendAllowedClaimsWithoutClaimsNode() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getUserId()).thenReturn("user-1");
+        when(context.getUserClaims()).thenReturn(null);
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        new GfLogStore(settings(true, "email")).appendClaims(context, entry);
+
+        JsonNode claims = parseWrapped(buffer.toString());
+        assertEquals("user-1", claims.get("user_id").asText());
+        assertFalse(claims.has("email"));
     }
 
     @SneakyThrows
@@ -260,11 +320,14 @@ public class GfLogStoreTest {
         when(context.getRequestHeaders()).thenReturn(headers);
         when(context.getUserId()).thenReturn("user-1");
         when(context.getUserRoles()).thenReturn(List.of("admin"));
+        when(context.getUserClaims()).thenReturn(userClaims("{\"email\":\"jane.doe@example.com\"}"));
 
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        GfLogStore store = new GfLogStore(AnalyticsSettings.builder().collectClaims(true).collectHeaders(true)
+        AnalyticsSettings allowlisted = settings(true, "email");
+        GfLogStore store = new GfLogStore(AnalyticsSettings.builder()
+                .collectClaims(true).claimsAllowlist(allowlisted.claimsAllowlist()).collectHeaders(true)
                 .headersBlacklist(patterns("authorization")).build());
         // mirror the order/position used by the real log line: both sections follow a preceding object member
         store.appendClaims(context, entry);
@@ -273,6 +336,7 @@ public class GfLogStoreTest {
         JsonNode root = ProxyUtil.MAPPER.readTree("{\"user\":{}" + buffer + "}");
         assertEquals("user-1", root.get("claims").get("user_id").asText());
         assertEquals("admin", root.get("claims").get("roles").get(0).asText());
+        assertEquals("jane.doe@example.com", root.get("claims").get("email").asText());
         assertFalse(root.get("headers").has("Authorization"));
         assertEquals("conv-1", root.get("headers").get("X-Conversation-Id").asText());
     }
@@ -442,41 +506,14 @@ public class GfLogStoreTest {
     }
 
     @Test
-    public void testOperationDurationPrefersUpstreamCompletionOverPollTime() {
-        // finalized 10 minutes after the request, but the upstream reports it finished after 5 seconds
-        long requestTimestamp = System.currentTimeMillis() - 600_000;
-        BackgroundJobRecord record = backgroundJobRecord(requestTimestamp);
-        ResponsesApiClient.TerminalResult result =
-                new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), null, requestTimestamp + 5_000);
-
-        assertEquals(5_000, AnalyticsLogContext.from(record, result).getOperationDurationMs());
-    }
-
-    @Test
-    public void testOperationDurationIgnoresUpstreamCompletionBeforeRequest() {
-        long requestTimestamp = System.currentTimeMillis() - 600_000;
-        BackgroundJobRecord record = backgroundJobRecord(requestTimestamp);
-        // an upstream clock skewed into the past must not shorten the duration
-        ResponsesApiClient.TerminalResult result =
-                new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), null, requestTimestamp - 5_000);
-
-        assertTrue(AnalyticsLogContext.from(record, result).getOperationDurationMs() >= 600_000);
-    }
-
-    @Test
-    public void testOperationDurationWhenUpstreamReportsNoCompletion() {
-        long requestTimestamp = System.currentTimeMillis() - 600_000;
-        BackgroundJobRecord record = backgroundJobRecord(requestTimestamp);
+    public void testOperationDurationOfCompletedBackgroundJob() {
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .requestTimestamp(System.currentTimeMillis() - 600_000)
+                .requestBody("{}")
+                .build();
         ResponsesApiClient.TerminalResult result = new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), null);
 
         assertTrue(AnalyticsLogContext.from(record, result).getOperationDurationMs() >= 600_000);
-    }
-
-    private static BackgroundJobRecord backgroundJobRecord(long requestTimestamp) {
-        return BackgroundJobRecord.builder()
-                .requestTimestamp(requestTimestamp)
-                .requestBody("{}")
-                .build();
     }
 
     private static ProxyContext mockProxyContext() {
@@ -509,6 +546,20 @@ public class GfLogStoreTest {
         AnalyticsLogContext context = mock(AnalyticsLogContext.class);
         when(context.getRequestHeaders()).thenReturn(headers);
         return context;
+    }
+
+    /**
+     * Goes through the real settings parser, so the claim paths are split exactly as they are in production.
+     */
+    private static AnalyticsSettings settings(boolean collectClaims, String... claimPaths) {
+        return AnalyticsSettings.from(new JsonObject()
+                .put("collectClaims", collectClaims)
+                .put("claimsAllowlist", new JsonArray(List.of(claimPaths))));
+    }
+
+    @SneakyThrows
+    private static ObjectNode userClaims(String json) {
+        return (ObjectNode) ProxyUtil.MAPPER.readTree(json);
     }
 
     private static List<Pattern> patterns(String... regexes) {
