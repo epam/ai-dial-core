@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.log;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.Log;
 import com.epam.deltix.gflog.api.LogEntry;
@@ -145,6 +146,12 @@ public class GfLogStore implements LogStore {
                 append(entry, tokenUsage.getAggCost().toString(), true);
             }
             append(entry, "}", false);
+        }
+
+        List<UsagePerModel> usagePerModel = logContext.getUsagePerModel();
+        if (usagePerModel != null && !usagePerModel.isEmpty()) {
+            append(entry, ",\"usage_per_model\":", false);
+            append(entry, ProxyUtil.MAPPER.writeValueAsString(usagePerModel), false);
         }
 
         if (logContext.getDeploymentName() != null) {

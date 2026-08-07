@@ -13,15 +13,20 @@ import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
+import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
+import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
+import com.epam.aidial.core.server.util.UsagePerModelInjector;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.Future;
@@ -37,6 +42,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.io.InputStream;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
@@ -161,46 +167,82 @@ public class BaseDeploymentPostController {
     }
 
     protected Future<Void> collectTokenUsage(Buffer responseBody) {
-        Future<Void> tokenUsageFuture = Future.succeededFuture();
         if (context.getDeployment() instanceof Model model) {
-            if (context.getResponse().getStatusCode() == HttpStatus.OK.getCode()) {
-                TokenUsage tokenUsage = parseTokenUsage(responseBody);
-                if (tokenUsage == null) {
-                    Pricing pricing = model.getPricing();
-                    if (pricing == null || "token".equals(pricing.getUnit())) {
-                        Upstream currentUpstream = context.getUpstreamRoute().get();
-                        log.warn("Can't find token usage. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}. Upstream.extraData: {}",
-                                context.getDeployment().getName(),
-                                context.getProxyRequestUri(),
-                                currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
-                                context.getResponseBody().length(),
-                                currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
-                    }
-                    tokenUsage = new TokenUsage();
-                }
-                context.setTokenUsage(tokenUsage);
-                String bucket = BucketBuilder.buildInitiatorBucket(context);
-                TokenUsage usage = context.getTokenUsage();
-                tokenUsageFuture = proxy.getRateLimiter().increase(
-                        context.getDeployment(), bucket, usage, context.getRequestBody(), context.getResponseBody())
-                        .transform(result -> {
-                            if (result.failed()) {
-                                log.warn("Failed to increase limit", result.cause());
-                            }
-                            String traceId = context.getTraceId();
-                            String spanId = context.getSpanId();
-                            if (traceId != null && spanId != null) {
-                                return proxy.getTokenStatsTracker().updateModelStats(traceId, spanId, usage);
-                            }
-                            return Future.succeededFuture();
-                        });
+            if (context.getResponse().getStatusCode() != HttpStatus.OK.getCode()) {
+                return Future.succeededFuture();
             }
-        } else {
-            tokenUsageFuture = proxy.getTokenStatsTracker().getTokenStats(context)
-                    .andThen(result -> context.setTokenUsage(result.result()))
-                    .mapEmpty();
+            TokenUsage tokenUsage = parseTokenUsage(responseBody);
+            if (tokenUsage == null) {
+                Pricing pricing = model.getPricing();
+                if (pricing == null || "token".equals(pricing.getUnit())) {
+                    Upstream currentUpstream = context.getUpstreamRoute().get();
+                    log.warn("Can't find token usage. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}. Upstream.extraData: {}",
+                            context.getDeployment().getName(),
+                            context.getProxyRequestUri(),
+                            currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
+                            context.getResponseBody().length(),
+                            currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
+                }
+                tokenUsage = new TokenUsage();
+            }
+            context.setTokenUsage(tokenUsage);
+            String bucket = BucketBuilder.buildInitiatorBucket(context);
+            TokenUsage usage = context.getTokenUsage();
+            return proxy.getRateLimiter().increase(
+                    context.getDeployment(), bucket, usage, context.getRequestBody(), context.getResponseBody())
+                    .transform(result -> {
+                        if (result.failed()) {
+                            log.warn("Failed to increase limit", result.cause());
+                        }
+                        String traceId = context.getTraceId();
+                        String spanId = context.getSpanId();
+                        if (traceId != null && spanId != null) {
+                            return trackDeploymentStats(model.getName(), usage, false);
+                        }
+                        return Future.succeededFuture();
+                    });
         }
-        return tokenUsageFuture;
+
+        // Application/Assistant: any deployment may self-report usage in its own response body;
+        // capture it alongside whatever its descendant Model spans already reported.
+        TokenUsage ownUsage = parseTokenUsage(responseBody);
+        return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
+    }
+
+    /**
+     * Updates (or, if there's nothing new to report, just reads) the trace-wide token stats for the
+     * current span, then applies the result to the context: {@link ProxyContext#getUsagePerModel()}
+     * always, and - for non-Model deployments only, see {@code updateTokenUsage} - the log-facing
+     * {@link ProxyContext#getTokenUsage()} too, so the analytics log stops conflating a deployment's
+     * own usage with its subtree's aggregate (see GfLogStore).
+     */
+    private Future<Void> trackDeploymentStats(String deploymentName, TokenUsage ownUsage, boolean updateTokenUsage) {
+        boolean hasOwnUsage = ownUsage != null && !ownUsage.isEmpty();
+
+        Future<TokenStatsTracker.UsageStats> statsFuture;
+        if (hasOwnUsage) {
+            statsFuture = proxy.getTokenStatsTracker().updateDeploymentStats(
+                    context.getTraceId(), context.getSpanId(), deploymentName, ownUsage);
+        } else {
+            statsFuture = proxy.getTokenStatsTracker().getUsageStats(context);
+        }
+
+        return statsFuture.transform(result -> {
+            if (result.failed()) {
+                log.warn("Failed to track token usage", result.cause());
+                return Future.succeededFuture();
+            }
+            TokenStatsTracker.UsageStats stats = result.result();
+            context.setUsagePerModel(stats.usagePerModel());
+            if (updateTokenUsage) {
+                TokenUsage forLog = hasOwnUsage ? ownUsage : new TokenUsage();
+                if (stats.total() != null) {
+                    forLog.setAggCost(stats.total().getAggCost());
+                }
+                context.setTokenUsage(forLog);
+            }
+            return Future.<Void>succeededFuture();
+        });
     }
 
     /**
@@ -209,6 +251,27 @@ public class BaseDeploymentPostController {
      */
     protected TokenUsage parseTokenUsage(Buffer responseBody) {
         return TokenUsageParser.parse(responseBody);
+    }
+
+    /**
+     * Rewrites {@code body}'s {@code statistics.usage_per_model} to Core's own value, or strips it
+     * entirely when Core has nothing to report - a deployment's own response is never trusted to
+     * carry this field through untouched, the same guarantee {@code StripUsagePerModelFn} gives the
+     * streaming path (see DeploymentPostController). Returns {@code body} unchanged only on a parse
+     * surprise - injection is best-effort, never a reason to corrupt or drop a response.
+     */
+    protected Buffer maybeInjectUsagePerModel(Buffer body) {
+        JsonNode tree = JsonUtil.tryParse(body.getBytes());
+        if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
+            return body;
+        }
+        List<UsagePerModel> usagePerModel = context.getUsagePerModel();
+        if (usagePerModel == null || usagePerModel.isEmpty()) {
+            UsagePerModelInjector.strip(object);
+        } else {
+            UsagePerModelInjector.inject(object, usagePerModel);
+        }
+        return Buffer.buffer(ProxyUtil.convertToString(object));
     }
 
     /**

@@ -576,7 +576,66 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
     void testApiWhenStarted() {
         testApplicationStarted();
 
-        String answer = """
+        // the upstream already carries a bogus usage_per_model entry of its own - Core must strip
+        // it regardless, the same guarantee the streaming path gives (see testApiWhenStarted_Streaming)
+        String upstreamAnswer = """
+                {
+                  "id": "chatcmpl-7VfMTgj3ljKdGKS2BEIwloII3IoO0",
+                  "object": "chat.completion",
+                  "created": 1687781517,
+                  "model": "gpt-35-turbo",
+                  "choices": [
+                    {
+                      "index": 0,
+                      "finish_reason": "stop",
+                      "message": {
+                        "role": "assistant",
+                        "content": "As an AI language model, I do not have emotions like humans. However, I am functioning well and ready to assist you. How can I help you today?"
+                      }
+                    }
+                  ],
+                  "usage": {
+                    "completion_tokens": 33,
+                    "prompt_tokens": 19,
+                    "total_tokens": 52
+                  },
+                  "statistics": {
+                    "usage_per_model": [
+                      {
+                        "index": 0,
+                        "model": "upstream-echoed-entry",
+                        "usage": {
+                          "prompt_tokens": 999
+                        }
+                      }
+                    ]
+                  }
+                }
+                """;
+        webServer.map(HttpMethod.POST, "/application", 200, upstreamAnswer);
+
+        Response response = send(HttpMethod.POST, "/openai/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/chat/completions", null,
+                """
+                        {
+                          "messages": [
+                            {
+                              "role": "system",
+                              "content": ""
+                            },
+                            {
+                              "role": "user",
+                              "content": "How are you?"
+                            }
+                          ],
+                          "max_tokens": 500,
+                          "temperature": 1,
+                          "stream": true
+                        }
+                        """, "content-type", "application/json");
+        // the app has no DIAL-tracked descendants (its upstream is a raw mock endpoint, not a nested
+        // deployment call), so Core has nothing of its own to report - the upstream's bogus entry
+        // never reaches the client, and no statistics.usage_per_model is added at all (issue #1753)
+        String expected = """
                 {
                   "id": "chatcmpl-7VfMTgj3ljKdGKS2BEIwloII3IoO0",
                   "object": "chat.completion",
@@ -599,27 +658,49 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
                   }
                 }
                 """;
-        webServer.map(HttpMethod.POST, "/application", 200, answer);
+        verifyJson(response, 200, expected);
+    }
+
+    @Test
+    void testApiWhenStarted_Streaming() {
+        testApplicationStarted();
+
+        // the last chunk carries both the app's own real usage AND a bogus usage_per_model the
+        // upstream already streamed - Core must strip the latter regardless
+        String sse = "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1687781517,"
+                + "\"model\":\"gpt-35-turbo\",\"choices\":[{\"index\":0,\"finish_reason\":null,"
+                + "\"delta\":{\"role\":\"assistant\",\"content\":\"Hi\"}}]}\n\n"
+                + "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1687781517,"
+                + "\"model\":\"gpt-35-turbo\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],"
+                + "\"usage\":{\"completion_tokens\":5,\"prompt_tokens\":10,\"total_tokens\":15},"
+                + "\"statistics\":{\"usage_per_model\":[{\"index\":0,\"name\":\"upstream-echoed-entry\",\"prompt_tokens\":999}]}}\n\n"
+                + "data: [DONE]\n\n";
+        webServer.map(HttpMethod.POST, "/application",
+                new MockResponse().setResponseCode(200).setHeader("Content-Type", "text/event-stream").setBody(sse));
 
         Response response = send(HttpMethod.POST, "/openai/deployments/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app/chat/completions", null,
                 """
                         {
                           "messages": [
                             {
-                              "role": "system",
-                              "content": ""
-                            },
-                            {
                               "role": "user",
                               "content": "How are you?"
                             }
                           ],
                           "max_tokens": 500,
-                          "temperature": 1,
                           "stream": true
                         }
                         """, "content-type", "application/json");
-        verify(response, 200, answer);
+
+        verify(response, 200);
+        String body = response.body();
+
+        // the upstream's own (bogus) usage_per_model entry never reaches the client - Core strips it
+        Assertions.assertFalse(body.contains("upstream-echoed-entry"), body);
+
+        // the app has no DIAL-tracked descendants (its upstream is a raw mock endpoint, not a
+        // nested deployment call), so there's nothing for Core to report - no usage_per_model at all
+        Assertions.assertFalse(body.contains("\"usage_per_model\""), body);
     }
 
     @Test

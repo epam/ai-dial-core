@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.MergeChunks;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -64,6 +65,7 @@ public class AnalyticsLogContext {
     private final String assembledStreamingResponse;
 
     private final TokenUsage tokenUsage;
+    private final List<UsagePerModel> usagePerModel;
 
     private final long operationDurationMs;
 
@@ -100,11 +102,12 @@ public class AnalyticsLogContext {
                 .responseBody(responseBody)
                 .assembledStreamingResponse(assembledStreamingResponse)
                 .tokenUsage(context.getTokenUsage())
+                .usagePerModel(context.getUsagePerModel())
                 .operationDurationMs(context.getOperationDurationMs())
                 .build();
     }
 
-    public static AnalyticsLogContext from(BackgroundJobRecord record, ResponsesApiClient.TerminalResult result) {
+    public static AnalyticsLogContext from(BackgroundJobRecord record, ResponsesApiClient.TerminalResult result, List<UsagePerModel> usagePerModel) {
         return AnalyticsLogContext.builder()
                 .traceId(record.traceId())
                 .spanId(record.spanId())
@@ -130,6 +133,7 @@ public class AnalyticsLogContext {
                 .responseStatusCode(result == null ? 500 : 200) // 500 when expired
                 .responseBody(result == null ? null : result.body())
                 .tokenUsage(result == null ? null : result.usage())
+                .usagePerModel(usagePerModel)
                 .operationDurationMs(operationDurationMs(record))
                 .build();
     }
