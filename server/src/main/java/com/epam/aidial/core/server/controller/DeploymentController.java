@@ -233,9 +233,11 @@ public class DeploymentController {
             Config config = context.getConfig();
             List<DeploymentData> deployments = new ArrayList<>();
             for (Application application : config.getApplications().values()) {
-                if (application.hasAccess(context.getUserRoles()) && match(filters, application)) {
-                    application = resolveLocalApplication(application);
-                    deployments.add(to(application));
+                if (application.hasAccess(context.getUserRoles())) {
+                    Application resolved = resolveLocalApplication(application);
+                    if (match(filters, resolved)) {
+                        deployments.add(to(resolved));
+                    }
                 }
             }
             List<Application> resourceApps = List.of();
