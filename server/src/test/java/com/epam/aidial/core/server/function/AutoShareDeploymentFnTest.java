@@ -27,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 
@@ -61,7 +62,7 @@ public class AutoShareDeploymentFnTest {
     @BeforeEach
     public void beforeEach() {
         proxyApiKeyData = new ApiKeyData();
-        when(context.getConfig()).thenReturn(config);
+        lenient().when(context.getConfig()).thenReturn(config);
     }
 
     @Test

@@ -31,7 +31,7 @@ public class AutoShareDeploymentFn extends BaseRequestFunction<RequestObject> {
     public Boolean apply(RequestObject tree) {
         try {
             String initialDeployment = context.getInitialDeployment();
-            if (context.getConfig().selectDeployment(initialDeployment) != null) {
+            if (initialDeployment == null || context.getConfig().selectDeployment(initialDeployment) != null) {
                 return false;
             }
             ResourceDescriptor descriptor = toResourceDescriptor(initialDeployment);
