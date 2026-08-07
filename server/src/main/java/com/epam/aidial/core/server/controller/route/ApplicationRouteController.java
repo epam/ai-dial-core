@@ -49,7 +49,9 @@ public class ApplicationRouteController extends BaseRouteController {
 
     @Override
     protected Future<Boolean> hasRequiredPermissions(Set<ResourceAccessType> permissions) {
-        if (context.getConfig().selectDeployment(deploymentId) != null) {
+        // Config-registered deployments (bare name or canonical id) are role-based, not governed
+        // by the resource-sharing ACL looked up below.
+        if (context.getConfig().isDeploymentExists(deploymentId)) {
             return Future.succeededFuture(true);
         }
         ResourceDescriptor appResource;

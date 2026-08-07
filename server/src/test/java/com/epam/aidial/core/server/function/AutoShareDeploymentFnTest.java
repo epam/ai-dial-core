@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.function;
 
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -128,7 +127,7 @@ public class AutoShareDeploymentFnTest {
     public void testApply_WhenInitialDeploymentIsBareNameModel() {
         when(context.getConfig()).thenReturn(config);
         when(context.getInitialDeployment()).thenReturn("gpt-5-2025-08-07");
-        when(config.selectDeployment("gpt-5-2025-08-07")).thenReturn(new Model());
+        when(config.isDeploymentExists("gpt-5-2025-08-07")).thenReturn(true);
 
         assertFalse(fn.apply(EMPTY_OBJECT));
         assertTrue(proxyApiKeyData.getAttachedDeployments().isEmpty());
@@ -138,7 +137,7 @@ public class AutoShareDeploymentFnTest {
     public void testApply_WhenInitialDeploymentIsCanonicalIdModel() {
         when(context.getConfig()).thenReturn(config);
         when(context.getInitialDeployment()).thenReturn("models/platform/gpt-5-2025-08-07");
-        when(config.selectDeployment("models/platform/gpt-5-2025-08-07")).thenReturn(new Model());
+        when(config.isDeploymentExists("models/platform/gpt-5-2025-08-07")).thenReturn(true);
 
         assertFalse(fn.apply(EMPTY_OBJECT));
         assertTrue(proxyApiKeyData.getAttachedDeployments().isEmpty());
