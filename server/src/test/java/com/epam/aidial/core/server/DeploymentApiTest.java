@@ -23,28 +23,31 @@ public class DeploymentApiTest extends ResourceBaseTest {
         Response response = send(HttpMethod.GET, "/v1/deployments", null, null);
         verify(response, 200);
         JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals(4, body.size());
+        assertEquals(5, body.size());
 
         // typed interface types are surfaced in the `interfaces` array next to the UI categories;
         // embedding models expose openaiChatCompletions since their endpoint lives under that key
         Map<String, Set<String>> interfacesById = collectInterfaces(body);
         assertEquals(Set.of("embedding", "openaiChatCompletions"), interfacesById.get("embedding-ada"));
         assertEquals(Set.of("chat", "openaiChatCompletions"), interfacesById.get("gpt-4"));
+        // schema-rich application declared directly in config: endpoint and mcp are resolved from its
+        // application type schema rather than set as literal fields, so they must be resolved before filtering
+        assertEquals(Set.of("chat", "mcp", "custom_ui", "openaiChatCompletions"), interfacesById.get("schema-app"));
 
         response = send(HttpMethod.GET, "/v1/deployments", "interface_type=all,mcp", null);
         verify(response, 200);
         body = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals(4, body.size());
+        assertEquals(5, body.size());
 
         response = send(HttpMethod.GET, "/v1/deployments", "interface_type=mcp", null);
         verify(response, 200);
         body = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals(1, body.size());
+        assertEquals(2, body.size());
 
         response = send(HttpMethod.GET, "/v1/deployments", "interface_type=mcp,embedding", null);
         verify(response, 200);
         body = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals(2, body.size());
+        assertEquals(3, body.size());
 
         response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my%20app", null, """
                 {
@@ -64,22 +67,24 @@ public class DeploymentApiTest extends ResourceBaseTest {
         response = send(HttpMethod.GET, "/v1/deployments", "interface_type=mcp", null);
         verify(response, 200);
         body = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals(2, body.size());
+        assertEquals(3, body.size());
 
         response = send(HttpMethod.GET, "/v1/deployments", "interface_type=chat", null);
         verify(response, 200);
         body = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals(3, body.size());
+        assertEquals(4, body.size());
+        assertTrue(collectInterfaces(body).containsKey("schema-app"));
 
         response = send(HttpMethod.GET, "/v1/deployments", "interface_type=chat,mcp", null);
         verify(response, 200);
         body = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals(4, body.size());
+        assertEquals(5, body.size());
 
         response = send(HttpMethod.GET, "/v1/deployments", "interface_type=custom_ui", null);
         verify(response, 200);
         body = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals(1, body.size());
+        assertEquals(2, body.size());
+        assertTrue(collectInterfaces(body).containsKey("schema-app"));
     }
 
     @DialConfigLocation("dial-config/deployment-interfaces-features.json")
