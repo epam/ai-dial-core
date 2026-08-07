@@ -57,7 +57,7 @@ public record BackgroundJobRecord(
                 .userId(context.getUserId())
                 .userRoles(context.getUserRoles())
                 .userDisplayName(context.getUserDisplayName())
-                .userClaims(context.getExtractedClaims() == null ? null : context.getExtractedClaims().userClaims())
+                .userClaims(context.getUserClaims())
                 .requestHeaders(AnalyticsLogContext.toHeadersMap(context.getRequest().headers()))
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
                 .parentDeployment(AnalyticsLogContext.getParentDeployment(

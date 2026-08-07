@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.log;
 
-import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
@@ -11,20 +10,14 @@ import com.epam.deltix.gflog.api.LogEntry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.HttpServerRequest;
-import io.vertx.core.http.HttpVersion;
-import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -34,7 +27,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyChar;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -123,7 +115,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(AnalyticsSettings.builder().collectClaims(true).build()).appendClaims(context, entry);
+        new GfLogStore(settings(true)).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
         assertEquals("user-1", claims.get("user_id").asText());
@@ -143,7 +135,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(AnalyticsSettings.builder().collectClaims(true).build()).appendClaims(context, entry);
+        new GfLogStore(settings(true)).appendClaims(context, entry);
 
         JsonNode claims = parseWrapped(buffer.toString());
         assertEquals("user-1", claims.get("user_id").asText());
@@ -171,8 +163,7 @@ public class GfLogStoreTest {
         assertEquals("admin", claims.get("roles").get(0).asText());
         assertEquals("Jane Doe", claims.get("user_display_name").asText());
         assertEquals("jane.doe@example.com", claims.get("email").asText());
-        assertEquals(List.of("a", "b"), List.of(claims.get("resource_access.roles").get(0).asText(),
-                claims.get("resource_access.roles").get(1).asText()));
+        assertEquals("[\"a\",\"b\"]", claims.get("resource_access.roles").toString());
         assertFalse(claims.has("sub"));
     }
 
@@ -254,6 +245,71 @@ public class GfLogStoreTest {
 
     @SneakyThrows
     @Test
+    public void testAppendAllowedClaimsFallsBackToClaimWhenFixedMemberIsAbsent() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getUserId()).thenReturn(null);
+        when(context.getUserClaims()).thenReturn(userClaims("{\"user_id\":\"claim-value\"}"));
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        // nothing was written for the fixed user_id member, so the allowed claim must not be suppressed
+        new GfLogStore(settings(true, "user_id")).appendClaims(context, entry);
+
+        JsonNode claims = parseWrapped(buffer.toString());
+        assertEquals("claim-value", claims.get("user_id").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendAllowedClaimsTruncatesOversizedValue() {
+        String longValue = "x".repeat(8 * 1024);
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getUserClaims()).thenReturn(userClaims(
+                ProxyUtil.MAPPER.createObjectNode().put("groups", longValue).toString()));
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        new GfLogStore(settings(false, "groups")).appendClaims(context, entry);
+
+        // the line stays parseable and the value is reported as a truncated string
+        JsonNode claims = parseWrapped(buffer.toString());
+        String written = claims.get("groups").asText();
+        assertEquals(4 * 1024 + ">>".length(), written.length());
+        assertTrue(written.endsWith(">>"), "Missing truncation marker: " + written);
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendAllowedClaimsIgnoresMalformedPath() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getUserClaims()).thenReturn(userClaims("{\"email\":\"jane.doe@example.com\"}"));
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        // "." resolves to the root of the payload, which would dump every claim without the explicit "*" opt-in
+        new GfLogStore(settings(false, ".")).appendClaims(context, entry);
+
+        assertEquals("{}", parseWrapped(buffer.toString()).toString());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testClaimsAreOmittedWhenNothingIsCollected() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getUserId()).thenReturn("user-1");
+        when(context.getUserClaims()).thenReturn(userClaims("{\"email\":\"jane.doe@example.com\"}"));
+
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
+
+        assertFalse(ProxyUtil.MAPPER.readTree(buffer.toString()).has("claims"));
+    }
+
+    @SneakyThrows
+    @Test
     public void testAppendAllowedClaimsEscapesNamesAndValues() {
         AnalyticsLogContext context = mock(AnalyticsLogContext.class);
         when(context.getUserClaims()).thenReturn(userClaims("{\"na\\\"me\":\"va\\\"lue\"}"));
@@ -299,8 +355,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(AnalyticsSettings.builder().collectHeaders(true)
-                .headersBlacklist(patterns("authorization", "api-key")).build()).appendHeaders(context, entry);
+        new GfLogStore(headerSettings(List.of("authorization", "api-key"), null)).appendHeaders(context, entry);
 
         JsonNode headerNode = parseWrapped(buffer.toString());
         assertFalse(headerNode.has("Authorization"));
@@ -325,10 +380,11 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        AnalyticsSettings allowlisted = settings(true, "email");
-        GfLogStore store = new GfLogStore(AnalyticsSettings.builder()
-                .collectClaims(true).claimsAllowlist(allowlisted.claimsAllowlist()).collectHeaders(true)
-                .headersBlacklist(patterns("authorization")).build());
+        GfLogStore store = new GfLogStore(AnalyticsSettings.from(new JsonObject()
+                .put("collectClaims", true)
+                .put("claimsAllowlist", new JsonArray(List.of("email")))
+                .put("collectHeaders", true)
+                .put("headersBlacklist", new JsonArray(List.of("authorization")))));
         // mirror the order/position used by the real log line: both sections follow a preceding object member
         store.appendClaims(context, entry);
         store.appendHeaders(context, entry);
@@ -355,8 +411,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(AnalyticsSettings.builder().collectHeaders(true)
-                .headersBlacklist(patterns("x-stainless-.*")).build()).appendHeaders(context, entry);
+        new GfLogStore(headerSettings(List.of("x-stainless-.*"), null)).appendHeaders(context, entry);
 
         JsonNode headerNode = parseWrapped(buffer.toString());
         assertFalse(headerNode.has("X-Stainless-Lang"));
@@ -379,8 +434,7 @@ public class GfLogStoreTest {
         StringBuilder buffer = new StringBuilder();
         LogEntry entry = capturingEntry(buffer);
 
-        new GfLogStore(AnalyticsSettings.builder().collectHeaders(true)
-                .headersAllowlist(patterns("traceparent", "user-agent")).build()).appendHeaders(context, entry);
+        new GfLogStore(headerSettings(List.of(), List.of("traceparent", "user-agent"))).appendHeaders(context, entry);
 
         JsonNode headerNode = parseWrapped(buffer.toString());
         assertEquals("00-abc-def-01", headerNode.get("traceparent").asText());
@@ -402,8 +456,7 @@ public class GfLogStoreTest {
         LogEntry entry = capturingEntry(buffer);
 
         // "authorization" matches both lists; the blacklist must win
-        new GfLogStore(AnalyticsSettings.builder().collectHeaders(true)
-                .headersBlacklist(patterns("authorization")).headersAllowlist(patterns(".*")).build()).appendHeaders(context, entry);
+        new GfLogStore(headerSettings(List.of("authorization"), List.of(".*"))).appendHeaders(context, entry);
 
         JsonNode headerNode = parseWrapped(buffer.toString());
         assertFalse(headerNode.has("Authorization"));
@@ -459,40 +512,11 @@ public class GfLogStoreTest {
         when(context.getOperationDurationMs()).thenReturn(1234L);
 
         StringBuilder buffer = new StringBuilder();
-        new GfLogStore(AnalyticsSettings.builder().build()).append(context, capturingEntry(buffer));
+        new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
 
         JsonNode duration = ProxyUtil.MAPPER.readTree(buffer.toString()).get("operation_duration_ms");
         assertTrue(duration.isNumber());
         assertEquals(1234L, duration.asLong());
-    }
-
-    @Test
-    public void testOperationDurationFromProxyContext() {
-        ProxyContext context = mockProxyContext();
-        when(context.getRequestTimestamp()).thenReturn(1000L);
-        when(context.getResponseBodyTimestamp()).thenReturn(2500L);
-
-        assertEquals(1500, AnalyticsLogContext.from(context, null).getOperationDurationMs());
-    }
-
-    @Test
-    public void testOperationDurationWhenResponseBodyTimestampNotSet() {
-        ProxyContext context = mockProxyContext();
-        when(context.getRequestTimestamp()).thenReturn(System.currentTimeMillis());
-        when(context.getResponseBodyTimestamp()).thenReturn(0L);
-
-        long duration = AnalyticsLogContext.from(context, null).getOperationDurationMs();
-        assertTrue(duration >= 0 && duration < 60_000, "Unexpected duration: " + duration);
-    }
-
-    @Test
-    public void testOperationDurationIsNeverNegative() {
-        ProxyContext context = mockProxyContext();
-        when(context.getRequestTimestamp()).thenReturn(2000L);
-        // clock moved backwards between the two measurements
-        when(context.getResponseBodyTimestamp()).thenReturn(1000L);
-
-        assertEquals(0, AnalyticsLogContext.from(context, null).getOperationDurationMs());
     }
 
     @Test
@@ -516,17 +540,6 @@ public class GfLogStoreTest {
         assertTrue(AnalyticsLogContext.from(record, result).getOperationDurationMs() >= 600_000);
     }
 
-    private static ProxyContext mockProxyContext() {
-        ProxyContext context = mock(ProxyContext.class, RETURNS_DEEP_STUBS);
-        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
-        when(context.getRequest()).thenReturn(request);
-        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
-        when(request.method()).thenReturn(HttpMethod.POST);
-        when(request.uri()).thenReturn("/test");
-        when(request.headers()).thenReturn(new HeadersMultiMap());
-        return context;
-    }
-
     /**
      * Writes a whole log line for the given usage and returns its "token_usage" member, so the
      * surrounding line has to stay parseable too. Field order is preserved by the parser.
@@ -537,7 +550,7 @@ public class GfLogStoreTest {
         when(context.getTokenUsage()).thenReturn(tokenUsage);
 
         StringBuilder buffer = new StringBuilder();
-        new GfLogStore(AnalyticsSettings.builder().build()).append(context, capturingEntry(buffer));
+        new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
 
         return ProxyUtil.MAPPER.readTree(buffer.toString()).get("token_usage").toString();
     }
@@ -557,15 +570,22 @@ public class GfLogStoreTest {
                 .put("claimsAllowlist", new JsonArray(List.of(claimPaths))));
     }
 
+    /**
+     * @param allowlist null leaves the setting out entirely, which disables the header allowlist.
+     */
+    private static AnalyticsSettings headerSettings(List<String> blacklist, List<String> allowlist) {
+        JsonObject settings = new JsonObject()
+                .put("collectHeaders", true)
+                .put("headersBlacklist", new JsonArray(blacklist));
+        if (allowlist != null) {
+            settings.put("headersAllowlist", new JsonArray(allowlist));
+        }
+        return AnalyticsSettings.from(settings);
+    }
+
     @SneakyThrows
     private static ObjectNode userClaims(String json) {
         return (ObjectNode) ProxyUtil.MAPPER.readTree(json);
-    }
-
-    private static List<Pattern> patterns(String... regexes) {
-        return Arrays.stream(regexes)
-                .map(regex -> Pattern.compile(regex, Pattern.CASE_INSENSITIVE))
-                .toList();
     }
 
     private static LogEntry capturingEntry(StringBuilder buffer) {

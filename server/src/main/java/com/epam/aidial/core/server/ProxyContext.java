@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.util.UrlUtil;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
@@ -217,6 +218,23 @@ public class ProxyContext {
 
     public boolean isSecuredApiKey() {
         return key != null && key.isSecured();
+    }
+
+    /**
+     * The whole claim payload as the identity provider returned it, or null for API key authentication.
+     */
+    public ObjectNode getUserClaims() {
+        return extractedClaims == null ? null : extractedClaims.userClaims();
+    }
+
+    /**
+     * How long the core worked on the request: from accepting it to having the full response body. Paths that never
+     * produce a response body, e.g. a deployment without an endpoint, fall back to the current time. Both bounds are
+     * wall-clock, so a backwards clock adjustment in between must not produce a negative duration.
+     */
+    public long getOperationDurationMs() {
+        long end = responseBodyTimestamp == 0 ? System.currentTimeMillis() : responseBodyTimestamp;
+        return Math.max(0, end - requestTimestamp);
     }
 
     public List<String> getExecutionPath() {

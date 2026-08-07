@@ -81,7 +81,7 @@ public class AnalyticsLogContext {
                 .userId(context.getUserId())
                 .userRoles(context.getUserRoles())
                 .userDisplayName(context.getUserDisplayName())
-                .userClaims(userClaims(context))
+                .userClaims(context.getUserClaims())
                 .requestHeaders(toHeadersMap(context.getRequest().headers()))
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
                 .parentDeployment(getParentDeployment(
@@ -100,7 +100,7 @@ public class AnalyticsLogContext {
                 .responseBody(responseBody)
                 .assembledStreamingResponse(assembledStreamingResponse)
                 .tokenUsage(context.getTokenUsage())
-                .operationDurationMs(operationDurationMs(context))
+                .operationDurationMs(context.getOperationDurationMs())
                 .build();
     }
 
@@ -134,30 +134,16 @@ public class AnalyticsLogContext {
                 .build();
     }
 
-    private static ObjectNode userClaims(ProxyContext context) {
-        return context.getExtractedClaims() == null ? null : context.getExtractedClaims().userClaims();
-    }
-
     /**
-     * Measured the same way as for a live request: from when the core accepted the request to when it emits the log
-     * entry. For a job that means the poller's detection lag is included — up to {@code backgroundJob.maxPollIntervalMs}
-     * once the backoff has grown — and an expired job reports the whole time the core waited before giving up.
+     * A job has no response body to measure against, so it is measured from when the core accepted the request to
+     * when it emits the log entry. That includes the poller's detection lag — up to
+     * {@code backgroundJob.maxPollIntervalMs} once the backoff has grown — and an expired job reports the whole time
+     * the core waited before giving up. A live request stops at its response body instead, see
+     * {@link ProxyContext#getOperationDurationMs()}.
      */
     private static long operationDurationMs(BackgroundJobRecord record) {
-        return duration(record.requestTimestamp(), System.currentTimeMillis());
-    }
-
-    private static long operationDurationMs(ProxyContext context) {
-        // guard for paths that respond without ever producing a response body, e.g. a forbidden deployment
-        long end = context.getResponseBodyTimestamp() == 0
-                ? System.currentTimeMillis()
-                : context.getResponseBodyTimestamp();
-        return duration(context.getRequestTimestamp(), end);
-    }
-
-    // both bounds are wall-clock, so a backwards clock adjustment in between must not produce a negative duration
-    private static long duration(long start, long end) {
-        return Math.max(0, end - start);
+        // both bounds are wall-clock, so a backwards clock adjustment in between must not produce a negative duration
+        return Math.max(0, System.currentTimeMillis() - record.requestTimestamp());
     }
 
     public static Map<String, List<String>> toHeadersMap(MultiMap headers) {
