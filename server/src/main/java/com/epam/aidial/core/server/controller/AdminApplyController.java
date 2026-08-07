@@ -302,6 +302,7 @@ public class AdminApplyController {
                 case "Model" -> {
                     Model model = ConfigResourceController.treeToEntity(entry.spec(), Model.class);
                     List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validatePricing(model, warnings);
                     ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
                     UpstreamExtraDataMerger.validateNoOverlap(model);
                     if (!warnings.isEmpty() && !softValidation) {
@@ -462,6 +463,7 @@ public class AdminApplyController {
     private EntityResult applyModel(AdminManifest entry, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
         Model model = ConfigResourceController.treeToEntity(entry.spec(), Model.class);
         List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validatePricing(model, warnings);
         ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
         UpstreamExtraDataMerger.validateNoOverlap(model);
         boolean invalid = !warnings.isEmpty();

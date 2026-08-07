@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
@@ -114,6 +115,59 @@ public class ConfigPostProcessorTest {
         ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
 
         assertTrue(config.getToolsets().isEmpty());
+    }
+
+    @Test
+    void testSemanticAbortThrowsOnCacheRateWithoutTokenUnit() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        Pricing pricing = new Pricing();
+        pricing.setUnit("char_without_whitespace");
+        pricing.setCacheRead("0.01");
+        model.setPricing(pricing);
+        config.getModels().put("model", model);
+
+        assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+    }
+
+    @Test
+    void testSemanticSkipDropsModelWithCacheRateWithoutTokenUnit() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        Pricing pricing = new Pricing();
+        pricing.setUnit("char_without_whitespace");
+        pricing.setCacheWrite("0.02");
+        model.setPricing(pricing);
+        config.getModels().put("model", model);
+
+        AtomicReference<ResourceTypes> capturedType = new AtomicReference<>();
+        AtomicReference<String> capturedKey = new AtomicReference<>();
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), (type, error) -> {
+            capturedType.set(type);
+            capturedKey.set(error.getMapKey());
+        });
+
+        assertEquals(ResourceTypes.MODEL, capturedType.get());
+        assertEquals("model", capturedKey.get());
+        assertFalse(config.getModels().containsKey("model"));
+    }
+
+    @Test
+    void testSemanticAllowsCacheRateWithTokenUnit() {
+        Config config = newMutableConfig();
+        Model model = new Model();
+        Pricing pricing = new Pricing();
+        pricing.setUnit("token");
+        pricing.setCacheRead("0.01");
+        pricing.setCacheWrite("0.02");
+        model.setPricing(pricing);
+        config.getModels().put("model", model);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getModels().containsKey("model"));
     }
 
     @Test

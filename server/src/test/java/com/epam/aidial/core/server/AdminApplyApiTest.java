@@ -91,6 +91,39 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testApplyRejectsCacheRateWithoutTokenUnit() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-bad-cache-pricing",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "pricing": {
+                          "unit": "char_without_whitespace",
+                          "prompt": "0.1",
+                          "completion": "0.5",
+                          "cacheRead": "0.01"
+                        }
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        JsonNode results = parsed.get("results");
+        assertEquals(1, results.size());
+        assertEquals("FAILED", results.get(0).get("status").asText());
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-bad-cache-pricing", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
     void testApplyPrecheckMixedBatchRejectedAtomically() {
         String body = """
                 {
