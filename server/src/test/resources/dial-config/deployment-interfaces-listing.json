@@ -12,6 +12,13 @@
       },
       "viewer_url": "http://some-host",
       "editor_url": "http://some-host"
+    },
+    "schema-app": {
+      "application_type_schema_id": "https://mydial.somewhere.com/custom_application_schemas/specific_toolset_type",
+      "application_properties": {
+        "property1": "foo",
+        "property2": "bar"
+      }
     }
   },
   "models": {
