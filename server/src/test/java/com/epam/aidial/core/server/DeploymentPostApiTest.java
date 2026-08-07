@@ -167,6 +167,23 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testEmbeddings_NotAffectedByUsagePerModelInjection() {
+        String answer = "{\"object\":\"list\",\"model\":\"ada\",\"data\":[{\"object\":\"embedding\",\"index\":0,\"embedding\":[0.1,0.2]}],"
+                + "\"usage\":{\"prompt_tokens\":5,\"total_tokens\":5}}";
+        try (TestWebServer server = new TestWebServer(7001)) {
+            server.map(HttpMethod.POST, "/openai/deployments/ada/embeddings", 200, answer);
+
+            Response response = send(HttpMethod.POST, "/openai/deployments/embedding-ada/embeddings", null,
+                    "{\"input\":\"hello\"}", "content-type", "application/json");
+
+            // /embeddings is out of scope for statistics.usage_per_model injection (issue #1753) -
+            // this shares DeploymentPostController with /chat/completions, so the response must pass
+            // through byte-identical, unaffected by the new buffer-and-rewrite path
+            verify(response, 200, answer);
+        }
+    }
+
+    @Test
     public void testAutoShareAnnotationCitationAttachment() {
         // Register a public application that internally calls gpt-3-turbo.
         // Auto-sharing of annotation citation attachments only activates when the
