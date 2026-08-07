@@ -1,10 +1,10 @@
 package com.epam.aidial.core.server.util;
 
-import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.RoleBasedEntity;
+import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -34,29 +34,38 @@ public class ModelCostCalculator {
         }
 
         return switch (pricing.getUnit()) {
-            case "token" -> calculate(tokenUsage, pricing.getPrompt(), pricing.getCompletion());
+            case "token" -> calculate(tokenUsage, pricing);
             case "char_without_whitespace" ->
                     calculate(model.getType(), requestBody, responseBody, pricing.getPrompt(), pricing.getCompletion());
             default -> null;
         };
     }
 
-    private static BigDecimal calculate(TokenUsage tokenUsage, String promptRate, String completionRate) {
+    private static BigDecimal calculate(TokenUsage tokenUsage, Pricing pricing) {
         if (tokenUsage == null) {
             return null;
         }
+        String promptRate = pricing.getPrompt();
+        String completionRate = pricing.getCompletion();
+        String cacheReadRate = pricing.getCacheRead() != null ? pricing.getCacheRead() : promptRate;
+        String cacheWriteRate = pricing.getCacheWrite() != null ? pricing.getCacheWrite() : promptRate;
+
+        long cachedTokens = 0;
+        long cacheWriteTokens = 0;
+        PromptTokensDetails details = tokenUsage.getPromptTokensDetails();
+        if (details != null) {
+            cachedTokens = details.getCachedTokens();
+            cacheWriteTokens = details.getCacheWriteTokens();
+        }
+
         BigDecimal cost = null;
         if (promptRate != null) {
-            cost = new BigDecimal(tokenUsage.getPromptTokens()).multiply(new BigDecimal(promptRate));
+            long baseTokens = tokenUsage.getPromptTokens() - cachedTokens - cacheWriteTokens;
+            cost = new BigDecimal(baseTokens).multiply(new BigDecimal(promptRate));
         }
-        if (completionRate != null) {
-            BigDecimal completionCost = new BigDecimal(tokenUsage.getCompletionTokens()).multiply(new BigDecimal(completionRate));
-            if (cost != null) {
-                cost = cost.add(completionCost);
-            } else {
-                cost = completionCost;
-            }
-        }
+        cost = addCost(cost, completionRate, tokenUsage.getCompletionTokens());
+        cost = addCost(cost, cacheReadRate, cachedTokens);
+        cost = addCost(cost, cacheWriteRate, cacheWriteTokens);
         return cost;
     }
 
@@ -80,6 +89,14 @@ public class ModelCostCalculator {
             }
         }
         return cost;
+    }
+
+    private static BigDecimal addCost(BigDecimal cost, String rate, long tokens) {
+        if (rate == null) {
+            return cost;
+        }
+        BigDecimal delta = new BigDecimal(tokens).multiply(new BigDecimal(rate));
+        return cost == null ? delta : cost.add(delta);
     }
 
     private static int getResponseContentLength(ModelType modelType, Buffer responseBody, boolean isStreamingResponse) {

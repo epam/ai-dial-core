@@ -505,6 +505,39 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         }
     }
 
+    @Test
+    @SneakyThrows
+    void testV18RejectsCacheRateWithoutTokenUnit() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/validate-bad-cache-pricing",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "pricing": {
+                          "unit": "char_without_whitespace",
+                          "prompt": "0.1",
+                          "completion": "0.5",
+                          "cacheWrite": "0.02"
+                        }
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt());
+        assertEquals(1, parsed.get("failed").asInt());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-bad-cache-pricing", null, "",
+                "authorization", "admin"), 404);
+    }
+
     public static class SoftValidation extends ResourceBaseTest {
         @Override
         protected JsonObject additionalSettingsOverrides() {
@@ -544,6 +577,43 @@ public class AdminValidateApiTest extends ResourceBaseTest {
             assertEquals(0, parsed.get("failed").asInt());
             assertEquals("VALID", parsed.get("results").get(0).get("status").asText());
             verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-mode", null, "",
+                    "authorization", "admin"), 404);
+        }
+
+        @Test
+        @SneakyThrows
+        void testV19SoftValidationAdmitsCacheRateWithoutTokenUnit() {
+            // Same admission logic as testV17SoftValidationModePerEntityValid: softValidation
+            // downgrades the pricing violation to "valid" at validate-time too.
+            String body = """
+                    {
+                      "precheck": false,
+                      "manifests": [
+                        {
+                          "kind": "Model",
+                          "name": "models/platform/validate-soft-cache-pricing",
+                          "spec": {
+                            "type": "chat",
+                            "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                            "pricing": {
+                              "unit": "char_without_whitespace",
+                              "prompt": "0.1",
+                              "completion": "0.5",
+                              "cacheRead": "0.01"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                    """;
+            Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body,
+                    "authorization", "admin");
+            verify(response, 200);
+            JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+            assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+            assertEquals(0, parsed.get("failed").asInt());
+            assertEquals("VALID", parsed.get("results").get(0).get("status").asText());
+            verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-cache-pricing", null, "",
                     "authorization", "admin"), 404);
         }
     }
