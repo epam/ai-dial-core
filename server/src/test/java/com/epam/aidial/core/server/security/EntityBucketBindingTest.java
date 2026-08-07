@@ -41,6 +41,23 @@ class EntityBucketBindingTest {
     }
 
     @Test
+    void platformAppToolsetResourceRegexMatchesOnlyPlatformBucket() {
+        assertTrue(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE.matches("/v1/applications/platform/my-app"));
+        assertTrue(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE.matches("/v1/toolsets/platform/my-toolset"));
+        // public-bucket apps/toolsets keep routing via RouteTemplate.RESOURCE, not this template.
+        assertFalse(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE.matches("/v1/applications/public/my-app"));
+        assertFalse(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE.matches("/v1/toolsets/public/my-toolset"));
+        assertFalse(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE.matches("/v1/models/platform/gpt-4"));
+    }
+
+    @Test
+    void platformAppToolsetResourceMetadataRegexMatchesOnlyPlatformBucket() {
+        assertTrue(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE_METADATA.matches("/v1/metadata/applications/platform/my-app"));
+        assertTrue(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE_METADATA.matches("/v1/metadata/toolsets/platform/my-toolset"));
+        assertFalse(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE_METADATA.matches("/v1/metadata/applications/public/my-app"));
+    }
+
+    @Test
     void configResourceRegexRejectsNonAdminConfigTypes() {
         // RESOURCE-bound types stay out of CONFIG_RESOURCE — they route via existing RouteTemplate.RESOURCE.
         assertFalse(RouteTemplate.CONFIG_RESOURCE.matches("/v1/conversations/Userbucket123/conv1"));
@@ -59,6 +76,9 @@ class EntityBucketBindingTest {
         assertTrue(EntityBucketBinding.isAllowed("settings", EntityBucketBinding.PLATFORM_BUCKET));
         assertTrue(EntityBucketBinding.isAllowed("applications", "public"));
         assertTrue(EntityBucketBinding.isAllowed("toolsets", "public"));
+        // applications/toolsets are also API-managed in the platform bucket now.
+        assertTrue(EntityBucketBinding.isAllowed("applications", EntityBucketBinding.PLATFORM_BUCKET));
+        assertTrue(EntityBucketBinding.isAllowed("toolsets", EntityBucketBinding.PLATFORM_BUCKET));
         // files / prompts / conversations also accept user buckets via the wildcard.
         assertTrue(EntityBucketBinding.isAllowed("files", "Userbucket123"));
         assertTrue(EntityBucketBinding.isAllowed("prompts", "Userbucket123"));

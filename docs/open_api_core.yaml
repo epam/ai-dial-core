@@ -2531,6 +2531,199 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/applications/platform/{path}:
+    get:
+      tags:
+      - Applications
+      summary: "/v1/applications/platform/{path}"
+      operationId: getPlatformApplication
+      parameters:
+      - name: path
+        in: path
+        description: Application name
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the application
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Application"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Applications
+      summary: "/v1/applications/platform/{path}"
+      operationId: savePlatformApplication
+      parameters:
+      - name: path
+        in: path
+        description: Application name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Application"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved application
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Applications
+      summary: "/v1/applications/platform/{path}"
+      operationId: deletePlatformApplication
+      parameters:
+      - name: path
+        in: path
+        description: Application name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/applications/{appId}/external-services:
     get:
       tags:
@@ -5222,6 +5415,68 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/metadata/applications/platform/{path}:
+    get:
+      tags:
+      - Applications
+      summary: "/v1/metadata/applications/platform/{path}"
+      operationId: getPlatformApplicationMetadata
+      parameters:
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/metadata/applications/{bucket}/{path}:
     get:
       tags:
@@ -6214,6 +6469,68 @@ paths:
               required: false
               schema:
                 type: string
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/toolsets/platform/{path}:
+    get:
+      tags:
+      - Toolsets
+      summary: "/v1/metadata/toolsets/platform/{path}"
+      operationId: getPlatformToolSetMetadata
+      parameters:
+      - name: path
+        in: path
+        description: "The parameter specifies path to a directory or a toolset, for example: `folder1/folder2/`."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
           content:
@@ -10840,6 +11157,199 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/toolsets/platform/{path}:
+    get:
+      tags:
+      - Toolsets
+      summary: "/v1/toolsets/platform/{path}"
+      operationId: getPlatformToolSet
+      parameters:
+      - name: path
+        in: path
+        description: Toolset name
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the toolset
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/ToolSet"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Toolsets
+      summary: "/v1/toolsets/platform/{path}"
+      operationId: savePlatformToolSet
+      parameters:
+      - name: path
+        in: path
+        description: Toolset name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToolSet"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved toolset
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Toolsets
+      summary: "/v1/toolsets/platform/{path}"
+      operationId: deletePlatformToolSet
+      parameters:
+      - name: path
+        in: path
+        description: Toolset name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/toolsets/{bucket}/{toolset_path}:
     get:
       tags:
@@ -12817,6 +13327,8 @@ components:
             $ref: "#/components/schemas/ChatCompletionChoice"
         usage:
           $ref: "#/components/schemas/CompletionUsage"
+        statistics:
+          $ref: "#/components/schemas/Statistics"
     CreateChatCompletionStreamChoice:
       required:
       - delta

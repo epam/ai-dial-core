@@ -23,6 +23,7 @@ import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.StripUsagePerModelFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
@@ -31,13 +32,16 @@ import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.sse.SseEvent;
+import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.UsagePerModelInjector;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -369,12 +373,24 @@ public class DeploymentPostController extends BaseDeploymentPostController {
             upstreamRoute.fail(proxyResponse);
         }
 
-        Supplier<BufferingReadStream.BaseEventListener> eventListenerSupplier = () ->
-                new ChatCompletionSseListener(new CollectResponseChatCompletionAttachmentsFn(proxy, context));
-        BufferingReadStream responseStream = createResponseStream(proxyResponse, eventListenerSupplier);
-
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
+
+        // statistics.usage_per_model is only in scope for /chat/completions (not /completions or
+        // /embeddings, which share this controller); a non-SSE response has to be buffered to inject
+        // into it, since today's bytes are otherwise piped to the client as they arrive.
+        if (isChatCompletionsPath() && !isEventStreamContentType(proxyResponse)) {
+            proxyResponse.body()
+                    .compose(body -> handleNonStreamingChatCompletionResponse(proxyResponse, body))
+                    .onFailure(this::handleProxyConnectionError);
+            return;
+        }
+
+        Supplier<BufferingReadStream.BaseEventListener> eventListenerSupplier = () ->
+                new ChatCompletionSseListener(isChatCompletionsPath()
+                        ? List.of(new StripUsagePerModelFn(proxy, context), new CollectResponseChatCompletionAttachmentsFn(proxy, context))
+                        : List.of(new CollectResponseChatCompletionAttachmentsFn(proxy, context)));
+        BufferingReadStream responseStream = createResponseStream(proxyResponse, eventListenerSupplier);
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
@@ -386,6 +402,58 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 .to(response)
                 .onSuccess(ignored -> handleResponse(responseStream))
                 .onFailure(error -> handleResponseError(error, responseStream));
+    }
+
+    private boolean isChatCompletionsPath() {
+        String uri = context.getRequest().uri();
+        int queryIndex = uri.indexOf('?');
+        String path = queryIndex < 0 ? uri : uri.substring(0, queryIndex);
+        return path.endsWith("/chat/completions");
+    }
+
+    private boolean isEventStreamContentType(HttpClientResponse proxyResponse) {
+        String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
+        return Strings.CI.contains(contentType, "text/event-stream");
+    }
+
+    /**
+     * Non-streaming /chat/completions: buffers the body (mirroring {@code ResponsesController}'s
+     * non-streaming handling) so {@code statistics.usage_per_model} can be injected before the
+     * client sees a byte of it.
+     */
+    private Future<Void> handleNonStreamingChatCompletionResponse(HttpClientResponse proxyResponse, Buffer body) {
+        context.setResponseBody(body);
+        context.setResponseBodyTimestamp(System.currentTimeMillis());
+        HttpServerResponse response = context.getResponse();
+        ProxyUtil.copyResponse(response, proxyResponse);
+        response.setChunked(false);
+        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+
+        return collectTokenUsage(body)
+                .transform(result -> {
+                    if (result.failed()) {
+                        log.warn("Failed to collect token usage", result.cause());
+                    }
+                    return collectResponseAttachments(body, new CollectResponseChatCompletionAttachmentsFn(proxy, context));
+                })
+                .transform(result -> {
+                    if (result.failed()) {
+                        log.warn("Failed to collect attachments from response", result.cause());
+                    }
+                    Buffer rewritten = maybeInjectUsagePerModel(body);
+                    response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
+                    response.end(rewritten);
+                    finishAndLog(null);
+                    return Future.<Void>succeededFuture();
+                });
+    }
+
+    private Buffer buildUsagePerModelChunk(List<UsagePerModel> usagePerModel) {
+        ObjectNode chunk = ProxyUtil.MAPPER.createObjectNode();
+        chunk.put("object", "chat.completion.chunk");
+        chunk.putArray("choices");
+        UsagePerModelInjector.inject(chunk, usagePerModel);
+        return Buffer.buffer("data: " + ProxyUtil.convertToString(chunk) + "\n\n");
     }
 
     /**
@@ -415,12 +483,22 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
     private void completeProxyResponse(BufferingReadStream responseStream) {
         HttpServerResponse response = context.getResponse();
+        if (isChatCompletionsPath() && isEventStreamResponse(context.getProxyResponse())) {
+            List<UsagePerModel> usagePerModel = context.getUsagePerModel();
+            if (usagePerModel != null && !usagePerModel.isEmpty()) {
+                response.write(buildUsagePerModelChunk(usagePerModel));
+            }
+        }
         responseStream.end(response);
 
         String assembledStreamingResponse = null;
         if (isEventStreamResponse(context.getProxyResponse())) {
             assembledStreamingResponse = AnalyticsLogContext.assembleStreamingChatCompletionsResponse(context.getResponseBody());
         }
+        finishAndLog(assembledStreamingResponse);
+    }
+
+    private void finishAndLog(String assembledStreamingResponse) {
         proxy.getLogStore().save(AnalyticsLogContext.from(context, assembledStreamingResponse));
         Upstream currentUpstream = context.getUpstreamRoute().get();
         log.info("Sent response to client. Deployment: {}. Endpoint: {}. Upstream: {}. Length: {}."
@@ -458,8 +536,8 @@ public class DeploymentPostController extends BaseDeploymentPostController {
 
         public static final String CHAT_COMPLETION_FINAL_MESSAGE = "[DONE]";
 
-        public ChatCompletionSseListener(BaseResponseFunction function) {
-            super(List.of(function));
+        public ChatCompletionSseListener(List<BaseResponseFunction> functions) {
+            super(functions);
         }
 
         @Override

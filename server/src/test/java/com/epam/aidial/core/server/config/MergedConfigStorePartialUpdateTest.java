@@ -7,7 +7,9 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
@@ -63,6 +65,10 @@ public class MergedConfigStorePartialUpdateTest {
     private FileConfigStore fileConfigStore;
     @Mock
     private LockService lockService;
+    @Mock
+    private ExternalServiceService externalServiceService;
+    @Mock
+    private ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
 
     @BeforeEach
     public void setUpLockService() {
@@ -244,7 +250,8 @@ public class MergedConfigStorePartialUpdateTest {
         when(fileConfigStore.get()).thenReturn(seeded);
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, onInvalidEntity);
+                secretFieldProcessor, lockService, onInvalidEntity,
+                externalServiceService, resourceAuthSettingsEncryptionService);
         store.init(fileConfigStore);
         return store;
     }

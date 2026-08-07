@@ -567,6 +567,14 @@ public class ApplicationService {
 
     private void prepareApplication(ResourceDescriptor resource, Application application, boolean preserveForwardAuthToken) {
         verifyApplication(resource);
+        boolean platformBucket = ResourceDescriptor.PLATFORM_BUCKET.equals(resource.getBucketName());
+        // platform hosts migrated config-file apps (and future API-managed equivalents), which are
+        // inherently endpoint-based; function-type apps have no legitimate reason to live there, and
+        // deleteApplication's function-folder/schema-file cleanup assumes the public/review publish
+        // flow this bucket never goes through.
+        if (platformBucket && application.getFunction() != null) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Function-type applications are not supported in the platform bucket");
+        }
         URI applicationSchemaId = application.getApplicationTypeSchemaId();
         if (applicationSchemaId != null) {
             if (application.getEndpoint() != null || application.getFunction() != null || application.getMcp() != null) {
@@ -582,7 +590,11 @@ public class ApplicationService {
         validateCatalogProperties(application);
 
         application.setName(resource.getUrl());
-        application.setUserRoles(null);
+        // public-bucket user-published apps must not self-grant userRoles; platform-bucket apps are
+        // admin-managed config equivalents whose access model is userRoles itself, so preserve it.
+        if (!platformBucket) {
+            application.setUserRoles(null);
+        }
         if (!preserveForwardAuthToken) {
             application.setForwardAuthToken(false);
         }

@@ -16,6 +16,8 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
+import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
@@ -36,6 +38,7 @@ import org.redisson.api.RedissonClient;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -217,6 +220,8 @@ public class BackgroundJobService {
         Deployment deployment = config.selectDeployment(responseMapping.getDeploymentName());
         ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(responseId);
         String perRequestKey = decryptKey(descriptor, jobRecord.perRequestKey());
+        TokenUsage usage = result == null ? null : result.usage();
+        boolean hasUsage = usage != null && !usage.isEmpty();
 
         apiKeyStore.getApiKeyData(perRequestKey, null)
                 .recover(e -> Future.succeededFuture(null))
@@ -224,26 +229,40 @@ public class BackgroundJobService {
                     String traceId = apiKeyData != null ? apiKeyData.getTraceId() : null;
                     String spanId = apiKeyData != null ? apiKeyData.getSpanId() : null;
 
-                    Future<Void> future = Future.succeededFuture();
-                    if (deployment instanceof Model && result != null && result.usage() != null) {
+                    // rate limiting only applies to Models; any deployment may still self-report
+                    // usage for the statistics.usage_per_model breakdown
+                    Future<Void> limitFuture = Future.succeededFuture();
+                    if (deployment instanceof Model && hasUsage) {
                         Buffer requestBody = Buffer.buffer(jobRecord.requestBody());
-                        future = rateLimiter.increase(
-                                deployment, responseMapping.getInitiatorBucket(), result.usage(), requestBody, result.body())
+                        limitFuture = rateLimiter.increase(
+                                deployment, responseMapping.getInitiatorBucket(), usage, requestBody, result.body())
                                 .transform(limitResult -> {
                                     if (limitResult.failed()) {
                                         log.warn("Failed to increase limit", limitResult.cause());
                                     }
-                                    if (traceId != null && spanId != null) {
-                                        return tokenStatsTracker.updateModelStats(traceId, spanId, result.usage());
-                                    }
-                                    return Future.succeededFuture();
+                                    return Future.<Void>succeededFuture();
                                 });
                     }
+
+                    Future<List<UsagePerModel>> statsFuture = limitFuture.compose(ignored -> {
+                        if (!hasUsage || traceId == null || spanId == null) {
+                            return Future.succeededFuture(List.of());
+                        }
+                        return tokenStatsTracker.updateDeploymentStats(traceId, spanId, responseMapping.getDeploymentName(), usage)
+                                .map(TokenStatsTracker.UsageStats::usagePerModel);
+                    });
+
                     if (traceId != null && Boolean.TRUE.equals(jobRecord.isRootSpan())) {
-                        future = future.compose(ignored -> tokenStatsTracker.endSpan(traceId));
+                        statsFuture = statsFuture.compose(list -> tokenStatsTracker.endSpan(traceId).map(ignored -> list));
                     }
-                    future.eventually(() -> invalidatePerRequestKey(perRequestKey))
-                            .onComplete(ignored -> logStore.save(AnalyticsLogContext.from(jobRecord, result)))
+
+                    Future<List<UsagePerModel>> finalStatsFuture = statsFuture;
+                    statsFuture.eventually(() -> invalidatePerRequestKey(perRequestKey))
+                            .onComplete(ignored -> {
+                                List<UsagePerModel> usagePerModel = finalStatsFuture.succeeded()
+                                        ? finalStatsFuture.result() : List.of();
+                                logStore.save(AnalyticsLogContext.from(jobRecord, result, usagePerModel));
+                            })
                             .onFailure(error -> log.error("Failed to finalize background job {}", responseId, error));
                 });
         return Future.succeededFuture();

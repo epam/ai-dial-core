@@ -23,6 +23,7 @@ import redis.embedded.RedisServer;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -120,6 +121,14 @@ public class TokenStatsTrackerTest {
         // app calls model -> core starts span
         tracker.startSpan(app);
 
+        ProxyContext model = mock(ProxyContext.class);
+        when(model.getSpanId()).thenReturn("model");
+        when(model.getTraceId()).thenReturn(traceId);
+        when(model.getParentSpanId()).thenReturn("app");
+
+        // core starts span for the model's own hop
+        tracker.startSpan(model);
+
         TokenUsage modelTokenUsage = new TokenUsage();
         modelTokenUsage.setTotalTokens(100);
         modelTokenUsage.setCompletionTokens(80);
@@ -128,24 +137,166 @@ public class TokenStatsTrackerTest {
         modelTokenUsage.setAggCost(new BigDecimal("10.0"));
 
         // core receives response from model
-        tracker.updateModelStats(traceId, "app", modelTokenUsage);
+        TokenStatsTracker.UsageStats modelStats = tracker.updateDeploymentStats(traceId, "model", "gpt-4", modelTokenUsage).result();
+        assertNotNull(modelStats);
+        assertEquals(100, modelStats.total().getTotalTokens());
+        // the model never lists itself in its own breakdown - that's already its own tokenUsage
+        assertEquals(0, modelStats.usagePerModel().size());
+
+        // the model's direct ancestor (app) is the one that picks up the entry
+        TokenStatsTracker.UsageStats appStatsAfterModel = tracker.getUsageStats(app).result();
+        assertEquals(1, appStatsAfterModel.usagePerModel().size());
+        assertEquals(0, appStatsAfterModel.usagePerModel().get(0).getIndex());
+        assertEquals("gpt-4", appStatsAfterModel.usagePerModel().get(0).getModel());
+        assertEquals(100, appStatsAfterModel.usagePerModel().get(0).getTotalTokens());
+
+        // the app also self-reports its own usage in its response body. Its own counters are
+        // *assigned* (5, not 100 + 5) but aggCost must keep the model's earlier contribution -
+        // a plain assign there would silently erase it.
+        TokenUsage appOwnUsage = new TokenUsage();
+        appOwnUsage.setTotalTokens(5);
+        appOwnUsage.setPromptTokens(5);
+        TokenStatsTracker.UsageStats appStats = tracker.updateDeploymentStats(traceId, "app", "my-app", appOwnUsage).result();
+        assertEquals(5, appStats.total().getTotalTokens());
+        assertEquals(5, appStats.total().getPromptTokens());
+        assertEquals(0, appStats.total().getCompletionTokens());
+        assertEquals(new BigDecimal("10.0"), appStats.total().getAggCost());
+        // the app's own view of its breakdown still only shows the model - never itself
+        assertEquals(1, appStats.usagePerModel().size());
+        assertEquals("gpt-4", appStats.usagePerModel().get(0).getModel());
 
         // core ends span for request to model
-        tracker.endSpan(app);
+        tracker.endSpan(model);
 
-        // core receives response from app
+        // core receives response from chat: chat never self-reports, so its own counters stay
+        // at zero - only aggCost and usagePerModel roll up from descendants.
         Future<TokenUsage> appStatsFuture = tracker.getTokenStats(chatBackend);
         assertNotNull(appStatsFuture);
         TokenUsage tokenUsage = appStatsFuture.result();
-        assertEquals(100, tokenUsage.getTotalTokens());
-        assertEquals(80, tokenUsage.getCompletionTokens());
-        assertEquals(20, tokenUsage.getPromptTokens());
+        assertEquals(0, tokenUsage.getTotalTokens());
+        assertEquals(0, tokenUsage.getCompletionTokens());
+        assertEquals(0, tokenUsage.getPromptTokens());
         assertEquals(new BigDecimal("10.0"), tokenUsage.getAggCost());
         assertNull(tokenUsage.getCost());
+
+        // the breakdown at the chat span shows both contributors, additively (no suppression) -
+        // chat is an ancestor of both the model and the app, so it picks up both entries
+        TokenStatsTracker.UsageStats chatStats = tracker.getUsageStats(chatBackend).result();
+        assertEquals(2, chatStats.usagePerModel().size());
+        assertEquals("gpt-4", chatStats.usagePerModel().get(0).getModel());
+        assertEquals(100, chatStats.usagePerModel().get(0).getTotalTokens());
+        assertEquals("my-app", chatStats.usagePerModel().get(1).getModel());
+        assertEquals(5, chatStats.usagePerModel().get(1).getTotalTokens());
 
         // core ends span for request to app
         tracker.endSpan(chatBackend);
         assertNull(tracker.getTokenStats(chatBackend).result());
+    }
+
+    @Test
+    public void testSameDeploymentCalledTwiceAppendsTwoSeparateEntries() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        final String traceId = "trace-id-repeat";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        tracker.startSpan(root);
+
+        // two different branches under the same root both call gpt-4
+        ProxyContext branchA = mock(ProxyContext.class);
+        when(branchA.getSpanId()).thenReturn("branch-a");
+        when(branchA.getTraceId()).thenReturn(traceId);
+        when(branchA.getParentSpanId()).thenReturn("root");
+        tracker.startSpan(branchA);
+
+        ProxyContext branchB = mock(ProxyContext.class);
+        when(branchB.getSpanId()).thenReturn("branch-b");
+        when(branchB.getTraceId()).thenReturn(traceId);
+        when(branchB.getParentSpanId()).thenReturn("root");
+        tracker.startSpan(branchB);
+
+        TokenUsage firstCall = new TokenUsage();
+        firstCall.setTotalTokens(10);
+        firstCall.setPromptTokens(10);
+        firstCall.setAggCost(new BigDecimal("1.0"));
+        tracker.updateDeploymentStats(traceId, "branch-a", "gpt-4", firstCall);
+
+        TokenUsage secondCall = new TokenUsage();
+        secondCall.setTotalTokens(20);
+        secondCall.setCompletionTokens(20);
+        secondCall.setAggCost(new BigDecimal("2.0"));
+        tracker.updateDeploymentStats(traceId, "branch-b", "gpt-4", secondCall);
+
+        TokenStatsTracker.UsageStats stats = tracker.getUsageStats(root).result();
+
+        // no merge-by-name: each report from "gpt-4" is its own entry, not summed together
+        assertEquals(2, stats.usagePerModel().size());
+        UsagePerModel first = stats.usagePerModel().get(0);
+        assertEquals("gpt-4", first.getModel());
+        assertEquals(0, first.getIndex());
+        assertEquals(10, first.getTotalTokens());
+        assertEquals(10, first.getPromptTokens());
+        assertEquals(0, first.getCompletionTokens());
+
+        UsagePerModel second = stats.usagePerModel().get(1);
+        assertEquals("gpt-4", second.getModel());
+        assertEquals(1, second.getIndex());
+        assertEquals(20, second.getTotalTokens());
+        assertEquals(0, second.getPromptTokens());
+        assertEquals(20, second.getCompletionTokens());
+
+        // root is a pure ancestor of both branches - it never self-reports, so its own
+        // counters stay at zero; only aggCost accumulates from both branches.
+        assertEquals(0, stats.total().getTotalTokens());
+        assertEquals(new BigDecimal("3.0"), stats.total().getAggCost());
+    }
+
+    @Test
+    public void testSoloModelCallHasEmptyUsagePerModel() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        final String traceId = "trace-id-solo";
+        ProxyContext root = mock(ProxyContext.class);
+        when(root.getSpanId()).thenReturn("root");
+        when(root.getTraceId()).thenReturn(traceId);
+        tracker.startSpan(root);
+
+        TokenUsage usage = new TokenUsage();
+        usage.setTotalTokens(42);
+        usage.setPromptTokens(10);
+        usage.setCompletionTokens(32);
+        usage.setCost(new BigDecimal("1.0"));
+        usage.setAggCost(new BigDecimal("1.0"));
+
+        // a client calling a Model directly (no App in between) has no ancestors, so nothing
+        // ever merges it into a usagePerModel breakdown - only the top-level tokenUsage carries it
+        TokenStatsTracker.UsageStats stats = tracker.updateDeploymentStats(traceId, "root", "gpt-4", usage).result();
+
+        assertEquals(42, stats.total().getTotalTokens());
+        assertEquals(List.of(), stats.usagePerModel());
+    }
+
+    @Test
+    public void testMissingTraceReturnsEmptyUsageStats() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        ProxyContext ctx = mock(ProxyContext.class);
+        when(ctx.getTraceId()).thenReturn("nonexistent-trace");
+
+        TokenStatsTracker.UsageStats stats = tracker.getUsageStats(ctx).result();
+        assertNotNull(stats);
+        assertNull(stats.total());
+        assertEquals(List.of(), stats.usagePerModel());
     }
 
 }

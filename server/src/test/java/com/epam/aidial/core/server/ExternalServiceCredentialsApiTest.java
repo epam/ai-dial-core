@@ -792,7 +792,7 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
                       "manifests": [
                         {
                           "kind": "Application",
-                          "name": "applied-ext-svc-app",
+                          "name": "applications/public/applied-ext-svc-app",
                           "spec": {
                             "endpoint": "http://localhost:7001/v1/x",
                             "display_name": "Applied App",

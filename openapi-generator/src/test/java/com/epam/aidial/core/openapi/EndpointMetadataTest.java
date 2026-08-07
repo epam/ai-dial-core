@@ -38,6 +38,14 @@ class EndpointMetadataTest {
             new RouteExclusion("PUT", Pattern.compile(".*/metadata/\\(models\\|.*\\)/.*")),
             new RouteExclusion("DELETE", Pattern.compile(".*/metadata/\\(models\\|.*\\)/.*")),
 
+            // PLATFORM_APP_TOOLSET_RESOURCE route: POST returns 405 Method Not Allowed (not a real endpoint)
+            new RouteExclusion("POST", Pattern.compile(".*/\\(applications\\|toolsets\\)/.*")),
+
+            // PLATFORM_APP_TOOLSET_RESOURCE_METADATA route: POST/PUT/DELETE are bulk operations (not CRUD)
+            new RouteExclusion("POST", Pattern.compile(".*/metadata/\\(applications\\|toolsets\\)/.*")),
+            new RouteExclusion("PUT", Pattern.compile(".*/metadata/\\(applications\\|toolsets\\)/.*")),
+            new RouteExclusion("DELETE", Pattern.compile(".*/metadata/\\(applications\\|toolsets\\)/.*")),
+
             // FILE_CONFIG route: POST/PUT/DELETE are admin bulk operations
             new RouteExclusion("POST", Pattern.compile(".*/admin/config/file/.*")),
             new RouteExclusion("PUT", Pattern.compile(".*/admin/config/file/.*")),
