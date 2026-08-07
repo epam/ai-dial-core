@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
@@ -126,15 +127,19 @@ public final class ConfigPostProcessor {
             return;
         }
         model.setName(canonicalId);
-        if (onSkip == null) {
+        List<ValidationWarning> warnings = new ArrayList<>();
+        validatePricing(model, warnings);
+        if (onSkip != null) {
+            validateCrossReferences(model, config, warnings);
+        }
+        if (warnings.isEmpty()) {
             return;
         }
-        List<ValidationWarning> warnings = new ArrayList<>();
-        validateCrossReferences(model, config, warnings);
-        if (!warnings.isEmpty()) {
-            config.getModels().remove(canonicalId);
-            onSkip.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, canonicalId, warnings));
+        if (onSkip == null) {
+            throw new InvalidEntityException(ResourceTypes.MODEL, canonicalId, warnings);
         }
+        config.getModels().remove(canonicalId);
+        onSkip.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, canonicalId, warnings));
     }
 
     /**
@@ -222,16 +227,21 @@ public final class ConfigPostProcessor {
             Model model = entry.getValue();
             model.setName(name);
             log.debug("Loading {}", model);
+            List<ValidationWarning> warnings = new ArrayList<>();
+            validatePricing(model, warnings);
             // Cross-ref check is skip-mode-only — file-loaded abort-mode path (onSkip == null)
             // preserves design 02 §4.2's allowance for pre-existing file-side inconsistency.
-            // Strict-mode 422 is enforced at the write controller, not here.
+            // Strict-mode 422 is enforced at the write controller, not here. Pricing validation
+            // has no such excuse (it's self-contained to this model) so it runs unconditionally.
             if (onSkip != null) {
-                List<ValidationWarning> crossRefWarnings = new ArrayList<>();
-                validateCrossReferences(model, config, crossRefWarnings);
-                if (!crossRefWarnings.isEmpty()) {
-                    iterator.remove();
-                    onSkip.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, name, crossRefWarnings));
+                validateCrossReferences(model, config, warnings);
+            }
+            if (!warnings.isEmpty()) {
+                if (onSkip == null) {
+                    throw new InvalidEntityException(ResourceTypes.MODEL, name, warnings);
                 }
+                iterator.remove();
+                onSkip.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, name, warnings));
             }
         }
     }
@@ -257,6 +267,24 @@ public final class ConfigPostProcessor {
             }
         }
         return warnings.isEmpty();
+    }
+
+    /**
+     * Validates that {@code pricing.cacheRead}/{@code cacheWrite} are only set when
+     * {@code pricing.unit == "token"} — those rates are meaningless for the
+     * {@code char_without_whitespace} unit, which prices on character counts rather than
+     * {@link com.epam.aidial.core.server.token.TokenUsage}'s reported cache token counts.
+     */
+    public static void validatePricing(Model model, List<ValidationWarning> warnings) {
+        Pricing pricing = model.getPricing();
+        if (pricing == null) {
+            return;
+        }
+        boolean hasCacheRate = pricing.getCacheRead() != null || pricing.getCacheWrite() != null;
+        if (hasCacheRate && !"token".equals(pricing.getUnit())) {
+            warnings.add(new ValidationWarning("pricing",
+                    "cacheRead/cacheWrite pricing requires pricing.unit = \"token\""));
+        }
     }
 
     private static void processApplications(Config config, Set<String> deploymentIds,
