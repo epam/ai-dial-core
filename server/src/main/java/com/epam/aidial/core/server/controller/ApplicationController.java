@@ -326,7 +326,7 @@ public class ApplicationController {
         if (appName != null && appName.equals(context.getDecodedSourceDeployment())) {
             return true;
         }
-        if (appName != null) {
+        if (appName != null && context.getConfig().selectDeployment(appName) == null) {
             try {
                 ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(appName, encryptionService);
                 if (resource.getType() == ResourceTypes.APPLICATION) {

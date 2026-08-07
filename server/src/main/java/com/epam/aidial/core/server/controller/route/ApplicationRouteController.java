@@ -49,6 +49,9 @@ public class ApplicationRouteController extends BaseRouteController {
 
     @Override
     protected Future<Boolean> hasRequiredPermissions(Set<ResourceAccessType> permissions) {
+        if (context.getConfig().selectDeployment(deploymentId) != null) {
+            return Future.succeededFuture(true);
+        }
         ResourceDescriptor appResource;
         try {
             String encodedPath = UrlUtil.encodePath(deploymentId);
