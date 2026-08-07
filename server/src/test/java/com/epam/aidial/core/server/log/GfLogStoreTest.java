@@ -282,6 +282,37 @@ public class GfLogStoreTest {
 
     @SneakyThrows
     @Test
+    public void testAppendAllowedClaimsTruncatesWithoutSplittingSurrogatePair() {
+        // the serialized value opens with a quote, so the emoji straddles the 4 KB cut
+        String value = "x".repeat(4 * 1024 - 2) + "😀" + "x".repeat(64);
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getUserClaims()).thenReturn(userClaims(
+                ProxyUtil.MAPPER.createObjectNode().put("groups", value).toString()));
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        new GfLogStore(settings(false, "groups")).appendClaims(context, entry);
+
+        assertCutBeforeSurrogatePair(parseWrapped(buffer.toString()).get("groups").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAppendHeadersTruncatesWithoutSplittingSurrogatePair() {
+        String value = "x".repeat(4 * 1024 - 1) + "😀" + "x".repeat(64);
+        AnalyticsLogContext context = mockHeaders(Map.of("X-Custom", List.of(value)));
+
+        StringBuilder buffer = new StringBuilder();
+        LogEntry entry = capturingEntry(buffer);
+
+        new GfLogStore(headerSettings(List.of(), null)).appendHeaders(context, entry);
+
+        assertCutBeforeSurrogatePair(parseWrapped(buffer.toString()).get("X-Custom").asText());
+    }
+
+    @SneakyThrows
+    @Test
     public void testAppendAllowedClaimsIgnoresMalformedPath() {
         AnalyticsLogContext context = mock(AnalyticsLogContext.class);
         when(context.getUserClaims()).thenReturn(userClaims("{\"email\":\"jane.doe@example.com\"}"));
@@ -526,7 +557,7 @@ public class GfLogStoreTest {
                 .requestBody("{}")
                 .build();
 
-        assertTrue(AnalyticsLogContext.from(record, null).getOperationDurationMs() >= 60_000);
+        assertTrue(AnalyticsLogContext.from(record, null, null).getOperationDurationMs() >= 60_000);
     }
 
     @Test
@@ -537,7 +568,7 @@ public class GfLogStoreTest {
                 .build();
         ResponsesApiClient.TerminalResult result = new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), null);
 
-        assertTrue(AnalyticsLogContext.from(record, result).getOperationDurationMs() >= 600_000);
+        assertTrue(AnalyticsLogContext.from(record, result, null).getOperationDurationMs() >= 600_000);
     }
 
     /**
@@ -586,6 +617,15 @@ public class GfLogStoreTest {
     @SneakyThrows
     private static ObjectNode userClaims(String json) {
         return (ObjectNode) ProxyUtil.MAPPER.readTree(json);
+    }
+
+    /**
+     * A lone surrogate has no UTF-8 encoding, so the cut must fall before the pair rather than between its halves.
+     */
+    private static void assertCutBeforeSurrogatePair(String written) {
+        String cut = written.substring(0, written.length() - ">>".length());
+        assertFalse(Character.isHighSurrogate(cut.charAt(cut.length() - 1)),
+                "Truncation left a lone high surrogate at the cut");
     }
 
     private static LogEntry capturingEntry(StringBuilder buffer) {

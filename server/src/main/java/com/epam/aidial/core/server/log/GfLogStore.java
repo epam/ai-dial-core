@@ -349,7 +349,7 @@ public class GfLogStore implements LogStore {
         } else {
             // cutting JSON in half would not parse, so an oversized value is reported as a truncated string instead
             append(entry, "\"", false);
-            append(entry, json.substring(0, MAX_CLAIM_VALUE_LENGTH), true);
+            append(entry, truncate(json, MAX_CLAIM_VALUE_LENGTH), true);
             append(entry, ">>\"", false);
         }
     }
@@ -372,7 +372,7 @@ public class GfLogStore implements LogStore {
                 String value = String.join(", ", header.getValue());
                 boolean truncated = value.length() > MAX_HEADER_VALUE_LENGTH;
                 if (truncated) {
-                    value = value.substring(0, MAX_HEADER_VALUE_LENGTH);
+                    value = truncate(value, MAX_HEADER_VALUE_LENGTH);
                 }
                 append(entry, value, true);
                 if (truncated) {
@@ -424,6 +424,15 @@ public class GfLogStore implements LogStore {
         } else {
             append(entry, ",", false);
         }
+    }
+
+    /**
+     * Cuts a value known to be longer than {@code length}, never between the halves of a surrogate pair: a lone
+     * surrogate has no UTF-8 encoding and would reach the log as a replacement character at best.
+     */
+    private static String truncate(String value, int length) {
+        int end = Character.isHighSurrogate(value.charAt(length - 1)) ? length - 1 : length;
+        return value.substring(0, end);
     }
 
     private static void appendBody(LogEntry entry, Buffer buffer) {
