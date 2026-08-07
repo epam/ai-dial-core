@@ -27,7 +27,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 
@@ -62,7 +61,6 @@ public class AutoShareDeploymentFnTest {
     @BeforeEach
     public void beforeEach() {
         proxyApiKeyData = new ApiKeyData();
-        lenient().when(context.getConfig()).thenReturn(config);
     }
 
     @Test
@@ -73,6 +71,7 @@ public class AutoShareDeploymentFnTest {
 
     @Test
     public void testApply_WhenInitialDeploymentIsPublicResource() {
+        when(context.getConfig()).thenReturn(config);
         when(context.getInitialDeployment()).thenReturn("applications/public/my-app");
 
         assertFalse(fn.apply(EMPTY_OBJECT));
@@ -81,6 +80,7 @@ public class AutoShareDeploymentFnTest {
 
     @Test
     public void testApply_WhenInitialDeploymentIsForbidden() {
+        when(context.getConfig()).thenReturn(config);
         when(encryptionService.decrypt(anyString())).thenReturn("/Users/user/");
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
         when(proxy.getAccessService()).thenReturn(accessService);
@@ -93,6 +93,7 @@ public class AutoShareDeploymentFnTest {
 
     @Test
     public void testApply_WhenInitialDeploymentIdContainsSpace() {
+        when(context.getConfig()).thenReturn(config);
         when(encryptionService.decrypt(anyString())).thenReturn("/Users/user/");
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
         when(proxy.getAccessService()).thenReturn(accessService);
@@ -109,6 +110,7 @@ public class AutoShareDeploymentFnTest {
 
     @Test
     public void testApply_WhenInitialDeploymentIsApp() {
+        when(context.getConfig()).thenReturn(config);
         when(encryptionService.decrypt(anyString())).thenReturn("/Users/user/");
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
         when(proxy.getAccessService()).thenReturn(accessService);
@@ -124,6 +126,7 @@ public class AutoShareDeploymentFnTest {
 
     @Test
     public void testApply_WhenInitialDeploymentIsBareNameModel() {
+        when(context.getConfig()).thenReturn(config);
         when(context.getInitialDeployment()).thenReturn("gpt-5-2025-08-07");
         when(config.selectDeployment("gpt-5-2025-08-07")).thenReturn(new Model());
 
@@ -133,6 +136,7 @@ public class AutoShareDeploymentFnTest {
 
     @Test
     public void testApply_WhenInitialDeploymentIsCanonicalIdModel() {
+        when(context.getConfig()).thenReturn(config);
         when(context.getInitialDeployment()).thenReturn("models/platform/gpt-5-2025-08-07");
         when(config.selectDeployment("models/platform/gpt-5-2025-08-07")).thenReturn(new Model());
 
