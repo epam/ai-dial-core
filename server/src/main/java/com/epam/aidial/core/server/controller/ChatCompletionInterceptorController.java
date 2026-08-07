@@ -26,7 +26,8 @@ import java.util.regex.Pattern;
 
 public class ChatCompletionInterceptorController extends BaseInterceptorController {
 
-    private static final Pattern DEPLOYMENT_PATH = Pattern.compile("(/openai/deployments/)([^/]+)(/.*)");
+    private static final Pattern DEPLOYMENT_PATH =
+            Pattern.compile("(/openai/deployments/)(.+?)(/(?:completions|chat/completions|embeddings))$");
 
     public ChatCompletionInterceptorController(Proxy proxy, ProxyContext context, int interceptorIndex) {
         super(proxy, context, interceptorIndex, List.of(
