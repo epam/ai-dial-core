@@ -20,6 +20,7 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ExternalServiceData;
+import com.epam.aidial.core.server.log.ExternalServiceAuditLog;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -387,10 +388,14 @@ public class ExternalServiceManagementController {
                     .updatedAt(now)
                     .build();
             resourceCredentialsService.putCredentialsRecord(descriptor, consent);
+            ExternalServiceAuditLog.consent(context, appId, serviceId, "GRANT", null);
             return true;
         })
                 .onSuccess(granted -> context.respond(HttpStatus.OK, granted))
-                .onFailure(error -> respondError("Can't grant consent", error));
+                .onFailure(error -> {
+                    ExternalServiceAuditLog.consent(context, appId, serviceId, "GRANT", asRuntime(error));
+                    respondError("Can't grant consent", error);
+                });
         return Future.succeededFuture();
     }
 
@@ -399,10 +404,15 @@ public class ExternalServiceManagementController {
         taskExecutor.submit(() -> {
             requireAdmin();
             resolveDialNativeService(appId, serviceId);
-            return resourceCredentialsService.deleteCredentialsRecord(consentDescriptor(appId, serviceId));
+            boolean withdrawn = resourceCredentialsService.deleteCredentialsRecord(consentDescriptor(appId, serviceId));
+            ExternalServiceAuditLog.consent(context, appId, serviceId, "WITHDRAW", null);
+            return withdrawn;
         })
                 .onSuccess(deleted -> context.respond(HttpStatus.OK, deleted))
-                .onFailure(error -> respondError("Can't withdraw consent", error));
+                .onFailure(error -> {
+                    ExternalServiceAuditLog.consent(context, appId, serviceId, "WITHDRAW", asRuntime(error));
+                    respondError("Can't withdraw consent", error);
+                });
         return Future.succeededFuture();
     }
 
@@ -436,6 +446,10 @@ public class ExternalServiceManagementController {
         if (!accessService.hasAdminAccess(context)) {
             throw new PermissionDeniedException("Only administrators may consent to a DIAL-native external service");
         }
+    }
+
+    private static RuntimeException asRuntime(Throwable error) {
+        return error instanceof RuntimeException e ? e : new IllegalStateException(error);
     }
 
     private CredentialsDescriptor consentDescriptor(String appId, String serviceId) {

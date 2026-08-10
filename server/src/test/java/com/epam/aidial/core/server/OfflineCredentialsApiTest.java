@@ -1,5 +1,9 @@
 package com.epam.aidial.core.server;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -9,6 +13,7 @@ import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -137,6 +142,66 @@ public class OfflineCredentialsApiTest extends ResourceBaseTest {
                 { "code": "auth-code", "redirect_uri": "http://localhost:3000/callback" }
                 """, "api-key", appKey.getPerRequestKey());
         assertEquals(401, signIn.status(), signIn.body());
+    }
+
+
+    @Test
+    void testSignInAndSignOutAreAudited() throws Exception {
+        Mockito.when(provider.extractUserIdFromIdToken("id-token-for-user")).thenReturn("user");
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_OBO_AUDIT");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        auditLogger.addAppender(appender);
+        Level previous = auditLogger.getLevel();
+        auditLogger.setLevel(Level.INFO);
+        try (TestWebServer ignore = new TestWebServer(9877, request -> new MockResponse()
+                .setBody(TOKEN_RESPONSE).setHeader("Content-Type", "application/json"))) {
+            send(HttpMethod.POST, "/v1/user/offline-credentials/signin", null, """
+                    { "code": "auth-code", "redirect_uri": "http://localhost:3000/callback" }
+                    """, "authorization", "user");
+            send(HttpMethod.POST, "/v1/user/offline-credentials/signout", null, "", "authorization", "user");
+
+            List<String> events = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .filter(m -> m.startsWith("event=offline_credentials"))
+                    .toList();
+            assertEquals(2, events.size(), events::toString);
+            assertTrue(events.get(0).contains("action=SIGN_IN"), events::toString);
+            assertTrue(events.get(0).contains("outcome=SUCCESS"), events::toString);
+            assertTrue(events.get(0).contains("user_id=user"), events::toString);
+            assertTrue(events.get(1).contains("action=SIGN_OUT"), events::toString);
+        } finally {
+            auditLogger.setLevel(previous);
+            auditLogger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    void testRejectedSignInIsAudited() throws Exception {
+        Mockito.when(provider.extractUserIdFromIdToken("id-token-for-user")).thenReturn("someone-else");
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_OBO_AUDIT");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        auditLogger.addAppender(appender);
+        Level previous = auditLogger.getLevel();
+        auditLogger.setLevel(Level.INFO);
+        try (TestWebServer ignore = new TestWebServer(9877, request -> new MockResponse()
+                .setBody(TOKEN_RESPONSE).setHeader("Content-Type", "application/json"))) {
+            send(HttpMethod.POST, "/v1/user/offline-credentials/signin", null, """
+                    { "code": "auth-code", "redirect_uri": "http://localhost:3000/callback" }
+                    """, "authorization", "user");
+
+            List<String> events = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .filter(m -> m.startsWith("event=offline_credentials"))
+                    .toList();
+            assertEquals(1, events.size(), events::toString);
+            assertTrue(events.get(0).contains("action=SIGN_IN"), events::toString);
+            assertFalse(events.get(0).contains("outcome=SUCCESS"), events::toString);
+        } finally {
+            auditLogger.setLevel(previous);
+            auditLogger.detachAppender(appender);
+        }
     }
 
     private ApiKeyData newAppKey(String sourceDeployment, String role) {

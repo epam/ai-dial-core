@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.OfflineCredentialsSignInRequest;
 import com.epam.aidial.core.server.data.OfflineCredentialsStatus;
+import com.epam.aidial.core.server.log.ExternalServiceAuditLog;
 import com.epam.aidial.core.server.security.IdentityProvider;
 import com.epam.aidial.core.server.util.CredentialsDescriptorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -89,9 +90,15 @@ public class OfflineCredentialsController {
                                 .offlineUsageConsent(true)
                                 .build();
 
-                        resourceCredentialsService.addResourceCredentials(
-                                descriptor(), offlineClient, signIn, context.getUserId(), credentials ->
-                                        verifyIssuedForCaller(provider, credentials));
+                        try {
+                            resourceCredentialsService.addResourceCredentials(
+                                    descriptor(), offlineClient, signIn, context.getUserId(), credentials ->
+                                            verifyIssuedForCaller(provider, credentials));
+                        } catch (RuntimeException e) {
+                            ExternalServiceAuditLog.offlineCredentials(context, "SIGN_IN", e);
+                            throw e;
+                        }
+                        ExternalServiceAuditLog.offlineCredentials(context, "SIGN_IN", null);
                         return true;
                     });
                 })
@@ -105,7 +112,16 @@ public class OfflineCredentialsController {
         if (rejectPerRequestKey()) {
             return Future.succeededFuture();
         }
-        taskExecutor.submit(() -> resourceCredentialsService.deleteCredentialsRecord(descriptor()))
+        taskExecutor.submit(() -> {
+            try {
+                boolean deleted = resourceCredentialsService.deleteCredentialsRecord(descriptor());
+                ExternalServiceAuditLog.offlineCredentials(context, "SIGN_OUT", null);
+                return deleted;
+            } catch (RuntimeException e) {
+                ExternalServiceAuditLog.offlineCredentials(context, "SIGN_OUT", e);
+                throw e;
+            }
+        })
                 .onSuccess(deleted -> context.respond(HttpStatus.OK, deleted))
                 .onFailure(error -> respondError("Can't sign out of offline credentials", error));
         return Future.succeededFuture();

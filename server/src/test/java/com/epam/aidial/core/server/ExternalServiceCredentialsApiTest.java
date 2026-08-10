@@ -1,11 +1,18 @@
 package com.epam.aidial.core.server;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -1573,6 +1580,41 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
         Response grant = send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/nope/consent",
                 null, "", "authorization", "admin");
         assertEquals(404, grant.status(), grant.body());
+    }
+
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testConsentDecisionsAreAudited() {
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_OBO_AUDIT");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        auditLogger.addAppender(appender);
+        Level previous = auditLogger.getLevel();
+        auditLogger.setLevel(Level.INFO);
+        try {
+            send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                    null, "", "authorization", "admin");
+            send(HttpMethod.DELETE, "/v1/applications/app-with-services/external-services/dial/consent",
+                    null, "", "authorization", "admin");
+            // a refusal must be recorded too
+            send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                    null, "", "authorization", "user");
+
+            List<String> events = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .filter(m -> m.startsWith("event=external_service_consent"))
+                    .toList();
+            assertEquals(3, events.size(), events::toString);
+            assertTrue(events.get(0).contains("action=GRANT"), events::toString);
+            assertTrue(events.get(0).contains("outcome=SUCCESS"), events::toString);
+            assertTrue(events.get(0).contains("application_id=app-with-services"), events::toString);
+            assertTrue(events.get(1).contains("action=WITHDRAW"), events::toString);
+            assertTrue(events.get(2).contains("outcome=DENIED"), events::toString);
+        } finally {
+            auditLogger.setLevel(previous);
+            auditLogger.detachAppender(appender);
+        }
     }
 
     private ApiKeyData newAppKey(String sourceDeployment, String role) {
