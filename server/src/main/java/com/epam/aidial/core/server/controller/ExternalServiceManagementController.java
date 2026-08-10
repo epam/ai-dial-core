@@ -379,11 +379,12 @@ public class ExternalServiceManagementController {
         return consentOperation(appId, serviceId, "GRANT", "Can't grant consent", service -> {
             CredentialsDescriptor descriptor = consentDescriptor(appId, serviceId);
             long now = System.currentTimeMillis();
+            // The record's existence IS the approval; who granted it is in the audit event, which keeps history
+            // this blob cannot — a regrant by another admin would simply overwrite it.
             resourceCredentialsService.putCredentialsRecord(descriptor, ResourceCredentials.builder()
                     .resourceId(descriptor.getResourceId())
                     .credentialsLevel(CredentialsLevel.APPLICATION)
                     .authenticationType(service.getAuthSettings().getAuthenticationType())
-                    .approvedBy(context.getUserId())
                     .createdAt(now)
                     .updatedAt(now)
                     .build());

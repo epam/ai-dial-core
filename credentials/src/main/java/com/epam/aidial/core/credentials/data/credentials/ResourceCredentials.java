@@ -39,7 +39,4 @@ public class ResourceCredentials {
      * is absent, with no token to derive the provider from.
      */
     private String issuer;
-    /** Administrator who approved an application's use of a DIAL-native service; unused by other types. */
-    @JsonAlias({"approvedBy", "approved_by"})
-    private String approvedBy;
 }
