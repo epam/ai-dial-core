@@ -126,6 +126,8 @@ public class OfflineCredentialsController {
             throw new HttpException(HttpStatus.FORBIDDEN,
                     "The authorization code belongs to a different user than the caller");
         }
+        // Refresh happens when the user is absent, so the provider must be recoverable from the record alone.
+        credentials.setIssuer(provider.extractIssuerFromIdToken(idToken));
     }
 
     private IdentityProvider provider() {

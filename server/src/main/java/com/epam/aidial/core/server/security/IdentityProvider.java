@@ -521,6 +521,16 @@ public class IdentityProvider {
         return extractStringClaim(claims, userIdPath);
     }
 
+    /** The {@code iss} of an ID token, recorded so refresh can find this provider again when the user is gone. */
+    public String extractIssuerFromIdToken(String idToken) {
+        return decodeJwtToken(idToken).getIssuer();
+    }
+
+    /** Whether this provider claims the given issuer. False when no {@code issuerPattern} is configured. */
+    boolean matchesIssuer(String issuer) {
+        return issuerPattern != null && issuer != null && issuerPattern.matcher(issuer).matches();
+    }
+
     boolean match(DecodedJWT jwt) {
         if (issuerPattern == null) {
             return false;

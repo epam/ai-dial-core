@@ -34,6 +34,11 @@ public class ResourceCredentials {
     // Owner's recorded consent to offline (on-behalf-of) use of this credential. Legacy blobs deserialize as false.
     @JsonAlias({"offlineUsageConsent", "offline_usage_consent"})
     private boolean offlineUsageConsent;
+    /**
+     * Identity provider that issued these credentials. Recorded at sign-in because refresh happens when the user
+     * is absent, with no token to derive the provider from.
+     */
+    private String issuer;
     /** Administrator who approved an application's use of a DIAL-native service; unused by other types. */
     @JsonAlias({"approvedBy", "approved_by"})
     private String approvedBy;

@@ -150,6 +150,24 @@ public class AccessTokenValidator {
         throw new IllegalArgumentException("Unknown Identity Provider for issuer: " + jwt.getIssuer());
     }
 
+    /**
+     * The provider for a previously recorded issuer. Used when refreshing offline credentials, where there is no
+     * caller token to match on — see {@link #resolveProvider} for the same matching applied to a live request.
+     *
+     * @throws IllegalArgumentException when no provider matches.
+     */
+    public IdentityProvider resolveProviderByIssuer(String issuer) {
+        if (providers.size() == 1) {
+            return providers.get(0);
+        }
+        for (IdentityProvider idp : providers) {
+            if (idp.matchesIssuer(issuer)) {
+                return idp;
+            }
+        }
+        throw new IllegalArgumentException("Unknown Identity Provider for issuer: " + issuer);
+    }
+
     private Future<UserInfoResult> createUserInfoResultFuture(String accessToken, IdentityProvider idp) {
         Promise<UserInfoResult> promise = Promise.promise();
         idp.extractClaimsFromUserInfo(accessToken).map(claims -> {

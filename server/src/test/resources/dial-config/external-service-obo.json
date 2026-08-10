@@ -22,6 +22,12 @@
             "authentication_type": "API_KEY",
             "api_key_header": "X-API-Key"
           }
+        },
+        "dial": {
+          "display_name": "DIAL",
+          "auth_settings": {
+            "authentication_type": "DIAL_NATIVE"
+          }
         }
       },
       "app_identity": "935cd3c27ffd8bd295f5933665f298aad638a289c0cfe3a9a3e8685dade379c7"
@@ -66,7 +72,9 @@
       "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
       "displayName": "Restricted User Services App",
       "description": "Enables user authoring but is restricted to a role ordinary users lack",
-      "userRoles": ["privileged"],
+      "userRoles": [
+        "privileged"
+      ],
       "app_identity": "935cd3c27ffd8bd295f5933665f298aad638a289c0cfe3a9a3e8685dade379c7",
       "allow_user_external_services": true
     },

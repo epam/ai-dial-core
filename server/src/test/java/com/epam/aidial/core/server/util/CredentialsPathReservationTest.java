@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class CredentialsPathReservationTest {
 
     @Test
-    void offlineIdIsNotAValidExternalServiceScope() {
+    void offlineIdIsRejectedAsExternalServiceScope() {
         // Both credential endpoints reach their blobs through this parser, so anything it rejects is unaddressable.
         assertThrows(IllegalArgumentException.class,
                 () -> CredentialsLocatorFactory.parseExternalServiceScope(CredentialsDescriptorFactory.OFFLINE_CREDENTIALS_ID));

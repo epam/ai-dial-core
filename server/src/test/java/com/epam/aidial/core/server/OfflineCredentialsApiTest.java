@@ -41,6 +41,7 @@ public class OfflineCredentialsApiTest extends ResourceBaseTest {
                 .redirectUri("http://localhost:3000/callback")
                 .scopesSupported(List.of("openid", "offline_access"))
                 .build());
+        Mockito.when(provider.extractIssuerFromIdToken(Mockito.any())).thenReturn("http://idp/realms/dial");
         Mockito.when(validator.resolveProvider(Mockito.any())).thenReturn(provider);
     }
 
