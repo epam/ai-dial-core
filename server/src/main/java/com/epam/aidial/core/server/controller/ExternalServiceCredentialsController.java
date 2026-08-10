@@ -375,6 +375,13 @@ public class ExternalServiceCredentialsController {
             throw new OfflineCredentialsRequiredException(
                     "The owner's offline credentials are no longer valid; they must connect again");
         }
+        // getRefreshedUserCredentials deliberately returns the record UN-refreshed when the owner's offline consent
+        // is absent, leaving the refusal to the caller. Without this, a record lacking consent would be served as a
+        // stale token instead of being refused.
+        if (!credentials.isOfflineUsageConsent()) {
+            throw new OfflineCredentialsRequiredException(
+                    "The owner's credentials do not permit offline use; they must connect again");
+        }
         return toCredentialsResponse(credentials, request.getUrl());
     }
 
