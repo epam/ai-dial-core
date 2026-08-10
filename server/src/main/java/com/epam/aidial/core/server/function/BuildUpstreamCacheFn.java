@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.function;
 
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -12,17 +13,20 @@ import com.epam.aidial.core.server.service.UpstreamCacheService;
 public class BuildUpstreamCacheFn extends BaseRequestFunction<RequestObject> {
 
     private final UpstreamCacheService upstreamCacheService;
+    private final InterfaceType interfaceType;
 
-    public BuildUpstreamCacheFn(Proxy proxy, ProxyContext context) {
+    public BuildUpstreamCacheFn(Proxy proxy, ProxyContext context, InterfaceType interfaceType) {
         super(proxy, context);
         this.upstreamCacheService = proxy.getUpstreamCacheService();
+        this.interfaceType = interfaceType;
     }
 
     @Override
     public Boolean apply(RequestObject request) {
         if (context.getDeployment() instanceof Model model && isCacheSupported(model)) {
             CachePolicy policy = CachePolicy.fromString(context.getRequestHeader(Proxy.HEADER_CACHE_POLICY));
-            CacheBreakpointContext cacheBreakpointContext = upstreamCacheService.buildCacheBreakpointContext(request, policy, model);
+            CacheBreakpointContext cacheBreakpointContext =
+                    upstreamCacheService.buildCacheBreakpointContext(request, policy, model, interfaceType);
             context.setCacheBreakpointContext(cacheBreakpointContext);
         }
         return false;

@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
@@ -27,13 +28,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.LongSupplier;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Slf4j
 public class UpstreamCacheService {
 
-    private static final Pattern PREFIX_PATH = Pattern.compile("^prefix\\.body\\.(?<nodeName>(tools|messages))$");
     private static final Duration DEFAULT_TTL = Duration.ofMinutes(10);
 
     private static final String UPSTREAM_ENDPOINT_FIELD = "upstream_endpoint";
@@ -65,29 +63,18 @@ public class UpstreamCacheService {
         this.prefix = prefix;
     }
 
-    public CacheBreakpointContext buildCacheBreakpointContext(RequestObject request, CachePolicy policy, Model model) {
+    public CacheBreakpointContext buildCacheBreakpointContext(RequestObject request, CachePolicy policy, Model model,
+                                                                InterfaceType interfaceType) {
         boolean autoCaching = isAutoCaching(model);
-        List<String> fieldsOrder = model.getFieldsHashingOrder();
+        List<String> fieldsOrder = model.resolveFieldsHashingOrder(interfaceType);
         List<String> breakpoints = new ArrayList<>();
         Map<String, String> prefixToHash = new HashMap<>();
-        for (String field : fieldsOrder) {
-            Matcher matcher = PREFIX_PATH.matcher(field);
-            if (!matcher.matches()) {
-                log.warn("Unsupported prefix path: {}", field);
-                continue;
+        for (CacheKey cacheKey : request.buildCacheKeys(fieldsOrder)) {
+            String path = cacheKey.path();
+            if (autoCaching || cacheKey.hasBreakpoint()) {
+                breakpoints.add(path);
             }
-            String nodeName = matcher.group("nodeName");
-            List<CacheKey> cacheKeys = "messages".equals(nodeName)
-                    ? request.buildMessageCacheKeys()
-                    : request.buildToolCacheKeys();
-            for (int i = 0; i < cacheKeys.size(); ++i) {
-                CacheKey cacheKey = cacheKeys.get(i);
-                String prefix = field + "[" + i + "]";
-                if (autoCaching || cacheKey.hasBreakpoint()) {
-                    breakpoints.add(prefix);
-                }
-                prefixToHash.put(prefix, cacheKey.hash());
-            }
+            prefixToHash.put(path, cacheKey.hash());
         }
         return new CacheBreakpointContext(breakpoints, prefixToHash, policy);
     }

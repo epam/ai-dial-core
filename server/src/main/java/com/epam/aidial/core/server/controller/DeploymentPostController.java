@@ -69,7 +69,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
-                new BuildUpstreamCacheFn(proxy, context),
+                new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_CHAT_COMPLETIONS),
                 new CollectDeploymentsFn(proxy, context));
     }
 

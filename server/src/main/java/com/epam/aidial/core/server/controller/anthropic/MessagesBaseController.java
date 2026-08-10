@@ -57,7 +57,16 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
 
     protected MessagesBaseController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
-        this.enhancementFunctions = List.of(
+        this.enhancementFunctions = buildEnhancementFunctions();
+    }
+
+    /**
+     * The shared chain. {@link MessagesController} overrides this to append {@link
+     * com.epam.aidial.core.server.function.BuildUpstreamCacheFn} — {@code count_tokens} does not
+     * generate, so it must not build a cache breakpoint context.
+     */
+    protected List<BaseRequestFunction<RequestObject>> buildEnhancementFunctions() {
+        return List.of(
                 new CollectRequestStandardAttachmentsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceDeploymentRequestFn(proxy, context),

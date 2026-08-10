@@ -1,12 +1,15 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
+import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.service.LockService;
@@ -179,7 +182,7 @@ public class UpstreamCacheServiceTest {
         Model model = new Model();
         model.setName("gpt-4");
 
-        CacheBreakpointContext context = service.buildCacheBreakpointContext(request, CachePolicy.AVAILABILITY_PRIORITY, model);
+        CacheBreakpointContext context = service.buildCacheBreakpointContext(request, CachePolicy.AVAILABILITY_PRIORITY, model, InterfaceType.OPENAI_CHAT_COMPLETIONS);
 
         assertNotNull(context);
         assertEquals(4, context.breakpoints().size());
@@ -251,7 +254,7 @@ public class UpstreamCacheServiceTest {
         features.setAutoCachingSupported(true);
         model.setFeatures(features);
 
-        CacheBreakpointContext context = service.buildCacheBreakpointContext(request, CachePolicy.AVAILABILITY_PRIORITY, model);
+        CacheBreakpointContext context = service.buildCacheBreakpointContext(request, CachePolicy.AVAILABILITY_PRIORITY, model, InterfaceType.OPENAI_CHAT_COMPLETIONS);
 
         assertNotNull(context);
         assertEquals(4, context.breakpoints().size());
@@ -354,7 +357,7 @@ public class UpstreamCacheServiceTest {
         Model model = new Model();
         model.setName("gpt-4");
 
-        CacheBreakpointContext context = service.buildCacheBreakpointContext(request, CachePolicy.AVAILABILITY_PRIORITY, model);
+        CacheBreakpointContext context = service.buildCacheBreakpointContext(request, CachePolicy.AVAILABILITY_PRIORITY, model, InterfaceType.OPENAI_CHAT_COMPLETIONS);
         Map<String, String> prefixToHash = context.prefixToHash();
         for (var breakpoint : context.breakpoints()) {
             CachedUpstreamEntry cachedUpstreamEntry = new CachedUpstreamEntry("http://host/chat", null, breakpoint, null);
@@ -460,12 +463,70 @@ public class UpstreamCacheServiceTest {
         Model model = new Model();
         model.setName("gpt-4");
 
-        CacheBreakpointContext context = service.buildCacheBreakpointContext(request, CachePolicy.AVAILABILITY_PRIORITY, model);
+        CacheBreakpointContext context = service.buildCacheBreakpointContext(request, CachePolicy.AVAILABILITY_PRIORITY, model, InterfaceType.OPENAI_CHAT_COMPLETIONS);
 
         CachedUpstreamEntry entry = service.getCacheEntry(context, model);
         assertNotNull(entry);
         assertEquals("prefix.body.messages[2]", entry.prefixPath());
         assertNull(entry.endpoint());
+    }
+
+    @Test
+    public void testBuildCacheBreakpointContext_anthropicIgnoresFieldsHashingOrderOverride() throws JsonProcessingException {
+        service = new UpstreamCacheService(redissonClient, lockService, System::currentTimeMillis, null);
+        String body = """
+                {
+                    "system": [
+                        {"type": "text", "text": "System prompt", "cache_control": {"type": "ephemeral"}}
+                    ],
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "hi"},
+                                {"type": "text", "text": "there", "cache_control": {"type": "ephemeral"}}
+                            ]
+                        }
+                    ]
+                }
+                """;
+        RequestObject request = new MessagesApiRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
+        Model model = new Model();
+        model.setName("claude");
+        // a chat-completions-only override that would drop `system` entirely if Anthropic ever inherited it
+        model.setFieldsHashingOrder(List.of("prefix.body.tools", "prefix.body.messages"));
+
+        CacheBreakpointContext context = service.buildCacheBreakpointContext(
+                request, CachePolicy.AVAILABILITY_PRIORITY, model, InterfaceType.ANTHROPIC_MESSAGES);
+
+        List<String> expectedBreakpoints = List.of("prefix.body.system[0]", "prefix.body.messages[0].content[1]");
+        assertEquals(expectedBreakpoints, context.breakpoints());
+    }
+
+    @Test
+    public void testBuildCacheBreakpointContext_responsesBuiltInOrder_autoCaching() throws JsonProcessingException {
+        service = new UpstreamCacheService(redissonClient, lockService, System::currentTimeMillis, null);
+        String body = """
+                {
+                    "instructions": "Be concise",
+                    "input": [
+                        {"role": "user", "content": "Hi"},
+                        {"role": "assistant", "content": "Hello"}
+                    ]
+                }
+                """;
+        RequestObject request = new ResponsesApiRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
+        Model model = new Model();
+        model.setName("gpt-5-responses");
+        Features features = new Features();
+        features.setAutoCachingSupported(true);
+        model.setFeatures(features);
+
+        CacheBreakpointContext context = service.buildCacheBreakpointContext(
+                request, CachePolicy.AVAILABILITY_PRIORITY, model, InterfaceType.OPENAI_RESPONSES);
+
+        List<String> expectedBreakpoints = List.of("prefix.body.instructions[0]", "prefix.body.input[0]", "prefix.body.input[1]");
+        assertEquals(expectedBreakpoints, context.breakpoints());
     }
 
     @Test

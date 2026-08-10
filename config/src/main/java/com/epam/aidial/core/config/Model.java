@@ -24,4 +24,16 @@ public class Model extends Deployment {
     public Model() {
         setMaxRetryAttempts(5);
     }
+
+    /**
+     * Resolves the node order used to build upstream cache keys. {@code fieldsHashingOrder} is a
+     * chat-completions-only setting (its non-null default would otherwise silently apply to interfaces
+     * it was never designed for, e.g. dropping {@code system} from Anthropic hashes); the newer
+     * interfaces always use their wire format's built-in order.
+     */
+    public List<String> resolveFieldsHashingOrder(InterfaceType interfaceType) {
+        return interfaceType == InterfaceType.OPENAI_CHAT_COMPLETIONS
+                ? fieldsHashingOrder
+                : interfaceType.getDefaultFieldsHashingOrder();
+    }
 }
