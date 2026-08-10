@@ -77,7 +77,7 @@ public class ConfigTest {
     @Test
     public void testGetCustomApplicationSchemaFallsBackThroughAliasIndex() {
         Config config = new Config();
-        String canonicalId = "application_type_schemas/platform/my-schema";
+        String canonicalId = "schemas/platform/my-schema";
         String schemaId = "https://mydial.epam.com/custom_application_schemas/specific_application_type";
         String body = "{\"$id\":\"" + schemaId + "\"}";
         config.setApplicationTypeSchemas(Map.of(canonicalId, body));
