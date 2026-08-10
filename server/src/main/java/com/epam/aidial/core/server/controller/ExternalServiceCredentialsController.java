@@ -108,6 +108,7 @@ public class ExternalServiceCredentialsController {
                         ResolvedExternalService resolved = resolveExternalService(request.getUrl());
                         ResourceAuthSettings authSettings = resolved.externalService.getAuthSettings();
                         validateAuthType(authSettings.getAuthenticationType(), request.getAuthenticationType());
+                        rejectDialNativeSignIn(authSettings.getAuthenticationType());
 
                         verifyAccess(resolved, request.getCredentialsLevel());
 
@@ -449,6 +450,18 @@ public class ExternalServiceCredentialsController {
         if (!Objects.equals(configured, requested)) {
             throw new IllegalArgumentException("Wrong authentication_type. Expected type: %s, provided: %s"
                     .formatted(configured, requested));
+        }
+    }
+
+    /**
+     * A DIAL-native service has no credential to sign in with. Users grant offline access once, platform-wide,
+     * and an administrator approves the application separately — neither of which happens here.
+     */
+    private void rejectDialNativeSignIn(AuthenticationType configured) {
+        if (AuthenticationType.DIAL_NATIVE.equals(configured)) {
+            throw new IllegalArgumentException(("Sign-in is not applicable to %s services: users grant offline access "
+                    + "via the offline-credentials endpoints, and an administrator approves the application separately")
+                    .formatted(AuthenticationType.DIAL_NATIVE));
         }
     }
 

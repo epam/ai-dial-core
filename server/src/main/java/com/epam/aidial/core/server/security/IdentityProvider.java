@@ -8,6 +8,8 @@ import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.auth0.jwt.interfaces.Verification;
+import com.epam.aidial.core.config.AuthenticationType;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -20,6 +22,7 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpHeaders;
@@ -101,6 +104,14 @@ public class IdentityProvider {
     private final GetUserRoleFn getUserRoleFn;
 
     private final String audience;
+
+    /**
+     * OAuth client this provider uses to obtain offline credentials on a user's behalf — a client-side view of
+     * the provider that the validation settings above do not carry. Null when the provider offers no offline
+     * credentials, which is the default.
+     */
+    @Getter
+    private final ResourceAuthSettings offlineClient;
 
     /**
      * The path to the claim to extract user display name
@@ -202,6 +213,8 @@ public class IdentityProvider {
 
         audience = settings.getString("audience", null);
 
+        offlineClient = parseOfflineClient(settings.getJsonObject("offlineClient"));
+
         userDisplayName = getClaimPath(settings, "userDisplayName", null);
 
         userIdPath = getClaimPath(settings, "userIdPath", new String[]{USER_SUB});
@@ -219,6 +232,28 @@ public class IdentityProvider {
 
     private static String[] getClaimPath(JsonObject settings, String claimName, String[] defaultPath) {
         return settings.containsKey(claimName) ? parseClaimPath(settings.getString(claimName)) : defaultPath;
+    }
+
+    /**
+     * Builds the offline OAuth client from settings. Modelled as {@link ResourceAuthSettings} so the existing
+     * token service can perform both the code exchange and the refresh without a parallel code path.
+     */
+    private static ResourceAuthSettings parseOfflineClient(JsonObject offlineClient) {
+        if (offlineClient == null) {
+            return null;
+        }
+        String clientId = Objects.requireNonNull(offlineClient.getString("clientId"), "offlineClient.clientId is missed");
+        String tokenEndpoint = Objects.requireNonNull(offlineClient.getString("tokenEndpoint"), "offlineClient.tokenEndpoint is missed");
+        String authorizationEndpoint = Objects.requireNonNull(
+                offlineClient.getString("authorizationEndpoint"), "offlineClient.authorizationEndpoint is missed");
+        return ResourceAuthSettings.builder()
+                .authenticationType(AuthenticationType.OAUTH)
+                .clientId(clientId)
+                .clientSecret(offlineClient.getString("clientSecret"))
+                .authorizationEndpoint(authorizationEndpoint)
+                .tokenEndpoint(tokenEndpoint)
+                .scopesSupported(getAsStringList(offlineClient, "scopes", List.of("openid", "offline_access")))
+                .build();
     }
 
     private static List<String> getAsStringList(JsonObject settings, String key, List<String> defaultValue) {
