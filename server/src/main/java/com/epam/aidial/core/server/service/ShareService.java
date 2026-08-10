@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.Role;
@@ -292,11 +293,11 @@ public class ShareService {
 
     private ShareResourceLimit getLimit(ProxyContext context, ResourceType resourceType) {
         List<String> userRoles = context.getUserRoles();
-        Map<String, Role> roles = context.getConfig().getRoles();
+        Config config = context.getConfig();
         ShareResourceLimit defaultLimit = DEFAULT_LIMITS.get(resourceType);
         ShareResourceLimit limit = null;
         for (String userRole : userRoles) {
-            ShareResourceLimit candidate = Optional.ofNullable(roles.get(userRole)).map(Role::getShare).map(limits -> limits.get(resourceType.name())).orElse(null);
+            ShareResourceLimit candidate = Optional.ofNullable(config.getRole(userRole)).map(Role::getShare).map(limits -> limits.get(resourceType.name())).orElse(null);
             if (candidate != null) {
                 if (limit == null) {
                     limit = new ShareResourceLimit(candidate.getMaxAcceptedUsers(), candidate.getInvitationTtl());

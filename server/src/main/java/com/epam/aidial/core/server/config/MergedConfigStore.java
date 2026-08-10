@@ -711,7 +711,9 @@ public final class MergedConfigStore implements ConfigStore {
                     resurrectInvalidModels(next, nextInvalid);
                 }
                 case ROLE -> ConfigPostProcessor.validateSingleRole(next, canonicalId);
-                case PROJECT_KEY, APP_TYPE_SCHEMA, CATALOG_SCHEMA, APPLICATION, TOOL_SET -> { /* no post-processing */ }
+                case APPLICATION -> ConfigPostProcessor.validateSingleApplication(next, canonicalId);
+                case TOOL_SET -> ConfigPostProcessor.validateSingleToolSet(next, canonicalId);
+                case PROJECT_KEY, APP_TYPE_SCHEMA, CATALOG_SCHEMA -> { /* no post-processing */ }
                 case ROUTE -> ConfigPostProcessor.sortRoutesInPlace(next);
                 default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
             }
@@ -882,6 +884,8 @@ public final class MergedConfigStore implements ConfigStore {
         next.setRoutes(base.getRoutes());
         next.setApplicationTypeSchemas(base.getApplicationTypeSchemas());
         next.setCatalogSchemas(base.getCatalogSchemas());
+        next.setSchemaAliasesById(base.getSchemaAliasesById());
+        next.setCatalogSchemaAliasesById(base.getCatalogSchemaAliasesById());
         next.setApplications(base.getApplications());
         next.setToolsets(base.getToolsets());
         next.setRetriableErrorCodes(base.getRetriableErrorCodes());
@@ -924,8 +928,14 @@ public final class MergedConfigStore implements ConfigStore {
             case ROLE -> config.setRoles(new HashMap<>(config.getRoles()));
             case PROJECT_KEY -> config.setKeys(new HashMap<>(config.getKeys()));
             case ROUTE -> config.setRoutes(new LinkedHashMap<>(config.getRoutes()));
-            case APP_TYPE_SCHEMA -> config.setApplicationTypeSchemas(new LinkedHashMap<>(config.getApplicationTypeSchemas()));
-            case CATALOG_SCHEMA -> config.setCatalogSchemas(new LinkedHashMap<>(config.getCatalogSchemas()));
+            case APP_TYPE_SCHEMA -> {
+                config.setApplicationTypeSchemas(new LinkedHashMap<>(config.getApplicationTypeSchemas()));
+                config.setSchemaAliasesById(new HashMap<>(config.getSchemaAliasesById()));
+            }
+            case CATALOG_SCHEMA -> {
+                config.setCatalogSchemas(new LinkedHashMap<>(config.getCatalogSchemas()));
+                config.setCatalogSchemaAliasesById(new HashMap<>(config.getCatalogSchemaAliasesById()));
+            }
             case APPLICATION -> config.setApplications(new LinkedHashMap<>(config.getApplications()));
             case TOOL_SET -> config.setToolsets(new LinkedHashMap<>(config.getToolsets()));
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
@@ -949,16 +959,59 @@ public final class MergedConfigStore implements ConfigStore {
 
     private static void putEntityInPlace(Config config, ResourceTypes type, String canonicalId, Object entity) {
         switch (type) {
-            case MODEL -> config.getModels().put(canonicalId, (Model) entity);
-            case INTERCEPTOR -> config.getInterceptors().put(canonicalId, (Interceptor) entity);
-            case ROLE -> config.getRoles().put(canonicalId, (Role) entity);
+            case MODEL -> putNameAddressed(config.getModels(), canonicalId, (Model) entity);
+            case INTERCEPTOR -> putNameAddressed(config.getInterceptors(), canonicalId, (Interceptor) entity);
+            case ROLE -> putNameAddressed(config.getRoles(), canonicalId, (Role) entity);
             case PROJECT_KEY -> config.getKeys().put(canonicalId, (Key) entity);
             case ROUTE -> config.getRoutes().put(canonicalId, (Route) entity);
-            case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas().put(canonicalId, schemaBody(entity));
-            case CATALOG_SCHEMA -> config.getCatalogSchemas().put(canonicalId, schemaBody(entity));
-            case APPLICATION -> config.getApplications().put(canonicalId, (Application) entity);
-            case TOOL_SET -> config.getToolsets().put(canonicalId, (ToolSet) entity);
+            case APP_TYPE_SCHEMA ->
+                    putSchemaInPlace(config.getApplicationTypeSchemas(), config.getSchemaAliasesById(), canonicalId, entity);
+            case CATALOG_SCHEMA ->
+                    putSchemaInPlace(config.getCatalogSchemas(), config.getCatalogSchemaAliasesById(), canonicalId, entity);
+            case APPLICATION -> putNameAddressed(config.getApplications(), canonicalId, (Application) entity);
+            case TOOL_SET -> putNameAddressed(config.getToolsets(), canonicalId, (ToolSet) entity);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
+        }
+    }
+
+    /**
+     * Puts a name-addressed entity under its canonical id, then removes the file-defined entry
+     * sharing its short name (blob shadows file), so a subsequent short-name {@code resolve}
+     * hits the freshly-written blob entity rather than a stale file entry.
+     */
+    private static <V> void putNameAddressed(Map<String, V> map, String canonicalId, V entity) {
+        map.put(canonicalId, entity);
+        map.remove(lastSegment(canonicalId));
+    }
+
+    private static void putSchemaInPlace(Map<String, String> schemas, Map<String, String> aliasesById,
+                                         String canonicalId, Object entity) {
+        String body = schemaBody(entity);
+        schemas.put(canonicalId, body);
+        try {
+            recordSchemaAlias(schemas, aliasesById, canonicalId, ProxyUtil.BLOB_MAPPER.readTree(body));
+        } catch (JsonProcessingException e) {
+            log.warn("Failed to parse schema body for $id alias index: {} ({})", canonicalId, e.getMessage());
+        }
+    }
+
+    /**
+     * Records the {@code $id → canonicalId} alias read from a schema's body, and removes the
+     * file-defined entry keyed by that same $id — the schema-specific counterpart of the
+     * blob-shadows-file behavior used for name-addressed types: file entries are keyed by $id,
+     * blob entries by canonical id, so a migrated schema would otherwise appear twice in
+     * $id-keyed listings ({@code ApplicationTypeSchemaController}/{@code CatalogSchemaController}
+     * both iterate the whole map and read each entry's own body $id, not the map key). App-type
+     * and catalog schemas are referenced by the arbitrary $id embedded in the body, not by a
+     * derivable last-path-segment, so this index bridges $id-keyed file entries and
+     * canonical-id-keyed blob entries.
+     */
+    private static void recordSchemaAlias(Map<String, String> schemas, Map<String, String> aliasesById,
+                                          String canonicalId, JsonNode node) {
+        JsonNode idNode = node.get("$id");
+        if (idNode != null && idNode.isTextual()) {
+            schemas.remove(idNode.asText());
+            aliasesById.put(idNode.asText(), canonicalId);
         }
     }
 
@@ -969,8 +1022,14 @@ public final class MergedConfigStore implements ConfigStore {
             case ROLE -> config.getRoles().remove(canonicalId);
             case PROJECT_KEY -> config.getKeys().remove(canonicalId);
             case ROUTE -> config.getRoutes().remove(canonicalId);
-            case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas().remove(canonicalId);
-            case CATALOG_SCHEMA -> config.getCatalogSchemas().remove(canonicalId);
+            case APP_TYPE_SCHEMA -> {
+                config.getApplicationTypeSchemas().remove(canonicalId);
+                config.getSchemaAliasesById().values().removeIf(canonicalId::equals);
+            }
+            case CATALOG_SCHEMA -> {
+                config.getCatalogSchemas().remove(canonicalId);
+                config.getCatalogSchemaAliasesById().values().removeIf(canonicalId::equals);
+            }
             case APPLICATION -> config.getApplications().remove(canonicalId);
             case TOOL_SET -> config.getToolsets().remove(canonicalId);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
@@ -1016,6 +1075,10 @@ public final class MergedConfigStore implements ConfigStore {
         Map<String, String> catalogSchemas = new LinkedHashMap<>(base.getCatalogSchemas());
         Map<String, Application> applications = new LinkedHashMap<>(base.getApplications());
         Map<String, ToolSet> toolsets = new LinkedHashMap<>(base.getToolsets());
+        // $id -> canonicalId index, built fresh each rebuild from the blob scan below; file
+        // entries need no alias since they're already keyed by $id.
+        Map<String, String> schemaAliasesById = new HashMap<>();
+        Map<String, String> catalogSchemaAliasesById = new HashMap<>();
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
         merged.setGlobalInterceptors(base.getGlobalInterceptors());
 
@@ -1060,11 +1123,11 @@ public final class MergedConfigStore implements ConfigStore {
 
                     ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                             type, bucket, bucketLocation, name);
-                    AddedEntity added;
+                    Object added;
                     try {
                         added = addBlobEntity(type, canonicalId, node,
                                 models, interceptors, roles, keys, routes, schemas, catalogSchemas,
-                                applications, toolsets);
+                                applications, toolsets, schemaAliasesById, catalogSchemaAliasesById);
                     } catch (Exception parseError) {
                         recordInvalid(pendingInvalid, type, canonicalId, name,
                                 "JSON parse failure: " + parseError.getMessage(),
@@ -1073,9 +1136,9 @@ public final class MergedConfigStore implements ConfigStore {
                         continue;
                     }
 
-                    if (added != null && added.entity() != null) {
+                    if (added != null) {
                         try {
-                            decryptManagedEntity(type, added.entity(), descriptor);
+                            decryptManagedEntity(type, added, descriptor);
                         } catch (Exception decryptError) {
                             // Roll back the partial insertion so decryption-failure entities never
                             // reach addProjectKeys (locked 2S.9 invariant).
@@ -1088,8 +1151,12 @@ public final class MergedConfigStore implements ConfigStore {
                             continue;
                         }
                         if (type == ResourceTypes.PROJECT_KEY) {
-                            apiKeysByCanonicalId.put(canonicalId, (Key) added.entity());
+                            apiKeysByCanonicalId.put(canonicalId, (Key) added);
                         }
+                        // Shadow the file-defined entry sharing this canonical id's short name,
+                        // gated on successful decryption above — if decryption failed, removeAddedEntity
+                        // rolled the blob entity back, so the file entry must stay in this rebuild's map.
+                        shadowFileEntry(type, canonicalId, models, interceptors, roles, applications, toolsets);
                     }
                     blobBodies.put(canonicalId, node);
                 }
@@ -1105,6 +1172,8 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setCatalogSchemas(catalogSchemas);
         merged.setApplications(applications);
         merged.setToolsets(toolsets);
+        merged.setSchemaAliasesById(schemaAliasesById);
+        merged.setCatalogSchemaAliasesById(catalogSchemaAliasesById);
 
         // Semantic pass — under MODE_SKIP, route per-entity violations to invalidEntities and
         // continue; under MODE_ABORT, the post-processor throws and the rebuild aborts (this.config
@@ -1237,61 +1306,85 @@ public final class MergedConfigStore implements ConfigStore {
                 descriptor.getBucketName(), descriptor.getName());
     }
 
-    private static AddedEntity addBlobEntity(ResourceTypes type, String canonicalId, JsonNode node,
+    private static Object addBlobEntity(ResourceTypes type, String canonicalId, JsonNode node,
                                              Map<String, Model> models, Map<String, Interceptor> interceptors,
                                              Map<String, Role> roles, Map<String, Key> keys,
                                              LinkedHashMap<String, Route> routes, Map<String, String> schemas,
                                              Map<String, String> catalogSchemas,
-                                             Map<String, Application> applications, Map<String, ToolSet> toolsets)
+                                             Map<String, Application> applications, Map<String, ToolSet> toolsets,
+                                             Map<String, String> schemaAliasesById,
+                                             Map<String, String> catalogSchemaAliasesById)
             throws JsonProcessingException {
         switch (type) {
             case MODEL -> {
                 Model entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Model.class);
                 warnIfReplaced(type, canonicalId, models.put(canonicalId, entity));
-                return new AddedEntity(entity);
+                return entity;
             }
             case INTERCEPTOR -> {
                 Interceptor entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Interceptor.class);
                 warnIfReplaced(type, canonicalId, interceptors.put(canonicalId, entity));
-                return new AddedEntity(entity);
+                return entity;
             }
             case ROLE -> {
                 Role entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Role.class);
                 warnIfReplaced(type, canonicalId, roles.put(canonicalId, entity));
-                return new AddedEntity(entity);
+                return entity;
             }
             case PROJECT_KEY -> {
                 Key entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Key.class);
                 warnIfReplaced(type, canonicalId, keys.put(canonicalId, entity));
-                return new AddedEntity(entity);
+                return entity;
             }
             case ROUTE -> {
                 Route entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Route.class);
                 warnIfReplaced(type, canonicalId, routes.put(canonicalId, entity));
-                return new AddedEntity(entity);
+                return entity;
             }
             case APP_TYPE_SCHEMA -> {
                 warnIfReplaced(type, canonicalId, schemas.put(canonicalId, node.toString()));
+                recordSchemaAlias(schemas, schemaAliasesById, canonicalId, node);
                 return null;
             }
             case CATALOG_SCHEMA -> {
                 warnIfReplaced(type, canonicalId, catalogSchemas.put(canonicalId, node.toString()));
+                recordSchemaAlias(catalogSchemas, catalogSchemaAliasesById, canonicalId, node);
                 return null;
             }
             case APPLICATION -> {
                 Application entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, Application.class);
                 warnIfReplaced(type, canonicalId, applications.put(canonicalId, entity));
-                return new AddedEntity(entity);
+                return entity;
             }
             case TOOL_SET -> {
                 ToolSet entity = ProxyUtil.BLOB_MAPPER.treeToValue(node, ToolSet.class);
                 warnIfReplaced(type, canonicalId, toolsets.put(canonicalId, entity));
-                return new AddedEntity(entity);
+                return entity;
             }
             default -> {
                 /* GLOBAL_SETTINGS is a singleton — design 02 §4 leaves union-by-key out of scope. */
                 return null;
             }
+        }
+    }
+
+    /**
+     * Removes the file-defined entry sharing {@code canonicalId}'s short name from the
+     * name-addressed type maps (models/interceptors/roles/applications/toolsets), so blob wins
+     * over the file entry it just shadowed. No-op for types that aren't name-addressed (keys,
+     * routes, schemas — schemas use the $id index instead, see {@link #recordSchemaAlias}).
+     */
+    private static void shadowFileEntry(ResourceTypes type, String canonicalId,
+                                        Map<String, Model> models, Map<String, Interceptor> interceptors,
+                                        Map<String, Role> roles, Map<String, Application> applications,
+                                        Map<String, ToolSet> toolsets) {
+        switch (type) {
+            case MODEL -> models.remove(lastSegment(canonicalId));
+            case INTERCEPTOR -> interceptors.remove(lastSegment(canonicalId));
+            case ROLE -> roles.remove(lastSegment(canonicalId));
+            case APPLICATION -> applications.remove(lastSegment(canonicalId));
+            case TOOL_SET -> toolsets.remove(lastSegment(canonicalId));
+            default -> { /* not name-addressed */ }
         }
     }
 
@@ -1321,6 +1414,4 @@ public final class MergedConfigStore implements ConfigStore {
             default -> { /* no-op */ }
         }
     }
-
-    private record AddedEntity(Object entity) { }
 }

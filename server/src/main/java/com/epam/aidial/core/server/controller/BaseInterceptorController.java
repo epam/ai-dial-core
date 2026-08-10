@@ -48,7 +48,7 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
     public Future<?> handle() {
         List<String> interceptors = context.getInterceptors();
         String interceptorName = interceptors.get(interceptorIndex);
-        Interceptor interceptor = context.getConfig().getInterceptors().get(interceptorName);
+        Interceptor interceptor = context.getConfig().getInterceptor(interceptorName);
         if (interceptor == null) {
             log.warn("Interceptor is not found: {}", interceptorName);
             return respond(HttpStatus.NOT_FOUND, "Interceptor is not found");

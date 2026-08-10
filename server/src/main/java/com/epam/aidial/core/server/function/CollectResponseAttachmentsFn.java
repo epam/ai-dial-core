@@ -77,7 +77,7 @@ public abstract class CollectResponseAttachmentsFn extends BaseResponseFunction 
             return;
         }
         String sourceDeployment = context.getApiKeyData().getSourceDeployment();
-        if (context.getConfig().getInterceptors().containsKey(sourceDeployment)) {
+        if (context.getConfig().getInterceptor(sourceDeployment) != null) {
             // Note. permission check: make sure that the target deployment has access to the resource only
             // we don't check other permissions like admin, share or publishing access since we give full permissions to the source deployment
             Map<ResourceDescriptor, Set<ResourceAccessType>> result = AccessService.getAppResourceAccess(Set.of(resource),

@@ -11,6 +11,8 @@ import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
+import java.net.URI;
+
 import static com.epam.aidial.core.server.util.ResourceDescriptorFactory.fromDecoded;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -72,12 +74,12 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         Config merged = dial.getProxy().getConfigStore().get();
         Model blobModel = merged.getModels().get("models/platform/" + blobName);
         assertNotNull(blobModel, () -> "Expected canonical-ID key in merged Config: " + merged.getModels().keySet());
-        // Slice 2S.15 / OQ-23: Model.name carries the canonical ID for API-managed entries so
-        // legacy /openai/models, /openai/deployments, and rate-limit role-limit lookups see the
-        // canonical form. Polish.1 (2026-05-08) extends this to the admin Configuration API GET
-        // / listing projection — canonical ID for API entries, simple name for file entries.
-        assertEquals("models/platform/" + blobName, blobModel.getName(),
-                "Entity.name carries the canonical ID for API-managed entries");
+        // Model.name carries the short name for API-managed entries too, so legacy /openai/models,
+        // /openai/deployments, and rate-limit role-limit lookups see the same short form file
+        // entries already use. The admin Configuration API GET / listing projection is unaffected
+        // — it independently projects the canonical ID (map key).
+        assertEquals(blobName, blobModel.getName(),
+                "Entity.name carries the short name for API-managed entries");
         assertNotNull(merged.getModels().get("test-model-v1"), "File model must still coexist by simple name");
 
         Response get = send(HttpMethod.GET, "/v1/models/platform/" + blobName, null, "",
@@ -106,9 +108,171 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         Config merged = dial.getProxy().getConfigStore().get();
         Interceptor blob = merged.getInterceptors().get("interceptors/platform/" + blobName);
         assertNotNull(blob, () -> "Expected canonical-ID key in merged Config: " + merged.getInterceptors().keySet());
-        // Slice 2S.15: API-managed entries carry the canonical ID as their name (per OQ-23).
-        assertEquals("interceptors/platform/" + blobName, blob.getName());
+        // API-managed entries carry the short name (last path segment), not the canonical ID.
+        assertEquals(blobName, blob.getName());
         assertNotNull(merged.getInterceptors().get("interceptor1"), "File interceptor must still coexist");
+    }
+
+    @Test
+    void testBlobModelShadowsFileEntryByShortNameAfterReload() {
+        // A blob model written under the SAME short name as an existing file-sourced model must
+        // replace it in the merged Config, not coexist alongside it: the file entry keyed by the
+        // bare short name is removed, and resolving that short name (verbatim or via getModel)
+        // hits the blob entity, which is authoritative once migrated.
+        String shortName = "test-model-v1";
+        String canonicalId = "models/platform/" + shortName;
+        String body = """
+                {
+                    "type": "chat",
+                    "displayName": "Migrated Test Model",
+                    "endpoint": "http://localhost:7001/openai/deployments/migrated/chat/completions"
+                }
+                """;
+        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                shortName, body);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        Config merged = dial.getProxy().getConfigStore().get();
+        Model blobModel = merged.getModels().get(canonicalId);
+        assertNotNull(blobModel, () -> "Expected canonical-ID key in merged Config: " + merged.getModels().keySet());
+        assertNull(merged.getModels().get(shortName),
+                () -> "File entry must be shadowed by the migrated blob entity: " + merged.getModels().keySet());
+        assertEquals(blobModel, merged.getModel(shortName), "getModel must resolve the short name to the blob entity");
+    }
+
+    @Test
+    void testBlobInterceptorShadowsFileEntryByShortNameAfterReload() {
+        String shortName = "interceptor1";
+        String canonicalId = "interceptors/platform/" + shortName;
+        String body = """
+                {
+                    "endpoint": "http://localhost:9000/migrated-intercept"
+                }
+                """;
+        putBlob(ResourceTypes.INTERCEPTOR, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                shortName, body);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        Config merged = dial.getProxy().getConfigStore().get();
+        Interceptor blob = merged.getInterceptors().get(canonicalId);
+        assertNotNull(blob, () -> "Expected canonical-ID key in merged Config: " + merged.getInterceptors().keySet());
+        assertNull(merged.getInterceptors().get(shortName),
+                () -> "File entry must be shadowed by the migrated blob entity: " + merged.getInterceptors().keySet());
+        assertEquals(blob, merged.getInterceptor(shortName),
+                "getInterceptor must resolve the short name to the blob entity");
+    }
+
+    @Test
+    void testBlobRoleShadowsFileEntryByShortNameAfterReload() {
+        String shortName = "default";
+        String canonicalId = "roles/platform/" + shortName;
+        String body = """
+                {
+                    "limits": {}
+                }
+                """;
+        putBlob(ResourceTypes.ROLE, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                shortName, body);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        Config merged = dial.getProxy().getConfigStore().get();
+        assertNotNull(merged.getRoles().get(canonicalId),
+                () -> "Expected canonical-ID key in merged Config: " + merged.getRoles().keySet());
+        assertNull(merged.getRoles().get(shortName),
+                () -> "File entry must be shadowed by the migrated blob entity: " + merged.getRoles().keySet());
+        assertEquals(merged.getRoles().get(canonicalId), merged.getRole(shortName),
+                "getRole must resolve the short name to the blob entity");
+    }
+
+    @Test
+    void testBlobApplicationShadowsFileEntryByShortNameAfterReload() {
+        String shortName = "app";
+        String canonicalId = "applications/platform/" + shortName;
+        String body = """
+                {
+                    "endpoint": "http://application1/v1/completions",
+                    "display_name": "Migrated Platform App"
+                }
+                """;
+        putBlob(ResourceTypes.APPLICATION, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                shortName, body);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        Config merged = dial.getProxy().getConfigStore().get();
+        assertNotNull(merged.getApplications().get(canonicalId),
+                () -> "Expected canonical-ID key in merged Config: " + merged.getApplications().keySet());
+        assertNull(merged.getApplications().get(shortName),
+                () -> "File entry must be shadowed by the migrated blob entity: " + merged.getApplications().keySet());
+        assertEquals(merged.getApplications().get(canonicalId), merged.selectDeployment(shortName),
+                "selectDeployment must resolve the short name to the blob entity");
+    }
+
+    @Test
+    void testBlobToolSetShadowsFileEntryByShortNameAfterReload() {
+        String shortName = "git";
+        String canonicalId = "toolsets/platform/" + shortName;
+        String body = """
+                {
+                    "endpoint": "http://localhost:9876",
+                    "transport": "HTTP",
+                    "display_name": "Migrated Git Toolset"
+                }
+                """;
+        putBlob(ResourceTypes.TOOL_SET, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                shortName, body);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        Config merged = dial.getProxy().getConfigStore().get();
+        assertNotNull(merged.getToolsets().get(canonicalId),
+                () -> "Expected canonical-ID key in merged Config: " + merged.getToolsets().keySet());
+        assertNull(merged.getToolsets().get(shortName),
+                () -> "File entry must be shadowed by the migrated blob entity: " + merged.getToolsets().keySet());
+        assertEquals(merged.getToolsets().get(canonicalId), merged.selectDeployment(shortName),
+                "selectDeployment must resolve the short name to the blob entity");
+    }
+
+    @Test
+    void testBlobAppTypeSchemaShadowsFileEntryByIdAfterReload() {
+        // App-type/catalog schemas are keyed by $id (file) vs. canonical id (blob), so the
+        // blob-shadows-file removal used for name-addressed types (by short name) doesn't apply
+        // directly — instead, the migrated blob entity's own $id is used to remove the file entry
+        // sharing it, so $id-keyed listings (ApplicationTypeSchemaController) don't surface the
+        // schema twice.
+        String fileSchemaId = "https://mydial.somewhere.com/custom_application_schemas/specific_application_type";
+        String blobName = "blob-schema-1";
+        String body = """
+                {
+                    "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+                    "$id": "%s",
+                    "display_name": "Blob-migrated schema"
+                }
+                """.formatted(fileSchemaId);
+        putBlob(ResourceTypes.APP_TYPE_SCHEMA, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                blobName, body);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        Config merged = dial.getProxy().getConfigStore().get();
+        String canonicalId = "schemas/platform/" + blobName;
+        assertTrue(merged.getApplicationTypeSchemas().containsKey(canonicalId),
+                () -> "Expected canonical-ID key in merged Config: " + merged.getApplicationTypeSchemas().keySet());
+        assertFalse(merged.getApplicationTypeSchemas().containsKey(fileSchemaId),
+                () -> "File entry keyed by $id must be shadowed by the migrated blob entity: "
+                        + merged.getApplicationTypeSchemas().keySet());
+        assertEquals(merged.getApplicationTypeSchemas().get(canonicalId),
+                merged.getCustomApplicationSchema(URI.create(fileSchemaId)),
+                "getCustomApplicationSchema must still resolve the $id via the alias index");
     }
 
     @Test

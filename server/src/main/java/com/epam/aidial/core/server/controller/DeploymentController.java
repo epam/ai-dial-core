@@ -84,7 +84,7 @@ public class DeploymentController {
     )
     public Future<?> getDeployment(String deploymentId) {
         Config config = context.getConfig();
-        Model model = config.getModels().get(deploymentId);
+        Model model = config.getModel(deploymentId);
 
         if (model == null) {
             return context.respond(HttpStatus.NOT_FOUND);

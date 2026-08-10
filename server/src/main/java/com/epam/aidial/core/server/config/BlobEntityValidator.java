@@ -37,7 +37,7 @@ public final class BlobEntityValidator {
         }
         for (int i = 0; i < refs.size(); i++) {
             String ref = refs.get(i);
-            if (ref == null || !config.getInterceptors().containsKey(ref)) {
+            if (ref == null || config.getInterceptor(ref) == null) {
                 warnings.add(new ValidationWarning("interceptors[" + i + "]",
                         "Interceptor '" + ref + "' not found"));
             }
@@ -48,7 +48,7 @@ public final class BlobEntityValidator {
         if (schemaId == null) {
             return;
         }
-        if (!config.getApplicationTypeSchemas().containsKey(schemaId.toString())) {
+        if (config.getCustomApplicationSchema(schemaId) == null) {
             warnings.add(new ValidationWarning("applicationTypeSchemaId",
                     "Schema '" + schemaId + "' not found"));
         }

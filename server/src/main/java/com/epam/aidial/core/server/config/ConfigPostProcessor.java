@@ -126,7 +126,7 @@ public final class ConfigPostProcessor {
         if (model == null) {
             return;
         }
-        model.setName(canonicalId);
+        model.setName(lastSegment(canonicalId));
         List<ValidationWarning> warnings = new ArrayList<>();
         validatePricing(model, warnings);
         if (onSkip != null) {
@@ -149,7 +149,7 @@ public final class ConfigPostProcessor {
     static void validateSingleInterceptor(Config config, String canonicalId) {
         Interceptor interceptor = config.getInterceptors().get(canonicalId);
         if (interceptor != null) {
-            interceptor.setName(canonicalId);
+            interceptor.setName(lastSegment(canonicalId));
         }
     }
 
@@ -160,7 +160,30 @@ public final class ConfigPostProcessor {
     static void validateSingleRole(Config config, String canonicalId) {
         Role role = config.getRoles().get(canonicalId);
         if (role != null) {
-            role.setName(canonicalId);
+            role.setName(lastSegment(canonicalId));
+        }
+    }
+
+    /**
+     * Targeted per-type helper for {@link MergedConfigStore} partial-update path. Sets
+     * {@code application.name} from the map key. No cross-ref validation — applications have
+     * no outbound refs checked here.
+     */
+    static void validateSingleApplication(Config config, String canonicalId) {
+        Application application = config.getApplications().get(canonicalId);
+        if (application != null) {
+            application.setName(lastSegment(canonicalId));
+        }
+    }
+
+    /**
+     * Targeted per-type helper for {@link MergedConfigStore} partial-update path. Sets
+     * {@code toolSet.name} from the map key.
+     */
+    static void validateSingleToolSet(Config config, String canonicalId) {
+        ToolSet toolSet = config.getToolsets().get(canonicalId);
+        if (toolSet != null) {
+            toolSet.setName(lastSegment(canonicalId));
         }
     }
 
@@ -225,7 +248,7 @@ public final class ConfigPostProcessor {
                 continue;
             }
             Model model = entry.getValue();
-            model.setName(name);
+            model.setName(lastSegment(name));
             log.debug("Loading {}", model);
             List<ValidationWarning> warnings = new ArrayList<>();
             validatePricing(model, warnings);
@@ -248,20 +271,19 @@ public final class ConfigPostProcessor {
 
     /**
      * Validates that every interceptor reference on the supplied model resolves
-     * within the merged {@code config.interceptors} map. {@link MergedConfigStore}
-     * keys file entries by simple name and API entries by canonical ID; either
-     * shape is accepted via {@code containsKey}. Returns {@code true} when every
-     * reference resolves (no warnings appended).
+     * within {@code config}. Resolve-aware ({@code config.getInterceptor}) rather than a raw
+     * {@code containsKey}, so a short-name reference to a migrated (canonical-id-keyed, with the
+     * file entry shadowed) interceptor is not wrongly treated as dangling. Returns {@code true}
+     * when every reference resolves (no warnings appended).
      */
     public static boolean validateCrossReferences(Model model, Config config, List<ValidationWarning> warnings) {
         List<String> refs = model.getInterceptors();
         if (refs == null || refs.isEmpty()) {
             return true;
         }
-        Map<String, Interceptor> interceptors = config.getInterceptors();
         for (int i = 0; i < refs.size(); i++) {
             String ref = refs.get(i);
-            if (ref == null || !interceptors.containsKey(ref)) {
+            if (ref == null || config.getInterceptor(ref) == null) {
                 warnings.add(new ValidationWarning("interceptors[" + i + "]",
                         "Interceptor '" + ref + "' not found in config"));
             }
@@ -297,7 +319,7 @@ public final class ConfigPostProcessor {
                 continue;
             }
             Application application = entry.getValue();
-            application.setName(name);
+            application.setName(lastSegment(name));
             validateExternalServices(application);
             log.debug("Loading {}", application);
         }
@@ -351,7 +373,7 @@ public final class ConfigPostProcessor {
         for (Map.Entry<String, Role> entry : config.getRoles().entrySet()) {
             String name = entry.getKey();
             Role role = entry.getValue();
-            role.setName(name);
+            role.setName(lastSegment(name));
             log.debug("Start loading role `{}`", role.getName());
             for (Map.Entry<String, Limit> limitEntry : role.getLimits().entrySet()) {
                 log.debug("Loading {} for deployment `{}`", limitEntry.getValue(), limitEntry.getKey());
@@ -370,7 +392,7 @@ public final class ConfigPostProcessor {
                 continue;
             }
             Interceptor interceptor = entry.getValue();
-            interceptor.setName(name);
+            interceptor.setName(lastSegment(name));
             log.debug("Loading {}", interceptor);
         }
     }
@@ -386,7 +408,7 @@ public final class ConfigPostProcessor {
             }
             if (isValidToolSetKey(name)) {
                 ToolSet toolSet = entry.getValue();
-                toolSet.setName(name);
+                toolSet.setName(lastSegment(name));
                 log.debug("Loading {}", entry.getValue());
             } else {
                 log.warn("Invalid ToolSet name: {}", name);
@@ -414,6 +436,15 @@ public final class ConfigPostProcessor {
                 List.of(new ValidationWarning("name", "Duplicate deployment ID: " + name))));
         iterator.remove();
         return true;
+    }
+
+    /**
+     * Last path segment of a map key: identity for a bare (slash-free) file-sourced name,
+     * short name for a canonical id ({@code models/platform/gpt-4} → {@code gpt-4}).
+     */
+    static String lastSegment(String key) {
+        int slash = key.lastIndexOf('/');
+        return slash < 0 ? key : key.substring(slash + 1);
     }
 
     private static boolean isValidResourceKey(String resourceKey) {

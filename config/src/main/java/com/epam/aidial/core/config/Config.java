@@ -56,24 +56,35 @@ public class Config {
 
     private List<String> globalInterceptors = List.of();
 
+    /**
+     * $id → canonical-id index for {@code platform}-bucket schema entities, built at rebuild
+     * time from blob bodies. Bridges $id-keyed file entries and canonical-id-keyed blob entries
+     * in {@link #applicationTypeSchemas}, since a schema's $id is not derivable from its path.
+     */
+    @JsonIgnore
+    private Map<String, String> schemaAliasesById = Map.of();
+
+    @JsonIgnore
+    private Map<String, String> catalogSchemaAliasesById = Map.of();
+
     @JsonIgnore
     public Deployment selectDeployment(String deploymentId) {
-        Application application = applications.get(deploymentId);
+        Application application = resolve(applications, "applications", deploymentId);
         if (application != null) {
             return application;
         }
 
-        Model model = models.get(deploymentId);
+        Model model = resolve(models, "models", deploymentId);
         if (model != null) {
             return model;
         }
 
-        ToolSet toolSet = toolsets.get(deploymentId);
+        ToolSet toolSet = resolve(toolsets, "toolsets", deploymentId);
         if (toolSet != null) {
             return toolSet;
         }
 
-        return interceptors.get(deploymentId);
+        return resolve(interceptors, "interceptors", deploymentId);
     }
 
     public boolean isDeploymentExists(String deploymentId) {
@@ -81,18 +92,61 @@ public class Config {
     }
 
     @JsonIgnore
+    public Model getModel(String id) {
+        return resolve(models, "models", id);
+    }
+
+    @JsonIgnore
+    public Role getRole(String id) {
+        return resolve(roles, "roles", id);
+    }
+
+    @JsonIgnore
+    public Interceptor getInterceptor(String id) {
+        return resolve(interceptors, "interceptors", id);
+    }
+
+    @JsonIgnore
     public String getCustomApplicationSchema(URI schemaId) {
-        if (schemaId == null) {
-            return null;
-        }
-        return applicationTypeSchemas.get(schemaId.toString());
+        return resolveSchema(applicationTypeSchemas, schemaAliasesById, schemaId);
     }
 
     @JsonIgnore
     public String getCatalogSchema(URI schemaId) {
+        return resolveSchema(catalogSchemas, catalogSchemaAliasesById, schemaId);
+    }
+
+    /**
+     * Resolves a schema by its $id: verbatim lookup first (canonical-id callers, and file entries
+     * already keyed by $id), then falls back through the $id → canonical-id alias index for a
+     * migrated blob entry. A schema's $id is not derivable from its path, so unlike {@link
+     * #resolve}, the alias index must be maintained explicitly (see {@code MergedConfigStore}).
+     */
+    private static String resolveSchema(Map<String, String> schemas, Map<String, String> aliasesById, URI schemaId) {
         if (schemaId == null) {
             return null;
         }
-        return catalogSchemas.get(schemaId.toString());
+        String id = schemaId.toString();
+        String body = schemas.get(id);
+        if (body != null) {
+            return body;
+        }
+        String canonicalId = aliasesById.get(id);
+        return canonicalId == null ? null : schemas.get(canonicalId);
+    }
+
+    /**
+     * Resolves a deployment-map lookup by id. Tries {@code id} verbatim first (canonical-id
+     * callers, and not-yet-migrated file entries keyed by short name), then falls back to the
+     * derived canonical id {@code typeSegment/platform/id} for a short-name lookup against a
+     * migrated blob entry. {@code typeSegment} is a string literal because this module has no
+     * dependency on storage/ResourceTypes.
+     */
+    private static <V> V resolve(Map<String, V> entities, String typeSegment, String id) {
+        V direct = entities.get(id);
+        if (direct != null) {
+            return direct;
+        }
+        return entities.get(typeSegment + "/platform/" + id);
     }
 }
