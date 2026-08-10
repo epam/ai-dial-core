@@ -213,7 +213,7 @@ public class DeploymentTest {
 
         assertEquals("http://dial-vertexai.dial.svc.cluster.local/openai/deployments/gemini-3.1-pro-preview/chat/completions?api-version=2025-01-01-preview",
                 model.resolveRequestUri(OPENAI_CHAT_COMPLETIONS,
-                        "/openai/deployments/models/platform/gemini-3.1-pro-preview/chat/completions?api-version=2025-01-01-preview",
+                        "/openai/deployments/models/platform/gemini-3.1-pro-preview/chat/completions",
                         "api-version=2025-01-01-preview"));
     }
 
