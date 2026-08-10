@@ -332,12 +332,6 @@ public class DeploymentController {
         return toolSetData;
     }
 
-    /**
-     * Typed interface types ({@link InterfaceType}) the deployment declares, via either the new
-     * {@code interfaces} map or a legacy endpoint. A deployment that still serves embeddings through the
-     * untyped legacy {@code endpoint} is listed under {@code openaiChatCompletions} only, since that is
-     * what it declares.
-     */
     private static List<String> supportedInterfaces(Deployment deployment) {
         List<String> result = new ArrayList<>();
         for (InterfaceType type : InterfaceType.values()) {

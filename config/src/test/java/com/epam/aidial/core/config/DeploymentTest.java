@@ -84,8 +84,7 @@ public class DeploymentTest {
         assertTrue(model.supportsInterface(OPENAI_EMBEDDINGS));
         assertEquals("http://adapter:5000", model.resolveEndpoint(OPENAI_EMBEDDINGS));
 
-        // declaring embeddings alone does not make the deployment a chat-completions one: the fallback
-        // is one-way, so a chat-completions request finds no configuration to serve it
+        // declaring embeddings alone does not make it a chat-completions deployment
         assertNull(model.resolveEndpoint(OPENAI_CHAT_COMPLETIONS));
     }
 
@@ -95,8 +94,7 @@ public class DeploymentTest {
         model.setInterfaces(Map.of(
                 OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://adapter:5000")));
 
-        // the typed interfaces map is strict: chat completions is configured via openaiChatCompletions
-        // and embeddings via openaiEmbeddings, so a chat-only declaration does not serve /embeddings
+        // the typed map is strict: a chat-only declaration does not serve /embeddings
         assertFalse(model.supportsInterface(OPENAI_EMBEDDINGS));
         assertNull(model.resolveEndpoint(OPENAI_EMBEDDINGS));
     }
@@ -107,8 +105,7 @@ public class DeploymentTest {
         model.setType(ModelType.EMBEDDING);
         model.setEndpoint("http://host/openai/deployments/ada/embeddings");
 
-        // the untyped legacy endpoint predates the split, so it keeps serving embeddings; it declares
-        // chat completions only, hence openaiEmbeddings is still not advertised
+        // the untyped legacy endpoint serves embeddings but declares chat completions only
         assertFalse(model.supportsInterface(OPENAI_EMBEDDINGS));
         assertEquals("http://host/openai/deployments/ada/embeddings", model.resolveEndpoint(OPENAI_EMBEDDINGS));
         assertEquals("http://host/openai/deployments/ada/embeddings",
@@ -156,8 +153,7 @@ public class DeploymentTest {
         Model model = new Model();
         model.setEndpoint("http://host/chat/completions");
 
-        // the untyped legacy endpoint serves the deployments-POST family only: the Responses API
-        // keeps requiring its own configuration
+        // the untyped legacy endpoint serves the deployments-POST family only, not the Responses API
         assertEquals("http://host/chat/completions", model.resolveEndpoint(OPENAI_EMBEDDINGS));
         assertNull(model.resolveEndpoint(OPENAI_RESPONSES));
     }

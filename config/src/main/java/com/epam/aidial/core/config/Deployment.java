@@ -131,26 +131,21 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
-     * The pre-{@code interfaces} field that serves the type: {@link #responsesEndpoint} for the Responses
-     * API, and the untyped {@link #endpoint} for the whole deployments-POST family. That single field
-     * predates the split into typed interfaces, so it serves {@code /chat/completions}, {@code /completions}
-     * and {@code /embeddings} alike — which is how every embeddings model was configured before
-     * {@code openaiEmbeddings} existed.
+     * The pre-{@code interfaces} field serving the type. The untyped {@link #endpoint} predates the split
+     * into typed interfaces, so it serves the whole deployments-POST family, {@code /embeddings} included.
      */
     @Nullable
     private String legacyEndpoint(InterfaceType type) {
         return switch (type) {
             case OPENAI_CHAT_COMPLETIONS, OPENAI_EMBEDDINGS -> endpoint;
             case OPENAI_RESPONSES -> responsesEndpoint;
-            case ANTHROPIC_MESSAGES -> null;
+            default -> null;
         };
     }
 
     /**
-     * The endpoint a request for the type is routed to: the typed {@code interfaces} base URL when
-     * declared, else the legacy field serving the type. Null when the deployment has no configuration for
-     * the type at all, which callers answer with 503. Also used as the synthetic upstream id when a
-     * deployment declares no upstreams.
+     * The endpoint a request for the type is routed to, or null when nothing serves it (callers answer
+     * 503). Doubles as the synthetic upstream id when a deployment declares no upstreams.
      */
     @Nullable
     public String resolveEndpoint(InterfaceType type) {
@@ -159,12 +154,9 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
-     * True when the deployment <em>declares</em> the type — what the listing APIs advertise, as opposed to
-     * what {@link #resolveEndpoint} routes. The two differ for {@code openaiEmbeddings} only: the untyped
-     * {@link #endpoint} is how every pre-interfaces model is configured, chat and embedding alike, so
-     * reading it as an embeddings declaration would advertise {@code openaiEmbeddings} on every chat model.
-     * Such a deployment therefore advertises {@code openaiChatCompletions} only, while still being routed
-     * for {@code /embeddings}. Declaring {@code openaiEmbeddings} in {@code interfaces} is what advertises it.
+     * True when the deployment <em>declares</em> the type, which is what listings advertise. Differs from
+     * {@link #resolveEndpoint} for {@code openaiEmbeddings}: the untyped {@link #endpoint} configures chat
+     * and embedding models alike, so reading it as a declaration would advertise embeddings on every model.
      */
     public boolean supportsInterface(InterfaceType type) {
         return getInterfaceBaseUrl(type) != null
@@ -172,10 +164,8 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
-     * The single dual-mode decision: base URL plus {@code path} in the new flow, the verbatim legacy
-     * endpoint in the legacy flow (where the path is already baked into the endpoint and {@code path} is
-     * ignored). Callers append their own suffix/query. Keeping this the only place that branches on the
-     * flow lets callers compose URIs without ever seeing which flow the deployment is configured for.
+     * The only place that branches on the flow: base URL plus {@code path}, or the verbatim legacy endpoint
+     * with {@code path} ignored, the endpoint already carrying it. Callers append their own suffix/query.
      */
     public String resolveUri(InterfaceType type, String path) {
         String baseUrl = getInterfaceBaseUrl(type);
@@ -183,10 +173,8 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
-     * The absolute URI a deployments-POST request for the type is forwarded to: {@link #resolveUri} of the
-     * ingress path with the {@code /deployments/{id}/} segment rewritten to this deployment's own name (or
-     * {@link #overrideName} when set), plus the original query. In the legacy flow this is byte-identical
-     * to the pre-interfaces behaviour: verbatim endpoint plus query.
+     * The absolute URI a deployments-POST request is forwarded to: {@link #resolveUri} of the ingress path
+     * with the {@code /deployments/{id}/} segment rewritten to {@link #getTargetName()}, plus the query.
      *
      * @param ingressPath the inbound request path, without the query
      * @param query       the inbound query string, or null when absent

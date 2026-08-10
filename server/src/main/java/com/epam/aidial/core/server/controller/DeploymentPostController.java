@@ -285,12 +285,9 @@ public class DeploymentPostController extends BaseDeploymentPostController {
     }
 
     /**
-     * The interface the request path targets: {@code openaiEmbeddings} for {@code /embeddings},
-     * {@code openaiChatCompletions} for {@code /chat/completions} and {@code /completions}. The
-     * legacy-endpoint backing for {@code /embeddings} lives in {@link Deployment}, not here.
-     * Taken from the path rather than from a named group in {@code RouteTemplate.POST_DEPLOYMENT}: named
-     * groups are replaced with placeholders in the server span name, which would stop telling the three
-     * actions apart.
+     * The interface the request path targets. Read from the path rather than from a named group in
+     * {@code RouteTemplate.POST_DEPLOYMENT}: named groups become placeholders in the server span name,
+     * which would stop telling the three actions apart.
      */
     private InterfaceType requestedInterface() {
         return context.getRequest().path().endsWith("/embeddings")

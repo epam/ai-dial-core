@@ -19,10 +19,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * End-to-end coverage of the {@code openaiEmbeddings} interface. The typed {@code interfaces} map is
- * strict — chat completions is configured via {@code openaiChatCompletions} and embeddings via
- * {@code openaiEmbeddings} — while deployments configured before the split keep reaching their
- * embeddings endpoint through the untyped legacy {@code endpoint}.
+ * End-to-end coverage of the {@code openaiEmbeddings} interface: the typed {@code interfaces} map is
+ * strict, while deployments configured before the split keep serving embeddings through the untyped
+ * legacy {@code endpoint}.
  */
 public class EmbeddingsApiTest extends ResourceBaseTest {
 
@@ -75,8 +74,7 @@ public class EmbeddingsApiTest extends ResourceBaseTest {
     @Test
     public void testChatOnlyInterfaceRefusesEmbeddings() throws IOException {
         try (TestWebServer server = new TestWebServer(4848)) {
-            // the typed map is strict: a model declaring only openaiChatCompletions does not serve
-            // /embeddings — declaring openaiEmbeddings is the correct configuration
+            // the typed map is strict: a chat-only declaration does not serve /embeddings
             Response response = post("/openai/deployments/embeddings-chat-only/embeddings",
                     REQUEST.formatted("embeddings-chat-only"));
 
@@ -136,8 +134,7 @@ public class EmbeddingsApiTest extends ResourceBaseTest {
     @Test
     public void testChatOnlyApplicationRefusesEmbeddings() throws IOException {
         try (TestWebServer server = new TestWebServer(4848)) {
-            // the strict typed map applies to applications too: an app declaring only
-            // openaiChatCompletions does not serve /embeddings (a legacy `endpoint` still would)
+            // the strict typed map applies to applications too (a legacy `endpoint` would still serve it)
             Response response = post("/openai/deployments/app-chat/embeddings", REQUEST.formatted("app-chat"));
 
             assertEquals(503, response.status());

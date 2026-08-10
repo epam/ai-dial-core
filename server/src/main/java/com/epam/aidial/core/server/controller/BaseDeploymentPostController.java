@@ -290,10 +290,6 @@ public class BaseDeploymentPostController {
         return proxy.getClient().request(options);
     }
 
-    /**
-     * Routes by interface type, forwarding to the URI resolved by
-     * {@link Deployment#resolveRequestUri(InterfaceType, String, String)}.
-     */
     protected Future<HttpClientRequest> createProxyRequest(InterfaceType type) {
         HttpServerRequest request = context.getRequest();
         return createProxyRequest(context.getDeployment()
