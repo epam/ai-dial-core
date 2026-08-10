@@ -7,8 +7,10 @@ import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.RoleBasedEntity;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.CostItemLimitStats;
+import com.epam.aidial.core.server.data.DeploymentLimitStats;
 import com.epam.aidial.core.server.data.ItemLimitStats;
 import com.epam.aidial.core.server.data.LimitStats;
+import com.epam.aidial.core.server.data.UserLimitStats;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ModelCostCalculator;
@@ -25,6 +27,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -127,10 +131,93 @@ public class RateLimiter {
         return limitStats;
     }
 
+    /**
+     * Collects limits and rolling usage for many deployments in one shot.
+     *
+     * <p>Cost is resolved once for the whole batch: both the limit and the counter are per caller, not
+     * per deployment. All reads are issued as a single batch, and one timestamp is shared so every
+     * window in the response is consistent.
+     */
+    public Future<UserLimitStats> getUserLimitStats(ProxyContext context, List<? extends RoleBasedEntity> deployments) {
+        try {
+            // skip checking limits if redis is not available
+            if (resourceService == null) {
+                return Future.succeededFuture();
+            }
+            return taskExecutor.submit(() -> collectUserLimitStats(context, deployments));
+        } catch (Throwable e) {
+            return Future.failedFuture(e);
+        }
+    }
+
+    private UserLimitStats collectUserLimitStats(ProxyContext context, List<? extends RoleBasedEntity> deployments) {
+        String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
+        ResourceDescriptor costsResource = getResourceDescription(bucketLocation, getPathToCosts());
+
+        List<DeploymentResources> perDeployment = new ArrayList<>();
+        List<ResourceDescriptor> resources = new ArrayList<>();
+        resources.add(costsResource);
+        for (RoleBasedEntity deployment : deployments) {
+            DeploymentResources entry = new DeploymentResources(deployment,
+                    getResourceDescription(bucketLocation, getPathToTokens(deployment.getName())),
+                    getResourceDescription(bucketLocation, getPathToRequests(deployment.getName())));
+            perDeployment.add(entry);
+            resources.add(entry.tokens());
+            resources.add(entry.requests());
+        }
+        Map<ResourceDescriptor, String> bodies = resourceService.getResources(resources);
+
+        long timestamp = System.currentTimeMillis();
+        UserLimitStats userLimitStats = new UserLimitStats();
+
+        LimitStats costStats = create(DEFAULT_LIMIT, getCostLimitByUser(context));
+        collectCostLimitStats(bodies.get(costsResource), costStats, timestamp);
+        userLimitStats.setMinuteCostStats(costStats.getMinuteCostStats());
+        userLimitStats.setDayCostStats(costStats.getDayCostStats());
+        userLimitStats.setWeekCostStats(costStats.getWeekCostStats());
+        userLimitStats.setMonthCostStats(costStats.getMonthCostStats());
+
+        List<DeploymentLimitStats> collected = new ArrayList<>();
+        for (DeploymentResources entry : perDeployment) {
+            String name = entry.deployment().getName();
+            Limit limit = getLimitByUser(context, entry.deployment());
+            if (limit == null) {
+                log.warn("Limit is not found for {}", name);
+                continue;
+            }
+            // no cost limit: cost is reported once at the top level, so nothing here collects it
+            LimitStats limitStats = create(limit);
+            collectTokenLimitStats(bodies.get(entry.tokens()), limitStats, timestamp);
+            collectRequestLimitStats(bodies.get(entry.requests()), limitStats, timestamp);
+            collected.add(toDeploymentLimitStats(name, limitStats));
+        }
+        collected.sort(Comparator.comparing(DeploymentLimitStats::getId));
+        userLimitStats.setDeployments(collected);
+
+        return userLimitStats;
+    }
+
+    private record DeploymentResources(RoleBasedEntity deployment, ResourceDescriptor tokens, ResourceDescriptor requests) {
+    }
+
+    private static DeploymentLimitStats toDeploymentLimitStats(String name, LimitStats limitStats) {
+        DeploymentLimitStats stats = new DeploymentLimitStats();
+        stats.setId(name);
+        stats.setMinuteTokenStats(limitStats.getMinuteTokenStats());
+        stats.setDayTokenStats(limitStats.getDayTokenStats());
+        stats.setWeekTokenStats(limitStats.getWeekTokenStats());
+        stats.setMonthTokenStats(limitStats.getMonthTokenStats());
+        stats.setHourRequestStats(limitStats.getHourRequestStats());
+        stats.setDayRequestStats(limitStats.getDayRequestStats());
+        return stats;
+    }
+
     private void collectTokenLimitStats(ProxyContext context, LimitStats limitStats, long timestamp, String name) {
-        String tokensPath = getPathToTokens(name);
-        ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
-        String json = resourceService.getResource(resourceDescription);
+        ResourceDescriptor resourceDescription = getResourceDescription(context, getPathToTokens(name));
+        collectTokenLimitStats(resourceService.getResource(resourceDescription), limitStats, timestamp);
+    }
+
+    private static void collectTokenLimitStats(String json, LimitStats limitStats, long timestamp) {
         TokenRateLimit rateLimit = ProxyUtil.convertToObject(json, TokenRateLimit.class);
         if (rateLimit == null) {
             return;
@@ -139,9 +226,11 @@ public class RateLimiter {
     }
 
     private void collectRequestLimitStats(ProxyContext context, LimitStats limitStats, long timestamp, String name) {
-        String requestsPath = getPathToRequests(name);
-        ResourceDescriptor resourceDescription = getResourceDescription(context, requestsPath);
-        String json = resourceService.getResource(resourceDescription);
+        ResourceDescriptor resourceDescription = getResourceDescription(context, getPathToRequests(name));
+        collectRequestLimitStats(resourceService.getResource(resourceDescription), limitStats, timestamp);
+    }
+
+    private static void collectRequestLimitStats(String json, LimitStats limitStats, long timestamp) {
         RequestRateLimit rateLimit = ProxyUtil.convertToObject(json, RequestRateLimit.class);
         if (rateLimit == null) {
             return;
@@ -150,9 +239,11 @@ public class RateLimiter {
     }
 
     private void collectCostLimitStats(ProxyContext context, LimitStats limitStats, long timestamp) {
-        String costsPath = getPathToCosts();
-        ResourceDescriptor resourceDescription = getResourceDescription(context, costsPath);
-        String json = resourceService.getResource(resourceDescription);
+        ResourceDescriptor resourceDescription = getResourceDescription(context, getPathToCosts());
+        collectCostLimitStats(resourceService.getResource(resourceDescription), limitStats, timestamp);
+    }
+
+    private static void collectCostLimitStats(String json, LimitStats limitStats, long timestamp) {
         CostRateLimit rateLimit = ProxyUtil.convertToObject(json, CostRateLimit.class);
         if (rateLimit == null) {
             return;

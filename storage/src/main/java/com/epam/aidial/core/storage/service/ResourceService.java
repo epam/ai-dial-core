@@ -69,6 +69,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -132,6 +133,11 @@ public class ResourceService implements AutoCloseable {
 
     private static final int BATCH_SIZE = 50;
     private static final int PAGE_SIZE = 1000;
+    /**
+     * Caps how many {@link #getResources} cache misses may hit blob storage at once, so a large bulk
+     * read cannot exhaust the blob client's connection pool.
+     */
+    private static final int BLOB_FALLBACK_CONCURRENCY = 32;
 
     private static final ExecutorService VIRTUAL_THREAD_PER_TASK_EXECUTOR;
 
@@ -405,6 +411,78 @@ public class ResourceService implements AutoCloseable {
             }
         }
         log.debug("Finish loading missed resources from blob storage: {}", missed.size());
+        return result;
+    }
+
+    /**
+     * Reads many resources in one go. Redis lookups are pipelined in {@link #BATCH_SIZE} chunks, and only
+     * the chunks' cache misses fall back to blob storage - a resource cached as absent costs no blob call.
+     *
+     * <p>Resources that do not exist are omitted from the result rather than mapped to null.
+     */
+    @SneakyThrows
+    public Map<ResourceDescriptor, String> getResources(List<ResourceDescriptor> descriptors) {
+        List<ResourceDescriptor> distinct = descriptors.stream().distinct().toList();
+        if (distinct.isEmpty()) {
+            return Map.of();
+        }
+
+        // shared across chunks, otherwise each chunk would get its own allowance
+        Semaphore blobPermits = new Semaphore(BLOB_FALLBACK_CONCURRENCY);
+        List<Future<Map<ResourceDescriptor, String>>> futures = new ArrayList<>();
+        for (int start = 0; start < distinct.size(); start += BATCH_SIZE) {
+            List<ResourceDescriptor> chunk = distinct.subList(start, Math.min(start + BATCH_SIZE, distinct.size()));
+            futures.add(VIRTUAL_THREAD_PER_TASK_EXECUTOR.submit(() -> getResourceChunk(chunk, blobPermits)));
+        }
+
+        Map<ResourceDescriptor, String> result = new HashMap<>();
+        for (Future<Map<ResourceDescriptor, String>> future : futures) {
+            result.putAll(future.get());
+        }
+        return result;
+    }
+
+    @SneakyThrows
+    private Map<ResourceDescriptor, String> getResourceChunk(List<ResourceDescriptor> descriptors, Semaphore blobPermits) {
+        RBatch batch = redis.createBatch();
+        for (ResourceDescriptor descriptor : descriptors) {
+            RMapAsync<String, byte[]> map = batch.getMap(redisKey(descriptor), REDIS_MAP_CODEC);
+            map.getAllAsync(REDIS_FIELDS);
+        }
+        List<?> responses = batch.execute().getResponses();
+
+        Map<ResourceDescriptor, String> result = new HashMap<>();
+        List<ResourceDescriptor> missed = new ArrayList<>();
+        for (int i = 0; i < responses.size(); i++) {
+            ResourceDescriptor descriptor = descriptors.get(i);
+            @SuppressWarnings("unchecked")
+            Map<String, byte[]> fields = (Map<String, byte[]>) responses.get(i);
+            Result cached = toResult(fields, redisKey(descriptor));
+            if (cached == null) {
+                missed.add(descriptor);
+            } else if (cached.exists()) {
+                result.put(descriptor, new String(cached.body, StandardCharsets.UTF_8));
+            }
+        }
+
+        List<Future<Pair<ResourceDescriptor, String>>> futures = new ArrayList<>();
+        for (ResourceDescriptor descriptor : missed) {
+            futures.add(VIRTUAL_THREAD_PER_TASK_EXECUTOR.submit(() -> {
+                blobPermits.acquire();
+                try {
+                    // no lock: a bulk read tolerates a concurrent double-fetch, same as runReadBatch
+                    return Pair.of(descriptor, getResource(descriptor, EtagHeader.ANY, false));
+                } finally {
+                    blobPermits.release();
+                }
+            }));
+        }
+        for (Future<Pair<ResourceDescriptor, String>> future : futures) {
+            Pair<ResourceDescriptor, String> loaded = future.get();
+            if (loaded.getValue() != null) {
+                result.put(loaded.getKey(), loaded.getValue());
+            }
+        }
         return result;
     }
 

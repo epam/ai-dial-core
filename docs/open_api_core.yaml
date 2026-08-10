@@ -11782,6 +11782,96 @@ paths:
       - lang: cURL
         label: Access Token
         source: "curl -X GET https://chat.<company>.com/v1/user/info \\\n  -H \"Authorization: Bearer YOUR_ACCESS_TOKEN\"          \n"
+  /v1/user/limits:
+    get:
+      tags:
+      - Limits
+      summary: /v1/user/limits
+      operationId: getUserLimits
+      description: |
+        Returns token and request limits, plus current rolling usage, for every deployment available to the
+        authenticated caller - a JWT user or an API-key project. It replaces calling
+        `/v1/deployments/{deployment_name}/limits` once per deployment.
+
+        Five things to know before rendering this response:
+
+        1. **Models only.** Applications, toolsets and routes are not listed. DIAL does not persist
+           rate-limit history for them, so their entries would be permanently zero. Spend they drive is
+           attributed to the model that incurred it.
+        2. **Cost is per user, not per deployment.** The `*CostStats` fields are the caller's total spend
+           and total budget across all models, which is why they appear once at the top level and not on
+           each deployment. Do not associate them with any single deployment.
+        3. **The cost budget is the maximum across the caller's roles, not the sum.** Holding a role with a
+           $100 daily budget and another with $200 gives a $200 budget drawn from one shared pool - not $300.
+        4. **A limit is optional.** When no role configures one, `total` is `9223372036854775807`
+           (`Long.MAX_VALUE`), meaning unlimited. That value exceeds JavaScript's `Number.MAX_SAFE_INTEGER`
+           (`9007199254740991`), so treat any `total` at or above 2^53 as unlimited rather than rendering it
+           as a `used / total` ratio.
+        5. **Every window is trailing, not calendar-aligned.** `day` is the last 24 hours, `week` the last 7
+           days, `month` the last 30 days - never "since midnight" or "since the 1st". As a result `used`
+           decreases on its own as older activity ages out; there is no refund and no periodic reset.
+           Eviction happens in steps on UTC boundaries at each window's granularity (1 hour for `day`, 1 day
+           for `week` and `month`).
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserLimitStats"
+              examples:
+                Example:
+                  value:
+                    deployments:
+                    - id: chat-gpt-35-turbo
+                      minuteTokenStats:
+                        total: 100000
+                        used: 1200
+                      dayTokenStats:
+                        total: 10000000
+                        used: 42000
+                      weekTokenStats:
+                        total: 9223372036854775807
+                        used: 180000
+                      monthTokenStats:
+                        total: 9223372036854775807
+                        used: 640000
+                      hourRequestStats:
+                        total: 9223372036854775807
+                        used: 3
+                      dayRequestStats:
+                        total: 9223372036854775807
+                        used: 12
+                    minuteCostStats:
+                      total: 10.0
+                      used: 0.4
+                    dayCostStats:
+                      total: 100.0
+                      used: 14.5
+                    weekCostStats:
+                      total: 500.0
+                      used: 82.3
+                    monthCostStats:
+                      total: 2000.0
+                      used: 310.7
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "503":
+          description: "The engine is currently overloaded, please try again later."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/{deployment_name}/rate:
     post:
       summary: "/v1/{deployment_name}/rate"
@@ -13428,6 +13518,23 @@ components:
       properties:
         base_url:
           type: string
+    DeploymentLimitStats:
+      type: object
+      properties:
+        dayRequestStats:
+          $ref: "#/components/schemas/ItemLimitStats"
+        dayTokenStats:
+          $ref: "#/components/schemas/ItemLimitStats"
+        hourRequestStats:
+          $ref: "#/components/schemas/ItemLimitStats"
+        id:
+          type: string
+        minuteTokenStats:
+          $ref: "#/components/schemas/ItemLimitStats"
+        monthTokenStats:
+          $ref: "#/components/schemas/ItemLimitStats"
+        weekTokenStats:
+          $ref: "#/components/schemas/ItemLimitStats"
     Embedding:
       required:
       - embedding
@@ -15745,6 +15852,21 @@ components:
             items:
               type: string
           description: Normalized token claims. Present only for user-based session authentication.
+    UserLimitStats:
+      type: object
+      properties:
+        dayCostStats:
+          $ref: "#/components/schemas/CostItemLimitStats"
+        deployments:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeploymentLimitStats"
+        minuteCostStats:
+          $ref: "#/components/schemas/CostItemLimitStats"
+        monthCostStats:
+          $ref: "#/components/schemas/CostItemLimitStats"
+        weekCostStats:
+          $ref: "#/components/schemas/CostItemLimitStats"
     ValidationResult:
       type: object
       properties:

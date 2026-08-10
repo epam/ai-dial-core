@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.limiter;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.CostLimit;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
@@ -9,7 +10,9 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.DeploymentLimitStats;
 import com.epam.aidial.core.server.data.LimitStats;
+import com.epam.aidial.core.server.data.UserLimitStats;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.BucketBuilder;
@@ -36,6 +39,7 @@ import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -466,6 +470,170 @@ public class RateLimiterTest {
         assertNotNull(checkLimitFuture.result());
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, checkLimitFuture.result().status());
 
+    }
+
+    @Test
+    public void testGetUserLimitStats_MultipleDeploymentsAndEmptyUsage() {
+        Config config = new Config();
+        Role role = new Role();
+        Limit usedLimit = new Limit();
+        usedLimit.setMinute(100);
+        usedLimit.setDay(10000);
+        usedLimit.setWeek(1000000);
+        usedLimit.setMonth(10000000);
+        usedLimit.setRequestHour(20);
+        usedLimit.setRequestDay(300);
+        Limit unusedLimit = new Limit();
+        unusedLimit.setDay(500);
+        role.setLimits(Map.of("used-model", usedLimit, "unused-model", unusedLimit));
+        config.setRoles(Map.of("role", role));
+
+        ProxyContext proxyContext = userContext(config, List.of("role"));
+        Model usedModel = model("used-model");
+        Model unusedModel = model("unused-model");
+        stubInlineExecutor();
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setTotalTokens(90);
+        assertNull(rateLimiter.increase(usedModel, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null).cause());
+
+        // deliberately passed out of order - the response must come back sorted by id
+        UserLimitStats stats = rateLimiter.getUserLimitStats(proxyContext, List.of(usedModel, unusedModel)).result();
+
+        assertNotNull(stats);
+        assertEquals(List.of("unused-model", "used-model"), stats.getDeployments().stream().map(DeploymentLimitStats::getId).toList());
+
+        DeploymentLimitStats used = stats.getDeployments().get(1);
+        assertEquals(100, used.getMinuteTokenStats().getTotal());
+        assertEquals(90, used.getMinuteTokenStats().getUsed());
+        assertEquals(10000, used.getDayTokenStats().getTotal());
+        assertEquals(90, used.getDayTokenStats().getUsed());
+        assertEquals(1000000, used.getWeekTokenStats().getTotal());
+        assertEquals(90, used.getWeekTokenStats().getUsed());
+        assertEquals(10000000, used.getMonthTokenStats().getTotal());
+        assertEquals(90, used.getMonthTokenStats().getUsed());
+        assertEquals(20, used.getHourRequestStats().getTotal());
+        assertEquals(300, used.getDayRequestStats().getTotal());
+
+        // a deployment with a finite limit but no traffic is still reported, with used = 0
+        DeploymentLimitStats unused = stats.getDeployments().get(0);
+        assertEquals(500, unused.getDayTokenStats().getTotal());
+        assertEquals(0, unused.getDayTokenStats().getUsed());
+        assertEquals(0, unused.getMonthTokenStats().getUsed());
+        assertEquals(0, unused.getHourRequestStats().getUsed());
+    }
+
+    @Test
+    public void testGetUserLimitStats_DefaultRoleFallback() {
+        Config config = new Config();
+        Role defaultRole = new Role();
+        Limit limit = new Limit();
+        limit.setDay(777);
+        defaultRole.setLimits(Map.of("model", limit));
+        config.setRoles(Map.of("default", defaultRole));
+
+        ProxyContext proxyContext = userContext(config, List.of("unrelated-role"));
+        stubInlineExecutor();
+
+        UserLimitStats stats = rateLimiter.getUserLimitStats(proxyContext, List.of(model("model"))).result();
+
+        assertNotNull(stats);
+        assertEquals(1, stats.getDeployments().size());
+        assertEquals(777, stats.getDeployments().get(0).getDayTokenStats().getTotal());
+    }
+
+    @Test
+    public void testGetUserLimitStats_CostIsReportedOnceAndMergedByMax() {
+        Config config = new Config();
+        Role cheapRole = new Role();
+        cheapRole.setLimits(Map.of());
+        cheapRole.setCostLimit(costLimit("100"));
+        Role richRole = new Role();
+        richRole.setLimits(Map.of());
+        richRole.setCostLimit(costLimit("200"));
+        config.setRoles(Map.of("cheap", cheapRole, "rich", richRole));
+
+        ProxyContext proxyContext = userContext(config, List.of("cheap", "rich"));
+        stubInlineExecutor();
+
+        UserLimitStats stats = rateLimiter.getUserLimitStats(proxyContext, List.of(model("model"))).result();
+
+        assertNotNull(stats);
+        // the caller draws on one shared pool capped at the most permissive role - 200, never 300
+        assertEquals(0, new BigDecimal("200").compareTo(stats.getDayCostStats().getTotal()));
+        assertEquals(0, new BigDecimal("200").compareTo(stats.getMonthCostStats().getTotal()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(stats.getDayCostStats().getUsed()));
+    }
+
+    /**
+     * Characterization test for known pre-existing behaviour, not an endorsement of it: unspecified
+     * windows default to Long.MAX_VALUE, so merging two roles that each cap a different window by
+     * Math.max leaves both windows uncapped. Granting the second role removes the first role's cap.
+     * If the merge is ever fixed to distinguish "unset" from "unlimited", update this test.
+     */
+    @Test
+    public void testGetUserLimitStats_PartialWindowsMergeToUnlimited() {
+        Config config = new Config();
+        Role dayRole = new Role();
+        Limit dayOnly = new Limit();
+        dayOnly.setDay(100);
+        dayRole.setLimits(Map.of("model", dayOnly));
+        Role weekRole = new Role();
+        Limit weekOnly = new Limit();
+        weekOnly.setWeek(500);
+        weekRole.setLimits(Map.of("model", weekOnly));
+        config.setRoles(Map.of("day-role", dayRole, "week-role", weekRole));
+
+        ProxyContext proxyContext = userContext(config, List.of("day-role", "week-role"));
+        stubInlineExecutor();
+
+        UserLimitStats stats = rateLimiter.getUserLimitStats(proxyContext, List.of(model("model"))).result();
+
+        assertNotNull(stats);
+        DeploymentLimitStats deployment = stats.getDeployments().get(0);
+        assertEquals(Long.MAX_VALUE, deployment.getDayTokenStats().getTotal());
+        assertEquals(Long.MAX_VALUE, deployment.getWeekTokenStats().getTotal());
+    }
+
+    @Test
+    public void testGetUserLimitStats_NoDeployments() {
+        ProxyContext proxyContext = userContext(new Config(), List.of("role"));
+        stubInlineExecutor();
+
+        UserLimitStats stats = rateLimiter.getUserLimitStats(proxyContext, List.of()).result();
+
+        assertNotNull(stats);
+        assertEquals(List.of(), stats.getDeployments());
+        assertNotNull(stats.getDayCostStats());
+    }
+
+    private ProxyContext userContext(Config config, List<String> roles) {
+        ExtractedClaims claims = new ExtractedClaims("sub", roles, "user-hash",
+                ProxyUtil.MAPPER.createObjectNode(), null, null);
+        return new ProxyContext(mockProxy(config), request, new ApiKeyData(), claims, "trace-id", "span-id", "01");
+    }
+
+    private static Model model(String name) {
+        Model model = new Model();
+        model.setName(name);
+        return model;
+    }
+
+    private static CostLimit costLimit(String perWindow) {
+        CostLimit costLimit = new CostLimit();
+        costLimit.setMinute(new BigDecimal(perWindow));
+        costLimit.setDay(new BigDecimal(perWindow));
+        costLimit.setWeek(new BigDecimal(perWindow));
+        costLimit.setMonth(new BigDecimal(perWindow));
+        return costLimit;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void stubInlineExecutor() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
     }
 
 }
