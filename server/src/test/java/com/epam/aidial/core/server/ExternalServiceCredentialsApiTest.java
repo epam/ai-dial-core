@@ -4,11 +4,16 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.AuthenticationType;
+import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.IdentityProvider;
+import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
@@ -17,6 +22,7 @@ import org.mockito.Mockito;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -1576,6 +1582,31 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
                 null, "", "authorization", "admin");
         assertEquals(400, grant.status(), grant.body());
         assertTrue(grant.body().contains("DIAL_NATIVE"), grant.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testConsentForDynamicAppWithSpaceInPath() {
+        // The route hands the controller a decoded app id, so the scope must be re-encoded before it is parsed
+        // again — a raw space fails URI parsing outright, and any re-encoding difference would make the grant
+        // and the redemption address different storage keys.
+        Application app = new Application();
+        app.setEndpoint("http://localhost:7001/v1/x");
+        app.setExternalServices(Map.of("dial", new ExternalService()
+                .setAuthSettings(ResourceAuthSettings.builder()
+                        .authenticationType(AuthenticationType.DIAL_NATIVE)
+                        .build())));
+        dial.getProxy().getApplicationService().putApplication(
+                ResourceDescriptorFactory.fromPublicUrl("applications/public/my%20app"),
+                EtagHeader.ANY, null, app, false, AdminManagedFieldsWriteMode.AUTHORITATIVE);
+
+        String consent = "/v1/applications/public/my%20app/external-services/dial/consent";
+        Response grant = send(HttpMethod.POST, consent, null, "", "authorization", "admin");
+        assertEquals(200, grant.status(), grant.body());
+
+        // Withdraw reports true only if it addressed the very record the grant wrote.
+        Response withdraw = send(HttpMethod.DELETE, consent, null, "", "authorization", "admin");
+        verify(withdraw, 200, "true");
     }
 
     @Test

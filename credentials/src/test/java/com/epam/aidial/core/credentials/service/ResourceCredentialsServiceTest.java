@@ -411,6 +411,58 @@ class ResourceCredentialsServiceTest {
     }
 
     @Test
+    void testGetAndRefreshCredentials_ResponseWithoutRefreshTokenKeepsTheExistingOne() {
+        // RFC 6749 §6: a refresh response that omits refresh_token leaves the existing one in force. Providers
+        // that do not rotate return exactly this, and dropping it would end offline access permanently.
+        CredentialsLocator credentialsLocator = Mockito.mock(CredentialsLocator.class);
+        CredentialsDescriptor credentialsDescriptor = Mockito.mock(CredentialsDescriptor.class);
+        Map<CredentialsLevel, CredentialsDescriptor> descriptors = new EnumMap<>(CredentialsLevel.class);
+        descriptors.put(CredentialsLevel.USER, credentialsDescriptor);
+        when(credentialsLocator.getCredentialsDescriptors()).thenReturn(descriptors);
+        ResourceAuthSettings authSettings = Mockito.mock(ResourceAuthSettings.class);
+        when(authSettings.getAuthenticationType()).thenReturn(AuthenticationType.OAUTH);
+
+        Mockito.when(credentialsDescriptor.getResourceId()).thenReturn("testResourceId");
+        Mockito.when(credentialsDescriptor.getBucketName()).thenReturn("testBucket");
+        Mockito.when(credentialsDescriptor.getFullPath()).thenReturn("path");
+        Mockito.when(credentialsDescriptor.toResourceDescriptor()).thenReturn(Mockito.mock(ResourceDescriptor.class));
+
+        byte[] encryptedBytes = "mockEncryptedData".getBytes(StandardCharsets.UTF_8);
+        byte[] decryptedBytes = """
+                {
+                    "resourceId": "testResourceId",
+                    "credentialsLevel": "USER",
+                    "userSub": "userSub",
+                    "authenticationType": "OAUTH",
+                    "accessToken": "expiredAccessToken",
+                    "refreshToken": "longLivedRefreshToken",
+                    "updatedAt": "1",
+                    "expiresInSeconds": "100"
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+
+        Mockito.when(credentialEncryptionService.decrypt(any(), eq(encryptedBytes), any())).thenReturn(decryptedBytes);
+        ResourceCredentials decryptedResourceCredentials = JsonMapperUtil.convertToObject(decryptedBytes, ResourceCredentials.class);
+        when(tokenRefreshStrategyFactory.getTokenValidatorStrategy(AuthenticationType.OAUTH))
+                .thenReturn(oauthTokenRefreshStrategy);
+        when(oauthTokenRefreshStrategy.requiresTokenRefresh(decryptedResourceCredentials)).thenReturn(true);
+
+        Mockito.when(tokenService.getToken("testResourceId", authSettings, "longLivedRefreshToken"))
+                .thenReturn(TokenResponse.builder().accessToken("newAccessToken").expiresIn(3600L).build());
+        Mockito.doAnswer(invocation -> {
+            Function<byte[], byte[]> callbackFunction = invocation.getArgument(1);
+            callbackFunction.apply(encryptedBytes);
+            return new ResourceItemMetadata();
+        }).when(resourceService).computeResourceBytes(any(), any());
+
+        ResourceCredentials result = service.getRefreshedResourceCredentials(credentialsLocator, authSettings, "userSub");
+
+        Assertions.assertNotNull(result);
+        Assertions.assertEquals("newAccessToken", result.getAccessToken());
+        Assertions.assertEquals("longLivedRefreshToken", result.getRefreshToken());
+    }
+
+    @Test
     void testGetAndRefreshCredentials_RefreshFails_InvalidatesRefreshToken() {
         // Given
         CredentialsLocator credentialsLocator = Mockito.mock(CredentialsLocator.class);

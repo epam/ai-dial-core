@@ -375,7 +375,11 @@ public class ResourceCredentialsService {
         resourceCredentials.setExpiresInSeconds(newAccessTokenResponse.getExpiresIn());
         resourceCredentials.setUpdatedAt(timeProvider.getCurrentTime());
         resourceCredentials.setAccessToken(newAccessTokenResponse.getAccessToken());
-        resourceCredentials.setRefreshToken(newAccessTokenResponse.getRefreshToken());
+        // RFC 6749 §6: a response without a refresh token leaves the existing one in force. Overwriting it with
+        // null would end offline access permanently on providers that do not rotate.
+        if (newAccessTokenResponse.getRefreshToken() != null) {
+            resourceCredentials.setRefreshToken(newAccessTokenResponse.getRefreshToken());
+        }
         log.debug("Finished updating expired token for Resource: {}", resourceId);
     }
 

@@ -496,9 +496,8 @@ public class ExternalServiceManagementController {
     }
 
     private CredentialsDescriptor consentDescriptor(String appId, String serviceId) {
-        CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(
-                CredentialsLocatorFactory.APPLICATIONS_PREFIX + appId
-                        + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId, context);
+        // scopeId encodes both parts: the ids arrive decoded, and fromExternalServiceScope decodes again.
+        CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId(appId, serviceId), context);
         CredentialsDescriptor descriptor = locator.getCredentialsDescriptors().get(CredentialsLevel.APPLICATION);
         if (descriptor == null) {
             throw new HttpException(HttpStatus.BAD_REQUEST, "Application-level consent is not supported for: " + appId);
