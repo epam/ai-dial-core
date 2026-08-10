@@ -211,7 +211,11 @@ public class McpResourceController implements Controller {
             context.respond(HttpStatus.BAD_GATEWAY, "Resource missing mimeType");
             return;
         }
-        if (!ALLOWED_MIME_TYPES.contains(mimeType)) {
+        // Strip parameters (e.g. ";profile=mcp-app") before allowlist check to support
+        // vendor-extended MIME types like "text/html;profile=mcp-app" from MCP SDK.
+        // Use only the base type in the response header to prevent header injection via params.
+        String baseMimeType = mimeType.contains(";") ? mimeType.substring(0, mimeType.indexOf(';')).strip() : mimeType;
+        if (!ALLOWED_MIME_TYPES.contains(baseMimeType)) {
             context.respond(HttpStatus.BAD_GATEWAY, "Unsupported resource mimeType: " + mimeType);
             return;
         }
@@ -221,7 +225,7 @@ public class McpResourceController implements Controller {
         }
         String text = textContents.text();
         context.getResponse()
-                .putHeader(HttpHeaders.CONTENT_TYPE, mimeType)
+                .putHeader(HttpHeaders.CONTENT_TYPE, baseMimeType)
                 .putHeader("Content-Security-Policy", WIDGET_CSP)
                 .putHeader("X-Content-Type-Options", "nosniff")
                 .end(text);

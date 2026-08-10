@@ -20,6 +20,7 @@ import io.modelcontextprotocol.client.transport.McpHttpClientTransportAuthorizat
 import io.modelcontextprotocol.spec.McpSchema;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpClientOptions;
+import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -307,6 +308,32 @@ class McpResourceControllerTest {
         controller.sendResourceResponse(new McpSchema.ReadResourceResult(List.of(contents)));
 
         verify(httpResponse).end("<h1>Chart</h1>");
+    }
+
+    @Test
+    void sendResourceResponse_mcpAppMimeType_stripsParamsAndReturnsHtml() {
+        McpSchema.TextResourceContents contents =
+                new McpSchema.TextResourceContents("ui://widget", "text/html;profile=mcp-app", "<h1>Widget</h1>");
+
+        HttpServerResponse httpResponse = mock(HttpServerResponse.class);
+        when(context.getResponse()).thenReturn(httpResponse);
+        lenient().when(httpResponse.putHeader(anyString(), anyString())).thenReturn(httpResponse);
+        when(httpResponse.putHeader(any(CharSequence.class), any(CharSequence.class))).thenReturn(httpResponse);
+
+        controller.sendResourceResponse(new McpSchema.ReadResourceResult(List.of(contents)));
+
+        verify(httpResponse).putHeader(HttpHeaders.CONTENT_TYPE, "text/html");
+        verify(httpResponse).end("<h1>Widget</h1>");
+    }
+
+    @Test
+    void sendResourceResponse_disallowedMimeTypeWithParams_returns502() {
+        McpSchema.TextResourceContents contents =
+                new McpSchema.TextResourceContents("ui://widget", "application/octet-stream;foo=bar", "bin");
+
+        controller.sendResourceResponse(new McpSchema.ReadResourceResult(List.of(contents)));
+
+        verify(context).respond(HttpStatus.BAD_GATEWAY, "Unsupported resource mimeType: application/octet-stream;foo=bar");
     }
 
     // --- helpers ---
