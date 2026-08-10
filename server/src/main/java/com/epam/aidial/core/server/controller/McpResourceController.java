@@ -42,7 +42,9 @@ import org.apache.commons.lang3.exception.ExceptionUtils;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import static io.vertx.core.http.HttpHeaders.RETRY_AFTER;
@@ -56,7 +58,7 @@ public class McpResourceController implements Controller {
     private static final String WIDGET_CSP =
             "frame-ancestors 'self'; sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: data:";
 
-    // Allowlist of MIME types that may be returned as widget content.
+    // Allowlist of MIME types that may be returned as widget content (lowercase, no params).
     // Restricts the upstream-controlled mimeType field to prevent header injection
     // and avoid serving unexpected content types (e.g. application/octet-stream).
     private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
@@ -70,6 +72,11 @@ public class McpResourceController implements Controller {
             "image/gif",
             "image/webp"
     );
+
+    // Charset values safe to forward verbatim in the Content-Type response header.
+    // Exotic or locale-specific charsets from untrusted upstream responses are dropped.
+    // utf-8 ~99 %, iso-8859-1 ~1 %, us-ascii is a UTF-8 subset — together cover the real web.
+    private static final Set<String> ALLOWED_CHARSETS = Set.of("utf-8", "us-ascii", "iso-8859-1");
 
     private final Proxy proxy;
     private final ProxyContext context;
@@ -211,11 +218,8 @@ public class McpResourceController implements Controller {
             context.respond(HttpStatus.BAD_GATEWAY, "Resource missing mimeType");
             return;
         }
-        // Strip parameters (e.g. ";profile=mcp-app") before allowlist check to support
-        // vendor-extended MIME types like "text/html;profile=mcp-app" from MCP SDK.
-        // Use only the base type in the response header to prevent header injection via params.
-        String baseMimeType = mimeType.contains(";") ? mimeType.substring(0, mimeType.indexOf(';')).strip() : mimeType;
-        if (!ALLOWED_MIME_TYPES.contains(baseMimeType)) {
+        Optional<String> contentType = resolveContentType(mimeType);
+        if (contentType.isEmpty()) {
             context.respond(HttpStatus.BAD_GATEWAY, "Unsupported resource mimeType: " + mimeType);
             return;
         }
@@ -223,12 +227,38 @@ public class McpResourceController implements Controller {
             context.respond(HttpStatus.BAD_GATEWAY, "Unsupported resource contents type: " + first.getClass().getSimpleName());
             return;
         }
-        String text = textContents.text();
         context.getResponse()
-                .putHeader(HttpHeaders.CONTENT_TYPE, baseMimeType)
+                .putHeader(HttpHeaders.CONTENT_TYPE, contentType.get())
                 .putHeader("Content-Security-Policy", WIDGET_CSP)
                 .putHeader("X-Content-Type-Options", "nosniff")
-                .end(text);
+                .end(textContents.text());
+    }
+
+    // Returns the normalised Content-Type header value for the given upstream mimeType,
+    // or empty if the base type is not on the allowlist.
+    // Normalises case (RFC 2045 §5.1) and strips whitespace. Forwards the charset parameter
+    // only when its value is on the allowlist; all other params are dropped to prevent
+    // header injection via upstream-controlled content.
+    static Optional<String> resolveContentType(String mimeType) {
+        String stripped = mimeType.strip().toLowerCase(Locale.ROOT);
+        int semicolonIdx = stripped.indexOf(';');
+        String baseMimeType = semicolonIdx >= 0 ? stripped.substring(0, semicolonIdx).strip() : stripped;
+        if (!ALLOWED_MIME_TYPES.contains(baseMimeType)) {
+            return Optional.empty();
+        }
+        if (semicolonIdx >= 0) {
+            // Prepend ";" so every param token has a uniform prefix — avoids split() and
+            // bounds the work to O(|ALLOWED_CHARSETS|) regardless of how many params the
+            // upstream sends (prevents ReDoS / large-input amplification via split).
+            String params = ";" + stripped.substring(semicolonIdx + 1);
+            for (String charset : ALLOWED_CHARSETS) {
+                String target = ";charset=" + charset;
+                if (params.endsWith(target) || params.contains(target + ";")) {
+                    return Optional.of(baseMimeType + ";charset=" + charset);
+                }
+            }
+        }
+        return Optional.of(baseMimeType);
     }
 
     private void handleRateLimitHit(RateLimitResult result) {

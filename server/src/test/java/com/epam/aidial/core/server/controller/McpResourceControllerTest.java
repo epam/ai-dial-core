@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
@@ -266,16 +267,6 @@ class McpResourceControllerTest {
     }
 
     @Test
-    void sendResourceResponse_disallowedMimeType_returns502() {
-        McpSchema.TextResourceContents contents =
-                new McpSchema.TextResourceContents("ui://widget", "application/octet-stream", "bin");
-
-        controller.sendResourceResponse(new McpSchema.ReadResourceResult(List.of(contents)));
-
-        verify(context).respond(HttpStatus.BAD_GATEWAY, "Unsupported resource mimeType: application/octet-stream");
-    }
-
-    @Test
     void sendResourceResponse_mimeTypeWithCrlf_returns502() {
         McpSchema.TextResourceContents contents =
                 new McpSchema.TextResourceContents("ui://widget", "text/html\r\nX-Injected: evil", "<h1>hi</h1>");
@@ -295,6 +286,60 @@ class McpResourceControllerTest {
         verify(context).respond(HttpStatus.BAD_GATEWAY, "Unsupported resource contents type: BlobResourceContents");
     }
 
+    // --- resolveContentType ---
+
+    @Test
+    void resolveContentType_plainType_returned() {
+        assertEquals("text/html", McpResourceController.resolveContentType("text/html").orElseThrow());
+    }
+
+    @Test
+    void resolveContentType_uppercaseType_normalised() {
+        assertEquals("text/html", McpResourceController.resolveContentType("Text/HTML").orElseThrow());
+    }
+
+    @Test
+    void resolveContentType_leadingTrailingSpace_normalised() {
+        assertEquals("text/html", McpResourceController.resolveContentType(" text/html ").orElseThrow());
+    }
+
+    @Test
+    void resolveContentType_mcpAppProfile_stripped() {
+        assertEquals("text/html", McpResourceController.resolveContentType("text/html;profile=mcp-app").orElseThrow());
+    }
+
+    @Test
+    void resolveContentType_allowlistedCharset_forwarded() {
+        assertEquals("text/html;charset=utf-8", McpResourceController.resolveContentType("text/html;charset=utf-8").orElseThrow());
+    }
+
+    @Test
+    void resolveContentType_allowlistedCharsetWithProfile_charsetForwardedProfileDropped() {
+        assertEquals("text/html;charset=utf-8", McpResourceController.resolveContentType("text/html;profile=mcp-app;charset=utf-8").orElseThrow());
+    }
+
+    @Test
+    void resolveContentType_disallowedCharset_dropped() {
+        assertEquals("text/html", McpResourceController.resolveContentType("text/html;charset=windows-1252").orElseThrow());
+    }
+
+    @Test
+    void resolveContentType_disallowedType_returnsEmpty() {
+        assertTrue(McpResourceController.resolveContentType("application/octet-stream").isEmpty());
+    }
+
+    @Test
+    void resolveContentType_disallowedTypeWithParams_returnsEmpty() {
+        assertTrue(McpResourceController.resolveContentType("application/octet-stream;foo=bar").isEmpty());
+    }
+
+    @Test
+    void resolveContentType_imagePng_noCharset() {
+        assertEquals("image/png", McpResourceController.resolveContentType("image/png").orElseThrow());
+    }
+
+    // --- sendResourceResponse ---
+
     @Test
     void sendResourceResponse_textHtml_setsHeadersAndBody() {
         McpSchema.TextResourceContents contents =
@@ -307,27 +352,12 @@ class McpResourceControllerTest {
 
         controller.sendResourceResponse(new McpSchema.ReadResourceResult(List.of(contents)));
 
+        verify(httpResponse).putHeader(HttpHeaders.CONTENT_TYPE, "text/html");
         verify(httpResponse).end("<h1>Chart</h1>");
     }
 
     @Test
-    void sendResourceResponse_mcpAppMimeType_stripsParamsAndReturnsHtml() {
-        McpSchema.TextResourceContents contents =
-                new McpSchema.TextResourceContents("ui://widget", "text/html;profile=mcp-app", "<h1>Widget</h1>");
-
-        HttpServerResponse httpResponse = mock(HttpServerResponse.class);
-        when(context.getResponse()).thenReturn(httpResponse);
-        lenient().when(httpResponse.putHeader(anyString(), anyString())).thenReturn(httpResponse);
-        when(httpResponse.putHeader(any(CharSequence.class), any(CharSequence.class))).thenReturn(httpResponse);
-
-        controller.sendResourceResponse(new McpSchema.ReadResourceResult(List.of(contents)));
-
-        verify(httpResponse).putHeader(HttpHeaders.CONTENT_TYPE, "text/html");
-        verify(httpResponse).end("<h1>Widget</h1>");
-    }
-
-    @Test
-    void sendResourceResponse_disallowedMimeTypeWithParams_returns502() {
+    void sendResourceResponse_disallowedMimeType_returns502() {
         McpSchema.TextResourceContents contents =
                 new McpSchema.TextResourceContents("ui://widget", "application/octet-stream;foo=bar", "bin");
 
