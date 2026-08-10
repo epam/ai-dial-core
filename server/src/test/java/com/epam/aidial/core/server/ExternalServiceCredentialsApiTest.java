@@ -1522,6 +1522,59 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
         assertEquals(400, badCred.status(), () -> badCred.body());
     }
 
+
+    // ---------------------------------------------------------------------------------------------
+    // Admin consent for DIAL-native services (§4)
+    // ---------------------------------------------------------------------------------------------
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testAdminCanGrantAndWithdrawConsent() {
+        Response grant = send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "admin");
+        assertEquals(200, grant.status(), grant.body());
+
+        Response withdraw = send(HttpMethod.DELETE, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "admin");
+        assertEquals(200, withdraw.status(), withdraw.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testNonAdminCannotGrantConsent() {
+        Response grant = send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "user");
+        assertEquals(403, grant.status(), grant.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testNonAdminCannotWithdrawConsent() {
+        send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "admin");
+
+        Response withdraw = send(HttpMethod.DELETE, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "user");
+        assertEquals(403, withdraw.status(), withdraw.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testConsentRejectedForNonDialNativeService() {
+        Response grant = send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/salesforce/consent",
+                null, "", "authorization", "admin");
+        assertEquals(400, grant.status(), grant.body());
+        assertTrue(grant.body().contains("DIAL_NATIVE"), grant.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testConsentForUnknownServiceIsNotFound() {
+        Response grant = send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/nope/consent",
+                null, "", "authorization", "admin");
+        assertEquals(404, grant.status(), grant.body());
+    }
+
     private ApiKeyData newAppKey(String sourceDeployment, String role) {
         ApiKeyData perRequestKey = new ApiKeyData();
         perRequestKey.setExtractedClaims(createClaims(role));

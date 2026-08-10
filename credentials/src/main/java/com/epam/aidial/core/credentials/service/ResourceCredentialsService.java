@@ -207,6 +207,18 @@ public class ResourceCredentialsService {
         }
     }
 
+    /**
+     * Stores a prepared record directly. Used for records that carry no credential material and so have nothing to
+     * fetch from an authorization server — an administrator's consent to a DIAL-native service is the approval
+     * itself.
+     */
+    public void putCredentialsRecord(CredentialsDescriptor credentialsDescriptor, ResourceCredentials credentials) {
+        log.info("Storing credentials record for resourceId={}, bucket={}",
+                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
+        byte[] encryptedBody = encrypt(credentialsDescriptor, credentials);
+        resourceService.putResourceBytes(credentialsDescriptor.toResourceDescriptor(), encryptedBody, EtagHeader.ANY);
+    }
+
     /** Deletes one credentials record addressed directly, for records that are not app-scoped. */
     public boolean deleteCredentialsRecord(CredentialsDescriptor credentialsDescriptor) {
         log.info("Deleting resource credentials for resourceId={}, bucket={}",

@@ -1,11 +1,14 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.ResourceAuthSettings;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
+import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -360,6 +363,90 @@ public class ExternalServiceManagementController {
             case null, default -> log.warn(message, error);
         }
         context.respond(status, body);
+    }
+
+
+    /**
+     * An administrator approves this application's use of a DIAL-native service. Declaring the service is the app
+     * owner's act and grants nothing; this is the separate decision that makes it usable, and it applies to every
+     * user who has offline credentials.
+     */
+    public Future<?> grantConsent(String appId, String serviceId) {
+        taskExecutor.submit(() -> {
+            requireAdmin();
+            ExternalService service = resolveDialNativeService(appId, serviceId);
+
+            CredentialsDescriptor descriptor = consentDescriptor(appId, serviceId);
+            long now = System.currentTimeMillis();
+            ResourceCredentials consent = ResourceCredentials.builder()
+                    .resourceId(descriptor.getResourceId())
+                    .credentialsLevel(CredentialsLevel.APPLICATION)
+                    .authenticationType(service.getAuthSettings().getAuthenticationType())
+                    .approvedBy(context.getUserId())
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build();
+            resourceCredentialsService.putCredentialsRecord(descriptor, consent);
+            return true;
+        })
+                .onSuccess(granted -> context.respond(HttpStatus.OK, granted))
+                .onFailure(error -> respondError("Can't grant consent", error));
+        return Future.succeededFuture();
+    }
+
+    /** Withdraws the approval. The application stops working for every user immediately. */
+    public Future<?> withdrawConsent(String appId, String serviceId) {
+        taskExecutor.submit(() -> {
+            requireAdmin();
+            resolveDialNativeService(appId, serviceId);
+            return resourceCredentialsService.deleteCredentialsRecord(consentDescriptor(appId, serviceId));
+        })
+                .onSuccess(deleted -> context.respond(HttpStatus.OK, deleted))
+                .onFailure(error -> respondError("Can't withdraw consent", error));
+        return Future.succeededFuture();
+    }
+
+    /**
+     * Consent is meaningful only for DIAL-native services; every other type is authorized by a credential the user
+     * or app owner supplies through sign-in.
+     */
+    private ExternalService resolveDialNativeService(String appId, String serviceId) {
+        ResolvedApp resolved = resolveApp(appId);
+        ExternalService service = resolved.application.getExternalServices() == null
+                ? null : resolved.application.getExternalServices().get(serviceId);
+        if (service == null || service.getAuthSettings() == null) {
+            throw new ResourceNotFoundException(
+                    "External service '%s' is not defined for application '%s'".formatted(serviceId, appId));
+        }
+        if (service.getAuthSettings().getAuthenticationType() != AuthenticationType.DIAL_NATIVE) {
+            throw new HttpException(HttpStatus.BAD_REQUEST,
+                    "Consent applies only to %s services".formatted(AuthenticationType.DIAL_NATIVE));
+        }
+        return service;
+    }
+
+    /**
+     * Administrators only — no write-access path. An app owner able to approve their own application would be
+     * granting it the right to act as every user in the installation who has offline credentials.
+     *
+     * <p>Checked before the service is resolved, so a non-administrator cannot tell a DIAL-native service from an
+     * absent one by comparing 403 against 400/404.
+     */
+    private void requireAdmin() {
+        if (!accessService.hasAdminAccess(context)) {
+            throw new PermissionDeniedException("Only administrators may consent to a DIAL-native external service");
+        }
+    }
+
+    private CredentialsDescriptor consentDescriptor(String appId, String serviceId) {
+        CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(
+                CredentialsLocatorFactory.APPLICATIONS_PREFIX + appId
+                        + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + serviceId, context);
+        CredentialsDescriptor descriptor = locator.getCredentialsDescriptors().get(CredentialsLevel.APPLICATION);
+        if (descriptor == null) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Application-level consent is not supported for: " + appId);
+        }
+        return descriptor;
     }
 
     private record ResolvedApp(Application application, ResourceDescriptor descriptor, String author, boolean staticApp) {
