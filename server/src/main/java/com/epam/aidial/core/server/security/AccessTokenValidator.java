@@ -127,12 +127,8 @@ public class AccessTokenValidator {
     }
 
     /**
-     * The provider that issued the caller's token, resolved the same way {@link #extractClaims} resolves it: the
-     * only configured provider when there is one, otherwise a match on {@code issuerPattern}.
-     *
-     * <p>Providers configured with a {@code userInfoEndpoint} carry no {@code issuerPattern} and so cannot be
-     * matched here — they are only ever found by racing every userinfo endpoint, which validates a token but
-     * cannot say which provider it belongs to. Such a provider cannot offer offline credentials.
+     * The provider that issued the caller's token. A userinfo-only provider carries no {@code issuerPattern} and so
+     * can never match here, and cannot offer offline credentials.
      *
      * @throws IllegalArgumentException when no provider matches.
      */
@@ -146,8 +142,7 @@ public class AccessTokenValidator {
     }
 
     /**
-     * The provider for a previously recorded issuer. Used when refreshing offline credentials, where there is no
-     * caller token to match on — see {@link #resolveProvider} for the same matching applied to a live request.
+     * The provider for a recorded issuer, for refreshes where there is no caller token to match on.
      *
      * @throws IllegalArgumentException when no provider matches.
      */

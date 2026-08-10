@@ -7,10 +7,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
- * Whether the caller has offline credentials and, when they do not, what chat needs to build the authorization
- * URL. One response because they are the same question asked at the same moment.
- *
- * <p>Carries only non-secret settings: the client secret stays in core, which performs the code exchange.
+ * Whether the caller has offline credentials and, when they do not, what chat needs to build the authorization URL.
+ * Carries only non-secret settings — the client secret stays in core, which performs the exchange.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record OfflineCredentialsStatus(boolean connected, @JsonProperty("connect") Connect connect) {

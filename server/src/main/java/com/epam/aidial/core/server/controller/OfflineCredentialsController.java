@@ -30,12 +30,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHeaders;
 
 /**
- * The user's own offline credentials: one refresh token per user, platform-wide, obtained through an ordinary
- * authorization-code flow with {@code offline_access} and never handed to any application.
+ * The user's own offline credentials: one refresh token per user, platform-wide, never handed to any application.
  *
- * <p>Deliberately not on the external-service credential endpoints. Those are app-scoped and reach their blobs
- * through {@code parseExternalServiceScope}, which requires an {@code applications/…/external_services/…} shape;
- * these credentials are stored outside it, so no application can address them.
+ * <p>Deliberately not on the app-scoped external-service endpoints: those reach their blobs through
+ * {@code parseExternalServiceScope}, whose required shape these credentials sit outside.
  */
 @Slf4j
 public class OfflineCredentialsController {
@@ -52,10 +50,7 @@ public class OfflineCredentialsController {
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
     }
 
-    /**
-     * Status and, when there is something to do, the parameters chat needs to build the authorization URL. One
-     * call because they are the same question asked at the same moment.
-     */
+    /** Status plus, when not connected, the parameters chat needs to build the authorization URL. */
     @ApiOperation(
             method = "GET",
             path = "/v1/user/offline-credentials",
@@ -74,10 +69,10 @@ public class OfflineCredentialsController {
             return Future.succeededFuture();
         }
         taskExecutor.submit(() -> {
-            // Same test the app-listing status uses, so the two endpoints cannot disagree about one user.
+            // Same test the app listing uses, so the two endpoints cannot disagree about one user.
             boolean connected = proxy.getResourceAuthSettingsService().hasUnexpiredCredentials(descriptor());
-            // Resolved only when there is something to connect: an already-connected caller should not be
-            // refused merely because the provider offers no offline client.
+            // Resolved only when not connected: provider resolution can throw, and a connected caller does
+            // not need it.
             return OfflineCredentialsStatus.of(connected, connected ? null : provider().getOfflineClient());
         })
                 .onSuccess(status -> context.respond(HttpStatus.OK, status))
@@ -85,9 +80,7 @@ public class OfflineCredentialsController {
         return Future.succeededFuture();
     }
 
-    /**
-     * Exchanges the authorization code and stores the resulting refresh token in the caller's own bucket.
-     */
+    /** Exchanges the authorization code and stores the refresh token in the caller's own bucket. */
     @ApiOperation(
             method = "POST",
             path = "/v1/user/offline-credentials/signin",
@@ -137,7 +130,7 @@ public class OfflineCredentialsController {
         return Future.succeededFuture();
     }
 
-    /** Deletes the credentials. Every scheduled run for this user stops, in every application. */
+    /** Deletes the credentials — every scheduled run for this user stops, in every application. */
     @ApiOperation(
             method = "POST",
             path = "/v1/user/offline-credentials/signout",
@@ -162,10 +155,7 @@ public class OfflineCredentialsController {
         return Future.succeededFuture();
     }
 
-    /**
-     * The exchange must have returned a token for the caller, and nobody else. With PKCE deferred nothing else
-     * refuses code injection, so this fails closed when the provider returned no ID token rather than skipping.
-     */
+    /** With PKCE deferred this is the only check refusing code injection, so it fails closed without an ID token. */
     private void verifyIssuedForCaller(IdentityProvider provider, ResourceCredentials credentials) {
         String idToken = credentials.getIdToken();
         if (idToken == null) {
@@ -177,14 +167,11 @@ public class OfflineCredentialsController {
             throw new HttpException(HttpStatus.FORBIDDEN,
                     "The authorization code belongs to a different user than the caller");
         }
-        // Refresh happens when the user is absent, so the provider must be recoverable from the record alone.
+        // Refresh runs with the user absent, so the provider must be recoverable from the record alone.
         credentials.setIssuer(provider.extractIssuerFromIdToken(idToken));
     }
 
-    /**
-     * Audits the whole operation, not just its storage call: a request rejected while parsing or validating the
-     * body is as much a failed sign-in attempt as one the identity provider refuses.
-     */
+    /** Audits the whole operation: a body rejected before storage is still a failed attempt. */
     private <T> Handler<AsyncResult<T>> audited(String action) {
         return result -> ExternalServiceAuditLog.offlineCredentials(context, action, asRuntime(result.cause()));
     }
@@ -213,10 +200,7 @@ public class OfflineCredentialsController {
         return CredentialsDescriptorFactory.offlineCredentials(context);
     }
 
-    /**
-     * These credentials belong to a person, so the caller must be one: never an application acting for them, and
-     * never a key with no user behind it — which would otherwise fail obscurely while building the user's bucket.
-     */
+    /** These credentials belong to a person, so the caller must be one — not an app, not a userless key. */
     private boolean rejectNonUserCaller() {
         if (context.getApiKeyData().getPerRequestKey() != null) {
             context.respond(HttpStatus.UNAUTHORIZED, "Offline credentials cannot be managed with a per-request key");

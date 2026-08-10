@@ -53,9 +53,8 @@ public class ResourceCredentialsService {
     }
 
     /**
-     * As above, but runs {@code verifier} on the freshly issued credentials <b>before</b> anything is stored, so a
-     * caller can refuse them. Used by offline-credentials sign-in to check the exchange returned a token for the
-     * caller. The ID token is verification material and is cleared rather than persisted.
+     * As above, but runs {@code verifier} on the issued credentials <b>before</b> anything is stored, so a caller
+     * can refuse them. The ID token is verification material and is cleared rather than persisted.
      */
     public void addResourceCredentials(CredentialsDescriptor credentialsDescriptor,
                                        ResourceAuthSettings resourceAuthSettings,
@@ -207,11 +206,7 @@ public class ResourceCredentialsService {
         }
     }
 
-    /**
-     * Stores a prepared record directly. Used for records that carry no credential material and so have nothing to
-     * fetch from an authorization server — an administrator's consent to a DIAL-native service is the approval
-     * itself.
-     */
+    /** Stores a prepared record directly, for records with no credential material to fetch. */
     public void putCredentialsRecord(CredentialsDescriptor credentialsDescriptor, ResourceCredentials credentials) {
         log.info("Storing credentials record for resourceId={}, bucket={}",
                 credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
@@ -219,7 +214,7 @@ public class ResourceCredentialsService {
         resourceService.putResourceBytes(credentialsDescriptor.toResourceDescriptor(), encryptedBody, EtagHeader.ANY);
     }
 
-    /** Deletes one credentials record addressed directly, for records that are not app-scoped. */
+    /** Deletes one record addressed directly, for records that are not app-scoped. */
     public boolean deleteCredentialsRecord(CredentialsDescriptor credentialsDescriptor) {
         log.info("Deleting resource credentials for resourceId={}, bucket={}",
                 credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
@@ -375,8 +370,8 @@ public class ResourceCredentialsService {
         resourceCredentials.setExpiresInSeconds(newAccessTokenResponse.getExpiresIn());
         resourceCredentials.setUpdatedAt(timeProvider.getCurrentTime());
         resourceCredentials.setAccessToken(newAccessTokenResponse.getAccessToken());
-        // RFC 6749 §6: a response without a refresh token leaves the existing one in force. Overwriting it with
-        // null would end offline access permanently on providers that do not rotate.
+        // RFC 6749 §6: no refresh token in the response leaves the existing one in force. Overwriting it with
+        // null would end offline access on providers that do not rotate.
         if (newAccessTokenResponse.getRefreshToken() != null) {
             resourceCredentials.setRefreshToken(newAccessTokenResponse.getRefreshToken());
         }

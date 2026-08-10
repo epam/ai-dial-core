@@ -11,13 +11,10 @@ import com.epam.aidial.core.server.util.CredentialsDescriptorFactory;
 /**
  * Fills in the auth statuses of an application's external services for one response.
  *
- * <p>DIAL-native services have no per-service credential: the user grants offline access once, platform-wide, and an
- * administrator approves the application separately. So the user level is answered from the caller's offline
- * credentials rather than from this service's (always empty) USER-level records, and the application level keeps its
- * ordinary meaning — an APPLICATION-level record exists, which for this type is the admin's approval.
+ * <p>A DIAL-native service has no per-service credential, so its user level is answered from the caller's
+ * platform-wide offline credentials instead of its (always empty) USER-level records.
  *
- * <p>The offline lookup is read at most once per instance, since every DIAL-native service of an application resolves
- * to the same record. Create one per response, not per service.
+ * <p>Memoizes that lookup, so create one per response rather than per service.
  */
 public class ExternalServiceStatusEnricher {
 
@@ -40,7 +37,7 @@ public class ExternalServiceStatusEnricher {
 
     private boolean hasOfflineCredentials() {
         if (offlineCredentials == null) {
-            // Without a user there is no bucket to look in; report not-connected rather than failing the listing.
+            // No user means no bucket to look in; report not-connected rather than failing the listing.
             offlineCredentials = context.getUserId() != null
                     && resourceAuthSettingsService.hasUnexpiredCredentials(CredentialsDescriptorFactory.offlineCredentials(context));
         }

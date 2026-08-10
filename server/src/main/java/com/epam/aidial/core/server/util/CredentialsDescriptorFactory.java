@@ -77,9 +77,8 @@ public class CredentialsDescriptorFactory {
     }
 
     /**
-     * The caller's offline credentials. The reserved {@code offline} id sits outside the
-     * {@code applications/…/external_services/…} shape that {@code parseExternalServiceScope} requires, so no
-     * app-facing credential endpoint can address it whatever scope id it is given.
+     * The caller's offline credentials. The reserved id sits outside the shape
+     * {@code parseExternalServiceScope} requires, so no app-facing endpoint can address it.
      */
     public static CredentialsDescriptor offlineCredentials(ProxyContext proxyContext) {
         BucketInfo bucket = getUserBucketInfo(proxyContext);

@@ -5,9 +5,8 @@ import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 import java.util.Set;
 
 /**
- * The declaration carries no credential material: the target is DIAL, so the caller acts as the user via that
- * user's offline credentials rather than anything configured here. Every OAuth and API-key field is rejected
- * so a misconfiguration fails at write time instead of looking like a connection that never works.
+ * The declaration carries no credential material. Every OAuth and API-key field is rejected so a misconfiguration
+ * fails at write time instead of looking like a connection that never works.
  */
 public class DialNativeAuthSettingsValidator extends BaseAuthSettingsValidator {
 

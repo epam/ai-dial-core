@@ -336,9 +336,6 @@ public class ExternalServiceCredentialsController {
     /**
      * Redemption for a DIAL-native service: the owner acts through their own offline credentials, and the
      * application is authorized by an administrator's consent rather than by anything it holds.
-     *
-     * <p>Two refusals that must stay distinguishable from a transient failure: no consent means the application was
-     * never approved, and no offline credentials means the user never connected. Both are permanent for this run.
      */
     private ExternalServiceCredentialsResponse redeemOfflineCredentials(OboCredentialsRequest request,
                                                                         String appPart,
@@ -361,7 +358,6 @@ public class ExternalServiceCredentialsController {
                     "Offline credentials are not configured for the identity provider that issued them");
         }
 
-        // Refreshes only when the stored access token has expired, and persists the rotated refresh token.
         CredentialsLocator locator = new CredentialsLocator(descriptor.getResourceId(),
                 Map.of(CredentialsLevel.USER, new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation())));
         ResourceCredentials credentials;
@@ -375,9 +371,7 @@ public class ExternalServiceCredentialsController {
             throw new OfflineCredentialsRequiredException(
                     "The owner's offline credentials are no longer valid; they must connect again");
         }
-        // getRefreshedUserCredentials deliberately returns the record UN-refreshed when the owner's offline consent
-        // is absent, leaving the refusal to the caller. Without this, a record lacking consent would be served as a
-        // stale token instead of being refused.
+        // getRefreshedUserCredentials returns the record un-refreshed without consent, leaving the refusal here.
         if (!credentials.isOfflineUsageConsent()) {
             throw new OfflineCredentialsRequiredException(
                     "The owner's credentials do not permit offline use; they must connect again");
@@ -385,9 +379,7 @@ public class ExternalServiceCredentialsController {
         return toCredentialsResponse(credentials, request.getUrl());
     }
 
-    /**
-     * An administrator must have approved this application's use of the service. Declaring it grants nothing.
-     */
+    /** An administrator must have approved this application's use of the service; declaring it grants nothing. */
     private void requireAdminConsent(String url, String appPart, String serviceId) {
         CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(url, context);
         CredentialsDescriptor consent = locator.getCredentialsDescriptors().get(CredentialsLevel.APPLICATION);
@@ -399,12 +391,8 @@ public class ExternalServiceCredentialsController {
 
 
     /**
-     * Keeps a permanent failure distinguishable from a transient one, because the caller treats every
-     * credentials-stage error as terminal.
-     *
-     * <p>A revoked or expired refresh token surfaces from the credentials service as 401, which here would wrongly
-     * suggest the <i>caller's</i> own credential was rejected; it is the owner who must connect again. Anything
-     * else — the provider unreachable or answering 5xx — is worth retrying, and says so.
+     * Keeps a permanent failure distinguishable from a retryable one. A 401 here means the <i>owner's</i> token was
+     * rejected, not the caller's, so it must not surface as one.
      */
     private RuntimeException translateRefreshFailure(HttpException e) {
         if (e.getStatus() == HttpStatus.UNAUTHORIZED) {
@@ -551,10 +539,7 @@ public class ExternalServiceCredentialsController {
         }
     }
 
-    /**
-     * A DIAL-native service has no credential to sign in with. Users grant offline access once, platform-wide,
-     * and an administrator approves the application separately — neither of which happens here.
-     */
+    /** A DIAL-native service has no credential to sign in with. */
     private void rejectDialNativeSignIn(AuthenticationType configured) {
         if (AuthenticationType.DIAL_NATIVE.equals(configured)) {
             throw new IllegalArgumentException(("Sign-in is not applicable to %s services: users grant offline access "

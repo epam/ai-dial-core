@@ -351,9 +351,8 @@ public class ExternalServiceManagementController {
 
 
     /**
-     * An administrator approves this application's use of a DIAL-native service. Declaring the service is the app
-     * owner's act and grants nothing; this is the separate decision that makes it usable, and it applies to every
-     * user who has offline credentials.
+     * An administrator approves this application's use of a DIAL-native service. Applies to every user who has
+     * offline credentials, not only those who opted into this application.
      */
     @ApiOperation(
             method = "POST",
@@ -379,8 +378,7 @@ public class ExternalServiceManagementController {
         return consentOperation(appId, serviceId, "GRANT", "Can't grant consent", service -> {
             CredentialsDescriptor descriptor = consentDescriptor(appId, serviceId);
             long now = System.currentTimeMillis();
-            // The record's existence IS the approval; who granted it is in the audit event, which keeps history
-            // this blob cannot — a regrant by another admin would simply overwrite it.
+            // The record's existence is the approval; who granted it is in the audit event, which keeps history.
             resourceCredentialsService.putCredentialsRecord(descriptor, ResourceCredentials.builder()
                     .resourceId(descriptor.getResourceId())
                     .credentialsLevel(CredentialsLevel.APPLICATION)
@@ -418,10 +416,7 @@ public class ExternalServiceManagementController {
                 service -> resourceCredentialsService.deleteCredentialsRecord(consentDescriptor(appId, serviceId)));
     }
 
-    /**
-     * Both consent operations are the same act with a different verb: admin only, DIAL-native only, and audited
-     * whatever the outcome — an attempt refused for want of authority is the one most worth recording.
-     */
+    /** Both consent operations are the same act with a different verb: admin only, and audited either way. */
     private Future<?> consentOperation(String appId, String serviceId, String action, String errorMessage,
                                        Function<ExternalService, Boolean> operation) {
         taskExecutor.submit(() -> {
@@ -435,10 +430,7 @@ public class ExternalServiceManagementController {
         return Future.succeededFuture();
     }
 
-    /**
-     * Consent is meaningful only for DIAL-native services; every other type is authorized by a credential the user
-     * or app owner supplies through sign-in.
-     */
+    /** Consent is meaningful only for DIAL-native services; other types are authorized by a stored credential. */
     private ExternalService resolveDialNativeService(String appId, String serviceId) {
         ResolvedApp resolved = resolveApp(appId);
         ExternalService service = resolved.application.getExternalServices() == null
@@ -455,11 +447,8 @@ public class ExternalServiceManagementController {
     }
 
     /**
-     * Administrators only — no write-access path. An app owner able to approve their own application would be
-     * granting it the right to act as every user in the installation who has offline credentials.
-     *
-     * <p>Checked before the service is resolved, so a non-administrator cannot tell a DIAL-native service from an
-     * absent one by comparing 403 against 400/404.
+     * Administrators only — an app owner approving their own application would be granting it the right to act as
+     * every user with offline credentials. Checked before the service is resolved, so 403 leaks nothing.
      */
     private void requireAdmin() {
         if (!accessService.hasAdminAccess(context)) {

@@ -34,9 +34,6 @@ public class ResourceCredentials {
     // Owner's recorded consent to offline (on-behalf-of) use of this credential. Legacy blobs deserialize as false.
     @JsonAlias({"offlineUsageConsent", "offline_usage_consent"})
     private boolean offlineUsageConsent;
-    /**
-     * Identity provider that issued these credentials. Recorded at sign-in because refresh happens when the user
-     * is absent, with no token to derive the provider from.
-     */
+    /** Issuer, recorded at sign-in because a refresh runs with no caller token to derive it from. */
     private String issuer;
 }

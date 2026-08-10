@@ -10,10 +10,7 @@ import jakarta.validation.ConstraintViolationException;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * One error mapping for the external-service and offline-credentials endpoints, which each used to carry their own
- * copy. The copies drifted: the same rejected request body answered 400 on one endpoint and 500 on another.
- */
+/** One error mapping for the external-service and offline-credentials endpoints, which each had their own. */
 @Slf4j
 @UtilityClass
 public class ExternalServiceErrors {
@@ -47,9 +44,7 @@ public class ExternalServiceErrors {
                 // Never surface crypto internals to the caller.
                 status = HttpStatus.INTERNAL_SERVER_ERROR;
             }
-            case null, default -> {
-                // Unrecognised: keep the generic message and report it as a server error.
-            }
+            case null, default -> { }
         }
 
         // Log server-side failures with the trace id; keep the client body generic.

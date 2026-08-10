@@ -105,11 +105,7 @@ public class IdentityProvider {
 
     private final String audience;
 
-    /**
-     * OAuth client this provider uses to obtain offline credentials on a user's behalf — a client-side view of
-     * the provider that the validation settings above do not carry. Null when the provider offers no offline
-     * credentials, which is the default.
-     */
+    /** OAuth client used to obtain offline credentials on a user's behalf; null unless configured. */
     @Getter
     private final ResourceAuthSettings offlineClient;
 
@@ -234,10 +230,7 @@ public class IdentityProvider {
         return settings.containsKey(claimName) ? parseClaimPath(settings.getString(claimName)) : defaultPath;
     }
 
-    /**
-     * Builds the offline OAuth client from settings. Modelled as {@link ResourceAuthSettings} so the existing
-     * token service can perform both the code exchange and the refresh without a parallel code path.
-     */
+    /** Modelled as {@link ResourceAuthSettings} so the token service handles it without a parallel code path. */
     private static ResourceAuthSettings parseOfflineClient(JsonObject offlineClient) {
         if (offlineClient == null) {
             return null;
@@ -514,16 +507,12 @@ public class IdentityProvider {
         }
     }
 
-    /**
-     * The user id this provider would derive from the given ID token, using the same {@code userIdPath} applied
-     * to an ordinary request. Used at offline-credentials sign-in to check the exchange returned a token for the
-     * caller and nobody else.
-     */
+    /** The user id this provider would derive from an ID token, via the same {@code userIdPath} as a request. */
     public String extractUserIdFromIdToken(String idToken) {
         return extractStringClaim(claimsOf(decodeJwtToken(idToken)), userIdPath);
     }
 
-    /** The {@code iss} of an ID token, recorded so refresh can find this provider again when the user is gone. */
+    /** Recorded at sign-in so a later refresh can find this provider again. */
     public String extractIssuerFromIdToken(String idToken) {
         return decodeJwtToken(idToken).getIssuer();
     }
