@@ -131,44 +131,44 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
-     * The endpoint the deployment declares for the type: the {@code interfaces} base URL when present,
-     * else the type's legacy peer field — {@link #endpoint} for chat completions, {@link #responsesEndpoint}
-     * for responses ({@code openaiEmbeddings} postdates the legacy fields and has no peer).
+     * The pre-{@code interfaces} field that serves the type: {@link #responsesEndpoint} for the Responses
+     * API, and the untyped {@link #endpoint} for the whole deployments-POST family. That single field
+     * predates the split into typed interfaces, so it serves {@code /chat/completions}, {@code /completions}
+     * and {@code /embeddings} alike — which is how every embeddings model was configured before
+     * {@code openaiEmbeddings} existed.
      */
     @Nullable
-    private String declaredEndpoint(InterfaceType type) {
-        String baseUrl = getInterfaceBaseUrl(type);
-        if (baseUrl == null) {
-            if (type == InterfaceType.OPENAI_CHAT_COMPLETIONS) {
-                baseUrl = endpoint;
-            } else if (type == InterfaceType.OPENAI_RESPONSES) {
-                baseUrl = responsesEndpoint;
-            }
-        }
-        return baseUrl;
+    private String legacyEndpoint(InterfaceType type) {
+        return switch (type) {
+            case OPENAI_CHAT_COMPLETIONS, OPENAI_EMBEDDINGS -> endpoint;
+            case OPENAI_RESPONSES -> responsesEndpoint;
+            case ANTHROPIC_MESSAGES -> null;
+        };
     }
 
     /**
-     * The endpoint a request for the type is routed to, or null when the deployment has no configuration
-     * to serve it (callers answer 503). The typed {@code interfaces} map is strict — chat completions is
-     * configured via {@code openaiChatCompletions} and embeddings via {@code openaiEmbeddings}, one never
-     * stands in for the other — but the untyped legacy {@link #endpoint} predates the split and keeps
-     * serving {@code /embeddings} requests. Also used as the synthetic upstream id when a deployment
-     * declares no upstreams.
+     * The endpoint a request for the type is routed to: the typed {@code interfaces} base URL when
+     * declared, else the legacy field serving the type. Null when the deployment has no configuration for
+     * the type at all, which callers answer with 503. Also used as the synthetic upstream id when a
+     * deployment declares no upstreams.
      */
     @Nullable
     public String resolveEndpoint(InterfaceType type) {
-        String declared = declaredEndpoint(type);
-        return declared == null && type == InterfaceType.OPENAI_EMBEDDINGS ? endpoint : declared;
+        String baseUrl = getInterfaceBaseUrl(type);
+        return baseUrl != null ? baseUrl : legacyEndpoint(type);
     }
 
     /**
-     * True when the deployment declares the type itself — what the listing APIs advertise. A deployment
-     * serving embeddings only through the untyped legacy {@link #endpoint} reports {@code false} for
-     * {@code openaiEmbeddings} while {@link #resolveEndpoint} still routes it.
+     * True when the deployment <em>declares</em> the type — what the listing APIs advertise, as opposed to
+     * what {@link #resolveEndpoint} routes. The two differ for {@code openaiEmbeddings} only: the untyped
+     * {@link #endpoint} is how every pre-interfaces model is configured, chat and embedding alike, so
+     * reading it as an embeddings declaration would advertise {@code openaiEmbeddings} on every chat model.
+     * Such a deployment therefore advertises {@code openaiChatCompletions} only, while still being routed
+     * for {@code /embeddings}. Declaring {@code openaiEmbeddings} in {@code interfaces} is what advertises it.
      */
     public boolean supportsInterface(InterfaceType type) {
-        return declaredEndpoint(type) != null;
+        return getInterfaceBaseUrl(type) != null
+                || (type != InterfaceType.OPENAI_EMBEDDINGS && legacyEndpoint(type) != null);
     }
 
     /**
@@ -179,7 +179,7 @@ public abstract class Deployment extends RoleBasedEntity {
      */
     public String resolveUri(InterfaceType type, String path) {
         String baseUrl = getInterfaceBaseUrl(type);
-        return baseUrl != null ? baseUrl + path : resolveEndpoint(type);
+        return baseUrl != null ? baseUrl + path : legacyEndpoint(type);
     }
 
     /**
