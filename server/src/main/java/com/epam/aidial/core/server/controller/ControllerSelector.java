@@ -207,6 +207,18 @@ public class ControllerSelector {
             return () -> controller.handle(deploymentId, getter, false);
         });
         get(RouteTemplate.USER_INFO, (proxy, context, pathMatcher) -> new UserInfoController(context));
+        get(RouteTemplate.OFFLINE_CREDENTIALS, (proxy, context, pathMatcher) -> {
+            OfflineCredentialsController controller = new OfflineCredentialsController(proxy, context);
+            return controller::getStatus;
+        });
+        post(RouteTemplate.OFFLINE_CREDENTIALS_OPERATIONS, (proxy, context, pathMatcher) -> {
+            OfflineCredentialsController controller = new OfflineCredentialsController(proxy, context);
+            return switch (pathMatcher.group(1)) {
+                case "signin" -> controller::signIn;
+                case "signout" -> controller::signOut;
+                default -> null;
+            };
+        });
         get(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             ConsentController controller = new ConsentController(context, proxy);

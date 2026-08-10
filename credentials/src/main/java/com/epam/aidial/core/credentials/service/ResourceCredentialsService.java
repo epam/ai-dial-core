@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -48,6 +49,19 @@ public class ResourceCredentialsService {
                                        ResourceAuthSettings resourceAuthSettings,
                                        ResourceSignInRequest resourceSignInRequest,
                                        String userId) {
+        addResourceCredentials(credentialsDescriptor, resourceAuthSettings, resourceSignInRequest, userId, credentials -> { });
+    }
+
+    /**
+     * As above, but runs {@code verifier} on the freshly issued credentials <b>before</b> anything is stored, so a
+     * caller can refuse them. Used by offline-credentials sign-in to check the exchange returned a token for the
+     * caller. The ID token is verification material and is cleared rather than persisted.
+     */
+    public void addResourceCredentials(CredentialsDescriptor credentialsDescriptor,
+                                       ResourceAuthSettings resourceAuthSettings,
+                                       ResourceSignInRequest resourceSignInRequest,
+                                       String userId,
+                                       Consumer<ResourceCredentials> verifier) {
         log.info("Adding resource credentials for resourceId={}, bucket={}, credentialsLevel={}",
                 credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName(), resourceSignInRequest.getCredentialsLevel());
         ResourceCredentialsFactory factory = resourceCredentialsFactoryProvider.getFactory(resourceSignInRequest.getAuthenticationType());
@@ -58,6 +72,9 @@ public class ResourceCredentialsService {
             // Offline-usage consent is per-user; record it so the on-behalf-of retrieval path can gate on it.
             resourceCredentials.setOfflineUsageConsent(resourceSignInRequest.isOfflineUsageConsent());
         }
+
+        verifier.accept(resourceCredentials);
+        resourceCredentials.setIdToken(null);
 
         byte[] encryptedBody = encrypt(credentialsDescriptor, resourceCredentials);
         resourceService.putResourceBytes(credentialsDescriptor.toResourceDescriptor(), encryptedBody, EtagHeader.ANY);
@@ -188,6 +205,13 @@ public class ResourceCredentialsService {
                 throw new IllegalArgumentException("Can't delete other user's personal credentials");
             }
         }
+    }
+
+    /** Deletes one credentials record addressed directly, for records that are not app-scoped. */
+    public boolean deleteCredentialsRecord(CredentialsDescriptor credentialsDescriptor) {
+        log.info("Deleting resource credentials for resourceId={}, bucket={}",
+                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
+        return resourceService.deleteResource(credentialsDescriptor.toResourceDescriptor(), EtagHeader.ANY);
     }
 
     @Nullable

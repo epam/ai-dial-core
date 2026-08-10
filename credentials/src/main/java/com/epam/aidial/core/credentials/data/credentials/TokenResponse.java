@@ -22,4 +22,11 @@ public class TokenResponse {
 
     @JsonProperty("expires_in")
     private Long expiresIn;
+
+    /**
+     * Present when {@code openid} was requested. The offline-credentials sign-in uses it to verify the exchange
+     * returned a token for the caller; other flows ignore it.
+     */
+    @JsonProperty("id_token")
+    private String idToken;
 }

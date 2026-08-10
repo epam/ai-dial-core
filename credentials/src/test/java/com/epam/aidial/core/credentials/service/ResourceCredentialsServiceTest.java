@@ -391,7 +391,7 @@ class ResourceCredentialsServiceTest {
                 .thenReturn(oauthTokenRefreshStrategy);
         when(oauthTokenRefreshStrategy.requiresTokenRefresh(decryptedResourceCredentials)).thenReturn(true);
 
-        TokenResponse mockedTokenResponse = new TokenResponse("newAccessToken", "newRefreshToken", 3600L);
+        TokenResponse mockedTokenResponse = TokenResponse.builder().accessToken("newAccessToken").refreshToken("newRefreshToken").expiresIn(3600L).build();
         Mockito.when(tokenService.getToken("testResourceId", authSettings, "refreshTokenValue"))
                 .thenReturn(mockedTokenResponse);
         Mockito.doAnswer(invocation -> {

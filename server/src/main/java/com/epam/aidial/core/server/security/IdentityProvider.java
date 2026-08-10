@@ -252,6 +252,7 @@ public class IdentityProvider {
                 .clientSecret(offlineClient.getString("clientSecret"))
                 .authorizationEndpoint(authorizationEndpoint)
                 .tokenEndpoint(tokenEndpoint)
+                .redirectUri(offlineClient.getString("redirectUri"))
                 .scopesSupported(getAsStringList(offlineClient, "scopes", List.of("openid", "offline_access")))
                 .build();
     }
@@ -506,6 +507,18 @@ public class IdentityProvider {
                     .collect(Collectors.joining(", "));
             log.atLevel(claimsLogLevel).log("User login: {}", message);
         }
+    }
+
+    /**
+     * The user id this provider would derive from the given ID token, using the same {@code userIdPath} applied
+     * to an ordinary request. Used at offline-credentials sign-in to check the exchange returned a token for the
+     * caller and nobody else.
+     */
+    public String extractUserIdFromIdToken(String idToken) {
+        DecodedJWT jwt = decodeJwtToken(idToken);
+        Map<String, Object> claims = jwt.getClaims().entrySet().stream()
+                .collect(HashMap::new, (m, e) -> m.put(e.getKey(), e.getValue().as(Object.class)), HashMap::putAll);
+        return extractStringClaim(claims, userIdPath);
     }
 
     boolean match(DecodedJWT jwt) {

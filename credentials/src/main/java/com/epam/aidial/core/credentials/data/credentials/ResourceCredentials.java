@@ -23,6 +23,9 @@ public class ResourceCredentials {
     private String accessToken;
     @ToString.Exclude
     private String refreshToken;
+    /** Set only during sign-in so the caller can verify who the exchange was for; never returned to clients. */
+    @ToString.Exclude
+    private String idToken;
     private long createdAt;
     private long updatedAt;
     private Long expiresInSeconds;

@@ -126,6 +126,30 @@ public class AccessTokenValidator {
                 });
     }
 
+    /**
+     * The provider that issued the caller's token, resolved the same way {@link #extractClaims} resolves it: the
+     * only configured provider when there is one, otherwise a match on {@code issuerPattern}.
+     *
+     * <p>Providers configured with a {@code userInfoEndpoint} carry no {@code issuerPattern} and so cannot be
+     * matched here — they are only ever found by racing every userinfo endpoint, which validates a token but
+     * cannot say which provider it belongs to. Such a provider cannot offer offline credentials.
+     *
+     * @throws IllegalArgumentException when no provider matches.
+     */
+    public IdentityProvider resolveProvider(String authHeader) {
+        if (providers.size() == 1) {
+            return providers.get(0);
+        }
+        DecodedJWT jwt = IdentityProvider.decodeJwtToken(
+                Objects.requireNonNull(extractTokenFromHeader(authHeader), "Access token must be presented in Auth header"));
+        for (IdentityProvider idp : providers) {
+            if (idp.match(jwt)) {
+                return idp;
+            }
+        }
+        throw new IllegalArgumentException("Unknown Identity Provider for issuer: " + jwt.getIssuer());
+    }
+
     private Future<UserInfoResult> createUserInfoResultFuture(String accessToken, IdentityProvider idp) {
         Promise<UserInfoResult> promise = Promise.promise();
         idp.extractClaimsFromUserInfo(accessToken).map(claims -> {
