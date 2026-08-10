@@ -135,8 +135,10 @@ public class RateLimiter {
      * Collects limits and rolling usage for many deployments in one shot.
      *
      * <p>Cost is resolved once for the whole batch: both the limit and the counter are per caller, not
-     * per deployment. All reads are issued as a single batch, and one timestamp is shared so every
-     * window in the response is consistent.
+     * per deployment. Reads go through {@link ResourceService#getResources}, which pipelines them in
+     * chunks rather than one round-trip, so this is not an atomic snapshot of the counters. One
+     * timestamp is shared across the parse instead, so every window in the response is computed
+     * against the same instant.
      */
     public Future<UserLimitStats> getUserLimitStats(ProxyContext context, List<? extends RoleBasedEntity> deployments) {
         try {

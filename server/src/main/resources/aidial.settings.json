@@ -63,6 +63,7 @@
     "syncBatch": 4096,
     "cacheExpiration": 300000,
     "compressionMinSize": 256,
+    "blobFallbackConcurrency": 32,
     "heartbeatPeriod": 60000
   },
   "complexResource": {

@@ -67,6 +67,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
@@ -133,11 +134,6 @@ public class ResourceService implements AutoCloseable {
 
     private static final int BATCH_SIZE = 50;
     private static final int PAGE_SIZE = 1000;
-    /**
-     * Caps how many {@link #getResources} cache misses may hit blob storage at once, so a large bulk
-     * read cannot exhaust the blob client's connection pool.
-     */
-    private static final int BLOB_FALLBACK_CONCURRENCY = 32;
 
     private static final ExecutorService VIRTUAL_THREAD_PER_TASK_EXECUTOR;
 
@@ -159,6 +155,7 @@ public class ResourceService implements AutoCloseable {
     private final int syncBatch;
     private final Duration cacheExpiration;
     private final int compressionMinSize;
+    private final int blobFallbackConcurrency;
     private final String prefix;
     private final String resourceQueue;
     private final Map<String, Long> resourceTypeExpiration;
@@ -190,6 +187,7 @@ public class ResourceService implements AutoCloseable {
         this.syncBatch = settings.syncBatch;
         this.cacheExpiration = Duration.ofMillis(settings.cacheExpiration);
         this.compressionMinSize = settings.compressionMinSize;
+        this.blobFallbackConcurrency = settings.blobFallbackConcurrency;
         this.prefix = prefix;
         this.resourceQueue = "resource:" + BlobStorageUtil.toStoragePath(prefix, "queue");
         this.resourceTypeExpiration = Objects.requireNonNullElseGet(settings.resourceTypesExpiration, Map::of);
@@ -418,9 +416,9 @@ public class ResourceService implements AutoCloseable {
      * Reads many resources in one go. Redis lookups are pipelined in {@link #BATCH_SIZE} chunks, and only
      * the chunks' cache misses fall back to blob storage - a resource cached as absent costs no blob call.
      *
-     * <p>Resources that do not exist are omitted from the result rather than mapped to null.
+     * <p>Resources that do not exist are omitted from the result rather than mapped to null. Duplicate
+     * descriptors are collapsed, so the result never holds more entries than the request had distinct ones.
      */
-    @SneakyThrows
     public Map<ResourceDescriptor, String> getResources(List<ResourceDescriptor> descriptors) {
         List<ResourceDescriptor> distinct = descriptors.stream().distinct().toList();
         if (distinct.isEmpty()) {
@@ -428,7 +426,7 @@ public class ResourceService implements AutoCloseable {
         }
 
         // shared across chunks, otherwise each chunk would get its own allowance
-        Semaphore blobPermits = new Semaphore(BLOB_FALLBACK_CONCURRENCY);
+        Semaphore blobPermits = new Semaphore(blobFallbackConcurrency);
         List<Future<Map<ResourceDescriptor, String>>> futures = new ArrayList<>();
         for (int start = 0; start < distinct.size(); start += BATCH_SIZE) {
             List<ResourceDescriptor> chunk = distinct.subList(start, Math.min(start + BATCH_SIZE, distinct.size()));
@@ -436,13 +434,10 @@ public class ResourceService implements AutoCloseable {
         }
 
         Map<ResourceDescriptor, String> result = new HashMap<>();
-        for (Future<Map<ResourceDescriptor, String>> future : futures) {
-            result.putAll(future.get());
-        }
+        awaitAll(futures, result::putAll);
         return result;
     }
 
-    @SneakyThrows
     private Map<ResourceDescriptor, String> getResourceChunk(List<ResourceDescriptor> descriptors, Semaphore blobPermits) {
         RBatch batch = redis.createBatch();
         for (ResourceDescriptor descriptor : descriptors) {
@@ -468,6 +463,9 @@ public class ResourceService implements AutoCloseable {
         List<Future<Pair<ResourceDescriptor, String>>> futures = new ArrayList<>();
         for (ResourceDescriptor descriptor : missed) {
             futures.add(VIRTUAL_THREAD_PER_TASK_EXECUTOR.submit(() -> {
+                // interruptible on purpose: awaitAll cancels siblings on the first failure.
+                // The wait itself needs no timeout - permits are held for one blob read, which the
+                // blob client's own socket timeout bounds
                 blobPermits.acquire();
                 try {
                     // no lock: a bulk read tolerates a concurrent double-fetch, same as runReadBatch
@@ -477,13 +475,37 @@ public class ResourceService implements AutoCloseable {
                 }
             }));
         }
-        for (Future<Pair<ResourceDescriptor, String>> future : futures) {
-            Pair<ResourceDescriptor, String> loaded = future.get();
+        awaitAll(futures, loaded -> {
             if (loaded.getValue() != null) {
                 result.put(loaded.getKey(), loaded.getValue());
             }
-        }
+        });
         return result;
+    }
+
+    /**
+     * Consumes every future's result in order, cancelling the remaining ones as soon as one fails so a
+     * doomed bulk read does not wait for its siblings. Cancellation is best effort: it interrupts the
+     * task, but work a cancelled task has already handed to a nested future still runs to completion.
+     *
+     * <p>An {@link ExecutionException} is unwrapped, so callers that map exception type to an HTTP
+     * status see the original storage exception instead of the wrapper.
+     */
+    @SneakyThrows
+    private static <T> void awaitAll(List<Future<T>> futures, Consumer<T> consumer) {
+        try {
+            for (Future<T> future : futures) {
+                consumer.accept(future.get());
+            }
+        } catch (Throwable e) {
+            futures.forEach(future -> future.cancel(true));
+
+            if (e instanceof ExecutionException) {
+                e = e.getCause();
+            }
+
+            throw e;
+        }
     }
 
     private static MetadataBase storageToResourceMetadata(StorageMetadata meta, ResourceDescriptor folder) {
@@ -1404,6 +1426,12 @@ public class ResourceService implements AutoCloseable {
          * Compress resources with gzip if their size in bytes more or equal to this value.
          */
         private int compressionMinSize;
+        /**
+         * Caps how many {@link ResourceService#getResources} cache misses may hit blob storage at once,
+         * so a large bulk read cannot exhaust the blob client's connection pool. Keep it at or below
+         * the pool size the blob provider is configured with.
+         */
+        private int blobFallbackConcurrency = 32;
         /**
          * Expiration in milliseconds per resource type.
          */

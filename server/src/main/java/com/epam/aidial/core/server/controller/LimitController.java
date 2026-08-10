@@ -74,8 +74,9 @@ public class LimitController {
             }
     )
     public Future<?> getUserLimits() {
-        proxy.getTaskExecutor().submit(this::listAccessibleModels)
-                .compose(models -> proxy.getRateLimiter().getUserLimitStats(context, models))
+        // no executor hop: listAccessibleModels only streams over the in-memory config, and
+        // getUserLimitStats submits the blocking part itself
+        proxy.getRateLimiter().getUserLimitStats(context, listAccessibleModels())
                 .onSuccess(stats -> {
                     if (stats == null) {
                         context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Limit storage is not available");
