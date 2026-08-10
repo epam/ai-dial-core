@@ -177,6 +177,43 @@ public class OfflineCredentialsApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testSignInWithInvalidBodyIsRejectedAndAudited() {
+        // A body the validator refuses is a bad request, not a server fault — and it is still a sign-in attempt,
+        // so it belongs in the audit trail alongside the ones the identity provider rejects.
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_OBO_AUDIT");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        auditLogger.addAppender(appender);
+        Level previous = auditLogger.getLevel();
+        auditLogger.setLevel(Level.INFO);
+        try {
+            Response signIn = send(HttpMethod.POST, "/v1/user/offline-credentials/signin", null, """
+                    { "redirect_uri": "http://localhost:3000/callback" }
+                    """, "authorization", "user");
+            assertEquals(400, signIn.status(), signIn.body());
+
+            List<String> events = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .filter(m -> m.startsWith("event=offline_credentials"))
+                    .toList();
+            assertEquals(1, events.size(), events::toString);
+            assertTrue(events.get(0).contains("action=SIGN_IN"), events::toString);
+            assertFalse(events.get(0).contains("outcome=SUCCESS"), events::toString);
+        } finally {
+            auditLogger.setLevel(previous);
+            auditLogger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    void testOfflineCredentialsRequireSignedInUser() {
+        // An api-key caller has no user behind it, so there is no bucket to look in: refuse plainly rather than
+        // failing while building one.
+        assertEquals(401, send(HttpMethod.GET, "/v1/user/offline-credentials", null, "").status());
+        assertEquals(401, send(HttpMethod.POST, "/v1/user/offline-credentials/signout", null, "").status());
+    }
+
+    @Test
     void testRejectedSignInIsAudited() throws Exception {
         Mockito.when(provider.extractUserIdFromIdToken("id-token-for-user")).thenReturn("someone-else");
         Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_OBO_AUDIT");

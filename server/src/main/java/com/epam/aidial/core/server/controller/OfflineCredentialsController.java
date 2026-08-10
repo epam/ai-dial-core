@@ -23,7 +23,9 @@ import com.epam.aidial.core.server.validation.ValidationUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
+import io.vertx.core.Handler;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHeaders;
 
@@ -68,14 +70,15 @@ public class OfflineCredentialsController {
             }
     )
     public Future<?> getStatus() {
-        if (rejectPerRequestKey()) {
+        if (rejectNonUserCaller()) {
             return Future.succeededFuture();
         }
         taskExecutor.submit(() -> {
-            ResourceAuthSettings offlineClient = resolveOfflineClient();
             // Same test the app-listing status uses, so the two endpoints cannot disagree about one user.
             boolean connected = proxy.getResourceAuthSettingsService().hasUnexpiredCredentials(descriptor());
-            return OfflineCredentialsStatus.of(connected, connected ? null : offlineClient);
+            // Resolved only when there is something to connect: an already-connected caller should not be
+            // refused merely because the provider offers no offline client.
+            return OfflineCredentialsStatus.of(connected, connected ? null : provider().getOfflineClient());
         })
                 .onSuccess(status -> context.respond(HttpStatus.OK, status))
                 .onFailure(error -> respondError("Can't read offline credentials", error));
@@ -100,7 +103,7 @@ public class OfflineCredentialsController {
             }
     )
     public Future<?> signIn() {
-        if (rejectPerRequestKey()) {
+        if (rejectNonUserCaller()) {
             return Future.succeededFuture();
         }
         context.getRequest()
@@ -122,18 +125,13 @@ public class OfflineCredentialsController {
                                 .offlineUsageConsent(true)
                                 .build();
 
-                        try {
-                            resourceCredentialsService.addResourceCredentials(
-                                    descriptor(), offlineClient, signIn, context.getUserId(), credentials ->
-                                            verifyIssuedForCaller(provider, credentials));
-                        } catch (RuntimeException e) {
-                            ExternalServiceAuditLog.offlineCredentials(context, "SIGN_IN", e);
-                            throw e;
-                        }
-                        ExternalServiceAuditLog.offlineCredentials(context, "SIGN_IN", null);
+                        resourceCredentialsService.addResourceCredentials(
+                                descriptor(), offlineClient, signIn, context.getUserId(), credentials ->
+                                        verifyIssuedForCaller(provider, credentials));
                         return true;
                     });
                 })
+                .onComplete(audited("SIGN_IN"))
                 .onSuccess(added -> context.respond(HttpStatus.OK, added))
                 .onFailure(error -> respondError("Can't sign in for offline credentials", error));
         return Future.succeededFuture();
@@ -154,19 +152,11 @@ public class OfflineCredentialsController {
             }
     )
     public Future<?> signOut() {
-        if (rejectPerRequestKey()) {
+        if (rejectNonUserCaller()) {
             return Future.succeededFuture();
         }
-        taskExecutor.submit(() -> {
-            try {
-                boolean deleted = resourceCredentialsService.deleteCredentialsRecord(descriptor());
-                ExternalServiceAuditLog.offlineCredentials(context, "SIGN_OUT", null);
-                return deleted;
-            } catch (RuntimeException e) {
-                ExternalServiceAuditLog.offlineCredentials(context, "SIGN_OUT", e);
-                throw e;
-            }
-        })
+        taskExecutor.submit(() -> resourceCredentialsService.deleteCredentialsRecord(descriptor()))
+                .onComplete(audited("SIGN_OUT"))
                 .onSuccess(deleted -> context.respond(HttpStatus.OK, deleted))
                 .onFailure(error -> respondError("Can't sign out of offline credentials", error));
         return Future.succeededFuture();
@@ -191,12 +181,23 @@ public class OfflineCredentialsController {
         credentials.setIssuer(provider.extractIssuerFromIdToken(idToken));
     }
 
-    private IdentityProvider provider() {
-        return proxy.getTokenValidator().resolveProvider(context.getRequest().getHeader(HttpHeaders.AUTHORIZATION));
+    /**
+     * Audits the whole operation, not just its storage call: a request rejected while parsing or validating the
+     * body is as much a failed sign-in attempt as one the identity provider refuses.
+     */
+    private <T> Handler<AsyncResult<T>> audited(String action) {
+        return result -> ExternalServiceAuditLog.offlineCredentials(context, action, asRuntime(result.cause()));
     }
 
-    private ResourceAuthSettings resolveOfflineClient() {
-        return provider().getOfflineClient();
+    private static RuntimeException asRuntime(Throwable error) {
+        if (error == null) {
+            return null;
+        }
+        return error instanceof RuntimeException e ? e : new IllegalStateException(error);
+    }
+
+    private IdentityProvider provider() {
+        return proxy.getTokenValidator().resolveProvider(context.getRequest().getHeader(HttpHeaders.AUTHORIZATION));
     }
 
     private ResourceAuthSettings requireOfflineClient(IdentityProvider provider) {
@@ -212,26 +213,23 @@ public class OfflineCredentialsController {
         return CredentialsDescriptorFactory.offlineCredentials(context);
     }
 
-    /** Only a real user may manage their own offline credentials — never an application acting for them. */
-    private boolean rejectPerRequestKey() {
+    /**
+     * These credentials belong to a person, so the caller must be one: never an application acting for them, and
+     * never a key with no user behind it — which would otherwise fail obscurely while building the user's bucket.
+     */
+    private boolean rejectNonUserCaller() {
         if (context.getApiKeyData().getPerRequestKey() != null) {
             context.respond(HttpStatus.UNAUTHORIZED, "Offline credentials cannot be managed with a per-request key");
+            return true;
+        }
+        if (context.getUserId() == null) {
+            context.respond(HttpStatus.UNAUTHORIZED, "Offline credentials can only be managed by a signed-in user");
             return true;
         }
         return false;
     }
 
     private void respondError(String message, Throwable error) {
-        HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
-        String body = message;
-        if (error instanceof HttpException e) {
-            status = e.getStatus();
-            body = e.getMessage();
-        } else if (error instanceof IllegalArgumentException || error instanceof NullPointerException) {
-            status = HttpStatus.BAD_REQUEST;
-            body = error.getMessage();
-        }
-        log.warn("{}: {}", message, error.getMessage());
-        context.respond(status, body);
+        ExternalServiceErrors.respond(context, message, error);
     }
 }

@@ -46,6 +46,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /** Admin/app-owner CRUD for an application's external-service definitions; static-config apps are read-only. */
 @Slf4j
@@ -345,28 +346,7 @@ public class ExternalServiceManagementController {
     }
 
     private void respondError(String message, Throwable error) {
-        HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
-        String body = null;
-        switch (error) {
-            case HttpException e -> {
-                status = e.getStatus();
-                body = e.getMessage();
-            }
-            case ResourceNotFoundException e -> {
-                status = HttpStatus.NOT_FOUND;
-                body = e.getMessage();
-            }
-            case PermissionDeniedException e -> {
-                status = HttpStatus.FORBIDDEN;
-                body = e.getMessage();
-            }
-            case IllegalArgumentException e -> {
-                status = HttpStatus.BAD_REQUEST;
-                body = e.getMessage();
-            }
-            case null, default -> log.warn(message, error);
-        }
-        context.respond(status, body);
+        ExternalServiceErrors.respond(context, message, error);
     }
 
 
@@ -396,30 +376,19 @@ public class ExternalServiceManagementController {
             }
     )
     public Future<?> grantConsent(String appId, String serviceId) {
-        taskExecutor.submit(() -> {
-            requireAdmin();
-            ExternalService service = resolveDialNativeService(appId, serviceId);
-
+        return consentOperation(appId, serviceId, "GRANT", "Can't grant consent", service -> {
             CredentialsDescriptor descriptor = consentDescriptor(appId, serviceId);
             long now = System.currentTimeMillis();
-            ResourceCredentials consent = ResourceCredentials.builder()
+            resourceCredentialsService.putCredentialsRecord(descriptor, ResourceCredentials.builder()
                     .resourceId(descriptor.getResourceId())
                     .credentialsLevel(CredentialsLevel.APPLICATION)
                     .authenticationType(service.getAuthSettings().getAuthenticationType())
                     .approvedBy(context.getUserId())
                     .createdAt(now)
                     .updatedAt(now)
-                    .build();
-            resourceCredentialsService.putCredentialsRecord(descriptor, consent);
-            ExternalServiceAuditLog.consent(context, appId, serviceId, "GRANT", null);
+                    .build());
             return true;
-        })
-                .onSuccess(granted -> context.respond(HttpStatus.OK, granted))
-                .onFailure(error -> {
-                    ExternalServiceAuditLog.consent(context, appId, serviceId, "GRANT", asRuntime(error));
-                    respondError("Can't grant consent", error);
-                });
-        return Future.succeededFuture();
+        });
     }
 
     /** Withdraws the approval. The application stops working for every user immediately. */
@@ -444,18 +413,24 @@ public class ExternalServiceManagementController {
             }
     )
     public Future<?> withdrawConsent(String appId, String serviceId) {
+        return consentOperation(appId, serviceId, "WITHDRAW", "Can't withdraw consent",
+                service -> resourceCredentialsService.deleteCredentialsRecord(consentDescriptor(appId, serviceId)));
+    }
+
+    /**
+     * Both consent operations are the same act with a different verb: admin only, DIAL-native only, and audited
+     * whatever the outcome — an attempt refused for want of authority is the one most worth recording.
+     */
+    private Future<?> consentOperation(String appId, String serviceId, String action, String errorMessage,
+                                       Function<ExternalService, Boolean> operation) {
         taskExecutor.submit(() -> {
             requireAdmin();
-            resolveDialNativeService(appId, serviceId);
-            boolean withdrawn = resourceCredentialsService.deleteCredentialsRecord(consentDescriptor(appId, serviceId));
-            ExternalServiceAuditLog.consent(context, appId, serviceId, "WITHDRAW", null);
-            return withdrawn;
+            return operation.apply(resolveDialNativeService(appId, serviceId));
         })
-                .onSuccess(deleted -> context.respond(HttpStatus.OK, deleted))
-                .onFailure(error -> {
-                    ExternalServiceAuditLog.consent(context, appId, serviceId, "WITHDRAW", asRuntime(error));
-                    respondError("Can't withdraw consent", error);
-                });
+                .onComplete(result -> ExternalServiceAuditLog.consent(
+                        context, appId, serviceId, action, asRuntime(result.cause())))
+                .onSuccess(applied -> context.respond(HttpStatus.OK, applied))
+                .onFailure(error -> respondError(errorMessage, error));
         return Future.succeededFuture();
     }
 
@@ -492,6 +467,9 @@ public class ExternalServiceManagementController {
     }
 
     private static RuntimeException asRuntime(Throwable error) {
+        if (error == null) {
+            return null;
+        }
         return error instanceof RuntimeException e ? e : new IllegalStateException(error);
     }
 

@@ -466,12 +466,17 @@ public class IdentityProvider {
         return promise.future().onFailure(error -> log.warn("Can't extract claims from user info endpoint '{}':", userInfoUrl, error));
     }
 
-    private ExtractedClaims from(DecodedJWT jwt) {
-        String userKey = jwt.getClaim(loggingKey).asString();
+    private static Map<String, Object> claimsOf(DecodedJWT jwt) {
         Map<String, Object> map = new HashMap<>();
         for (Map.Entry<String, Claim> e : jwt.getClaims().entrySet()) {
             map.put(e.getKey(), e.getValue().as(Object.class));
         }
+        return map;
+    }
+
+    private ExtractedClaims from(DecodedJWT jwt) {
+        String userKey = jwt.getClaim(loggingKey).asString();
+        Map<String, Object> map = claimsOf(jwt);
         logClaims(map);
         return new ExtractedClaims(extractStringClaim(map, userIdPath), extractUserRoles(map), extractUserHash(userKey),
                 extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
@@ -515,10 +520,7 @@ public class IdentityProvider {
      * caller and nobody else.
      */
     public String extractUserIdFromIdToken(String idToken) {
-        DecodedJWT jwt = decodeJwtToken(idToken);
-        Map<String, Object> claims = jwt.getClaims().entrySet().stream()
-                .collect(HashMap::new, (m, e) -> m.put(e.getKey(), e.getValue().as(Object.class)), HashMap::putAll);
-        return extractStringClaim(claims, userIdPath);
+        return extractStringClaim(claimsOf(decodeJwtToken(idToken)), userIdPath);
     }
 
     /** The {@code iss} of an ID token, recorded so refresh can find this provider again when the user is gone. */
@@ -532,11 +534,7 @@ public class IdentityProvider {
     }
 
     boolean match(DecodedJWT jwt) {
-        if (issuerPattern == null) {
-            return false;
-        }
-        String issuer = jwt.getIssuer();
-        return issuerPattern.matcher(issuer).matches();
+        return matchesIssuer(jwt.getIssuer());
     }
 
     boolean hasUserinfoUrl() {

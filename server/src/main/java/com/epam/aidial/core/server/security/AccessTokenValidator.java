@@ -142,12 +142,7 @@ public class AccessTokenValidator {
         }
         DecodedJWT jwt = IdentityProvider.decodeJwtToken(
                 Objects.requireNonNull(extractTokenFromHeader(authHeader), "Access token must be presented in Auth header"));
-        for (IdentityProvider idp : providers) {
-            if (idp.match(jwt)) {
-                return idp;
-            }
-        }
-        throw new IllegalArgumentException("Unknown Identity Provider for issuer: " + jwt.getIssuer());
+        return resolveProviderByIssuer(jwt.getIssuer());
     }
 
     /**
