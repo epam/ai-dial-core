@@ -52,6 +52,27 @@ public class EmbeddingsApiTest extends ResourceBaseTest {
 
     @DialConfigLocation("dial-config/openai-embeddings.json")
     @Test
+    public void testQueryParamsReachTheUpstreamExactlyOnce() throws IOException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            String path = "/openai/deployments/embeddings-iface/embeddings";
+            String upstream = path + "?api-version=2025-01-01-preview";
+            // the upstream is mapped by path *and* query, so a dropped or duplicated query does not match
+            server.map(HttpMethod.POST, upstream, request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, RESPONSE, "Content-Type", "application/json");
+            });
+
+            Response response = send(HttpMethod.POST, path, "api-version=2025-01-01-preview",
+                    REQUEST.formatted("embeddings-iface"), "content-type", "application/json");
+
+            verify(response, 200, RESPONSE);
+            assertEquals(upstream, captured.get().getPath());
+        }
+    }
+
+    @DialConfigLocation("dial-config/openai-embeddings.json")
+    @Test
     public void testChatOnlyInterfaceRefusesEmbeddings() throws IOException {
         try (TestWebServer server = new TestWebServer(4848)) {
             // the typed map is strict: a model declaring only openaiChatCompletions does not serve
