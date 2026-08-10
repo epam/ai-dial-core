@@ -4,12 +4,16 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.epam.aidial.core.config.AuthenticationType;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.security.IdentityProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
@@ -1580,6 +1584,106 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
         Response grant = send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/nope/consent",
                 null, "", "authorization", "admin");
         assertEquals(404, grant.status(), grant.body());
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Status for DIAL-native services (§8 item 6a): app level means approved, user level means the
+    // caller's platform-wide offline credentials — never a per-service sign-in, which does not exist.
+    // ---------------------------------------------------------------------------------------------
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testDialNativeAppLevelStatusFollowsConsent() {
+        assertEquals("SIGNED_OUT", dialNativeStatus("app_level_auth_status", "admin"));
+
+        send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "admin");
+        assertEquals("SIGNED_IN", dialNativeStatus("app_level_auth_status", "admin"));
+
+        send(HttpMethod.DELETE, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "admin");
+        assertEquals("SIGNED_OUT", dialNativeStatus("app_level_auth_status", "admin"));
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testDialNativeUserLevelStatusFollowsOfflineCredentials() throws Exception {
+        // The user-facing surface is the deployment GET: listing an app's services is admin/owner-only.
+        assertEquals("SIGNED_OUT", dialNativeStatusOnApp("user"));
+
+        IdentityProvider provider = Mockito.mock(IdentityProvider.class);
+        Mockito.when(provider.getOfflineClient()).thenReturn(ResourceAuthSettings.builder()
+                .authenticationType(AuthenticationType.OAUTH)
+                .clientId("dial-credentials-manager")
+                .clientSecret("secret")
+                .authorizationEndpoint("http://localhost:9876/authorize")
+                .tokenEndpoint("http://localhost:9876/token")
+                .redirectUri("http://localhost:3000/callback")
+                .scopesSupported(List.of("openid", "offline_access"))
+                .build());
+        Mockito.when(provider.extractUserIdFromIdToken("id-token-for-user")).thenReturn("user");
+        Mockito.when(provider.extractIssuerFromIdToken(Mockito.any())).thenReturn("http://idp/realms/dial");
+        Mockito.when(validator.resolveProvider(Mockito.any())).thenReturn(provider);
+
+        TestWebServer.Handler handler = request -> new MockResponse()
+                .setBody("""
+                        {
+                            "access_token": "offline-access-token",
+                            "refresh_token": "offline-refresh-token",
+                            "id_token": "id-token-for-user",
+                            "expires_in": 3600
+                        }
+                        """)
+                .setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response signIn = send(HttpMethod.POST, "/v1/user/offline-credentials/signin", null, """
+                    { "code": "auth-code", "redirect_uri": "http://localhost:3000/callback" }
+                    """, "authorization", "user");
+            assertEquals(200, signIn.status(), signIn.body());
+        }
+
+        assertEquals("SIGNED_IN", dialNativeStatusOnApp("user"));
+        // Another identity is unaffected — offline credentials live in the caller's own bucket.
+        assertEquals("SIGNED_OUT", dialNativeStatusOnApp("admin"));
+
+        Response signOut = send(HttpMethod.POST, "/v1/user/offline-credentials/signout",
+                null, "", "authorization", "user");
+        assertEquals(200, signOut.status(), signOut.body());
+        assertEquals("SIGNED_OUT", dialNativeStatusOnApp("user"));
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testConsentDoesNotAffectOtherServicesStatus() {
+        send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "admin");
+
+        JsonNode salesforce = externalService("salesforce", "admin");
+        assertEquals("SIGNED_OUT", salesforce.get("auth_settings").get("app_level_auth_status").asText());
+        assertEquals("SIGNED_OUT", salesforce.get("auth_settings").get("user_level_auth_status").asText());
+    }
+
+    private String dialNativeStatus(String field, String user) {
+        return externalService("dial", user).get("auth_settings").get(field).asText();
+    }
+
+    private String dialNativeStatusOnApp(String user) {
+        Response app = send(HttpMethod.GET, "/openai/applications/app-with-services", null, "", "authorization", user);
+        assertEquals(200, app.status(), app.body());
+        return ProxyUtil.convertToObject(app.body(), JsonNode.class)
+                .get("external_services").get("dial").get("auth_settings").get("user_level_auth_status").asText();
+    }
+
+    private JsonNode externalService(String serviceId, String user) {
+        Response list = send(HttpMethod.GET, "/v1/applications/app-with-services/external-services",
+                null, "", "authorization", user);
+        assertEquals(200, list.status(), list.body());
+        for (JsonNode service : ProxyUtil.convertToObject(list.body(), JsonNode.class)) {
+            if (serviceId.equals(service.get("id").asText())) {
+                return service;
+            }
+        }
+        throw new AssertionError("service '" + serviceId + "' missing from " + list.body());
     }
 
 

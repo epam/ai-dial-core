@@ -7,6 +7,10 @@ import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiResponse;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.OfflineCredentialsSignInRequest;
@@ -50,13 +54,27 @@ public class OfflineCredentialsController {
      * Status and, when there is something to do, the parameters chat needs to build the authorization URL. One
      * call because they are the same question asked at the same moment.
      */
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/user/offline-credentials",
+            operationId = "getOfflineCredentials",
+            tags = {"External Services"},
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = OfflineCredentialsStatus.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> getStatus() {
         if (rejectPerRequestKey()) {
             return Future.succeededFuture();
         }
         taskExecutor.submit(() -> {
             ResourceAuthSettings offlineClient = resolveOfflineClient();
-            boolean connected = resourceCredentialsService.getResourceCredentials(descriptor()) != null;
+            // Same test the app-listing status uses, so the two endpoints cannot disagree about one user.
+            boolean connected = proxy.getResourceAuthSettingsService().hasUnexpiredCredentials(descriptor());
             return OfflineCredentialsStatus.of(connected, connected ? null : offlineClient);
         })
                 .onSuccess(status -> context.respond(HttpStatus.OK, status))
@@ -67,6 +85,20 @@ public class OfflineCredentialsController {
     /**
      * Exchanges the authorization code and stores the resulting refresh token in the caller's own bucket.
      */
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/user/offline-credentials/signin",
+            operationId = "offlineCredentialsSignIn",
+            requestBody = @ApiSchema(implementation = OfflineCredentialsSignInRequest.class),
+            tags = {"External Services"},
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = Boolean.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> signIn() {
         if (rejectPerRequestKey()) {
             return Future.succeededFuture();
@@ -108,6 +140,19 @@ public class OfflineCredentialsController {
     }
 
     /** Deletes the credentials. Every scheduled run for this user stops, in every application. */
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/user/offline-credentials/signout",
+            operationId = "offlineCredentialsSignOut",
+            tags = {"External Services"},
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = Boolean.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> signOut() {
         if (rejectPerRequestKey()) {
             return Future.succeededFuture();

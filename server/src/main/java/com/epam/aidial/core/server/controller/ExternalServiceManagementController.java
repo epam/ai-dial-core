@@ -25,6 +25,7 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ExternalServiceService;
+import com.epam.aidial.core.server.service.ExternalServiceStatusEnricher;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.UserExternalServiceService;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -59,6 +60,7 @@ public class ExternalServiceManagementController {
     private final EncryptionService encryptionService;
     private final ResourceCredentialsService resourceCredentialsService;
     private final ResourceAuthSettingsService resourceAuthSettingsService;
+    private final ExternalServiceStatusEnricher statusEnricher;
 
     public ExternalServiceManagementController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -70,6 +72,7 @@ public class ExternalServiceManagementController {
         this.encryptionService = proxy.getEncryptionService();
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.resourceAuthSettingsService = proxy.getResourceAuthSettingsService();
+        this.statusEnricher = new ExternalServiceStatusEnricher(context, resourceAuthSettingsService);
     }
 
     @ApiOperation(
@@ -332,7 +335,7 @@ public class ExternalServiceManagementController {
         ResourceAuthSettings safe = authSettings == null ? null : authSettings.withoutSecrets();
         if (withStatus && safe != null) {
             CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId(appId, serviceId), context);
-            resourceAuthSettingsService.setExternalServiceAuthStatuses(locator, safe, context.getUserId());
+            statusEnricher.enrich(locator, safe);
         }
         return new ExternalServiceData()
                 .setId(serviceId)
@@ -372,6 +375,26 @@ public class ExternalServiceManagementController {
      * owner's act and grants nothing; this is the separate decision that makes it usable, and it applies to every
      * user who has offline credentials.
      */
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/applications/{appId}/external-services/{id}/consent",
+            operationId = "grantExternalServiceConsent",
+            tags = {"External Services"},
+            parameters = {
+                    @ApiParameter(name = "appId", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.EXTERNAL_SERVICE_APP_ID),
+                    @ApiParameter(name = "id", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.EXTERNAL_SERVICE_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = Boolean.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> grantConsent(String appId, String serviceId) {
         taskExecutor.submit(() -> {
             requireAdmin();
@@ -400,6 +423,26 @@ public class ExternalServiceManagementController {
     }
 
     /** Withdraws the approval. The application stops working for every user immediately. */
+    @ApiOperation(
+            method = "DELETE",
+            path = "/v1/applications/{appId}/external-services/{id}/consent",
+            operationId = "withdrawExternalServiceConsent",
+            tags = {"External Services"},
+            parameters = {
+                    @ApiParameter(name = "appId", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.EXTERNAL_SERVICE_APP_ID),
+                    @ApiParameter(name = "id", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.EXTERNAL_SERVICE_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = Boolean.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> withdrawConsent(String appId, String serviceId) {
         taskExecutor.submit(() -> {
             requireAdmin();
