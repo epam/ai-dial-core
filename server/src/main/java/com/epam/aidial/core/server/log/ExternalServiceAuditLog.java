@@ -51,6 +51,19 @@ public final class ExternalServiceAuditLog {
                 reasonOf(error));
     }
 
+    /**
+     * One event per administrator decision on an application's use of a DIAL-native service. Records who decided,
+     * since consent reaches every user who has enabled offline credentials.
+     */
+    public static void consent(ProxyContext context, String applicationId, String externalServiceId,
+                               String action, RuntimeException error) {
+        AUDIT.info("event=external_service_consent action={} outcome={} actor={} admin_user_id={} "
+                        + "application_id={} external_service_id={} trace_id={}{}",
+                sanitizeToken(action), outcomeOf(error), actorEvidence(context),
+                sanitizeToken(context.getUserId()), sanitizeToken(applicationId),
+                sanitizeToken(externalServiceId), context.getTraceId(), reasonOf(error));
+    }
+
     private static String outcomeOf(RuntimeException error) {
         return switch (error) {
             case null -> "SUCCESS";

@@ -2964,6 +2964,105 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/applications/{appId}/external-services/{id}/consent:
+    post:
+      tags:
+      - External Services
+      summary: "/v1/applications/{appId}/external-services/{id}/consent"
+      operationId: grantExternalServiceConsent
+      parameters:
+      - name: appId
+        in: path
+        description: The application ID. Can be either a static config application name or a dynamic application path.
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: The external service ID defined in the application's external_services configuration.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: boolean
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    delete:
+      tags:
+      - External Services
+      summary: "/v1/applications/{appId}/external-services/{id}/consent"
+      operationId: withdrawExternalServiceConsent
+      parameters:
+      - name: appId
+        in: path
+        description: The application ID. Can be either a static config application name or a dynamic application path.
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: The external service ID defined in the application's external_services configuration.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: boolean
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/applications/{bucket}/{application_path}:
     get:
       tags:
