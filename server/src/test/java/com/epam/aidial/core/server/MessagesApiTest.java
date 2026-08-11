@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.http.HttpMethod;
@@ -18,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -236,6 +238,61 @@ public class MessagesApiTest extends ResourceBaseTest {
 
             assertEquals(200, response.status());
             assertEquals("claude-count", captured.get().getHeader("X-DIAL-DEPLOYMENT-ID"));
+        }
+    }
+
+    @Test
+    public void testDeploymentFeaturesHeaderSentToTranslatingAdapter() throws IOException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, "/to-chat-completions" + MESSAGES_PATH, request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE, "Content-Type", "application/json");
+            });
+
+            // a client-supplied value must not survive: the header is set by the core, not forwarded
+            Response response = post(client, MESSAGES_PATH, requestBody("claude-to-chat-completions", false),
+                    "api-key", "proxyKey1", "X-DIAL-DEPLOYMENT-FEATURES", "spoofed");
+
+            assertEquals(200, response.status());
+            FeaturesData features = ProxyUtil.convertToObject(
+                    captured.get().getHeader("X-DIAL-DEPLOYMENT-FEATURES"), FeaturesData.class);
+            assertNotNull(features);
+            assertFalse(features.isMaxTokensSupported());
+            assertFalse(features.isCustomTemperatureSupported());
+            assertTrue(features.isTools());
+        }
+    }
+
+    @Test
+    public void testDeploymentFeaturesHeaderSentToResponsesTranslatingAdapter() throws IOException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, "/to-responses" + MESSAGES_PATH, request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE, "Content-Type", "application/json");
+            });
+
+            Response response = post(client, MESSAGES_PATH, requestBody("claude-to-responses", false), "api-key", "proxyKey1");
+
+            assertEquals(200, response.status());
+            assertNotNull(captured.get().getHeader("X-DIAL-DEPLOYMENT-FEATURES"));
+        }
+    }
+
+    @Test
+    public void testDeploymentFeaturesHeaderOmittedForPassThroughAdapter() throws IOException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE, "Content-Type", "application/json");
+            });
+
+            Response response = post(client, MESSAGES_PATH, requestBody("claude-ns", false), "api-key", "proxyKey1");
+
+            assertEquals(200, response.status());
+            assertNull(captured.get().getHeader("X-DIAL-DEPLOYMENT-FEATURES"));
         }
     }
 
