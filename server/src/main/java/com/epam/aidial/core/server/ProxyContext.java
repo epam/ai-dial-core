@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -72,6 +73,7 @@ public class ProxyContext {
     private String userProject;
     private String userHash;
     private TokenUsage tokenUsage;
+    private List<UsagePerModel> usagePerModel;
     private Route route;
     private UpstreamRoute upstreamRoute;
     private HttpClientRequest proxyRequest;

@@ -104,6 +104,21 @@ public class DeploymentTest {
     }
 
     @Test
+    void resolveRequestUriRewritesMultiSegmentPlatformBucketId() {
+        // Platform-bucket entities are addressed by a multi-segment canonical id (models/platform/{name});
+        // the whole id must collapse to the deployment's own name, not just its first path segment.
+        Model model = new Model();
+        model.setName("gemini-3.1-pro-preview");
+        model.setInterfaces(Map.of(
+                OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://dial-vertexai.dial.svc.cluster.local")));
+
+        assertEquals("http://dial-vertexai.dial.svc.cluster.local/openai/deployments/gemini-3.1-pro-preview/chat/completions?api-version=2025-01-01-preview",
+                model.resolveRequestUri(OPENAI_CHAT_COMPLETIONS,
+                        "/openai/deployments/models/platform/gemini-3.1-pro-preview/chat/completions?api-version=2025-01-01-preview",
+                        "api-version=2025-01-01-preview"));
+    }
+
+    @Test
     void resolveRequestUriUsesOverrideNameForPathSegmentWhenSet() {
         // overrideName rewrites the model field/header, but the outgoing URL must match too: some
         // adapters route on the deployment-name path segment (e.g. an Azure-style FastAPI app registering

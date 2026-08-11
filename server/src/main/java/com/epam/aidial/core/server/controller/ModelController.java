@@ -154,6 +154,8 @@ public class ModelController {
         data.setUnit(pricing.getUnit());
         data.setPrompt(pricing.getPrompt());
         data.setCompletion(pricing.getCompletion());
+        data.setCacheRead(pricing.getCacheRead());
+        data.setCacheWrite(pricing.getCacheWrite());
         return data;
     }
 }

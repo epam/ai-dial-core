@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.BaseDeploymentPostController;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
@@ -45,6 +46,12 @@ import java.util.List;
  */
 @Slf4j
 abstract class MessagesBaseController extends BaseDeploymentPostController {
+
+    /**
+     * Path markers an adapter's {@code base_url} carries when it translates the Anthropic Messages request
+     * into another API.
+     */
+    private static final List<String> TRANSLATION_MARKERS = List.of("to-chat-completions", "to-responses");
 
     protected final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
 
@@ -190,11 +197,25 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
 
     /**
      * The body's {@code model} may have been replaced by {@code overrideName}, so the deployment id is
-     * carried to the adapter out of band.
+     * carried to the adapter out of band. Translating adapters additionally receive the deployment features,
+     * which tell them which parameters the target API accepts.
      */
     @Override
     protected void enrichProxyRequestHeaders(HttpClientRequest proxyRequest) {
         proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, deploymentId);
+
+        if (isTranslatingUpstream(context.getProxyRequestUri())) {
+            proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_FEATURES,
+                    ProxyUtil.convertToString(FeaturesData.createDeploymentFeatures(context.getDeployment())));
+        }
+    }
+
+    /**
+     * A translating adapter converts the Anthropic Messages request into another API before calling the
+     * upstream; it is recognized by the translation marker its {@code base_url} carries.
+     */
+    private static boolean isTranslatingUpstream(String uri) {
+        return uri != null && TRANSLATION_MARKERS.stream().anyMatch(uri::contains);
     }
 
     private void handleProxyResponse(HttpClientResponse proxyResponse) {

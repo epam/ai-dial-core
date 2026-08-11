@@ -13526,6 +13526,8 @@ components:
             $ref: "#/components/schemas/ChatCompletionChoice"
         usage:
           $ref: "#/components/schemas/CompletionUsage"
+        statistics:
+          $ref: "#/components/schemas/Statistics"
     CreateChatCompletionStreamChoice:
       required:
       - delta
@@ -14782,6 +14784,10 @@ components:
           type: string
         unit:
           type: string
+        cacheRead:
+          type: string
+        cacheWrite:
+          type: string
     PricingData:
       type: object
       properties:
@@ -14790,6 +14796,10 @@ components:
         prompt:
           type: string
         unit:
+          type: string
+        cache_read:
+          type: string
+        cache_write:
           type: string
     Prompt:
       type: object

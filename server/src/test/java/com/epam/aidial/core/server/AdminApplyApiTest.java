@@ -91,6 +91,39 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testApplyRejectsCacheRateWithoutTokenUnit() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-bad-cache-pricing",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "pricing": {
+                          "unit": "char_without_whitespace",
+                          "prompt": "0.1",
+                          "completion": "0.5",
+                          "cacheRead": "0.01"
+                        }
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        JsonNode results = parsed.get("results");
+        assertEquals(1, results.size());
+        assertEquals("FAILED", results.get(0).get("status").asText());
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-bad-cache-pricing", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
     void testApplyPrecheckMixedBatchRejectedAtomically() {
         String body = """
                 {
@@ -332,6 +365,101 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(2, parsed.get("applied").asInt(), () -> "Body: " + response.body());
         assertEquals(0, parsed.get("failed").asInt());
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyCatalogSchema() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-1",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-model",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(0, parsed.get("failed").asInt());
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-1", null, "",
+                "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyCatalogSchemaSurvivesUnrelatedApply() {
+        // Regression for MergedConfigStore#shallowClone: partial-update writes (applyBatch et al.)
+        // clone the merged Config off a fresh `new Config()`. Any Config map not explicitly carried
+        // over in shallowClone reverts to its field-initializer default on the very next unrelated
+        // admin write, silently wiping previously-applied entries of that type.
+        String catalogSchemaBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-survive",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-survive-model",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, catalogSchemaBody, "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-survive", null, "",
+                "authorization", "admin"), 200);
+
+        String unrelatedBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Interceptor",
+                      "name": "interceptors/platform/apply-catalog-unrelated-int",
+                      "spec": {"endpoint": "http://localhost:4088/api/v1/interceptor/handle"}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, unrelatedBody, "authorization", "admin"), 200);
+
+        // The unrelated write must not have dropped the previously-applied catalog schema.
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-survive", null, "",
+                "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyCatalogSchemaPublicBucketRejected() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/public/apply-catalog-schema-public",
+                      "spec": {"type": "object"}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
     }
 
     @Test

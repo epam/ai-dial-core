@@ -13,4 +13,10 @@ public class Pricing {
 
     @JsonDeserialize(using = DoubleStringDeserializer.class)
     private String completion;
+
+    @JsonDeserialize(using = DoubleStringDeserializer.class)
+    private String cacheRead;
+
+    @JsonDeserialize(using = DoubleStringDeserializer.class)
+    private String cacheWrite;
 }

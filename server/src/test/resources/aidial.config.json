@@ -225,6 +225,19 @@
     "claude-no-iface": {
       "type": "chat",
       "endpoint": "http://localhost:4848/v1/chat/completions"
+    },
+    "claude-to-chat-completions": {
+      "type": "chat",
+      "features": {
+        "max_tokens_supported": false,
+        "custom_temperature_supported": false,
+        "tools_supported": true
+      },
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848/to-chat-completions"} }
+    },
+    "claude-to-responses": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848/to-responses"} }
     }
   },
   "toolsets": {
@@ -313,7 +326,9 @@
         "claude-limited": {"minute": "10", "day": "10"},
         "claude-upstream": {"minute": "100000", "day": "10000000"},
         "claude-override": {"minute": "100000", "day": "10000000"},
-        "claude-no-iface": {"minute": "100000", "day": "10000000"}
+        "claude-no-iface": {"minute": "100000", "day": "10000000"},
+        "claude-to-chat-completions": {"minute": "100000", "day": "10000000"},
+        "claude-to-responses": {"minute": "100000", "day": "10000000"}
       }
     },
     "vstore_user": {
@@ -440,6 +455,38 @@
       "required": [
         "property1",
         "property2"
+      ]
+    },
+    {
+      "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+      "$id": "https://mydial.somewhere.com/custom_application_schemas/chained_application_type",
+      "dial:applicationTypeEditorUrl": "https://mydial.somewhere.com/custom_application_schemas/schema",
+      "dial:applicationTypeViewerUrl": "https://mydial.somewhere.com/custom_application_schemas/viewer",
+      "dial:applicationTypeDisplayName": "Chained Application Type",
+      "dial:applicationTypeCompletionEndpoint": "http://localhost:4848/chat/completions",
+      "properties": {
+        "property1": {
+          "title": "Property 1",
+          "type": "string",
+          "dial:meta": {
+            "dial:propertyKind": "client",
+            "dial:propertyOrder": 1
+          }
+        },
+        "deployments": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "dial:resource": true
+          },
+          "dial:meta": {
+            "dial:propertyKind": "server",
+            "dial:propertyOrder": 2
+          }
+        }
+      },
+      "required": [
+        "property1"
       ]
     }
   ]

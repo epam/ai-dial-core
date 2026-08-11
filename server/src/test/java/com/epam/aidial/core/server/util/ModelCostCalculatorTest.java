@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
@@ -61,6 +62,74 @@ public class ModelCostCalculatorTest {
         when(context.getTokenUsage()).thenReturn(tokenUsage);
 
         assertEquals(new BigDecimal("6.0"), ModelCostCalculator.calculate(context.getDeployment(), context.getTokenUsage(), context.getRequestBody(), context.getResponseBody()));
+    }
+
+    @Test
+    public void testCalculate_TokenCost_CacheRatesUnset_MatchesLegacyCost() {
+        Model model = new Model();
+        Pricing pricing = new Pricing();
+        pricing.setPrompt("0.1");
+        pricing.setCompletion("0.5");
+        pricing.setUnit("token");
+        model.setPricing(pricing);
+        when(context.getDeployment()).thenReturn(model);
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setCompletionTokens(10);
+        tokenUsage.setPromptTokens(10);
+        PromptTokensDetails details = new PromptTokensDetails();
+        details.setCachedTokens(4);
+        details.setCacheWriteTokens(2);
+        tokenUsage.setPromptTokensDetails(details);
+        when(context.getTokenUsage()).thenReturn(tokenUsage);
+
+        assertEquals(new BigDecimal("6.0"), ModelCostCalculator.calculate(context.getDeployment(), context.getTokenUsage(), context.getRequestBody(), context.getResponseBody()));
+    }
+
+    @Test
+    public void testCalculate_TokenCost_WithCacheReadWriteRates() {
+        Model model = new Model();
+        Pricing pricing = new Pricing();
+        pricing.setPrompt("0.1");
+        pricing.setCompletion("0.5");
+        pricing.setCacheRead("0.01");
+        pricing.setCacheWrite("0.02");
+        pricing.setUnit("token");
+        model.setPricing(pricing);
+        when(context.getDeployment()).thenReturn(model);
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setCompletionTokens(10);
+        tokenUsage.setPromptTokens(10);
+        PromptTokensDetails details = new PromptTokensDetails();
+        details.setCachedTokens(4);
+        details.setCacheWriteTokens(2);
+        tokenUsage.setPromptTokensDetails(details);
+        when(context.getTokenUsage()).thenReturn(tokenUsage);
+
+        assertEquals(new BigDecimal("5.48"), ModelCostCalculator.calculate(context.getDeployment(), context.getTokenUsage(), context.getRequestBody(), context.getResponseBody()));
+    }
+
+    @Test
+    public void testCalculate_TokenCost_ExplicitZeroCacheReadRate() {
+        Model model = new Model();
+        Pricing pricing = new Pricing();
+        pricing.setPrompt("0.1");
+        pricing.setCompletion("0.5");
+        pricing.setCacheRead("0");
+        pricing.setUnit("token");
+        model.setPricing(pricing);
+        when(context.getDeployment()).thenReturn(model);
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setCompletionTokens(10);
+        tokenUsage.setPromptTokens(10);
+        PromptTokensDetails details = new PromptTokensDetails();
+        details.setCachedTokens(4);
+        tokenUsage.setPromptTokensDetails(details);
+        when(context.getTokenUsage()).thenReturn(tokenUsage);
+
+        assertEquals(new BigDecimal("5.6"), ModelCostCalculator.calculate(context.getDeployment(), context.getTokenUsage(), context.getRequestBody(), context.getResponseBody()));
     }
 
     @Test

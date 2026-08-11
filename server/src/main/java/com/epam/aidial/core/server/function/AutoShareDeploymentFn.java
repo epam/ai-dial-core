@@ -31,6 +31,12 @@ public class AutoShareDeploymentFn extends BaseRequestFunction<RequestObject> {
     public Boolean apply(RequestObject tree) {
         try {
             String initialDeployment = context.getInitialDeployment();
+            // Config-registered deployments (bare name or canonical id) are governed by role-based
+            // access, not the resource-sharing ACL below - skip straight past it, same as the
+            // bare-name form already does today.
+            if (initialDeployment == null || context.getConfig().isDeploymentExists(initialDeployment)) {
+                return false;
+            }
             ResourceDescriptor descriptor = toResourceDescriptor(initialDeployment);
             if (descriptor == null || descriptor.isPublic()) {
                 return false;

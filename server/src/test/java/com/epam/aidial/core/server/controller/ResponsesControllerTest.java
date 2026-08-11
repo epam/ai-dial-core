@@ -22,6 +22,7 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
+import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -458,8 +459,10 @@ public class ResponsesControllerTest {
 
         when(proxy.getTokenStatsTracker().startSpan(context))
                 .thenReturn(Future.succeededFuture());
-        when(proxy.getTokenStatsTracker().getTokenStats(context))
-                .thenReturn(Future.succeededFuture(tokenUsage));
+        // the response body carries its own "usage" object, so it's captured as this app's
+        // self-reported usage (see issue #1753) rather than read from the trace aggregate
+        when(proxy.getTokenStatsTracker().updateDeploymentStats(any(), any(), any(), any()))
+                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(tokenUsage, List.of())));
         doAnswer(invocation -> {
             textContext.completeNow();
             return Future.succeededFuture(Boolean.TRUE);
@@ -472,6 +475,8 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).getResponseBody();
         doCallRealMethod().when(context).setTokenUsage(any());
         doCallRealMethod().when(context).getTokenUsage();
+        doCallRealMethod().when(context).setUsagePerModel(any());
+        doCallRealMethod().when(context).getUsagePerModel();
         doCallRealMethod().when(context).setUpstreamRoute(any());
         doCallRealMethod().when(context).getUpstreamRoute();
         doCallRealMethod().when(context).setProxyResponse(any());
@@ -482,7 +487,18 @@ public class ResponsesControllerTest {
         await(textContext);
 
         assertEquals(responseBody, context.getResponseBody());
-        assertEquals(tokenUsage, context.getTokenUsage());
+
+        TokenUsage expectedOwnUsage = new TokenUsage();
+        expectedOwnUsage.setPromptTokens(19);
+        expectedOwnUsage.setCompletionTokens(9);
+        expectedOwnUsage.setTotalTokens(28);
+        PromptTokensDetails expectedPromptDetails = new PromptTokensDetails();
+        expectedPromptDetails.setCachedTokens(0);
+        expectedOwnUsage.setPromptTokensDetails(expectedPromptDetails);
+        CompletionTokensDetails expectedCompletionDetails = new CompletionTokensDetails();
+        expectedCompletionDetails.setReasoningTokens(0);
+        expectedOwnUsage.setCompletionTokensDetails(expectedCompletionDetails);
+        assertEquals(expectedOwnUsage, context.getTokenUsage());
     }
 
     @Test
@@ -570,8 +586,8 @@ public class ResponsesControllerTest {
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
-        when(proxy.getTokenStatsTracker().getTokenStats(context))
-                .thenReturn(Future.succeededFuture(new TokenUsage()));
+        when(proxy.getTokenStatsTracker().getUsageStats(context))
+                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of())));
         ResponseMappingService responseMappingService = proxy.getResponseMappingService();
         when(responseMappingService.saveMapping(any(), any())).thenReturn(expectedDialId);
 
@@ -687,8 +703,8 @@ public class ResponsesControllerTest {
         when(proxy.getBackgroundJobService().deleteJob(anyString())).thenReturn(Future.succeededFuture(Boolean.TRUE));
 
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
-        when(proxy.getTokenStatsTracker().getTokenStats(context))
-                .thenReturn(Future.succeededFuture(new TokenUsage()));
+        when(proxy.getTokenStatsTracker().getUsageStats(context))
+                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of())));
         doAnswer(invocation -> {
             textContext.completeNow();
             return Future.succeededFuture(Boolean.TRUE);

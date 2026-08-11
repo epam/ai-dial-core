@@ -1,6 +1,9 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -20,6 +23,9 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -1258,6 +1264,59 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                   }
                 }
                 """);
+    }
+
+    /**
+     * Reproduces an orchestrator delegating to a schema-rich application that declares a private sub-deployment of its own:
+     * the second hop runs under a per-request key carrying only the parent, so the sub-deployment has to be resolved there.
+     */
+    @Test
+    void testChainedSchemaRichApplicationCanReachOwnDeployment() {
+        Response response = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "user");
+        verify(response, 200);
+        String userBucket = new JsonObject(response.body()).getString("bucket");
+
+        String subAgentUrl = "applications/%s/sub_agent".formatted(userBucket);
+        String parentAgentUrl = "applications/%s/parent_agent".formatted(userBucket);
+
+        response = send(HttpMethod.PUT, "/v1/" + subAgentUrl, null, """
+                {
+                  "endpoint": "http://localhost:4848/chat/completions",
+                  "display_name": "Sub Agent",
+                  "display_version": "1.0"
+                }
+                """, "authorization", "user");
+        verify(response, 200);
+
+        response = send(HttpMethod.PUT, "/v1/" + parentAgentUrl, null, """
+                {
+                  "displayName": "Parent Agent",
+                  "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/chained_application_type",
+                  "applicationProperties": {
+                    "property1": "test property1",
+                    "deployments": ["%s"]
+                  }
+                }
+                """.formatted(subAgentUrl), "authorization", "user");
+        verify(response, 200);
+
+        // the key the parent receives from an orchestrator: the parent is attached, its own sub-agent is not
+        ApiKeyData appKey = createAppKey("user", Map.of(parentAgentUrl, new AutoSharedData(Set.of(ResourceAccessType.READ))));
+        appKey.setExecutionPath(List.of("orchestrator"));
+        apiKeyStore.assignPerRequestApiKey(appKey);
+
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> new MockResponse()
+                    .setResponseCode(200)
+                    .setHeader("Content-Type", "application/json")
+                    .setBody("{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[]}"));
+
+            response = send(HttpMethod.POST, "/openai/deployments/%s/chat/completions".formatted(parentAgentUrl), null, """
+                    {"messages":[{"role":"user","content":"how are you?"}]}
+                    """, "api-key", appKey.getPerRequestKey(), "Content-Type", "application/json");
+
+            assertEquals(200, response.status());
+        }
     }
 
     @Test

@@ -16,7 +16,8 @@ import java.util.regex.Pattern;
 @EqualsAndHashCode(callSuper = true)
 public abstract class Deployment extends RoleBasedEntity {
 
-    private static final Pattern DEPLOYMENT_SEGMENT = Pattern.compile("/deployments/[^/]+/");
+    private static final Pattern DEPLOYMENT_SEGMENT =
+            Pattern.compile("/deployments/(.+?)/(completions|chat/completions|embeddings)(?=$|\\?)");
 
     private String endpoint;
     private String responsesEndpoint;
@@ -184,16 +185,19 @@ public abstract class Deployment extends RoleBasedEntity {
 
     /**
      * Rewrites the {@code /deployments/{id}/} ingress path segment to this deployment's own name (or
-     * {@link #overrideName} when set), whatever id it currently carries. A request forwarded through an
-     * interceptor carries the literal pseudo id {@code interceptor} in the path (see
-     * {@code DeploymentPostController#handle}) rather than this deployment's own name, so it needs rewriting
-     * back. No-op for interfaces whose ingress path carries no deployment segment (openaiResponses and
-     * anthropicMessages resolve the deployment from the request body instead).
+     * {@link #overrideName} when set), whatever id it currently carries — including a multi-segment
+     * canonical id (e.g. {@code models/platform/{name}} for a platform-bucket entity). A request
+     * forwarded through an interceptor carries the literal pseudo id {@code interceptor} in the path
+     * (see {@code DeploymentPostController#handle}) rather than this deployment's own name, so it needs
+     * rewriting back. No-op for interfaces whose ingress path carries no deployment segment
+     * (openaiResponses and anthropicMessages resolve the deployment from the request body instead).
      */
     private static String rewriteDeploymentPathSegment(String path, String targetName) {
         Matcher matcher = DEPLOYMENT_SEGMENT.matcher(path);
-        return matcher.find()
-                ? matcher.replaceFirst(Matcher.quoteReplacement("/deployments/" + targetName + "/"))
-                : path;
+        if (!matcher.find()) {
+            return path;
+        }
+        String replacement = "/deployments/" + targetName + "/" + matcher.group(2);
+        return matcher.replaceFirst(Matcher.quoteReplacement(replacement));
     }
 }

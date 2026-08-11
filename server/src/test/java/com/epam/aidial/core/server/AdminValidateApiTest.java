@@ -64,6 +64,17 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                       "spec": {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"}
                     },
                     {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/validate-catalog-schema",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/validate-model",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    },
+                    {
                       "kind": "Interceptor",
                       "name": "interceptors/platform/validate-int",
                       "spec": {"endpoint": "http://localhost:4088/api/v1/interceptor/handle"}
@@ -111,13 +122,15 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
         verify(response, 200);
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
-        assertEquals(9, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(10, parsed.get("valid").asInt(), () -> "Body: " + response.body());
         assertEquals(0, parsed.get("failed").asInt());
         for (JsonNode r : parsed.get("results")) {
             assertEquals("VALID", r.get("status").asText(), () -> "Body: " + response.body());
         }
         // None of these were written.
         verify(send(HttpMethod.GET, "/v1/schemas/platform/validate-schema", null, "",
+                "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/validate-catalog-schema", null, "",
                 "authorization", "admin"), 404);
         verify(send(HttpMethod.GET, "/v1/interceptors/platform/validate-int", null, "",
                 "authorization", "admin"), 404);
@@ -427,6 +440,31 @@ public class AdminValidateApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testV15bCatalogSchemaNonObjectSpecFails() {
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/validate-catalog-schema-bad",
+                      "spec": "not-an-object"
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+        JsonNode result = parsed.get("results").get(0);
+        assertEquals("FAILED", result.get("status").asText());
+        assertEquals("CatalogSchema spec must be a JSON object", result.get("error").asText());
+    }
+
+    @Test
+    @SneakyThrows
     void testV16SettingsDoesNotPersist() {
         // U.1 (2026-05-21): /v1/settings/platform/global is blob-only. After validate (no mutation),
         // there is no blob → GET returns 404. We additionally verify the sentinel does not appear
@@ -465,6 +503,39 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                         () -> "Validate must not mutate Settings: " + get.body());
             }
         }
+    }
+
+    @Test
+    @SneakyThrows
+    void testV18RejectsCacheRateWithoutTokenUnit() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/validate-bad-cache-pricing",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "pricing": {
+                          "unit": "char_without_whitespace",
+                          "prompt": "0.1",
+                          "completion": "0.5",
+                          "cacheWrite": "0.02"
+                        }
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt());
+        assertEquals(1, parsed.get("failed").asInt());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-bad-cache-pricing", null, "",
+                "authorization", "admin"), 404);
     }
 
     public static class SoftValidation extends ResourceBaseTest {
@@ -506,6 +577,43 @@ public class AdminValidateApiTest extends ResourceBaseTest {
             assertEquals(0, parsed.get("failed").asInt());
             assertEquals("VALID", parsed.get("results").get(0).get("status").asText());
             verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-mode", null, "",
+                    "authorization", "admin"), 404);
+        }
+
+        @Test
+        @SneakyThrows
+        void testV19SoftValidationAdmitsCacheRateWithoutTokenUnit() {
+            // Same admission logic as testV17SoftValidationModePerEntityValid: softValidation
+            // downgrades the pricing violation to "valid" at validate-time too.
+            String body = """
+                    {
+                      "precheck": false,
+                      "manifests": [
+                        {
+                          "kind": "Model",
+                          "name": "models/platform/validate-soft-cache-pricing",
+                          "spec": {
+                            "type": "chat",
+                            "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                            "pricing": {
+                              "unit": "char_without_whitespace",
+                              "prompt": "0.1",
+                              "completion": "0.5",
+                              "cacheRead": "0.01"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                    """;
+            Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body,
+                    "authorization", "admin");
+            verify(response, 200);
+            JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+            assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+            assertEquals(0, parsed.get("failed").asInt());
+            assertEquals("VALID", parsed.get("results").get(0).get("status").asText());
+            verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-cache-pricing", null, "",
                     "authorization", "admin"), 404);
         }
     }

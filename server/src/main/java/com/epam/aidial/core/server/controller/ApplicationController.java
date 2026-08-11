@@ -327,7 +327,9 @@ public class ApplicationController {
         if (appName != null && appName.equals(context.getDecodedSourceDeployment())) {
             return true;
         }
-        if (appName != null) {
+        // Config-registered deployments (bare name or canonical id) are role-based, not governed
+        // by the resource-sharing ACL below - fall through to the admin check instead.
+        if (appName != null && !context.getConfig().isDeploymentExists(appName)) {
             try {
                 ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(appName, encryptionService);
                 if (resource.getType() == ResourceTypes.APPLICATION) {

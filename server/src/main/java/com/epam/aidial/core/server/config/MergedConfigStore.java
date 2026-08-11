@@ -881,6 +881,7 @@ public final class MergedConfigStore implements ConfigStore {
         next.setKeys(base.getKeys());
         next.setRoutes(base.getRoutes());
         next.setApplicationTypeSchemas(base.getApplicationTypeSchemas());
+        next.setCatalogSchemas(base.getCatalogSchemas());
         next.setApplications(base.getApplications());
         next.setToolsets(base.getToolsets());
         next.setRetriableErrorCodes(base.getRetriableErrorCodes());

@@ -26,7 +26,8 @@ import java.util.regex.Pattern;
 
 public class ChatCompletionInterceptorController extends BaseInterceptorController {
 
-    private static final Pattern DEPLOYMENT_PATH = Pattern.compile("(/openai/deployments/)([^/]+)(/.*)");
+    private static final Pattern DEPLOYMENT_PATH =
+            Pattern.compile("(/openai/deployments/)(.+?)(/(?:completions|chat/completions|embeddings))$");
 
     public ChatCompletionInterceptorController(Proxy proxy, ProxyContext context, int interceptorIndex) {
         super(proxy, context, interceptorIndex, List.of(
@@ -69,7 +70,7 @@ public class ChatCompletionInterceptorController extends BaseInterceptorControll
 
     @Override
     protected BufferingReadStream.BaseEventListener createListener(Proxy proxy, ProxyContext context) {
-        return new DeploymentPostController.ChatCompletionSseListener(new CollectResponseChatCompletionAttachmentsFn(proxy, context));
+        return new DeploymentPostController.ChatCompletionSseListener(List.of(new CollectResponseChatCompletionAttachmentsFn(proxy, context)));
     }
 
     static String rewriteDeploymentSegment(String path, String name) {
