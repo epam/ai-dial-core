@@ -1539,7 +1539,6 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
         assertEquals(400, badCred.status(), () -> badCred.body());
     }
 
-
     // ---------------------------------------------------------------------------------------------
     // Admin consent for DIAL-native services (§4)
     // ---------------------------------------------------------------------------------------------
@@ -1717,7 +1716,6 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
         throw new AssertionError("service '" + serviceId + "' missing from " + list.body());
     }
 
-
     @Test
     @DialConfigLocation("dial-config/external-service-credentials.json")
     void testConsentDecisionsAreAudited() {
@@ -1752,14 +1750,6 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
         }
     }
 
-    private ApiKeyData newAppKey(String sourceDeployment, String role) {
-        ApiKeyData perRequestKey = new ApiKeyData();
-        perRequestKey.setExtractedClaims(createClaims(role));
-        perRequestKey.setSourceDeployment(sourceDeployment);
-        perRequestKey.setTraceId("trace-id");
-        return perRequestKey;
-    }
-
     @Test
     @DialConfigLocation("dial-config/external-service-credentials.json")
     void testSignInRejectedForDialNativeService() {
@@ -1785,5 +1775,13 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
                 }
                 """.formatted(DIAL_NATIVE_SCOPE), "authorization", "user");
         assertEquals(400, signIn.status());
+    }
+
+    private ApiKeyData newAppKey(String sourceDeployment, String role) {
+        ApiKeyData perRequestKey = new ApiKeyData();
+        perRequestKey.setExtractedClaims(createClaims(role));
+        perRequestKey.setSourceDeployment(sourceDeployment);
+        perRequestKey.setTraceId("trace-id");
+        return perRequestKey;
     }
 }

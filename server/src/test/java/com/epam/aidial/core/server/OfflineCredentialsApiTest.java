@@ -144,7 +144,6 @@ public class OfflineCredentialsApiTest extends ResourceBaseTest {
         assertEquals(401, signIn.status(), signIn.body());
     }
 
-
     @Test
     void testSignInAndSignOutAreAudited() throws Exception {
         Mockito.when(provider.extractUserIdFromIdToken("id-token-for-user")).thenReturn("user");

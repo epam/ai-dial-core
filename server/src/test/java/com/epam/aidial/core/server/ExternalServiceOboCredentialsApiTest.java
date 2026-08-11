@@ -1119,7 +1119,6 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         return haystack.split(Pattern.quote(needle), -1).length - 1;
     }
 
-
     // ---------------------------------------------------------------------------------------------
     // DIAL-native redemption (§5): admin consent + the owner's offline credentials
     // ---------------------------------------------------------------------------------------------
