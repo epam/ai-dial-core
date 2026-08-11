@@ -12891,6 +12891,7 @@ components:
       - OAUTH
       - API_KEY
       - NONE
+      - DIAL_NATIVE
     AzureEmbeddingsRequest:
       required:
       - input

@@ -13,6 +13,7 @@ public class AuthSettingsValidatorFactory {
         validators.put(AuthenticationType.OAUTH, new OauthAuthSettingsValidator());
         validators.put(AuthenticationType.API_KEY, new ApiKeyAuthSettingsValidator());
         validators.put(AuthenticationType.NONE, new NoneAuthSettingsValidator());
+        validators.put(AuthenticationType.DIAL_NATIVE, new DialNativeAuthSettingsValidator());
     }
 
     public AuthSettingsValidator getValidator(AuthenticationType authenticationType) {

@@ -108,6 +108,7 @@ public class ExternalServiceCredentialsController {
                         ResolvedExternalService resolved = resolveExternalService(request.getUrl());
                         ResourceAuthSettings authSettings = resolved.externalService.getAuthSettings();
                         validateAuthType(authSettings.getAuthenticationType(), request.getAuthenticationType());
+                        rejectDialNative("Sign-in", authSettings.getAuthenticationType());
 
                         verifyAccess(resolved, request.getCredentialsLevel());
 
@@ -168,6 +169,7 @@ public class ExternalServiceCredentialsController {
                     ResolvedExternalService resolved = resolveExternalService(request.getUrl());
                     ResourceAuthSettings authSettings = resolved.externalService.getAuthSettings();
                     validateAuthType(authSettings.getAuthenticationType(), request.getAuthenticationType());
+                    rejectDialNative("Sign-out", authSettings.getAuthenticationType());
                     verifyAccess(resolved, request.getCredentialsLevel());
 
                     CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(request.getUrl(), context);
@@ -449,6 +451,19 @@ public class ExternalServiceCredentialsController {
         if (!Objects.equals(configured, requested)) {
             throw new IllegalArgumentException("Wrong authentication_type. Expected type: %s, provided: %s"
                     .formatted(configured, requested));
+        }
+    }
+
+    /**
+     * A DIAL-native service has no credential to sign in with and nothing to sign out of: no USER-level record
+     * ever exists, and the APPLICATION-level record is the administrator's consent — deletable only through the
+     * audited, admin-only consent endpoint, never through the app-owner-accessible generic sign-out.
+     */
+    private void rejectDialNative(String operation, AuthenticationType configured) {
+        if (AuthenticationType.DIAL_NATIVE.equals(configured)) {
+            throw new IllegalArgumentException(("%s is not applicable to %s services: users manage offline access "
+                    + "via the offline-credentials endpoints, and an administrator manages consent separately")
+                    .formatted(operation, AuthenticationType.DIAL_NATIVE));
         }
     }
 

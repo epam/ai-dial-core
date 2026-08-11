@@ -10,6 +10,8 @@ import com.auth0.jwk.JwkProvider;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.epam.aidial.core.config.AuthenticationType;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -20,6 +22,7 @@ import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.RequestOptions;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.RequiredArgsConstructor;
 import org.junit.jupiter.api.BeforeAll;
@@ -45,6 +48,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -1181,5 +1185,39 @@ public class IdentityProviderTest {
 
             return new LogContext(logger, previousLevel, appender);
         }
+    }
+
+    @Test
+    public void testOfflineClientAbsentByDefault() {
+        IdentityProvider provider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        assertNull(provider.getOfflineClient());
+    }
+
+    @Test
+    public void testOfflineClientParsedFromSettings() {
+        settings.put("offlineClient", new JsonObject()
+                .put("clientId", "dial-credentials-manager")
+                .put("clientSecret", "s3cret")
+                .put("authorizationEndpoint", "http://idp/auth")
+                .put("tokenEndpoint", "http://idp/token")
+                .put("scopes", new JsonArray().add("openid").add("offline_access").add("dial")));
+
+        IdentityProvider provider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        ResourceAuthSettings offline = provider.getOfflineClient();
+
+        assertNotNull(offline);
+        assertEquals(AuthenticationType.OAUTH, offline.getAuthenticationType());
+        assertEquals("dial-credentials-manager", offline.getClientId());
+        assertEquals("http://idp/token", offline.getTokenEndpoint());
+        assertEquals("http://idp/auth", offline.getAuthorizationEndpoint());
+        assertEquals(List.of("openid", "offline_access", "dial"), offline.getScopesSupported());
+    }
+
+    @Test
+    public void testOfflineClientRejectsIncompleteSettings() {
+        settings.put("offlineClient", new JsonObject().put("clientId", "dial-credentials-manager"));
+
+        assertThrows(NullPointerException.class,
+                () -> new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG"));
     }
 }
