@@ -42,7 +42,9 @@ import org.apache.commons.lang3.exception.ExceptionUtils;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import static io.vertx.core.http.HttpHeaders.RETRY_AFTER;
@@ -56,7 +58,7 @@ public class McpResourceController implements Controller {
     private static final String WIDGET_CSP =
             "frame-ancestors 'self'; sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: data:";
 
-    // Allowlist of MIME types that may be returned as widget content.
+    // Allowlist of MIME types that may be returned as widget content (lowercase, no params).
     // Restricts the upstream-controlled mimeType field to prevent header injection
     // and avoid serving unexpected content types (e.g. application/octet-stream).
     private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
@@ -70,6 +72,11 @@ public class McpResourceController implements Controller {
             "image/gif",
             "image/webp"
     );
+
+    // Charset values safe to forward verbatim in the Content-Type response header.
+    // Exotic or locale-specific charsets from untrusted upstream responses are dropped.
+    // utf-8 ~99 %, iso-8859-1 ~1 %, us-ascii is a UTF-8 subset — together cover the real web.
+    private static final Set<String> ALLOWED_CHARSETS = Set.of("utf-8", "us-ascii", "iso-8859-1");
 
     private final Proxy proxy;
     private final ProxyContext context;
@@ -211,7 +218,8 @@ public class McpResourceController implements Controller {
             context.respond(HttpStatus.BAD_GATEWAY, "Resource missing mimeType");
             return;
         }
-        if (!ALLOWED_MIME_TYPES.contains(mimeType)) {
+        Optional<String> contentType = resolveContentType(mimeType);
+        if (contentType.isEmpty()) {
             context.respond(HttpStatus.BAD_GATEWAY, "Unsupported resource mimeType: " + mimeType);
             return;
         }
@@ -219,12 +227,45 @@ public class McpResourceController implements Controller {
             context.respond(HttpStatus.BAD_GATEWAY, "Unsupported resource contents type: " + first.getClass().getSimpleName());
             return;
         }
-        String text = textContents.text();
         context.getResponse()
-                .putHeader(HttpHeaders.CONTENT_TYPE, mimeType)
+                .putHeader(HttpHeaders.CONTENT_TYPE, contentType.get())
                 .putHeader("Content-Security-Policy", WIDGET_CSP)
                 .putHeader("X-Content-Type-Options", "nosniff")
-                .end(text);
+                .end(textContents.text());
+    }
+
+    // Returns the normalised Content-Type header value for the given upstream mimeType,
+    // or empty if the base type is not on the allowlist.
+    // Normalises case (RFC 2045 §5.1) and strips whitespace. Forwards the charset parameter
+    // only when its value is on the allowlist; all other params are dropped to prevent
+    // header injection via upstream-controlled content.
+    static Optional<String> resolveContentType(String mimeType) {
+        String stripped = mimeType.strip().toLowerCase(Locale.ROOT);
+        int semicolonIdx = stripped.indexOf(';');
+        String baseMimeType = semicolonIdx >= 0 ? stripped.substring(0, semicolonIdx).strip() : stripped;
+        if (!ALLOWED_MIME_TYPES.contains(baseMimeType)) {
+            return Optional.empty();
+        }
+        if (semicolonIdx >= 0) {
+            // split(";") on a literal delimiter is linear — no backtracking.
+            // strip() on each token handles OWS around ";" (RFC 9110 allows it).
+            // First charset= param wins; duplicates are ignored.
+            for (String param : stripped.substring(semicolonIdx + 1).split(";")) {
+                String p = param.strip();
+                if (p.startsWith("charset=")) {
+                    String cs = p.substring("charset=".length()).strip();
+                    // Strip surrounding double quotes per RFC 9110 §5.6.6 quoted-string.
+                    // Only enclosing quotes are removed; single quotes are not special in HTTP.
+                    if (cs.length() >= 2 && cs.startsWith("\"") && cs.endsWith("\"")) {
+                        cs = cs.substring(1, cs.length() - 1);
+                    }
+                    return Optional.of(ALLOWED_CHARSETS.contains(cs)
+                            ? baseMimeType + ";charset=" + cs
+                            : baseMimeType);
+                }
+            }
+        }
+        return Optional.of(baseMimeType);
     }
 
     private void handleRateLimitHit(RateLimitResult result) {

@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.function;
 
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -12,7 +13,6 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -31,11 +31,9 @@ public class BuildUpstreamCacheFnTest {
     @Mock
     private ProxyContext context;
 
-    @InjectMocks
-    private BuildUpstreamCacheFn fn;
-
     @Test
     public void testApply_WhenCacheSupported() {
+        BuildUpstreamCacheFn fn = new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_CHAT_COMPLETIONS);
         Model model = new Model();
         Features features = new Features();
         features.setCacheSupported(true);
@@ -47,12 +45,14 @@ public class BuildUpstreamCacheFnTest {
         Boolean res = fn.apply(request);
 
         assertFalse(res);
-        verify(proxy.getUpstreamCacheService()).buildCacheBreakpointContext(eq(request), eq(CachePolicy.CACHE_PRIORITY), eq(model));
+        verify(proxy.getUpstreamCacheService()).buildCacheBreakpointContext(
+                eq(request), eq(CachePolicy.CACHE_PRIORITY), eq(model), eq(InterfaceType.OPENAI_CHAT_COMPLETIONS));
         verify(context).setCacheBreakpointContext(any(CacheBreakpointContext.class));
     }
 
     @Test
     public void testApply_WhenAutoCachingSupported() {
+        BuildUpstreamCacheFn fn = new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES);
         Model model = new Model();
         Features features = new Features();
         features.setAutoCachingSupported(true);
@@ -64,7 +64,8 @@ public class BuildUpstreamCacheFnTest {
         Boolean res = fn.apply(request);
 
         assertFalse(res);
-        verify(proxy.getUpstreamCacheService()).buildCacheBreakpointContext(eq(request), eq(CachePolicy.CACHE_PRIORITY), eq(model));
+        verify(proxy.getUpstreamCacheService()).buildCacheBreakpointContext(
+                eq(request), eq(CachePolicy.CACHE_PRIORITY), eq(model), eq(InterfaceType.ANTHROPIC_MESSAGES));
         verify(context).setCacheBreakpointContext(any(CacheBreakpointContext.class));
     }
 }

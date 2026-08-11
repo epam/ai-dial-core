@@ -190,6 +190,15 @@
         "openaiResponses": {"base_url": "http://localhost:4848"}
       }
     },
+    "responses-cache": {
+      "type": "chat",
+      "interfaces": { "openaiResponses": {"base_url": "http://localhost:4848"} },
+      "features": { "autoCachingSupported": true },
+      "upstreams": [
+        {"endpoint": "http://upstream-a", "responsesEndpoint": "http://upstream-a/v1/responses", "key": "keyA", "id": "up-a"},
+        {"endpoint": "http://upstream-b", "responsesEndpoint": "http://upstream-b/v1/responses", "key": "keyB", "id": "up-b"}
+      ]
+    },
     "claude-ns": {
       "type": "chat",
       "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} }
@@ -217,6 +226,15 @@
         {"endpoint": "http://messages-upstream/v1/messages", "key": "modelKey", "id": "messages-upstream"}
       ]
     },
+    "claude-cache": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} },
+      "features": { "autoCachingSupported": true },
+      "upstreams": [
+        {"endpoint": "http://upstream-a/v1/messages", "key": "keyA", "id": "up-a"},
+        {"endpoint": "http://upstream-b/v1/messages", "key": "keyB", "id": "up-b"}
+      ]
+    },
     "claude-override": {
       "type": "chat",
       "overrideName": "claude-sonnet-4-5-20250929",
@@ -225,6 +243,19 @@
     "claude-no-iface": {
       "type": "chat",
       "endpoint": "http://localhost:4848/v1/chat/completions"
+    },
+    "claude-to-chat-completions": {
+      "type": "chat",
+      "features": {
+        "max_tokens_supported": false,
+        "custom_temperature_supported": false,
+        "tools_supported": true
+      },
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848/to-chat-completions"} }
+    },
+    "claude-to-responses": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848/to-responses"} }
     }
   },
   "toolsets": {
@@ -313,7 +344,9 @@
         "claude-limited": {"minute": "10", "day": "10"},
         "claude-upstream": {"minute": "100000", "day": "10000000"},
         "claude-override": {"minute": "100000", "day": "10000000"},
-        "claude-no-iface": {"minute": "100000", "day": "10000000"}
+        "claude-no-iface": {"minute": "100000", "day": "10000000"},
+        "claude-to-chat-completions": {"minute": "100000", "day": "10000000"},
+        "claude-to-responses": {"minute": "100000", "day": "10000000"}
       }
     },
     "vstore_user": {

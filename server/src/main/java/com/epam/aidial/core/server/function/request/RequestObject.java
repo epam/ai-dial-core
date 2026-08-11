@@ -47,18 +47,15 @@ public interface RequestObject {
     Set<String> collectAppAttachments(List<String> paths);
 
     /**
-     * Builds prompt-based cache keys used for upstream selection.
+     * Builds upstream cache keys for the given node order (e.g. {@code prefix.body.tools},
+     * {@code prefix.body.messages}), one rolling hash cumulative across all nodes in order.
      *
-     * @return a list of cache keys derived from the request messages
+     * @param nodeOrder the node designators to hash, in order
+     * @return a list of pathed cache keys, or an empty list if this request shape has no cacheable nodes
      */
-    List<CacheKey> buildMessageCacheKeys();
-
-    /**
-     * Builds tool-based cache keys used for upstream selection.
-     *
-     * @return a list of cache keys derived from the request tools
-     */
-    List<CacheKey> buildToolCacheKeys();
+    default List<CacheKey> buildCacheKeys(List<String> nodeOrder) {
+        return List.of();
+    }
 
     /**
      * Clears interceptor-related settings from this request.
