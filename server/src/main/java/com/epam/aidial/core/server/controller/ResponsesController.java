@@ -9,6 +9,7 @@ import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -16,6 +17,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
@@ -54,6 +56,8 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 
+import static com.epam.aidial.core.server.Proxy.HEADER_CACHE_POLICY;
+
 @Slf4j
 public class ResponsesController extends BaseDeploymentPostController {
 
@@ -66,6 +70,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
+                new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_RESPONSES),
                 new CollectDeploymentsFn(proxy, context));
     }
 
@@ -77,7 +82,10 @@ public class ResponsesController extends BaseDeploymentPostController {
             tags = {"LLM"},
             parameters = {
                     @ApiParameter(name = "Content-Type", in = ParameterIn.HEADER, required = true,
-                            description = "Must be application/json")
+                            description = "Must be application/json"),
+                    @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
+                            description = OpenApiDescriptions.CACHE_POLICY,
+                            allowableValues = {"availability-priority", "cache-priority"})
             },
             responses = {
                     @ApiResponse(code = 200, description = "Success"),

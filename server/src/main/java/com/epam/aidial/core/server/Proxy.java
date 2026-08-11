@@ -125,6 +125,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_OVERRIDE_NAME = "X-DIAL-OVERRIDE-NAME";
     public static final String HEADER_CLIENT_CHANNEL_ID = "X-DIAL-CLIENT-CHANNEL-ID";
     public static final String HEADER_DEPLOYMENT_ID = "X-DIAL-DEPLOYMENT-ID";
+    public static final String HEADER_DEPLOYMENT_FEATURES = "X-DIAL-DEPLOYMENT-FEATURES";
 
     public static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT,
             HttpMethod.DELETE, HttpMethod.HEAD, HttpMethod.PATCH);

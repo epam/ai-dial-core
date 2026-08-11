@@ -1,15 +1,20 @@
 package com.epam.aidial.core.server.function.request;
 
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.server.data.cache.CachePrefixPath;
 import com.epam.aidial.core.server.util.ChatUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+@Slf4j
 @RequiredArgsConstructor
 public class ResponsesApiRequest implements RequestObject {
     private final ObjectNode tree;
@@ -45,14 +50,33 @@ public class ResponsesApiRequest implements RequestObject {
         return ChatUtil.collectAttachments(tree, paths);
     }
 
+    /**
+     * {@code tools[i]}, {@code instructions[0]}, {@code input[i]} — candidates come solely from
+     * auto-caching (OpenAI prompt caching has no client breakpoint concept), so {@code hasBreakpoint}
+     * is always {@code false}. {@code input} last guarantees monotonicity: appending a turn never
+     * perturbs an earlier prefix.
+     */
     @Override
-    public List<CacheKey> buildMessageCacheKeys() {
-        throw new UnsupportedOperationException("Not supported yet.");
+    public List<CacheKey> buildCacheKeys(List<String> nodeOrder) {
+        CacheKeyBuilder builder = new CacheKeyBuilder();
+        List<CacheKey> result = new ArrayList<>();
+        for (String designator : nodeOrder) {
+            String node = CachePrefixPath.parseNode(designator);
+            if (node == null || !("tools".equals(node) || "instructions".equals(node) || "input".equals(node))) {
+                log.warn("Unsupported prefix path: {}", designator);
+                continue;
+            }
+            appendCacheKeys(builder, node, result);
+        }
+        return result;
     }
 
-    @Override
-    public List<CacheKey> buildToolCacheKeys() {
-        throw new UnsupportedOperationException("Not supported yet.");
+    private void appendCacheKeys(CacheKeyBuilder builder, String node, List<CacheKey> result) {
+        List<JsonNode> elements = CacheKeyBuilder.elements(tree.get(node));
+        for (int index = 0; index < elements.size(); index++) {
+            builder.update(elements.get(index));
+            result.add(builder.buildKey(CachePrefixPath.node(node, index), false));
+        }
     }
 
     @Override

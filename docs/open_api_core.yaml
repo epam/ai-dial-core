@@ -89,6 +89,15 @@ paths:
         required: true
         schema:
           type: string
+      - name: X-DIAL-CACHE-POLICY
+        in: header
+        description: Upstream selection policy for prompt-caching deployments (availability-priority or cache-priority).
+        required: false
+        schema:
+          type: string
+          enum:
+          - availability-priority
+          - cache-priority
       requestBody:
         content:
           application/json:
@@ -1573,6 +1582,15 @@ paths:
         required: true
         schema:
           type: string
+      - name: X-DIAL-CACHE-POLICY
+        in: header
+        description: Upstream selection policy for prompt-caching deployments (availability-priority or cache-priority).
+        required: false
+        schema:
+          type: string
+          enum:
+          - availability-priority
+          - cache-priority
   /openai/v1/responses/{response_id}:
     get:
       tags:
