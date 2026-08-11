@@ -54,4 +54,12 @@ public class ExternalServiceErrors {
 
         context.respond(status, body);
     }
+
+    /** Adapts a future's cause to what the audit log accepts, which classifies by exception type. */
+    public static RuntimeException asRuntime(Throwable error) {
+        if (error == null) {
+            return null;
+        }
+        return error instanceof RuntimeException e ? e : new IllegalStateException(error);
+    }
 }

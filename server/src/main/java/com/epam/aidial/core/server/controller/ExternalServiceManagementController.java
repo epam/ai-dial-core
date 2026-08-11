@@ -349,7 +349,6 @@ public class ExternalServiceManagementController {
         ExternalServiceErrors.respond(context, message, error);
     }
 
-
     /**
      * An administrator approves this application's use of a DIAL-native service. Applies to every user who has
      * offline credentials, not only those who opted into this application.
@@ -424,7 +423,7 @@ public class ExternalServiceManagementController {
             return operation.apply(resolveDialNativeService(appId, serviceId));
         })
                 .onComplete(result -> ExternalServiceAuditLog.consent(
-                        context, appId, serviceId, action, asRuntime(result.cause())))
+                        context, appId, serviceId, action, ExternalServiceErrors.asRuntime(result.cause())))
                 .onSuccess(applied -> context.respond(HttpStatus.OK, applied))
                 .onFailure(error -> respondError(errorMessage, error));
         return Future.succeededFuture();
@@ -454,13 +453,6 @@ public class ExternalServiceManagementController {
         if (!accessService.hasAdminAccess(context)) {
             throw new PermissionDeniedException("Only administrators may consent to a DIAL-native external service");
         }
-    }
-
-    private static RuntimeException asRuntime(Throwable error) {
-        if (error == null) {
-            return null;
-        }
-        return error instanceof RuntimeException e ? e : new IllegalStateException(error);
     }
 
     private CredentialsDescriptor consentDescriptor(String appId, String serviceId) {

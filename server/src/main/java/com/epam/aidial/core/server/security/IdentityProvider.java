@@ -522,6 +522,11 @@ public class IdentityProvider {
         return issuerPattern != null && issuer != null && issuerPattern.matcher(issuer).matches();
     }
 
+    /** Whether the provider can disclaim an issuer at all — without a pattern, a non-match proves nothing. */
+    boolean hasIssuerPattern() {
+        return issuerPattern != null;
+    }
+
     boolean match(DecodedJWT jwt) {
         return matchesIssuer(jwt.getIssuer());
     }

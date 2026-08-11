@@ -130,15 +130,18 @@ public class AccessTokenValidator {
      * The provider that issued the caller's token. A userinfo-only provider carries no {@code issuerPattern} and so
      * can never match here, and cannot offer offline credentials.
      *
-     * @throws IllegalArgumentException when no provider matches.
+     * @throws IllegalArgumentException when no token is presented or no provider matches.
+     * @throws JWTDecodeException when the access token is opaque, so the issuer cannot be read from it.
      */
     public IdentityProvider resolveProvider(String authHeader) {
         if (providers.size() == 1) {
             return providers.get(0);
         }
-        DecodedJWT jwt = IdentityProvider.decodeJwtToken(
-                Objects.requireNonNull(extractTokenFromHeader(authHeader), "Access token must be presented in Auth header"));
-        return resolveProviderByIssuer(jwt.getIssuer());
+        String accessToken = extractTokenFromHeader(authHeader);
+        if (accessToken == null) {
+            throw new IllegalArgumentException("Access token must be presented in Auth header");
+        }
+        return resolveProviderByIssuer(IdentityProvider.decodeJwtToken(accessToken).getIssuer());
     }
 
     /**
@@ -148,7 +151,13 @@ public class AccessTokenValidator {
      */
     public IdentityProvider resolveProviderByIssuer(String issuer) {
         if (providers.size() == 1) {
-            return providers.get(0);
+            IdentityProvider provider = providers.get(0);
+            // The only candidate, but an issuer it explicitly disclaims means the record was minted by an identity
+            // provider that is no longer configured — refreshing it against this one would use the wrong client.
+            if (issuer != null && provider.hasIssuerPattern() && !provider.matchesIssuer(issuer)) {
+                throw new IllegalArgumentException("Unknown Identity Provider for issuer: " + issuer);
+            }
+            return provider;
         }
         for (IdentityProvider idp : providers) {
             if (idp.matchesIssuer(issuer)) {

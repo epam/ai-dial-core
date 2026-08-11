@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAuthSettings;
@@ -173,18 +174,19 @@ public class OfflineCredentialsController {
 
     /** Audits the whole operation: a body rejected before storage is still a failed attempt. */
     private <T> Handler<AsyncResult<T>> audited(String action) {
-        return result -> ExternalServiceAuditLog.offlineCredentials(context, action, asRuntime(result.cause()));
-    }
-
-    private static RuntimeException asRuntime(Throwable error) {
-        if (error == null) {
-            return null;
-        }
-        return error instanceof RuntimeException e ? e : new IllegalStateException(error);
+        return result -> ExternalServiceAuditLog.offlineCredentials(
+                context, action, ExternalServiceErrors.asRuntime(result.cause()));
     }
 
     private IdentityProvider provider() {
-        return proxy.getTokenValidator().resolveProvider(context.getRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        try {
+            return proxy.getTokenValidator().resolveProvider(context.getRequest().getHeader(HttpHeaders.AUTHORIZATION));
+        } catch (JWTDecodeException e) {
+            // An opaque access token carries no issuer, so with several providers configured there is no way to
+            // tell which one to obtain offline credentials from.
+            throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Offline credentials are not available for this identity provider");
+        }
     }
 
     private ResourceAuthSettings requireOfflineClient(IdentityProvider provider) {

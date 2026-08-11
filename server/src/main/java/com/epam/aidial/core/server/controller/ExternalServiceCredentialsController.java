@@ -33,6 +33,7 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.AppIdentityMatcher;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.security.IdentityProvider;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ConsentRequiredException;
 import com.epam.aidial.core.server.service.OfflineCredentialsRequiredException;
@@ -332,7 +333,6 @@ public class ExternalServiceCredentialsController {
         return Future.succeededFuture();
     }
 
-
     /**
      * Redemption for a DIAL-native service: the owner acts through their own offline credentials, and the
      * application is authorized by an administrator's consent rather than by anything it holds.
@@ -350,13 +350,7 @@ public class ExternalServiceCredentialsController {
                     "The owner has not enabled offline access, so nothing can act on their behalf");
         }
 
-        ResourceAuthSettings offlineClient = accessTokenValidator
-                .resolveProviderByIssuer(stored.getIssuer())
-                .getOfflineClient();
-        if (offlineClient == null) {
-            throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "Offline credentials are not configured for the identity provider that issued them");
-        }
+        ResourceAuthSettings offlineClient = resolveOfflineClient(stored.getIssuer());
 
         CredentialsLocator locator = new CredentialsLocator(descriptor.getResourceId(),
                 Map.of(CredentialsLevel.USER, new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation())));
@@ -379,6 +373,26 @@ public class ExternalServiceCredentialsController {
         return toCredentialsResponse(credentials, request.getUrl());
     }
 
+    /**
+     * The offline client of the identity provider that issued the stored credentials. Both failures are server-side
+     * state — a provider dropped from the settings, or one never configured for offline use — not a bad request.
+     */
+    private ResourceAuthSettings resolveOfflineClient(String issuer) {
+        IdentityProvider provider;
+        try {
+            provider = accessTokenValidator.resolveProviderByIssuer(issuer);
+        } catch (IllegalArgumentException e) {
+            throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "The identity provider that issued the owner's offline credentials is no longer configured");
+        }
+        ResourceAuthSettings offlineClient = provider.getOfflineClient();
+        if (offlineClient == null) {
+            throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Offline credentials are not configured for the identity provider that issued them");
+        }
+        return offlineClient;
+    }
+
     /** An administrator must have approved this application's use of the service; declaring it grants nothing. */
     private void requireAdminConsent(String url, String appPart, String serviceId) {
         CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(url, context);
@@ -388,7 +402,6 @@ public class ExternalServiceCredentialsController {
                     "Application '%s' is not approved to use '%s'".formatted(appPart, serviceId));
         }
     }
-
 
     /**
      * Keeps a permanent failure distinguishable from a retryable one. A 401 here means the <i>owner's</i> token was
