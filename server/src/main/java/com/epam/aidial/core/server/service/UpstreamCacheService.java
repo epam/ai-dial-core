@@ -66,7 +66,7 @@ public class UpstreamCacheService {
     public CacheBreakpointContext buildCacheBreakpointContext(RequestObject request, CachePolicy policy, Model model,
                                                                 InterfaceType interfaceType) {
         boolean autoCaching = isAutoCaching(model);
-        List<String> fieldsOrder = model.resolveFieldsHashingOrder(interfaceType);
+        List<String> fieldsOrder = interfaceType.getFieldsHashingOrder();
         List<String> breakpoints = new ArrayList<>();
         Map<String, String> prefixToHash = new HashMap<>();
         for (CacheKey cacheKey : request.buildCacheKeys(fieldsOrder)) {

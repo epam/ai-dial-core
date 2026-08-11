@@ -193,6 +193,36 @@ public class UpstreamCacheServiceTest {
     }
 
     @Test
+    public void testBuildCacheBreakpointContext_chatCompletionsIgnoresFieldsHashingOrderOverride() throws JsonProcessingException {
+        service = new UpstreamCacheService(redissonClient, lockService, System::currentTimeMillis, null);
+        String body = """
+                {
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {"name": "some_function"},
+                            "custom_fields": {"cache_breakpoint": {}}
+                        }
+                    ],
+                    "messages": [
+                        {"role": "user", "content": "hi"}
+                    ]
+                }
+                """;
+        RequestObject request = new ChatCompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
+        Model model = new Model();
+        model.setName("gpt-4");
+        // fieldsHashingOrder is deprecated and must have no effect, even for chat completions
+        model.setFieldsHashingOrder(List.of("prefix.body.messages"));
+
+        CacheBreakpointContext context = service.buildCacheBreakpointContext(
+                request, CachePolicy.AVAILABILITY_PRIORITY, model, InterfaceType.OPENAI_CHAT_COMPLETIONS);
+
+        List<String> expectedBreakpoints = List.of("prefix.body.tools[0]");
+        assertEquals(expectedBreakpoints, context.breakpoints());
+    }
+
+    @Test
     public void testBuildCacheBreakpointContext_autoCaching() throws JsonProcessingException {
         service = new UpstreamCacheService(redissonClient, lockService, System::currentTimeMillis, null);
         String body = """

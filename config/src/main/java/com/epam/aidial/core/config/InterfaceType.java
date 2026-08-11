@@ -24,15 +24,15 @@ public enum InterfaceType {
     private final String value;
 
     /**
-     * The node order used to build upstream cache keys, fixed by the wire format of this interface.
-     * Only {@link #OPENAI_CHAT_COMPLETIONS} can be overridden by {@code Model#fieldsHashingOrder}; see
-     * {@link Model#resolveFieldsHashingOrder(InterfaceType)}.
+     * The node order used to build upstream cache keys, hardcoded per the wire format of this
+     * interface. {@code Model#fieldsHashingOrder} is deprecated and no longer overrides this, even
+     * for {@link #OPENAI_CHAT_COMPLETIONS}.
      */
-    private final List<String> defaultFieldsHashingOrder;
+    private final List<String> fieldsHashingOrder;
 
-    InterfaceType(String value, List<String> defaultFieldsHashingOrder) {
+    InterfaceType(String value, List<String> fieldsHashingOrder) {
         this.value = value;
-        this.defaultFieldsHashingOrder = defaultFieldsHashingOrder;
+        this.fieldsHashingOrder = fieldsHashingOrder;
     }
 
     /**
