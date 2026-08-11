@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.function.request;
 
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.server.data.cache.CachePrefixPath;
 import com.epam.aidial.core.server.util.ChatUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -8,10 +9,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -21,6 +20,7 @@ import java.util.Set;
 /**
  * Represents a wrapper for completion and embedding requests, providing a strict interface.
  */
+@Slf4j
 @RequiredArgsConstructor
 public class ChatCompletionRequest implements RequestObject {
     private static final String CUSTOM_FIELDS_NODE = "custom_fields";
@@ -62,27 +62,32 @@ public class ChatCompletionRequest implements RequestObject {
     }
 
     @Override
-    public List<CacheKey> buildMessageCacheKeys() {
-        return buildCacheKeys("messages");
-    }
-
-    @Override
-    public List<CacheKey> buildToolCacheKeys() {
-        return buildCacheKeys("tools");
-    }
-
-    @SneakyThrows
-    private List<CacheKey> buildCacheKeys(String name) {
-        JsonNode node = tree.get(name);
-        if (node == null || !node.isArray()) {
-            // embedding request is not supported yet
-            return new ArrayList<>();
-        }
-        MessageDigest digest = MessageDigest.getInstance("SHA-1");
+    public List<CacheKey> buildCacheKeys(List<String> nodeOrder) {
+        CacheKeyBuilder builder = new CacheKeyBuilder();
         List<CacheKey> result = new ArrayList<>();
-        for (int index = 0; index < node.size(); index++) {
-            ObjectNode objectNode = (ObjectNode) JsonUtil.sort(node.get(index));
-            for (Map.Entry<String, JsonNode> entry : objectNode.properties()) {
+        for (String designator : nodeOrder) {
+            String node = CachePrefixPath.parseNode(designator);
+            if (!"tools".equals(node) && !"messages".equals(node)) {
+                log.warn("Unsupported prefix path: {}", designator);
+                continue;
+            }
+            appendCacheKeys(builder, node, result);
+        }
+        return result;
+    }
+
+    private void appendCacheKeys(CacheKeyBuilder builder, String node, List<CacheKey> result) {
+        JsonNode array = tree.get(node);
+        if (array == null || !array.isArray()) {
+            // embedding request is not supported yet
+            return;
+        }
+        for (int index = 0; index < array.size(); index++) {
+            // sort so key iteration order below (and the digest fed from it) is deterministic
+            // regardless of how the client ordered the JSON object's fields
+            ObjectNode element = (ObjectNode) JsonUtil.sort(array.get(index));
+            boolean hasBreakpoint = element.path(CUSTOM_FIELDS_NODE).has(CACHE_BREAKPOINT_NODE);
+            for (Map.Entry<String, JsonNode> entry : element.properties()) {
                 if (entry.getKey().equals(CUSTOM_FIELDS_NODE)) {
                     continue;
                 }
@@ -90,17 +95,14 @@ public class ChatCompletionRequest implements RequestObject {
                     // include attachments only
                     JsonNode attachments = entry.getValue().get("attachments");
                     if (attachments != null && !attachments.isEmpty()) {
-                        digest.update(attachments.toString().getBytes(StandardCharsets.UTF_8));
+                        builder.update(attachments);
                     }
                 } else {
-                    digest.update(entry.getValue().toString().getBytes(StandardCharsets.UTF_8));
+                    builder.update(entry.getValue());
                 }
             }
-            String hash = toString(digest.digest());
-            CacheKey cacheKey = new CacheKey(hash, objectNode.path(CUSTOM_FIELDS_NODE).has(CACHE_BREAKPOINT_NODE));
-            result.add(cacheKey);
+            result.add(builder.buildKey(CachePrefixPath.node(node, index), hasBreakpoint));
         }
-        return result;
     }
 
     @Override
@@ -116,13 +118,5 @@ public class ChatCompletionRequest implements RequestObject {
     @Override
     public byte[] serialize() throws JsonProcessingException {
         return ProxyUtil.MAPPER.writeValueAsBytes(tree);
-    }
-
-    private static String toString(byte[] digest) {
-        StringBuilder hexString = new StringBuilder();
-        for (byte b : digest) {
-            hexString.append(String.format("%02x", b));
-        }
-        return hexString.toString();
     }
 }

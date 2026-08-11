@@ -218,6 +218,39 @@ public class UpstreamRouteTest {
     }
 
     @Test
+    void testSuccess_UpstreamCache_NestedContentBlockPath() {
+        Model model = new Model();
+        model.setName("model1");
+        model.setUpstreams(List.of(
+                new Upstream("endpoint1", null, null, null, null, 1, 1, null),
+                new Upstream("endpoint2", null, null, null, null, 1, 1, null)
+        ));
+
+        UpstreamRouteProvider upstreamRouteProvider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
+        String nestedPath = "prefix.body.messages[1].content[2]";
+        CacheBreakpointContext cacheBreakpointContext =
+                new CacheBreakpointContext(List.of(nestedPath), Map.of(nestedPath, "hash"), CachePolicy.CACHE_PRIORITY);
+        CachedUpstreamEntry entry = new CachedUpstreamEntry("endpoint2", null, nestedPath, null);
+        when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
+        UpstreamRoute route = upstreamRouteProvider.get(model, cacheBreakpointContext);
+        assertNotNull(route.next());
+
+        assertEquals(model.getUpstreams().get(1), route.get());
+
+        HttpClientResponse response = mock(HttpClientResponse.class);
+        when(response.getHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH)).thenReturn(nestedPath);
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            callable.call();
+            return Future.succeededFuture();
+        });
+
+        route.succeed(response, model);
+
+        verify(upstreamCacheService).updateEntry(eq("hash"), any(CachedUpstreamEntry.class), eq(model), any());
+    }
+
+    @Test
     void testSuccess_UpstreamCache_PrefixNotFound() {
         Model model = new Model();
         model.setName("model1");

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonValue;
 import lombok.Getter;
 
+import java.util.List;
+
 /**
  * Extensible set of LLM API interface types a deployment may expose.
  * The string {@link #value} is the key used in {@link Deployment#getInterfaces()}.
@@ -12,17 +14,25 @@ import lombok.Getter;
 public enum InterfaceType {
 
     @JsonAlias({"openai_chat_completions"})
-    OPENAI_CHAT_COMPLETIONS("openaiChatCompletions"),
+    OPENAI_CHAT_COMPLETIONS("openaiChatCompletions", List.of("prefix.body.tools", "prefix.body.messages")),
     @JsonAlias({"openai_responses"})
-    OPENAI_RESPONSES("openaiResponses"),
+    OPENAI_RESPONSES("openaiResponses", List.of("prefix.body.tools", "prefix.body.instructions", "prefix.body.input")),
     @JsonAlias({"anthropic_messages"})
-    ANTHROPIC_MESSAGES("anthropicMessages");
+    ANTHROPIC_MESSAGES("anthropicMessages", List.of("prefix.body.tools", "prefix.body.system", "prefix.body.messages"));
 
     @JsonValue
     private final String value;
 
-    InterfaceType(String value) {
+    /**
+     * The node order used to build upstream cache keys, hardcoded per the wire format of this
+     * interface. {@code Model#fieldsHashingOrder} is deprecated and no longer overrides this, even
+     * for {@link #OPENAI_CHAT_COMPLETIONS}.
+     */
+    private final List<String> fieldsHashingOrder;
+
+    InterfaceType(String value, List<String> fieldsHashingOrder) {
         this.value = value;
+        this.fieldsHashingOrder = fieldsHashingOrder;
     }
 
     /**

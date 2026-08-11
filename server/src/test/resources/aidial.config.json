@@ -190,6 +190,15 @@
         "openaiResponses": {"base_url": "http://localhost:4848"}
       }
     },
+    "responses-cache": {
+      "type": "chat",
+      "interfaces": { "openaiResponses": {"base_url": "http://localhost:4848"} },
+      "features": { "autoCachingSupported": true },
+      "upstreams": [
+        {"endpoint": "http://upstream-a", "responsesEndpoint": "http://upstream-a/v1/responses", "key": "keyA", "id": "up-a"},
+        {"endpoint": "http://upstream-b", "responsesEndpoint": "http://upstream-b/v1/responses", "key": "keyB", "id": "up-b"}
+      ]
+    },
     "claude-ns": {
       "type": "chat",
       "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} }
@@ -215,6 +224,15 @@
       "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} },
       "upstreams": [
         {"endpoint": "http://messages-upstream/v1/messages", "key": "modelKey", "id": "messages-upstream"}
+      ]
+    },
+    "claude-cache": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} },
+      "features": { "autoCachingSupported": true },
+      "upstreams": [
+        {"endpoint": "http://upstream-a/v1/messages", "key": "keyA", "id": "up-a"},
+        {"endpoint": "http://upstream-b/v1/messages", "key": "keyB", "id": "up-b"}
       ]
     },
     "claude-override": {
