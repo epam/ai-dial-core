@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ResourceAuthStatus;
 import com.epam.aidial.core.config.SecuredResource;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
@@ -185,6 +186,15 @@ public class ResourceAuthSettingsService {
     private boolean hasUnexpiredApplicationCredentials(List<ResourceCredentials> all) {
         return all.stream().anyMatch(c -> c.getCredentialsLevel() == CredentialsLevel.APPLICATION
                 && hasUnexpiredToken(c));
+    }
+
+    /**
+     * Whether a single credentials record exists and is still usable. An expired access token counts as usable when
+     * a refresh token is present, which is the normal state of a long-lived offline credential.
+     */
+    public boolean hasUnexpiredCredentials(CredentialsDescriptor credentialsDescriptor) {
+        ResourceCredentials credentials = resourceCredentialsService.getResourceCredentials(credentialsDescriptor);
+        return credentials != null && hasUnexpiredToken(credentials);
     }
 
     private boolean hasUnexpiredToken(ResourceCredentials credentials) {

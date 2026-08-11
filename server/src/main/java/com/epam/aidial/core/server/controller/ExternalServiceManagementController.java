@@ -338,28 +338,7 @@ public class ExternalServiceManagementController {
     }
 
     private void respondError(String message, Throwable error) {
-        HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
-        String body = null;
-        switch (error) {
-            case HttpException e -> {
-                status = e.getStatus();
-                body = e.getMessage();
-            }
-            case ResourceNotFoundException e -> {
-                status = HttpStatus.NOT_FOUND;
-                body = e.getMessage();
-            }
-            case PermissionDeniedException e -> {
-                status = HttpStatus.FORBIDDEN;
-                body = e.getMessage();
-            }
-            case IllegalArgumentException e -> {
-                status = HttpStatus.BAD_REQUEST;
-                body = e.getMessage();
-            }
-            case null, default -> log.warn(message, error);
-        }
-        context.respond(status, body);
+        ExternalServiceErrorHandler.respond(context, message, error);
     }
 
     private record ResolvedApp(Application application, ResourceDescriptor descriptor, String author, boolean staticApp) {

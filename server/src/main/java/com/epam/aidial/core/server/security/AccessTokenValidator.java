@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.security;
 import com.auth0.jwk.UrlJwkProvider;
 import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
@@ -124,6 +125,77 @@ public class AccessTokenValidator {
                     /* we don't need to keep the failed response any longer */
                     userInfoCache.remove(accessToken);
                 });
+    }
+
+    /**
+     * The offline client of the provider that issued the caller's token, or {@code null} when that provider has
+     * none configured. The provider itself stays inside this package.
+     *
+     * @throws IllegalArgumentException when no token is presented or no provider matches.
+     * @throws JWTDecodeException when the access token is opaque, so the issuer cannot be read from it.
+     */
+    public ResourceAuthSettings resolveOfflineClient(String authHeader) {
+        return resolveProvider(authHeader).getOfflineClient();
+    }
+
+    /**
+     * As above, for a recorded issuer — the refresh path, where there is no caller token to match on.
+     *
+     * @throws IllegalArgumentException when no provider matches.
+     */
+    public ResourceAuthSettings resolveOfflineClientByIssuer(String issuer) {
+        return resolveProviderByIssuer(issuer).getOfflineClient();
+    }
+
+    /** The user id the caller's provider derives from an ID token, via the same {@code userIdPath} as a request. */
+    public String resolveIdTokenUserId(String authHeader, String idToken) {
+        return resolveProvider(authHeader).extractUserIdFromIdToken(idToken);
+    }
+
+    /** Issuer claim of an ID token, recorded at sign-in so a later refresh can find the provider again. */
+    public String extractIdTokenIssuer(String idToken) {
+        return IdentityProvider.decodeJwtToken(idToken).getIssuer();
+    }
+
+    /**
+     * The provider that issued the caller's token. A userinfo-only provider carries no {@code issuerPattern} and so
+     * can never match here, and cannot offer offline credentials.
+     *
+     * @throws IllegalArgumentException when no token is presented or no provider matches.
+     * @throws JWTDecodeException when the access token is opaque, so the issuer cannot be read from it.
+     */
+    IdentityProvider resolveProvider(String authHeader) {
+        if (providers.size() == 1) {
+            return providers.get(0);
+        }
+        String accessToken = extractTokenFromHeader(authHeader);
+        if (accessToken == null) {
+            throw new IllegalArgumentException("Access token must be presented in Auth header");
+        }
+        return resolveProviderByIssuer(IdentityProvider.decodeJwtToken(accessToken).getIssuer());
+    }
+
+    /**
+     * The provider for a recorded issuer, for refreshes where there is no caller token to match on.
+     *
+     * @throws IllegalArgumentException when no provider matches.
+     */
+    IdentityProvider resolveProviderByIssuer(String issuer) {
+        if (providers.size() == 1) {
+            IdentityProvider provider = providers.get(0);
+            // The only candidate, but an issuer it explicitly disclaims means the record was minted by an identity
+            // provider that is no longer configured — refreshing it against this one would use the wrong client.
+            if (issuer != null && provider.hasIssuerPattern() && !provider.matchesIssuer(issuer)) {
+                throw new IllegalArgumentException("Unknown Identity Provider for issuer: " + issuer);
+            }
+            return provider;
+        }
+        for (IdentityProvider idp : providers) {
+            if (idp.matchesIssuer(issuer)) {
+                return idp;
+            }
+        }
+        throw new IllegalArgumentException("Unknown Identity Provider for issuer: " + issuer);
     }
 
     private Future<UserInfoResult> createUserInfoResultFuture(String accessToken, IdentityProvider idp) {
