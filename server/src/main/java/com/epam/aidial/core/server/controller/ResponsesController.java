@@ -32,6 +32,7 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
@@ -161,7 +162,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
         }
 
-        if (!deployment.supportsInterface(InterfaceType.OPENAI_RESPONSES)) {
+        if (DeploymentEndpointUtil.servingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES) == null) {
             throw new HttpException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "OpenAI responses not supported for this deployment type"
@@ -242,7 +243,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment, context.getCacheBreakpointContext(),
-                        dep -> dep.resolveEndpoint(InterfaceType.OPENAI_RESPONSES), upstreamId);
+                        dep -> DeploymentEndpointUtil.servingEndpoint(dep, InterfaceType.OPENAI_RESPONSES), upstreamId);
 
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);

@@ -20,6 +20,7 @@ import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -143,7 +144,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
             deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
         }
 
-        if (!deployment.supportsInterface(InterfaceType.ANTHROPIC_MESSAGES)) {
+        if (DeploymentEndpointUtil.servingEndpoint(deployment, InterfaceType.ANTHROPIC_MESSAGES) == null) {
             throw new HttpException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "Anthropic messages not supported for this deployment type"
@@ -176,7 +177,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment, context.getCacheBreakpointContext(),
-                        dep -> dep.resolveEndpoint(InterfaceType.ANTHROPIC_MESSAGES), upstreamId);
+                        dep -> DeploymentEndpointUtil.servingEndpoint(dep, InterfaceType.ANTHROPIC_MESSAGES), upstreamId);
 
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);

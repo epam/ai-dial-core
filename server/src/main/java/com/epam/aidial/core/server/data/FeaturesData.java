@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.data;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -49,8 +50,8 @@ public class FeaturesData {
     @JsonIgnore
     public static FeaturesData createDeploymentFeatures(Deployment deployment) {
         FeaturesData data = createFeatures(deployment.getFeatures());
-        data.setChatCompletion(deployment.supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS));
-        data.setResponsesApi(deployment.supportsInterface(InterfaceType.OPENAI_RESPONSES));
+        data.setChatCompletion(DeploymentEndpointUtil.declaresInterface(deployment, InterfaceType.OPENAI_CHAT_COMPLETIONS));
+        data.setResponsesApi(DeploymentEndpointUtil.declaresInterface(deployment, InterfaceType.OPENAI_RESPONSES));
         return data;
     }
 

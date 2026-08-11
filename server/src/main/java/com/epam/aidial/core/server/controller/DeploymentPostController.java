@@ -34,6 +34,7 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UsagePerModelInjector;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -190,7 +191,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                         dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(app);
                     }
 
-                    if (dep.resolveEndpoint(requestedInterface()) == null) {
+                    if (DeploymentEndpointUtil.servingEndpoint(dep, requestedInterface()) == null) {
                         throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
                     }
 
@@ -335,7 +336,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         UpstreamRoute upstreamRoute;
         try {
             upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext(),
-                    dep -> dep.resolveEndpoint(type), upstreamId);
+                    dep -> DeploymentEndpointUtil.servingEndpoint(dep, type), upstreamId);
         } catch (HttpException e) {
             respond(e.getStatus(), e.getMessage());
             return;

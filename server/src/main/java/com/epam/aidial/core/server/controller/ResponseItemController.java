@@ -20,6 +20,7 @@ import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -52,7 +53,7 @@ public class ResponseItemController implements Controller {
     private final Operation operation;
 
     private static String responsesBase(Deployment deployment) {
-        return deployment.resolveUri(InterfaceType.OPENAI_RESPONSES, OPENAI_RESPONSES_BASE_PATH);
+        return DeploymentEndpointUtil.responsesBaseUri(deployment);
     }
 
     @Override
@@ -154,7 +155,7 @@ public class ResponseItemController implements Controller {
 
     private Future<Void> dispatch(ResponseMapping mapping) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName());
-        if (!deployment.supportsInterface(InterfaceType.OPENAI_RESPONSES)) {
+        if (DeploymentEndpointUtil.servingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES) == null) {
             return context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API")
                     .mapEmpty();
         }
@@ -187,7 +188,7 @@ public class ResponseItemController implements Controller {
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment,
                         null,
-                        dep -> dep.resolveEndpoint(InterfaceType.OPENAI_RESPONSES),
+                        dep -> DeploymentEndpointUtil.servingEndpoint(dep, InterfaceType.OPENAI_RESPONSES),
                         mapping.getUpstreamKey());
         Upstream upstream = upstreamRoute.next();
 

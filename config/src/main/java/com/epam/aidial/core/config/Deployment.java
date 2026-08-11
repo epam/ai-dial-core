@@ -9,16 +9,10 @@ import lombok.EqualsAndHashCode;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import javax.annotation.Nullable;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
 public abstract class Deployment extends RoleBasedEntity {
-
-    private static final Pattern DEPLOYMENT_SEGMENT =
-            Pattern.compile("/deployments/(.+?)/(completions|chat/completions|embeddings)(?=$|\\?)");
 
     private String endpoint;
     private String responsesEndpoint;
@@ -118,95 +112,10 @@ public abstract class Deployment extends RoleBasedEntity {
     }
 
     /**
-     * New-flow base URL for the type (trailing slash stripped), or null when not declared.
-     */
-    @Nullable
-    private String getInterfaceBaseUrl(InterfaceType type) {
-        DeploymentInterface deploymentInterface = interfaces == null ? null : interfaces.get(type.getValue());
-        if (deploymentInterface == null) {
-            return null;
-        }
-        String url = deploymentInterface.getBaseUrl();
-        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
-    }
-
-    /**
-     * The pre-{@code interfaces} field serving the type. The untyped {@link #endpoint} predates the split
-     * into typed interfaces, so it serves the whole deployments-POST family, {@code /embeddings} included.
-     */
-    @Nullable
-    private String legacyEndpoint(InterfaceType type) {
-        return switch (type) {
-            case OPENAI_CHAT_COMPLETIONS, OPENAI_EMBEDDINGS -> endpoint;
-            case OPENAI_RESPONSES -> responsesEndpoint;
-            default -> null;
-        };
-    }
-
-    /**
-     * The endpoint a request for the type is routed to, or null when nothing serves it (callers answer
-     * 503). Doubles as the synthetic upstream id when a deployment declares no upstreams.
-     */
-    @Nullable
-    public String resolveEndpoint(InterfaceType type) {
-        String baseUrl = getInterfaceBaseUrl(type);
-        return baseUrl != null ? baseUrl : legacyEndpoint(type);
-    }
-
-    /**
-     * True when the deployment <em>declares</em> the type, which is what listings advertise. Differs from
-     * {@link #resolveEndpoint} for {@code openaiEmbeddings}: the untyped {@link #endpoint} configures chat
-     * and embedding models alike, so reading it as a declaration would advertise embeddings on every model.
-     */
-    public boolean supportsInterface(InterfaceType type) {
-        return getInterfaceBaseUrl(type) != null
-                || (type != InterfaceType.OPENAI_EMBEDDINGS && legacyEndpoint(type) != null);
-    }
-
-    /**
-     * The only place that branches on the flow: base URL plus {@code path}, or the verbatim legacy endpoint
-     * with {@code path} ignored, the endpoint already carrying it. Callers append their own suffix/query.
-     */
-    public String resolveUri(InterfaceType type, String path) {
-        String baseUrl = getInterfaceBaseUrl(type);
-        return baseUrl != null ? baseUrl + path : legacyEndpoint(type);
-    }
-
-    /**
-     * The absolute URI a deployments-POST request is forwarded to: {@link #resolveUri} of the ingress path
-     * with the {@code /deployments/{id}/} segment rewritten to {@link #getTargetName()}, plus the query.
-     *
-     * @param ingressPath the inbound request path, without the query
-     * @param query       the inbound query string, or null when absent
-     */
-    public String resolveRequestUri(InterfaceType type, String ingressPath, String query) {
-        String uri = resolveUri(type, rewriteDeploymentPathSegment(ingressPath, getTargetName()));
-        return query == null ? uri : uri + "?" + query;
-    }
-
-    /**
      * The name under which this deployment is called: {@link #overrideName} when set, otherwise its own name.
      */
     @JsonIgnore
     public String getTargetName() {
         return overrideName != null ? overrideName : getName();
-    }
-
-    /**
-     * Rewrites the {@code /deployments/{id}/} ingress path segment to this deployment's own name (or
-     * {@link #overrideName} when set), whatever id it currently carries — including a multi-segment
-     * canonical id (e.g. {@code models/platform/{name}} for a platform-bucket entity). A request
-     * forwarded through an interceptor carries the literal pseudo id {@code interceptor} in the path
-     * (see {@code DeploymentPostController#handle}) rather than this deployment's own name, so it needs
-     * rewriting back. No-op for interfaces whose ingress path carries no deployment segment
-     * (openaiResponses and anthropicMessages resolve the deployment from the request body instead).
-     */
-    private static String rewriteDeploymentPathSegment(String path, String targetName) {
-        Matcher matcher = DEPLOYMENT_SEGMENT.matcher(path);
-        if (!matcher.find()) {
-            return path;
-        }
-        String replacement = "/deployments/" + targetName + "/" + matcher.group(2);
-        return matcher.replaceFirst(Matcher.quoteReplacement(replacement));
     }
 }
