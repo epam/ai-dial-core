@@ -14,7 +14,10 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.ResponsesController;
 import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectMessagesTokenUsageFn;
+import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -27,6 +30,7 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -41,6 +45,18 @@ public class MessagesController extends MessagesBaseController {
         super(proxy, context);
     }
 
+    /**
+     * Appends {@link BuildUpstreamCacheFn} before the base chain's terminal {@code CollectDeploymentsFn},
+     * so upstream cache pinning applies to {@code POST /anthropic/v1/messages} but not to
+     * {@link MessagesCountTokensController}, which inherits the base chain unchanged.
+     */
+    @Override
+    protected List<BaseRequestFunction<RequestObject>> buildEnhancementFunctions() {
+        List<BaseRequestFunction<RequestObject>> functions = new ArrayList<>(super.buildEnhancementFunctions());
+        functions.add(functions.size() - 1, new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES));
+        return functions;
+    }
+
     @ApiOperations({
             @ApiOperation(
                     method = "POST",
@@ -50,7 +66,10 @@ public class MessagesController extends MessagesBaseController {
                     tags = {"Anthropic"},
                     parameters = {
                             @ApiParameter(name = "anthropic-version", in = ParameterIn.HEADER, required = true,
-                                    description = "The Anthropic API version (e.g., 2023-06-01)")
+                                    description = "The Anthropic API version (e.g., 2023-06-01)"),
+                            @ApiParameter(name = Proxy.HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
+                                    description = OpenApiDescriptions.CACHE_POLICY,
+                                    allowableValues = {"availability-priority", "cache-priority"})
                     },
                     responses = {
                             @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
