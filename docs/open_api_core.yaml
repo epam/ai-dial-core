@@ -4555,7 +4555,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProxyResponse"
-                description: "A JSON object satisfying [mcp specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-06-18/schema.json)."
         "400":
           description: Bad request
           content:
@@ -7211,20 +7210,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Application"
-              examples:
-                Application:
-                  value:
-                    name: application_name
-                    bucket: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST
-                    url: applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/application_name
-                    nodeType: ITEM
-                    resourceType: APPLICATION
-                    etag: 7dfb93c3c62b88e9a75ff36a6af6c7eb
-                    updatedAt: 1707876435000
-                    createdAt: 1707876435000
-                    permissions:
-                    - READ
-                    - WRITE
         "400":
           description: Bad request
           content:
@@ -7337,21 +7322,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Application"
-              examples:
-                Application:
-                  value:
-                    name: application_name
-                    parentPath: folder1/folder2
-                    bucket: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST
-                    url: applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/application_name
-                    nodeType: ITEM
-                    resourceType: APPLICATION
-                    etag: 7dfb93c3c62b88e9a75ff36a6af6c7eb
-                    updatedAt: 1707876435000
-                    createdAt: 1707876435000
-                    permissions:
-                    - READ
-                    - WRITE
         "400":
           description: Bad request
           content:
@@ -7406,20 +7376,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Application"
-              examples:
-                Application:
-                  value:
-                    name: application_name
-                    parentPath: folder1/folder2
-                    bucket: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST
-                    nodeType: ITEM
-                    resourceType: APPLICATION
-                    etag: 7dfb93c3c62b88e9a75ff36a6af6c7eb
-                    updatedAt: 1707876435000
-                    createdAt: 1707876435000
-                    permissions:
-                    - READ
-                    - WRITE
         "400":
           description: Bad request
           content:
