@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.function;
 
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -38,6 +39,9 @@ public class AutoShareDeploymentFnTest {
     private ProxyContext context;
 
     @Mock
+    private Config config;
+
+    @Mock
     private EncryptionService encryptionService;
 
     @Mock
@@ -66,6 +70,7 @@ public class AutoShareDeploymentFnTest {
 
     @Test
     public void testApply_WhenInitialDeploymentIsPublicResource() {
+        when(context.getConfig()).thenReturn(config);
         when(context.getInitialDeployment()).thenReturn("applications/public/my-app");
 
         assertFalse(fn.apply(EMPTY_OBJECT));
@@ -74,6 +79,7 @@ public class AutoShareDeploymentFnTest {
 
     @Test
     public void testApply_WhenInitialDeploymentIsForbidden() {
+        when(context.getConfig()).thenReturn(config);
         when(encryptionService.decrypt(anyString())).thenReturn("/Users/user/");
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
         when(proxy.getAccessService()).thenReturn(accessService);
@@ -86,6 +92,7 @@ public class AutoShareDeploymentFnTest {
 
     @Test
     public void testApply_WhenInitialDeploymentIdContainsSpace() {
+        when(context.getConfig()).thenReturn(config);
         when(encryptionService.decrypt(anyString())).thenReturn("/Users/user/");
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
         when(proxy.getAccessService()).thenReturn(accessService);
@@ -102,6 +109,7 @@ public class AutoShareDeploymentFnTest {
 
     @Test
     public void testApply_WhenInitialDeploymentIsApp() {
+        when(context.getConfig()).thenReturn(config);
         when(encryptionService.decrypt(anyString())).thenReturn("/Users/user/");
         when(proxy.getEncryptionService()).thenReturn(encryptionService);
         when(proxy.getAccessService()).thenReturn(accessService);
@@ -113,5 +121,25 @@ public class AutoShareDeploymentFnTest {
         assertFalse(fn.apply(EMPTY_OBJECT));
         assertFalse(proxyApiKeyData.getAttachedDeployments().isEmpty());
         assertEquals(ResourceAccessType.READ_ONLY, proxyApiKeyData.getAttachedDeployments().get("applications/123/my-app").accessTypes());
+    }
+
+    @Test
+    public void testApply_WhenInitialDeploymentIsBareNameModel() {
+        when(context.getConfig()).thenReturn(config);
+        when(context.getInitialDeployment()).thenReturn("gpt-5-2025-08-07");
+        when(config.isDeploymentExists("gpt-5-2025-08-07")).thenReturn(true);
+
+        assertFalse(fn.apply(EMPTY_OBJECT));
+        assertTrue(proxyApiKeyData.getAttachedDeployments().isEmpty());
+    }
+
+    @Test
+    public void testApply_WhenInitialDeploymentIsCanonicalIdModel() {
+        when(context.getConfig()).thenReturn(config);
+        when(context.getInitialDeployment()).thenReturn("models/platform/gpt-5-2025-08-07");
+        when(config.isDeploymentExists("models/platform/gpt-5-2025-08-07")).thenReturn(true);
+
+        assertFalse(fn.apply(EMPTY_OBJECT));
+        assertTrue(proxyApiKeyData.getAttachedDeployments().isEmpty());
     }
 }
