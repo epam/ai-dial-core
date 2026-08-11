@@ -1,0 +1,17 @@
+type: object
+description: The custom content of the assistant message.
+properties:
+  state:
+    type: object
+    description: |-
+      The internal state of the Assistant. This field can have an arbitrary set of fields with an arbitrary structure.
+  attachments:
+    type: array
+    items:
+      $ref: "#/components/schemas/RequestAttachment"
+    description: List of attachments used to supply an additional output from the model.
+  form_schema:
+    type: object
+    description: |-
+      The JSON schema describing a form that the assistant prompts the user to fill in.
+      Given this schema, the user is expected to provide a JSON value in the next message in the `custom_content.form_value` field.

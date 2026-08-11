@@ -1,0 +1,5 @@
+type: array
+description: |-
+  The custom embedding inputs that represent multi-modal inputs (e.g. images and video) along with compound inputs (e.g. a title for an image and the image itself).
+items:
+  $ref: '#/components/schemas/EmbeddingsCustomInputElement'

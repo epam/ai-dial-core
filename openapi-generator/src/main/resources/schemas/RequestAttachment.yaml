@@ -1,0 +1,28 @@
+RequestAttachment:
+  type: object
+  properties:
+    type:
+      type: string
+      default: text/markdown
+      description: The content type of the attachment. Should be one of the MIME types.
+    title:
+      type: string
+      description: The title of the attachment.
+    data:
+      type: string
+      description: |-
+        Should follow the format described in the MIME standard for `type`.
+        
+        It is <span style="color: #f604fe;">mandatory</span> for the attachment to have exactly one of the following fields (never both): `data` or `url`.
+    url:
+      type: string
+      description: |-
+        The content of `url` should follow the format described in the MIME standard for `type`.
+        
+        It is <span style="color: #f604fe;">mandatory</span> for the attachment to have exactly one of the following fields (never both): `data` or `url`.
+    reference_type:
+      type: string
+      description: The content type of `reference_url`. Should be one of the MIME types.
+    reference_url:
+      type: string
+      description: If `reference_type` is specified, the content of `reference_url` should follow the format described in the MIME standard for `reference_type`.

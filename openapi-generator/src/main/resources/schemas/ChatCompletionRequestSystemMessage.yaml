@@ -1,0 +1,27 @@
+type: object
+title: System message
+properties:
+  content:
+    description: The contents of the system message.
+    oneOf:
+      - type: string
+        description: The contents of the system message.
+        title: Text content
+      - type: array
+        description: An array of content parts with a defined type. For system messages, only type `text` is supported.
+        title: Array of content parts
+        items:
+          $ref: "#/components/schemas/ChatCompletionRequestSystemMessageContentPart"
+        minItems: 1
+  custom_fields:
+    $ref: "#/components/schemas/ChatCompletionRequestCustomFields"
+  role:
+    type: string
+    enum: ["system"]
+    description: The role of the messages author, in this case `system`.
+  name:
+    type: string
+    description: An optional name for the participant. Provides the model information to differentiate between participants of the same role.
+required:
+  - content
+  - role

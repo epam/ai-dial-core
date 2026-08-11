@@ -1,0 +1,12 @@
+type: object
+description: The custom content of the user message.
+properties:
+  attachments:
+    type: array
+    items:
+      $ref: "#/components/schemas/RequestAttachment"
+    description: List of attachments used to supply an additional input for the model.
+  form_value:
+    type: object
+    description: |-
+      The JSON value corresponding to the JSON schema sent by the assistant in the previous message in the `custom_content.form_schema` field.
