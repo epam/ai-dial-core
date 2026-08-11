@@ -85,6 +85,12 @@ public class CredentialsDescriptorFactory {
         return new CredentialsDescriptor(OFFLINE_CREDENTIALS_ID, bucket.name(), bucket.location());
     }
 
+    /** The same record for an arbitrary owner — the redemption path, where the caller is not the owner. */
+    public static CredentialsDescriptor offlineCredentialsForUser(ProxyContext proxyContext, String ownerUserId) {
+        BucketInfo bucket = getUserBucketInfoForUser(proxyContext, ownerUserId);
+        return new CredentialsDescriptor(OFFLINE_CREDENTIALS_ID, bucket.name(), bucket.location());
+    }
+
     public static BucketInfo getPublicBucketInfo() {
         return new BucketInfo(ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION);
     }

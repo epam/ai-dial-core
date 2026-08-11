@@ -14753,11 +14753,11 @@ components:
     OfflineCredentialsStatus:
       type: object
       properties:
-        available:
-          type: boolean
         connect:
           $ref: "#/components/schemas/OfflineCredentialsStatusConnect"
         connected:
+          type: boolean
+        available:
           type: boolean
     OfflineCredentialsStatusConnect:
       type: object

@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
@@ -1708,6 +1709,51 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testDialNativeUserLevelStatusFollowsOfflineCredentials() throws Exception {
+        // The user-facing surface is the deployment GET: listing an app's services is admin/owner-only.
+        assertEquals("SIGNED_OUT", dialNativeStatusOnApp("user"));
+
+        Mockito.when(validator.resolveOfflineClient(Mockito.any())).thenReturn(ResourceAuthSettings.builder()
+                .authenticationType(AuthenticationType.OAUTH)
+                .clientId("dial-credentials-manager")
+                .clientSecret("secret")
+                .authorizationEndpoint("http://localhost:9876/authorize")
+                .tokenEndpoint("http://localhost:9876/token")
+                .redirectUri("http://localhost:3000/callback")
+                .scopesSupported(List.of("openid", "offline_access"))
+                .build());
+        Mockito.when(validator.resolveIdTokenUserId(Mockito.any(), Mockito.eq("id-token-for-user"))).thenReturn("user");
+        Mockito.when(validator.extractIdTokenIssuer(Mockito.any())).thenReturn("http://idp/realms/dial");
+
+        TestWebServer.Handler handler = request -> new MockResponse()
+                .setBody("""
+                        {
+                            "access_token": "offline-access-token",
+                            "refresh_token": "offline-refresh-token",
+                            "id_token": "id-token-for-user",
+                            "expires_in": 3600
+                        }
+                        """)
+                .setHeader("Content-Type", "application/json");
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response signIn = send(HttpMethod.POST, "/v1/user/offline-credentials/signin", null, """
+                    { "code": "auth-code", "redirect_uri": "http://localhost:3000/callback" }
+                    """, "authorization", "user");
+            assertEquals(200, signIn.status(), signIn.body());
+        }
+
+        assertEquals("SIGNED_IN", dialNativeStatusOnApp("user"));
+        // Another identity is unaffected — offline credentials live in the caller's own bucket.
+        assertEquals("SIGNED_OUT", dialNativeStatusOnApp("admin"));
+
+        Response signOut = send(HttpMethod.POST, "/v1/user/offline-credentials/signout",
+                null, "", "authorization", "user");
+        assertEquals(200, signOut.status(), signOut.body());
+        assertEquals("SIGNED_OUT", dialNativeStatusOnApp("user"));
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
     void testConsentDoesNotAffectOtherServicesStatus() {
         send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
                 null, "", "authorization", "admin");
@@ -1719,6 +1765,13 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
 
     private String dialNativeStatus(String field, String user) {
         return externalService("dial", user).get("auth_settings").get(field).asText();
+    }
+
+    private String dialNativeStatusOnApp(String user) {
+        Response app = send(HttpMethod.GET, "/openai/applications/app-with-services", null, "", "authorization", user);
+        assertEquals(200, app.status(), app.body());
+        return ProxyUtil.convertToObject(app.body(), JsonNode.class)
+                .get("external_services").get("dial").get("auth_settings").get("user_level_auth_status").asText();
     }
 
     private JsonNode externalService(String serviceId, String user) {
