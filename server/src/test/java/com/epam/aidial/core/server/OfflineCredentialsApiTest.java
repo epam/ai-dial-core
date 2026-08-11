@@ -55,9 +55,27 @@ public class OfflineCredentialsApiTest extends ResourceBaseTest {
         Response resp = send(HttpMethod.GET, "/v1/user/offline-credentials", null, "", "authorization", "user");
         assertEquals(200, resp.status(), resp.body());
         assertTrue(resp.body().contains("\"connected\":false"), resp.body());
+        assertTrue(resp.body().contains("\"available\":true"), resp.body());
         assertTrue(resp.body().contains("dial-credentials-manager"), resp.body());
         assertTrue(resp.body().contains("offline_access"), resp.body());
         assertFalse(resp.body().contains("secret"), "client secret must never be published");
+    }
+
+    @Test
+    void testStatusReportsUnavailableWhenProviderHasNoOfflineClient() {
+        // Status must not offer a connect flow that can only fail; the loud 503 belongs to sign-in alone.
+        Mockito.when(provider.getOfflineClient()).thenReturn(null);
+
+        Response resp = send(HttpMethod.GET, "/v1/user/offline-credentials", null, "", "authorization", "user");
+        assertEquals(200, resp.status(), resp.body());
+        assertTrue(resp.body().contains("\"connected\":false"), resp.body());
+        assertTrue(resp.body().contains("\"available\":false"), resp.body());
+        assertFalse(resp.body().contains("connect\":{"), resp.body());
+
+        Response signIn = send(HttpMethod.POST, "/v1/user/offline-credentials/signin", null, """
+                { "code": "auth-code", "redirect_uri": "http://localhost:3000/callback" }
+                """, "authorization", "user");
+        assertEquals(503, signIn.status(), signIn.body());
     }
 
     @Test

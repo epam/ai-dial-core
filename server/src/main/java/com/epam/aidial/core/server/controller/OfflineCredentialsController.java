@@ -72,9 +72,10 @@ public class OfflineCredentialsController {
         taskExecutor.submit(() -> {
             // Same test the app listing uses, so the two endpoints cannot disagree about one user.
             boolean connected = proxy.getResourceAuthSettingsService().hasUnexpiredCredentials(descriptor());
-            // Resolved only when not connected: provider resolution can throw, and a connected caller does
-            // not need it.
-            return OfflineCredentialsStatus.of(connected, connected ? null : provider().getOfflineClient());
+            // Resolved only when not connected: a connected caller does not need it, and a provider that cannot
+            // be resolved (or carries no offline client) is reported as unavailable rather than as an error —
+            // sign-in is where refusing loudly matters.
+            return OfflineCredentialsStatus.of(connected, connected ? null : offlineClientOrNull());
         })
                 .onSuccess(status -> context.respond(HttpStatus.OK, status))
                 .onFailure(error -> respondError("Can't read offline credentials", error));
@@ -196,6 +197,15 @@ public class OfflineCredentialsController {
                     "Offline credentials are not configured for this identity provider");
         }
         return offlineClient;
+    }
+
+    /** For status only: every way the feature can be unusable collapses into "not available". */
+    private ResourceAuthSettings offlineClientOrNull() {
+        try {
+            return provider().getOfflineClient();
+        } catch (HttpException | IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private CredentialsDescriptor descriptor() {

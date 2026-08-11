@@ -14740,6 +14740,8 @@ components:
           $ref: "#/components/schemas/OfflineCredentialsStatusConnect"
         connected:
           type: boolean
+        available:
+          type: boolean
     OfflineCredentialsStatusConnect:
       type: object
       properties:
