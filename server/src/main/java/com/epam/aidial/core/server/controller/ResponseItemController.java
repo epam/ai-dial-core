@@ -45,7 +45,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ResponseItemController implements Controller {
 
-    private static final String OPENAI_RESPONSES_BASE_PATH = "/openai/v1/responses";
 
     private final Proxy proxy;
     private final ProxyContext context;

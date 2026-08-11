@@ -57,15 +57,19 @@ public class DeploymentEndpointUtil {
     }
 
     /**
-     * The absolute uri a deployments-POST request is forwarded to: the ingress path with the
-     * {@code /deployments/{id}/} segment rewritten to the name the deployment is called by, plus the query.
+     * The absolute uri a deployments-POST request is forwarded to. Under {@code interfaces} that is the
+     * ingress path appended to the base url, with the {@code /deployments/{id}/} segment rewritten to the
+     * name the deployment is called by. A pre-{@code interfaces} endpoint is a complete url that already
+     * carries the route, so the ingress path plays no part in it — only the query is carried over.
      *
      * @param ingressPath the inbound request path, without the query
      * @param query       the inbound query string, or null when absent
      */
     public String requestUri(Deployment deployment, InterfaceType type, String ingressPath, @Nullable String query) {
-        String path = rewriteDeploymentSegment(ingressPath, targetPathSegment(deployment));
-        String uri = uri(deployment, type, path);
+        String baseUrl = interfaceBaseUrl(deployment, type);
+        String uri = baseUrl != null
+                ? baseUrl + rewriteDeploymentSegment(ingressPath, targetPathSegment(deployment))
+                : legacyEndpoint(deployment, type);
         return query == null ? uri : uri + "?" + query;
     }
 
