@@ -31,6 +31,8 @@ import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 
+import static com.epam.aidial.core.server.util.PlatformCanonicalIdUtil.lastSegment;
+
 /**
  * Post-processes a freshly-loaded {@link Config} in two passes (slice 2S.9):
  *
@@ -421,11 +423,18 @@ public final class ConfigPostProcessor {
      * Returns true and removes the offending entry when the name was already seen.
      * Abort mode ({@code onSkip == null}) preserves {@link FileConfigStore}'s today-behavior:
      * throw {@link IllegalStateException} and roll back the load.
+     *
+     * <p>Dedupes on the <b>derived short name</b>
+     * ({@link com.epam.aidial.core.server.util.PlatformCanonicalIdUtil#lastSegment}), not the raw map key —
+     * deployment-id uniqueness is a client-facing (short-name) concept, and a file entry
+     * (bare key {@code gpt-4}) and a blob entry of a different type (canonical key
+     * {@code applications/platform/gpt-4}) resolve to the same short name for
+     * {@link Config#selectDeployment}. Comparing raw keys would miss that collision entirely.
      */
     private static boolean skipOnDuplicate(String name, ResourceTypes type, Set<String> deploymentIds,
                                            @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip,
                                            Iterator<?> iterator) {
-        if (deploymentIds.add(name)) {
+        if (deploymentIds.add(lastSegment(name))) {
             return false;
         }
         if (onSkip == null) {
@@ -439,12 +448,30 @@ public final class ConfigPostProcessor {
     }
 
     /**
-     * Last path segment of a map key: identity for a bare (slash-free) file-sourced name,
-     * short name for a canonical id ({@code models/platform/gpt-4} → {@code gpt-4}).
+     * Cross-type deployment-id uniqueness check for single-entity writes (partial-update path,
+     * {@code /v1/admin/apply}): true if {@code canonicalId}'s derived short name is already used
+     * by a <i>different</i> model/application/interceptor/toolset entry in {@code config}.
+     * {@link #skipOnDuplicate} enforces the same invariant during a full rebuild via a shared
+     * {@code deploymentIds} set spanning all four types; this is the equivalent check for a write
+     * that only touches one entity at a time and never runs skipOnDuplicate. Excludes
+     * {@code canonicalId} itself so updating an existing entity in place isn't flagged as a
+     * duplicate of its own prior version.
      */
-    static String lastSegment(String key) {
-        int slash = key.lastIndexOf('/');
-        return slash < 0 ? key : key.substring(slash + 1);
+    public static boolean isDeploymentIdTaken(Config config, String canonicalId) {
+        String shortName = lastSegment(canonicalId);
+        return shortNameTakenIn(config.getModels(), canonicalId, shortName)
+                || shortNameTakenIn(config.getApplications(), canonicalId, shortName)
+                || shortNameTakenIn(config.getInterceptors(), canonicalId, shortName)
+                || shortNameTakenIn(config.getToolsets(), canonicalId, shortName);
+    }
+
+    private static boolean shortNameTakenIn(Map<String, ?> map, String canonicalId, String shortName) {
+        for (String key : map.keySet()) {
+            if (!key.equals(canonicalId) && lastSegment(key).equals(shortName)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isValidResourceKey(String resourceKey) {

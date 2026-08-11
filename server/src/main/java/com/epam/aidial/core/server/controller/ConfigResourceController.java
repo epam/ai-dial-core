@@ -1305,6 +1305,10 @@ public class ConfigResourceController implements Controller {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "Request body must be a JSON object");
             }
             return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
+                // This route is platform-bucket-only (see the dedicated /v1/(applications|toolsets)/
+                // platform/... routes), so unlike the generic ResourceController path every write
+                // here is materialized into Config and subject to deployment-id uniqueness.
+                rejectDuplicateDeploymentId(descriptor);
                 Object decrypted;
                 // The platform bucket requires explicit admin access for every operation (see
                 // AdminRoleAuthorizationService), not just an admin-AND-public-bucket combination like
@@ -1442,6 +1446,10 @@ public class ConfigResourceController implements Controller {
                     entity = treeToEntity(source, spec.entityClass());
                     if (entity instanceof Model m) {
                         checkCrossReferences(m);
+                    }
+                    ResourceTypes writeType = resourceType();
+                    if (writeType == ResourceTypes.MODEL || writeType == ResourceTypes.INTERCEPTOR) {
+                        rejectDuplicateDeploymentId(descriptor);
                     }
                     if (spec.isKey()) {
                         keyEntity = (Key) entity;
@@ -1642,6 +1650,24 @@ public class ConfigResourceController implements Controller {
             context.respond(HttpStatus.NOT_FOUND, notFound.getMessage());
         } else {
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+        }
+    }
+
+    /**
+     * Rejects a MODEL/INTERCEPTOR/APPLICATION/TOOL_SET write whose derived short name is already
+     * claimed by a different deployment (of any of those four types) in the live merged Config —
+     * the partial-update-path counterpart of {@code ConfigPostProcessor.skipOnDuplicate}, which
+     * only runs during a full rebuild. See {@link ConfigPostProcessor#isDeploymentIdTaken}.
+     */
+    private void rejectDuplicateDeploymentId(ResourceDescriptor descriptor) {
+        Config snapshot = mergedConfigStore.get();
+        if (snapshot == null) {
+            return;
+        }
+        String canonicalId = MergedConfigStore.canonicalId(descriptor);
+        if (ConfigPostProcessor.isDeploymentIdTaken(snapshot, canonicalId)) {
+            throw new HttpException(HttpStatus.CONFLICT,
+                    "Deployment ID '" + path + "' is already used by a different entity");
         }
     }
 

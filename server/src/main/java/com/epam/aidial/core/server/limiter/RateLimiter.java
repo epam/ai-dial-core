@@ -26,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -396,9 +397,24 @@ public class RateLimiter {
     }
 
     private static Limit getLimit(Config config, String userRole, String name, Limit defaultLimit) {
-        return Optional.ofNullable(config.getRole(userRole))
-                .map(role -> role.getLimits().get(name))
-                .orElse(defaultLimit);
+        Role role = config.getRole(userRole);
+        if (role == null) {
+            return defaultLimit;
+        }
+        Limit limit = role.getLimits().get(name);
+        if (limit != null) {
+            return limit;
+        }
+        // Compat: a Role.limits entry may still be keyed by the canonical id a previously-shipped
+        // build exposed for API-managed deployments (e.g. "models/platform/gpt-4") before
+        // deployment.getName() reverted to the short name. Fall back to a last-segment match so
+        // those pre-existing entries keep resolving after upgrade.
+        for (Map.Entry<String, Limit> entry : role.getLimits().entrySet()) {
+            if (entry.getKey().endsWith("/" + name)) {
+                return entry.getValue();
+            }
+        }
+        return defaultLimit;
     }
 
     private static CostLimit getCostLimit(Config config, String userRole, CostLimit defaultCostLimit) {
