@@ -1007,9 +1007,23 @@ public final class MergedConfigStore implements ConfigStore {
      * and catalog schemas are referenced by the arbitrary $id embedded in the body, not by a
      * derivable last-path-segment, so this index bridges $id-keyed file entries and
      * canonical-id-keyed blob entries.
+     *
+     * <p>An update may change this entity's own $id — evict any alias {@code canonicalId} held
+     * under its previous $id first, so the old $id stops resolving once the body no longer
+     * carries it. No-op during a full rebuild, where {@code aliasesById} starts empty each pass.
+     *
+     * <p>Same transient gap as {@link #removeEntityInPlace}'s javadoc describes for a deleted
+     * canonical id, but triggered by an <em>update</em> rather than a delete: the file entry
+     * shadowed under the <b>old</b> $id when this canonical id was first migrated is removed from
+     * {@code schemas} at that point and is never restored here, even though this canonical id no
+     * longer claims that $id after the change — the old $id stays unreachable via either the file
+     * entry or this canonical id until the next full {@link #rebuild()}. Changing a schema's $id
+     * away from a value is, from the shadowed file entry's perspective, indistinguishable from
+     * deleting the entity that was shadowing it.
      */
-    private static void recordSchemaAlias(Map<String, String> schemas, Map<String, String> aliasesById,
+    public static void recordSchemaAlias(Map<String, String> schemas, Map<String, String> aliasesById,
                                           String canonicalId, JsonNode node) {
+        aliasesById.values().removeIf(canonicalId::equals);
         JsonNode idNode = node.get("$id");
         if (idNode != null && idNode.isTextual()) {
             schemas.remove(idNode.asText());
@@ -1026,6 +1040,10 @@ public final class MergedConfigStore implements ConfigStore {
      * via this partial-update path stays unreachable until the next periodic rebuild, bounded by
      * {@link FileConfigStore}'s poll interval. Do not add restoration logic here — that would make
      * delete-then-rebuild diverge instead of converge.
+     *
+     * <p>For {@code APP_TYPE_SCHEMA}/{@code CATALOG_SCHEMA} the identical gap also arises without
+     * a delete at all — see {@link #recordSchemaAlias}'s javadoc for why an in-place $id change
+     * has the same effect on the old $id's shadowed file entry.
      */
     private static void removeEntityInPlace(Config config, ResourceTypes type, String canonicalId) {
         switch (type) {

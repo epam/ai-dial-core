@@ -272,6 +272,8 @@ public class AdminApplyController {
             scratch.setInterceptors(new HashMap<>(live.getInterceptors()));
             scratch.setApplicationTypeSchemas(new HashMap<>(live.getApplicationTypeSchemas()));
             scratch.setCatalogSchemas(new HashMap<>(live.getCatalogSchemas()));
+            scratch.setSchemaAliasesById(new HashMap<>(live.getSchemaAliasesById()));
+            scratch.setCatalogSchemaAliasesById(new HashMap<>(live.getCatalogSchemaAliasesById()));
             scratch.setApplications(new HashMap<>(live.getApplications()));
             scratch.setToolsets(new HashMap<>(live.getToolsets()));
             scratch.setRoles(new HashMap<>(live.getRoles()));
@@ -357,11 +359,15 @@ public class AdminApplyController {
                     if (!entry.spec().isObject()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, "Schema spec must be a JSON object");
                     }
+                    ConfigResourceController.rejectSchemaIdCollision(scratch, ResourceTypes.APP_TYPE_SCHEMA,
+                            entry.name(), entry.spec());
                 }
                 case "CatalogSchema" -> {
                     if (!entry.spec().isObject()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, "CatalogSchema spec must be a JSON object");
                     }
+                    ConfigResourceController.rejectSchemaIdCollision(scratch, ResourceTypes.CATALOG_SCHEMA,
+                            entry.name(), entry.spec());
                 }
                 default -> {
                     return new ValidationResult(id, ValidationStatus.FAILED, "Unknown kind: " + entry.kind());
@@ -398,8 +404,8 @@ public class AdminApplyController {
         }
         return switch (entry.kind()) {
             case "Settings" -> applySettings(entry, id, parsed);
-            case "Schema" -> applySchema(entry, id, parsed, pending, ResourceTypes.APP_TYPE_SCHEMA);
-            case "CatalogSchema" -> applySchema(entry, id, parsed, pending, ResourceTypes.CATALOG_SCHEMA);
+            case "Schema" -> applySchema(entry, id, parsed, scratch, pending, ResourceTypes.APP_TYPE_SCHEMA);
+            case "CatalogSchema" -> applySchema(entry, id, parsed, scratch, pending, ResourceTypes.CATALOG_SCHEMA);
             case "Interceptor" -> applyManagedEntity(entry, id, parsed, ResourceTypes.INTERCEPTOR, Interceptor.class, scratch, pending);
             case "Role" -> applyManagedEntity(entry, id, parsed, ResourceTypes.ROLE, Role.class, scratch, pending);
             case "Route" -> applyManagedEntity(entry, id, parsed, ResourceTypes.ROUTE, Route.class, scratch, pending);
@@ -423,13 +429,19 @@ public class AdminApplyController {
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applySchema(AdminManifest entry, String id, ParsedName parsed, List<EntityChange> pending,
-                                     ResourceTypes type) {
+    private EntityResult applySchema(AdminManifest entry, String id, ParsedName parsed, Config scratch,
+                                     List<EntityChange> pending, ResourceTypes type) {
         if (!entry.spec().isObject()) {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Schema spec must be a JSON object");
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 type, parsed.bucket(), parsed.location(), parsed.name());
+        try {
+            ConfigResourceController.rejectSchemaIdCollision(scratch, type,
+                    MergedConfigStore.canonicalId(descriptor), entry.spec());
+        } catch (HttpException e) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, e.getMessage());
+        }
         String blobBody;
         try {
             blobBody = ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec());
@@ -626,6 +638,8 @@ public class AdminApplyController {
                         return;
                     }
                     scratch.getApplicationTypeSchemas().put(entry.name(), json);
+                    MergedConfigStore.recordSchemaAlias(scratch.getApplicationTypeSchemas(),
+                            scratch.getSchemaAliasesById(), entry.name(), entry.spec());
                 }
                 case "CatalogSchema" -> {
                     String json;
@@ -635,6 +649,8 @@ public class AdminApplyController {
                         return;
                     }
                     scratch.getCatalogSchemas().put(entry.name(), json);
+                    MergedConfigStore.recordSchemaAlias(scratch.getCatalogSchemas(),
+                            scratch.getCatalogSchemaAliasesById(), entry.name(), entry.spec());
                 }
                 default -> { /* unknown kinds never reach this code path */ }
             }

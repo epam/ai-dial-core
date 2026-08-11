@@ -1402,6 +1402,11 @@ public class ConfigResourceController implements Controller {
                 String oldSecret = null;
                 Object entity = null;
                 if (spec.entityClass() == null) {
+                    ResourceTypes schemaType = resourceType();
+                    if (schemaType == ResourceTypes.APP_TYPE_SCHEMA || schemaType == ResourceTypes.CATALOG_SCHEMA) {
+                        rejectSchemaIdCollision(mergedConfigStore.get(), schemaType,
+                                MergedConfigStore.canonicalId(descriptor), requestNode);
+                    }
                     blobBody = requestNode.toString();
                 } else {
                     if (!requestNode.isObject()) {
@@ -1558,6 +1563,40 @@ public class ConfigResourceController implements Controller {
         // prepareWrite() always builds descriptors with a ResourceTypes constant — see below;
         // ResourceDescriptor exposes the wider ResourceType interface so the cast is required here.
         return (ResourceTypes) descriptor.getType();
+    }
+
+    /**
+     * App-type/catalog schemas are looked up by their body-embedded {@code $id}
+     * ({@link Config#getCustomApplicationSchema}/{@link Config#getCatalogSchema}) via
+     * {@code MergedConfigStore}'s {@code $id -> canonicalId} alias index, which only ever holds
+     * one canonical id per $id. Reject a write whose $id is already claimed by a *different*
+     * canonical id, rather than let the index silently pick whichever write landed most recently.
+     * The alias index only ever contains blob-sourced entries (file-sourced schemas are keyed
+     * directly by $id and never added to it), so a file-schema sharing this $id — the expected
+     * pre-migration predecessor a blob write is meant to shadow — is never mistaken for a
+     * collision here.
+     *
+     * <p>Package-visible: shared with {@link AdminApplyController#applySchema}/
+     * {@link AdminApplyController#validateOnly}, the other write/precheck paths for these types.
+     * Takes a {@link Config} snapshot rather than {@link MergedConfigStore} so callers can pass
+     * either the live merged config or a batch-apply {@code scratch} clone.
+     */
+    static void rejectSchemaIdCollision(Config snapshot, ResourceTypes type, String thisCanonicalId, JsonNode requestNode) {
+        if (snapshot == null) {
+            return;
+        }
+        JsonNode idNode = requestNode.get("$id");
+        if (idNode == null || !idNode.isTextual()) {
+            return;
+        }
+        String id = idNode.asText();
+        Map<String, String> aliasesById = type == ResourceTypes.APP_TYPE_SCHEMA
+                ? snapshot.getSchemaAliasesById() : snapshot.getCatalogSchemaAliasesById();
+        String owner = aliasesById.get(id);
+        if (owner != null && !owner.equals(thisCanonicalId)) {
+            throw new HttpException(HttpStatus.CONFLICT,
+                    "Schema $id '" + id + "' is already used by '" + owner + "'");
+        }
     }
 
     private static ApiKeyData apiKeyData(Key key) {
