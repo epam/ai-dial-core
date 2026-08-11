@@ -28,12 +28,6 @@ public class ExternalServiceStatusEnricher {
     }
 
     public void enrich(CredentialsLocator credentialsLocator, ResourceAuthSettings authSettings) {
-        if (context.getUserId() == null) {
-            // A userless caller (an API key) has no bucket to look in and no user-level status to report. Leave the
-            // settings as they are: matching user credentials by a null user id fails deeper, where it reads as a
-            // server fault rather than an absent user.
-            return;
-        }
         resourceAuthSettingsService.setExternalServiceAuthStatuses(credentialsLocator, authSettings, context.getUserId());
         if (authSettings.getAuthenticationType() == AuthenticationType.DIAL_NATIVE) {
             authSettings.setUserLevelAuthStatus(hasOfflineCredentials()
@@ -43,7 +37,8 @@ public class ExternalServiceStatusEnricher {
 
     private boolean hasOfflineCredentials() {
         if (offlineCredentials == null) {
-            offlineCredentials = resourceAuthSettingsService.hasUnexpiredCredentials(
+            // A userless caller (an API key) is not a person, so it holds no offline credentials by definition.
+            offlineCredentials = context.getUserId() != null && resourceAuthSettingsService.hasUnexpiredCredentials(
                     CredentialsDescriptorFactory.offlineCredentials(context));
         }
         return offlineCredentials;
