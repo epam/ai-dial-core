@@ -398,7 +398,11 @@ public class ExternalServiceCredentialsController {
     private void requireAdminConsent(String url, String appPart, String serviceId) {
         CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(url, context);
         CredentialsDescriptor consent = locator.getCredentialsDescriptors().get(CredentialsLevel.APPLICATION);
-        if (consent == null || resourceCredentialsService.getResourceCredentials(consent) == null) {
+        ResourceCredentials record = consent == null ? null : resourceCredentialsService.getResourceCredentials(consent);
+        // Only a record the consent endpoint wrote counts. The same APPLICATION-level slot holds ordinary
+        // credentials while a service is OAUTH/API_KEY, and a leftover from before a switch to DIAL_NATIVE
+        // would otherwise pass as an administrator's approval the app owner granted themselves.
+        if (record == null || !AuthenticationType.DIAL_NATIVE.equals(record.getAuthenticationType())) {
             throw new ConsentRequiredException(
                     "Application '%s' is not approved to use '%s'".formatted(appPart, serviceId));
         }

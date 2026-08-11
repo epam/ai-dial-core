@@ -1610,6 +1610,79 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testAuthTypeChangePurgesApplicationLevelCredentials() {
+        // Without the purge, the API_KEY record stored below would survive the switch to DIAL_NATIVE — sitting
+        // exactly where the consent check looks, as an approval no administrator ever granted.
+        putDynamicApp("type-change-app", AuthenticationType.API_KEY);
+
+        Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "applications/public/type-change-app/external_services/svc",
+                    "credentials_level": "APPLICATION",
+                    "authentication_type": "API_KEY",
+                    "api_key": "app-key"
+                }
+                """, "authorization", "admin");
+        assertEquals(200, signIn.status(), signIn.body());
+        assertEquals("SIGNED_IN", dynamicAppLevelStatus("public/type-change-app"));
+
+        Response put = send(HttpMethod.PUT, "/v1/applications/public/type-change-app/external-services/svc", null, """
+                { "auth_settings": { "authentication_type": "DIAL_NATIVE" } }
+                """, "authorization", "admin");
+        assertEquals(200, put.status(), put.body());
+
+        assertEquals("SIGNED_OUT", dynamicAppLevelStatus("public/type-change-app"));
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testAuthTypeChangeOnApplicationWritePurgesApplicationLevelCredentials() {
+        // Same invariant through the whole-application write path (processOnWrite), not the per-service PUT.
+        putDynamicApp("write-change-app", AuthenticationType.API_KEY);
+
+        Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "applications/public/write-change-app/external_services/svc",
+                    "credentials_level": "APPLICATION",
+                    "authentication_type": "API_KEY",
+                    "api_key": "app-key"
+                }
+                """, "authorization", "admin");
+        assertEquals(200, signIn.status(), signIn.body());
+        assertEquals("SIGNED_IN", dynamicAppLevelStatus("public/write-change-app"));
+
+        putDynamicApp("write-change-app", AuthenticationType.DIAL_NATIVE);
+
+        assertEquals("SIGNED_OUT", dynamicAppLevelStatus("public/write-change-app"));
+    }
+
+    private void putDynamicApp(String name, AuthenticationType type) {
+        Application app = new Application();
+        app.setEndpoint("http://localhost:7001/v1/x");
+        ResourceAuthSettings.ResourceAuthSettingsBuilder auth = ResourceAuthSettings.builder().authenticationType(type);
+        if (type == AuthenticationType.API_KEY) {
+            auth.apiKeyHeader("X-API-Key");
+        }
+        app.setExternalServices(Map.of("svc", new ExternalService().setAuthSettings(auth.build())));
+        dial.getProxy().getApplicationService().putApplication(
+                ResourceDescriptorFactory.fromPublicUrl("applications/public/" + name),
+                EtagHeader.ANY, null, app, false, AdminManagedFieldsWriteMode.AUTHORITATIVE);
+    }
+
+    private String dynamicAppLevelStatus(String appId) {
+        Response list = send(HttpMethod.GET, "/v1/applications/" + appId + "/external-services",
+                null, "", "authorization", "admin");
+        assertEquals(200, list.status(), list.body());
+        for (JsonNode service : ProxyUtil.convertToObject(list.body(), JsonNode.class)) {
+            if ("svc".equals(service.get("id").asText())) {
+                return service.get("auth_settings").get("app_level_auth_status").asText();
+            }
+        }
+        throw new AssertionError("service 'svc' missing from " + list.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
     void testConsentForUnknownServiceIsNotFound() {
         Response grant = send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/nope/consent",
                 null, "", "authorization", "admin");

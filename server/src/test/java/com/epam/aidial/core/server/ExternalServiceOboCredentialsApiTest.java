@@ -1194,6 +1194,27 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
         assertFalse(obo.body().contains("stale-access-token"), obo.body());
     }
 
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testLeftoverAppLevelCredentialDoesNotPassAsAdminConsent() {
+        // The consent slot is the same APPLICATION-level storage ordinary credentials use while a service is
+        // OAUTH/API_KEY. A record left from before a switch to DIAL_NATIVE is not an administrator's approval,
+        // even though it sits exactly where the consent check looks.
+        CredentialsDescriptor consentSlot = new CredentialsDescriptor(
+                "applications/config/app-with-services/external_services/dial",
+                ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION);
+        dial.getProxy().getResourceCredentialsService().putCredentialsRecord(consentSlot, ResourceCredentials.builder()
+                .resourceId(consentSlot.getResourceId())
+                .credentialsLevel(CredentialsLevel.APPLICATION)
+                .authenticationType(AuthenticationType.OAUTH)
+                .accessToken("leftover-app-token")
+                .build());
+
+        Response obo = obo(DIAL_NATIVE_SCOPE, "user", SCHEDULER_KEY);
+        assertEquals(403, obo.status(), () -> obo.body());
+        assertTrue(obo.body().contains("not approved"), obo.body());
+    }
+
     private void stubOfflineProvider() {
         IdentityProvider provider = Mockito.mock(IdentityProvider.class);
         Mockito.when(provider.getOfflineClient()).thenReturn(ResourceAuthSettings.builder()
