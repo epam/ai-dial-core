@@ -376,14 +376,11 @@ public class ExternalServiceManagementController {
     public Future<?> grantConsent(String appId, String serviceId) {
         return consentOperation(appId, serviceId, "GRANT", "Can't grant consent", service -> {
             CredentialsDescriptor descriptor = consentDescriptor(appId, serviceId);
-            long now = System.currentTimeMillis();
             // The record's existence is the approval; who granted it is in the audit event, which keeps history.
             resourceCredentialsService.putCredentialsRecord(descriptor, ResourceCredentials.builder()
                     .resourceId(descriptor.getResourceId())
                     .credentialsLevel(CredentialsLevel.APPLICATION)
                     .authenticationType(service.getAuthSettings().getAuthenticationType())
-                    .createdAt(now)
-                    .updatedAt(now)
                     .build());
             return true;
         });
