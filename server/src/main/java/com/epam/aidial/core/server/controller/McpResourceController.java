@@ -247,14 +247,21 @@ public class McpResourceController implements Controller {
             return Optional.empty();
         }
         if (semicolonIdx >= 0) {
-            // Prepend ";" so every param token has a uniform prefix — avoids split() and
-            // bounds the work to O(|ALLOWED_CHARSETS|) regardless of how many params the
-            // upstream sends (prevents ReDoS / large-input amplification via split).
-            String params = ";" + stripped.substring(semicolonIdx + 1);
-            for (String charset : ALLOWED_CHARSETS) {
-                String target = ";charset=" + charset;
-                if (params.endsWith(target) || params.contains(target + ";")) {
-                    return Optional.of(baseMimeType + ";charset=" + charset);
+            // split(";") on a literal delimiter is linear — no backtracking.
+            // strip() on each token handles OWS around ";" (RFC 9110 allows it).
+            // First charset= param wins; duplicates are ignored.
+            for (String param : stripped.substring(semicolonIdx + 1).split(";")) {
+                String p = param.strip();
+                if (p.startsWith("charset=")) {
+                    String cs = p.substring("charset=".length()).strip();
+                    // Strip surrounding double quotes per RFC 9110 §5.6.6 quoted-string.
+                    // Only enclosing quotes are removed; single quotes are not special in HTTP.
+                    if (cs.length() >= 2 && cs.startsWith("\"") && cs.endsWith("\"")) {
+                        cs = cs.substring(1, cs.length() - 1);
+                    }
+                    return Optional.of(ALLOWED_CHARSETS.contains(cs)
+                            ? baseMimeType + ";charset=" + cs
+                            : baseMimeType);
                 }
             }
         }

@@ -338,6 +338,39 @@ class McpResourceControllerTest {
         assertEquals("image/png", McpResourceController.resolveContentType("image/png").orElseThrow());
     }
 
+    @Test
+    void resolveContentType_owsAroundSemicolon_charsetForwarded() {
+        // Express/FastAPI/Starlette emit "text/html; charset=utf-8" (space after semicolon)
+        assertEquals("text/html;charset=utf-8", McpResourceController.resolveContentType("text/html; charset=utf-8").orElseThrow());
+    }
+
+    @Test
+    void resolveContentType_owsAroundSemicolonWithProfile_charsetForwarded() {
+        assertEquals("text/html;charset=utf-8", McpResourceController.resolveContentType("text/html; charset=utf-8; profile=mcp-app").orElseThrow());
+    }
+
+    @Test
+    void resolveContentType_quotedCharset_forwarded() {
+        // RFC 9110 §5.6.6 quoted-string form: charset="utf-8"
+        assertEquals("text/html;charset=utf-8", McpResourceController.resolveContentType("text/html;charset=\"utf-8\"").orElseThrow());
+    }
+
+    @Test
+    void resolveContentType_singleQuotedCharset_dropped() {
+        // Single quotes are not special in HTTP (RFC 9110) — treated as part of the value
+        assertEquals("text/html", McpResourceController.resolveContentType("text/html;charset='utf-8'").orElseThrow());
+    }
+
+    @Test
+    void resolveContentType_duplicateCharset_firstWins() {
+        assertEquals("text/html;charset=utf-8", McpResourceController.resolveContentType("text/html;charset=utf-8;charset=iso-8859-1").orElseThrow());
+    }
+
+    @Test
+    void resolveContentType_spaceAfterEqualsInCharset_forwarded() {
+        assertEquals("text/html;charset=utf-8", McpResourceController.resolveContentType("text/html;charset= utf-8").orElseThrow());
+    }
+
     // --- sendResourceResponse ---
 
     @Test
