@@ -1777,6 +1777,40 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
         assertEquals(400, signIn.status());
     }
 
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testSignOutCannotRemoveAdminConsent() {
+        // The consent record lives at APPLICATION level under the same scope the generic sign-out addresses, and
+        // sign-out admits app owners — so without this refusal an owner could withdraw an admin's decision, unaudited.
+        send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "admin");
+
+        Response signOut = send(HttpMethod.POST, "/v1/ops/external-service/signout", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "APPLICATION",
+                    "authentication_type": "DIAL_NATIVE"
+                }
+                """.formatted(DIAL_NATIVE_SCOPE), "authorization", "admin");
+        assertEquals(400, signOut.status(), signOut.body());
+        assertTrue(signOut.body().contains("not applicable"), signOut.body());
+
+        assertEquals("SIGNED_IN", dialNativeStatus("app_level_auth_status", "admin"));
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testSignOutRejectedForDialNativeServiceAtUserLevel() {
+        Response signOut = send(HttpMethod.POST, "/v1/ops/external-service/signout", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "USER",
+                    "authentication_type": "DIAL_NATIVE"
+                }
+                """.formatted(DIAL_NATIVE_SCOPE), "authorization", "user");
+        assertEquals(400, signOut.status(), signOut.body());
+    }
+
     private ApiKeyData newAppKey(String sourceDeployment, String role) {
         ApiKeyData perRequestKey = new ApiKeyData();
         perRequestKey.setExtractedClaims(createClaims(role));

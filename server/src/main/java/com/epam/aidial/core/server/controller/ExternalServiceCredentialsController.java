@@ -174,6 +174,7 @@ public class ExternalServiceCredentialsController {
                     ResolvedExternalService resolved = resolveExternalService(request.getUrl());
                     ResourceAuthSettings authSettings = resolved.externalService.getAuthSettings();
                     validateAuthType(authSettings.getAuthenticationType(), request.getAuthenticationType());
+                    rejectDialNativeSignOut(authSettings.getAuthenticationType());
                     verifyAccess(resolved, request.getCredentialsLevel());
 
                     CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(request.getUrl(), context);
@@ -557,6 +558,19 @@ public class ExternalServiceCredentialsController {
         if (AuthenticationType.DIAL_NATIVE.equals(configured)) {
             throw new IllegalArgumentException(("Sign-in is not applicable to %s services: users grant offline access "
                     + "via the offline-credentials endpoints, and an administrator approves the application separately")
+                    .formatted(AuthenticationType.DIAL_NATIVE));
+        }
+    }
+
+    /**
+     * A DIAL-native service also has nothing to sign out of: no USER-level record ever exists, and the
+     * APPLICATION-level record is the administrator's consent — deletable only through the audited,
+     * admin-only consent endpoint, never through the app-owner-accessible generic sign-out.
+     */
+    private void rejectDialNativeSignOut(AuthenticationType configured) {
+        if (AuthenticationType.DIAL_NATIVE.equals(configured)) {
+            throw new IllegalArgumentException(("Sign-out is not applicable to %s services: users disconnect via the "
+                    + "offline-credentials endpoints, and an administrator withdraws consent via the consent endpoint")
                     .formatted(AuthenticationType.DIAL_NATIVE));
         }
     }
