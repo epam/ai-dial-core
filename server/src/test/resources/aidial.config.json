@@ -225,6 +225,19 @@
     "claude-no-iface": {
       "type": "chat",
       "endpoint": "http://localhost:4848/v1/chat/completions"
+    },
+    "claude-to-chat-completions": {
+      "type": "chat",
+      "features": {
+        "max_tokens_supported": false,
+        "custom_temperature_supported": false,
+        "tools_supported": true
+      },
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848/to-chat-completions"} }
+    },
+    "claude-to-responses": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848/to-responses"} }
     }
   },
   "toolsets": {
@@ -313,7 +326,9 @@
         "claude-limited": {"minute": "10", "day": "10"},
         "claude-upstream": {"minute": "100000", "day": "10000000"},
         "claude-override": {"minute": "100000", "day": "10000000"},
-        "claude-no-iface": {"minute": "100000", "day": "10000000"}
+        "claude-no-iface": {"minute": "100000", "day": "10000000"},
+        "claude-to-chat-completions": {"minute": "100000", "day": "10000000"},
+        "claude-to-responses": {"minute": "100000", "day": "10000000"}
       }
     },
     "vstore_user": {
