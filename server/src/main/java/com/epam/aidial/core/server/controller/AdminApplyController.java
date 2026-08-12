@@ -272,7 +272,7 @@ public class AdminApplyController {
             scratch.setInterceptors(new HashMap<>(live.getInterceptors()));
             scratch.setApplicationTypeSchemas(new HashMap<>(live.getApplicationTypeSchemas()));
             scratch.setCatalogSchemas(new HashMap<>(live.getCatalogSchemas()));
-            scratch.setSchemaAliasesById(new HashMap<>(live.getSchemaAliasesById()));
+            scratch.setApplicationSchemaAliasesById(new HashMap<>(live.getApplicationSchemaAliasesById()));
             scratch.setCatalogSchemaAliasesById(new HashMap<>(live.getCatalogSchemaAliasesById()));
             scratch.setApplications(new HashMap<>(live.getApplications()));
             scratch.setToolsets(new HashMap<>(live.getToolsets()));
@@ -639,7 +639,7 @@ public class AdminApplyController {
                     }
                     String previousJson = scratch.getApplicationTypeSchemas().put(entry.name(), json);
                     MergedConfigStore.recordSchemaAlias(scratch.getApplicationTypeSchemas(),
-                            scratch.getSchemaAliasesById(), entry.name(), previousJson, entry.spec());
+                            scratch.getApplicationSchemaAliasesById(), entry.name(), previousJson, entry.spec());
                 }
                 case "CatalogSchema" -> {
                     String json;

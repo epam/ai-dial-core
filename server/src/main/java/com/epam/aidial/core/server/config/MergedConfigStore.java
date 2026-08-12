@@ -887,7 +887,7 @@ public final class MergedConfigStore implements ConfigStore {
         next.setRoutes(base.getRoutes());
         next.setApplicationTypeSchemas(base.getApplicationTypeSchemas());
         next.setCatalogSchemas(base.getCatalogSchemas());
-        next.setSchemaAliasesById(base.getSchemaAliasesById());
+        next.setApplicationSchemaAliasesById(base.getApplicationSchemaAliasesById());
         next.setCatalogSchemaAliasesById(base.getCatalogSchemaAliasesById());
         next.setApplications(base.getApplications());
         next.setToolsets(base.getToolsets());
@@ -933,7 +933,7 @@ public final class MergedConfigStore implements ConfigStore {
             case ROUTE -> config.setRoutes(new LinkedHashMap<>(config.getRoutes()));
             case APP_TYPE_SCHEMA -> {
                 config.setApplicationTypeSchemas(new LinkedHashMap<>(config.getApplicationTypeSchemas()));
-                config.setSchemaAliasesById(new HashMap<>(config.getSchemaAliasesById()));
+                config.setApplicationSchemaAliasesById(new HashMap<>(config.getApplicationSchemaAliasesById()));
             }
             case CATALOG_SCHEMA -> {
                 config.setCatalogSchemas(new LinkedHashMap<>(config.getCatalogSchemas()));
@@ -968,7 +968,7 @@ public final class MergedConfigStore implements ConfigStore {
             case PROJECT_KEY -> config.getKeys().put(canonicalId, (Key) entity);
             case ROUTE -> config.getRoutes().put(canonicalId, (Route) entity);
             case APP_TYPE_SCHEMA ->
-                    putSchemaInPlace(config.getApplicationTypeSchemas(), config.getSchemaAliasesById(), canonicalId, entity);
+                    putSchemaInPlace(config.getApplicationTypeSchemas(), config.getApplicationSchemaAliasesById(), canonicalId, entity);
             case CATALOG_SCHEMA ->
                     putSchemaInPlace(config.getCatalogSchemas(), config.getCatalogSchemaAliasesById(), canonicalId, entity);
             case APPLICATION -> putNameAddressed(config.getApplications(), canonicalId, (Application) entity);
@@ -999,31 +999,11 @@ public final class MergedConfigStore implements ConfigStore {
     }
 
     /**
-     * Records the {@code $id → canonicalId} alias read from a schema's body, and removes the
-     * file-defined entry keyed by that same $id — the schema-specific counterpart of the
-     * blob-shadows-file behavior used for name-addressed types: file entries are keyed by $id,
-     * blob entries by canonical id, so a migrated schema would otherwise appear twice in
-     * $id-keyed listings ({@code ApplicationTypeSchemaController}/{@code CatalogSchemaController}
-     * both iterate the whole map and read each entry's own body $id, not the map key). App-type
-     * and catalog schemas are referenced by the arbitrary $id embedded in the body, not by a
-     * derivable last-path-segment, so this index bridges $id-keyed file entries and
-     * canonical-id-keyed blob entries.
+     * Records the {@code $id → canonicalId} alias for a schema body, and removes the file-defined
+     * entry keyed by that same $id so a migrated schema doesn't appear twice in $id-keyed listings.
      *
-     * <p>An update may change this entity's own $id. {@code previousBody} — the body this same
-     * canonical id held immediately before this call (the return value of the {@code schemas.put}/
-     * {@code remove} the caller just performed, or {@code null} on a fresh create) — is read
-     * directly for its own $id and evicted by that key, an O(1) targeted removal rather than a
-     * scan over every alias for one matching this canonical id's value. {@code null} on a fresh
-     * create, so there is nothing to evict there.
-     *
-     * <p>Same transient gap as {@link #removeEntityInPlace}'s javadoc describes for a deleted
-     * canonical id, but triggered by an <em>update</em> rather than a delete: the file entry
-     * shadowed under the <b>old</b> $id when this canonical id was first migrated is removed from
-     * {@code schemas} at that point and is never restored here, even though this canonical id no
-     * longer claims that $id after the change — the old $id stays unreachable via either the file
-     * entry or this canonical id until the next full {@link #rebuild()}. Changing a schema's $id
-     * away from a value is, from the shadowed file entry's perspective, indistinguishable from
-     * deleting the entity that was shadowing it.
+     * <p>If this canonical id previously held a different $id ({@code previousBody}), that stale
+     * alias is evicted first — otherwise it would keep pointing here after the $id changed.
      */
     public static void recordSchemaAlias(Map<String, String> schemas, Map<String, String> aliasesById,
                                           String canonicalId, String previousBody, JsonNode node) {
@@ -1052,16 +1032,8 @@ public final class MergedConfigStore implements ConfigStore {
     /**
      * Removes only the canonical-id entry. Deliberately does <b>not</b> restore the file-defined
      * entry that {@link #putNameAddressed}/{@link #shadowFileEntry} shadowed when the blob entity
-     * was created — that resurrection happens naturally on the next full {@link #rebuild()}, which
-     * always starts from a fresh copy of the file-derived {@link Config} and only shadows short
-     * names that still have a live blob. This is an accepted, transient gap: a short name deleted
-     * via this partial-update path stays unreachable until the next periodic rebuild, bounded by
-     * {@link FileConfigStore}'s poll interval. Do not add restoration logic here — that would make
-     * delete-then-rebuild diverge instead of converge.
-     *
-     * <p>For {@code APP_TYPE_SCHEMA}/{@code CATALOG_SCHEMA} the identical gap also arises without
-     * a delete at all — see {@link #recordSchemaAlias}'s javadoc for why an in-place $id change
-     * has the same effect on the old $id's shadowed file entry.
+     * was created — an accepted, transient gap: the short name stays unreachable until the next
+     * full {@link #rebuild()} restores it. Do not add restoration logic here.
      */
     private static void removeEntityInPlace(Config config, ResourceTypes type, String canonicalId) {
         switch (type) {
@@ -1074,7 +1046,7 @@ public final class MergedConfigStore implements ConfigStore {
                 String removedBody = config.getApplicationTypeSchemas().remove(canonicalId);
                 String id = removedBody == null ? null : extractSchemaId(removedBody);
                 if (id != null) {
-                    config.getSchemaAliasesById().remove(id);
+                    config.getApplicationSchemaAliasesById().remove(id);
                 }
             }
             case CATALOG_SCHEMA -> {
@@ -1131,7 +1103,7 @@ public final class MergedConfigStore implements ConfigStore {
         Map<String, ToolSet> toolsets = new LinkedHashMap<>(base.getToolsets());
         // $id -> canonicalId index, built fresh each rebuild from the blob scan below; file
         // entries need no alias since they're already keyed by $id.
-        Map<String, String> schemaAliasesById = new HashMap<>();
+        Map<String, String> applicationSchemaAliasesById = new HashMap<>();
         Map<String, String> catalogSchemaAliasesById = new HashMap<>();
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
         merged.setGlobalInterceptors(base.getGlobalInterceptors());
@@ -1148,7 +1120,7 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setCatalogSchemas(catalogSchemas);
         merged.setApplications(applications);
         merged.setToolsets(toolsets);
-        merged.setSchemaAliasesById(schemaAliasesById);
+        merged.setApplicationSchemaAliasesById(applicationSchemaAliasesById);
         merged.setCatalogSchemaAliasesById(catalogSchemaAliasesById);
 
         Map<String, JsonNode> blobBodies = new HashMap<>();
@@ -1401,7 +1373,7 @@ public final class MergedConfigStore implements ConfigStore {
                 Map<String, String> schemas = config.getApplicationTypeSchemas();
                 String previousBody = schemas.put(canonicalId, node.toString());
                 warnIfReplaced(type, canonicalId, previousBody);
-                recordSchemaAlias(schemas, config.getSchemaAliasesById(), canonicalId, previousBody, node);
+                recordSchemaAlias(schemas, config.getApplicationSchemaAliasesById(), canonicalId, previousBody, node);
                 return null;
             }
             case CATALOG_SCHEMA -> {

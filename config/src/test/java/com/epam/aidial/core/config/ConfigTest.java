@@ -81,7 +81,7 @@ public class ConfigTest {
         String schemaId = "https://mydial.epam.com/custom_application_schemas/specific_application_type";
         String body = "{\"$id\":\"" + schemaId + "\"}";
         config.setApplicationTypeSchemas(Map.of(canonicalId, body));
-        config.setSchemaAliasesById(Map.of(schemaId, canonicalId));
+        config.setApplicationSchemaAliasesById(Map.of(schemaId, canonicalId));
 
         assertEquals(body, config.getCustomApplicationSchema(URI.create(schemaId)), "$id lookup via alias index");
         assertEquals(body, config.getCustomApplicationSchema(URI.create(canonicalId)), "verbatim canonical-id lookup");

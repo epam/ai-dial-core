@@ -1591,7 +1591,7 @@ public class ConfigResourceController implements Controller {
         }
         String id = idNode.asText();
         Map<String, String> aliasesById = switch (type) {
-            case APP_TYPE_SCHEMA -> snapshot.getSchemaAliasesById();
+            case APP_TYPE_SCHEMA -> snapshot.getApplicationSchemaAliasesById();
             case CATALOG_SCHEMA -> snapshot.getCatalogSchemaAliasesById();
             default -> throw new IllegalArgumentException("Unsupported type for schema $id check: " + type);
         };
