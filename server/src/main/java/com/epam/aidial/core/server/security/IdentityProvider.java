@@ -516,7 +516,6 @@ public class IdentityProvider {
         return extractStringClaim(claimsOf(decodeJwtToken(idToken)), userIdPath);
     }
 
-    /** Whether this provider claims the given issuer. False when no {@code issuerPattern} is configured. */
     boolean matchesIssuer(String issuer) {
         return issuerPattern != null && issuer != null && issuerPattern.matcher(issuer).matches();
     }

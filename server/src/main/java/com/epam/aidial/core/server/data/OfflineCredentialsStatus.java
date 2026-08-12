@@ -18,7 +18,7 @@ public record OfflineCredentialsStatus(boolean connected, boolean available, @Js
 
     public static OfflineCredentialsStatus of(boolean connected, ResourceAuthSettings offlineClient) {
         if (connected || offlineClient == null) {
-            return new OfflineCredentialsStatus(connected, connected || offlineClient != null, null);
+            return new OfflineCredentialsStatus(connected, connected, null);
         }
         return new OfflineCredentialsStatus(false, true, new Connect(
                 offlineClient.getAuthorizationEndpoint(),

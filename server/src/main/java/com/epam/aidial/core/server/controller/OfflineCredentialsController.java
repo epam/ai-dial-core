@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
@@ -43,14 +44,14 @@ public class OfflineCredentialsController {
     private final ProxyContext context;
     private final AsyncTaskExecutor taskExecutor;
     private final ResourceCredentialsService resourceCredentialsService;
+    private final ResourceAuthSettingsService resourceAuthSettingsService;
     private final AccessTokenValidator tokenValidator;
-    private final Proxy proxy;
 
     public OfflineCredentialsController(Proxy proxy, ProxyContext context) {
-        this.proxy = proxy;
         this.context = context;
         this.taskExecutor = proxy.getTaskExecutor();
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
+        this.resourceAuthSettingsService = proxy.getResourceAuthSettingsService();
         this.tokenValidator = proxy.getTokenValidator();
     }
 
@@ -74,7 +75,7 @@ public class OfflineCredentialsController {
         }
         taskExecutor.submit(() -> {
             // Same test the app listing uses, so the two endpoints cannot disagree about one user.
-            boolean connected = proxy.getResourceAuthSettingsService().hasUnexpiredCredentials(descriptor());
+            boolean connected = resourceAuthSettingsService.hasUnexpiredCredentials(descriptor());
             // Resolved only when not connected: a connected caller does not need it, and a provider that cannot
             // be resolved (or carries no offline client) is reported as unavailable rather than as an error —
             // sign-in is where refusing loudly matters.

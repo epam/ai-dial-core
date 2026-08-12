@@ -1,6 +1,14 @@
 package com.epam.aidial.core.server.util;
 
+import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
+import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -52,7 +60,28 @@ public class CredentialsPathReservationTest {
         assertFalse(CredentialsDescriptorFactory.OFFLINE_CREDENTIALS_ID.contains("/"),
                 "the reserved id must stay separator-free");
         assertTrue("applications/config/my-app/external_services/dial".contains("/"));
-        assertTrue("toolsets/config/my-toolset".contains("/"));
+    }
+
+    @Test
+    void toolsetNamedOfflineResolvesElsewhere() {
+        // Derived from the real locator, not a literal: a config toolset named "offline" must land on the
+        // type-prefixed storage id, never on the reserved one.
+        ProxyContext proxyContext = Mockito.mock(ProxyContext.class);
+        Proxy proxy = Mockito.mock(Proxy.class);
+        Config config = Mockito.mock(Config.class);
+        EncryptionService encryptionService = Mockito.mock(EncryptionService.class);
+        Mockito.when(proxyContext.getProxy()).thenReturn(proxy);
+        Mockito.when(proxy.getEncryptionService()).thenReturn(encryptionService);
+        Mockito.when(proxyContext.getApiKeyData()).thenReturn(Mockito.mock(ApiKeyData.class));
+        Mockito.when(proxyContext.getConfig()).thenReturn(config);
+        Mockito.when(config.isDeploymentExists("offline")).thenReturn(true);
+        Mockito.when(proxyContext.getUserId()).thenReturn("userSub");
+        Mockito.when(encryptionService.encrypt(Mockito.any())).thenReturn("userBucket");
+
+        CredentialsLocator locator = CredentialsLocatorFactory.fromAnyUrl("offline", proxyContext, ResourceTypes.TOOL_SET);
+
+        assertEquals("toolsets/config/offline", locator.getResourceId());
+        assertNotEqualsReservedId(locator.getResourceId());
     }
 
     private static void assertNotEqualsReservedId(String storageId) {
