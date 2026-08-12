@@ -495,6 +495,27 @@ public class ControllerSelector {
                     proxy.getLockService());
             return controller::handle;
         });
+        post(RouteTemplate.CONFIG_FILE_MIGRATE, (proxy, context, pathMatcher) -> {
+            ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
+            MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
+            // Reuses AdminApplyController's per-kind write pipeline (applySingle/validateOnly/
+            // mutateScratch/newScratch) rather than re-implementing per-type writes; `context` here
+            // is only ever used by AdminApplyController.handle()/process(), neither of which this
+            // controller calls, so sharing an instance across the two controllers is safe.
+            AdminApplyController applier = new AdminApplyController(
+                    context, authService, mergedConfigStore,
+                    proxy.getResourceService(), proxy.getTaskExecutor(),
+                    mergedConfigStore.getSecretFieldProcessor(),
+                    mergedConfigStore.isSoftValidation(),
+                    proxy.getApiKeyStore(),
+                    proxy.getApplicationService(),
+                    proxy.getToolSetService(),
+                    proxy.getLockService());
+            ConfigFileMigrateController controller = new ConfigFileMigrateController(
+                    context, authService, mergedConfigStore, proxy.getTaskExecutor(),
+                    proxy.getLockService(), applier);
+            return controller::handle;
+        });
         get(RouteTemplate.CONFIG_HEALTH, (proxy, context, pathMatcher) -> {
             ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
             MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();

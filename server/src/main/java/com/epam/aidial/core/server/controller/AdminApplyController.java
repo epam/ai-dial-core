@@ -76,6 +76,16 @@ public class AdminApplyController {
             "ToolSet", 7,
             "Application", 8);
 
+    /**
+     * Sorts a manifest list so a kind that other kinds can reference (e.g. {@code Interceptor})
+     * is always applied before the kind referencing it (e.g. {@code Model}) — required whenever
+     * more than one kind in the same batch/call can cross-reference another by name. Shared by
+     * {@link #applyBatch} and {@link ConfigFileMigrateController}, so the one ordering definition
+     * governs both.
+     */
+    static final Comparator<AdminManifest> DEPENDENCY_ORDER_COMPARATOR =
+            Comparator.comparingInt(entry -> DEPENDENCY_ORDER.getOrDefault(entry.kind(), 99));
+
     static final Map<String, String> KIND_URL_SEGMENT = Map.of(
             "Settings", "settings",
             "Schema", "schemas",
@@ -200,12 +210,12 @@ public class AdminApplyController {
 
     private ApplyResponse applyBatch(boolean precheck, List<AdminManifest> rawEntries) {
         List<AdminManifest> entries = new ArrayList<>(rawEntries);
-        entries.sort(Comparator.comparingInt(e -> DEPENDENCY_ORDER.getOrDefault(e.kind(), 99)));
+        entries.sort(DEPENDENCY_ORDER_COMPARATOR);
 
         Config scratch = newScratch(mergedConfigStore);
-        List<EntityResult> results = new ArrayList<>();
 
         if (precheck) {
+            List<EntityResult> precheckResults = new ArrayList<>();
             boolean anyFailure = false;
             for (AdminManifest entry : entries) {
                 ValidationResult result = validateOnly(entry, scratch, softValidation, resourceService);
@@ -213,27 +223,38 @@ public class AdminApplyController {
                     anyFailure = true;
                     // Mirror /v1/admin/validate: the offending entry stays FAILED (carrying its
                     // error); only the valid siblings collapse to "skipped" below.
-                    results.add(new EntityResult(result.entityId(), AdminApplyStatus.FAILED, result.error()));
+                    precheckResults.add(new EntityResult(result.entityId(), AdminApplyStatus.FAILED, result.error()));
                 } else {
                     // Mutate scratch so subsequent precheck entries see prior ones — even though we
                     // aren't writing yet, reference resolution depends on the cumulative scratch.
                     mutateScratch(scratch, entry);
-                    results.add(new EntityResult(result.entityId(), AdminApplyStatus.SKIPPED, null));
+                    precheckResults.add(new EntityResult(result.entityId(), AdminApplyStatus.SKIPPED, null));
                 }
             }
             if (anyFailure) {
-                return buildResponse(HttpStatus.UNPROCESSABLE_ENTITY, results);
+                return buildResponse(HttpStatus.UNPROCESSABLE_ENTITY, precheckResults);
             }
             // Precheck passed — wipe and re-run as real writes.
             scratch = newScratch(mergedConfigStore);
-            results.clear();
         }
 
-        boolean anyApplied = false;
+        return buildResponse(HttpStatus.OK, applyEntries(entries, scratch));
+    }
+
+    /**
+     * Applies each entry via {@link #applySingle}, mutating {@code scratch} after every success so
+     * later entries in the same list see earlier ones, then flushes every in-memory change as a
+     * single partial-update swap. Shared by {@link #applyBatch}'s real-apply phase and
+     * {@link ConfigFileMigrateController}, which builds its own entry list and scratch (with any
+     * shadowed file entries already removed) before calling this.
+     */
+    List<EntityResult> applyEntries(List<AdminManifest> entries, Config scratch) {
+        List<EntityResult> results = new ArrayList<>();
         // Slice 4S.4: collect partial-update changes per applied entity; flush as one applyBatch
         // after the apply loop so the merged Config swap happens once, after all blobs are written.
         List<EntityChange> pendingChanges = new ArrayList<>();
         GlobalSettings pendingSettings = null;
+        boolean anyApplied = false;
         for (AdminManifest entry : entries) {
             EntityResult result;
             try {
@@ -263,7 +284,7 @@ public class AdminApplyController {
                 mergedConfigStore.applySettingsWrite(pendingSettings);
             }
         }
-        return buildResponse(HttpStatus.OK, results);
+        return results;
     }
 
     static Config newScratch(MergedConfigStore mergedConfigStore) {
@@ -811,7 +832,7 @@ public class AdminApplyController {
         return new ApplyResponse(status, new AdminApplyResponse(applied, failed, responseResults));
     }
 
-    private record EntityResult(String entityId, AdminApplyStatus status, String error) {}
+    record EntityResult(String entityId, AdminApplyStatus status, String error) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private record ApplyResponse(HttpStatus status, AdminApplyResponse body) {}
