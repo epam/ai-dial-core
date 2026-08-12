@@ -26,9 +26,9 @@ public class DeploymentApiTest extends ResourceBaseTest {
         assertEquals(5, body.size());
 
         // typed interface types are surfaced in the `interfaces` array next to the UI categories;
-        // embedding models expose openaiChatCompletions since their endpoint lives under that key
+        // a pre-interfaces endpoint declares the type matching what the deployment says it is
         Map<String, Set<String>> interfacesById = collectInterfaces(body);
-        assertEquals(Set.of("embedding", "openaiChatCompletions"), interfacesById.get("embedding-ada"));
+        assertEquals(Set.of("embedding", "openaiEmbeddings"), interfacesById.get("embedding-ada"));
         assertEquals(Set.of("chat", "openaiChatCompletions"), interfacesById.get("gpt-4"));
         // schema-rich application declared directly in config: endpoint and mcp are resolved from its
         // application type schema rather than set as literal fields, so they must be resolved before filtering

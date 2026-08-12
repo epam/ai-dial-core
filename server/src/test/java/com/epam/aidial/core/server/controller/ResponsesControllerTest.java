@@ -50,6 +50,7 @@ import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import io.vertx.core.json.JsonObject;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
@@ -83,6 +84,7 @@ import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -109,6 +111,12 @@ public class ResponsesControllerTest {
 
     @InjectMocks
     private ResponsesController controller;
+
+    @BeforeEach
+    void stubRequestPath() {
+        // resolveRequestUri always consults the ingress path (even though the legacy flow ignores it)
+        lenient().when(request.path()).thenReturn("/openai/v1/responses");
+    }
 
     @Test
     public void testUnsupportedContentType() {

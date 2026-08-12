@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachments
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import io.vertx.core.buffer.Buffer;
@@ -48,14 +49,9 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
     @Override
     protected String buildUri(ProxyContext context) {
         Deployment deployment = context.getDeployment();
+        String uri = DeploymentEndpointUtil.resolveResponsesBaseUri(deployment) + uriSuffix;
         String query = context.getRequest().query();
-        String baseUrl = deployment.getInterfaceBaseUrl(InterfaceType.OPENAI_RESPONSES);
-        if (baseUrl != null) {
-            String path = "/openai/v1/responses" + uriSuffix;
-            return query == null ? baseUrl + path : baseUrl + path + "?" + query;
-        }
-        String endpoint = deployment.getResponsesEndpoint() + uriSuffix;
-        return query == null ? endpoint : endpoint + "?" + query;
+        return query == null ? uri : uri + "?" + query;
     }
 
     @Override
