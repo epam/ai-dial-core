@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -109,6 +110,41 @@ public class MessagesApiTest extends ResourceBaseTest {
 
             Thread.sleep(1000);
             assertUsed("claude-count", 0); // count_tokens must not charge
+        }
+    }
+
+    @Test
+    public void testAutoCachingPinsSecondTurnToSameUpstream() throws IOException, InterruptedException {
+        AtomicReference<String> firstUpstreamKey = new AtomicReference<>();
+        AtomicReference<String> secondUpstreamKey = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                String upstreamKey = request.getHeader("X-UPSTREAM-KEY");
+                if (firstUpstreamKey.get() == null) {
+                    firstUpstreamKey.set(upstreamKey);
+                } else {
+                    secondUpstreamKey.set(upstreamKey);
+                }
+                long expireAt = Instant.now().plusSeconds(600).getEpochSecond();
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE,
+                        "Content-Type", "application/json",
+                        "X-DIAL-CACHE-BREAKPOINT-PATH", "prefix.body.messages[0].content[0]",
+                        "X-DIAL-CACHE-EXPIRE-AT", String.valueOf(expireAt));
+            });
+
+            String firstTurn = "{\"model\":\"claude-cache\",\"max_tokens\":100,\"stream\":false,"
+                    + "\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}";
+            Response first = post(client, MESSAGES_PATH, firstTurn, "api-key", "proxyKey1");
+            assertEquals(200, first.status());
+            Thread.sleep(1000); // wait for the async Redis update after the first turn
+
+            String secondTurn = "{\"model\":\"claude-cache\",\"max_tokens\":100,\"stream\":false,"
+                    + "\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"},{\"role\":\"assistant\",\"content\":\"Hi there\"}]}";
+            Response second = post(client, MESSAGES_PATH, secondTurn, "api-key", "proxyKey1");
+            assertEquals(200, second.status());
+
+            assertNotNull(firstUpstreamKey.get());
+            assertEquals(firstUpstreamKey.get(), secondUpstreamKey.get());
         }
     }
 
