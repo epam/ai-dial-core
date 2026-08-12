@@ -25,6 +25,7 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ExternalServiceService;
+import com.epam.aidial.core.server.service.ExternalServiceStatusEnricher;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.UserExternalServiceService;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -60,6 +61,7 @@ public class ExternalServiceManagementController {
     private final EncryptionService encryptionService;
     private final ResourceCredentialsService resourceCredentialsService;
     private final ResourceAuthSettingsService resourceAuthSettingsService;
+    private final ExternalServiceStatusEnricher statusEnricher;
 
     public ExternalServiceManagementController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -71,6 +73,7 @@ public class ExternalServiceManagementController {
         this.encryptionService = proxy.getEncryptionService();
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.resourceAuthSettingsService = proxy.getResourceAuthSettingsService();
+        this.statusEnricher = new ExternalServiceStatusEnricher(context, resourceAuthSettingsService);
     }
 
     @ApiOperation(
@@ -333,7 +336,7 @@ public class ExternalServiceManagementController {
         ResourceAuthSettings safe = authSettings == null ? null : authSettings.withoutSecrets();
         if (withStatus && safe != null) {
             CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId(appId, serviceId), context);
-            resourceAuthSettingsService.setExternalServiceAuthStatuses(locator, safe, context.getUserId());
+            statusEnricher.enrich(locator, safe);
         }
         return new ExternalServiceData()
                 .setId(serviceId)
