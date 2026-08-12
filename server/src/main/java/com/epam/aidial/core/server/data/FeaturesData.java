@@ -50,8 +50,8 @@ public class FeaturesData {
     @JsonIgnore
     public static FeaturesData createDeploymentFeatures(Deployment deployment) {
         FeaturesData data = createFeatures(deployment.getFeatures());
-        data.setChatCompletion(DeploymentEndpointUtil.declaresInterface(deployment, InterfaceType.OPENAI_CHAT_COMPLETIONS));
-        data.setResponsesApi(DeploymentEndpointUtil.declaresInterface(deployment, InterfaceType.OPENAI_RESPONSES));
+        data.setChatCompletion(DeploymentEndpointUtil.isInterfaceDeclared(deployment, InterfaceType.OPENAI_CHAT_COMPLETIONS));
+        data.setResponsesApi(DeploymentEndpointUtil.isInterfaceDeclared(deployment, InterfaceType.OPENAI_RESPONSES));
         return data;
     }
 

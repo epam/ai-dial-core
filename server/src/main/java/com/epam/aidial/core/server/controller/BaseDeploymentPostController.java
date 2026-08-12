@@ -294,7 +294,7 @@ public class BaseDeploymentPostController {
     protected Future<HttpClientRequest> createProxyRequest(InterfaceType type) {
         HttpServerRequest request = context.getRequest();
         return createProxyRequest(
-                DeploymentEndpointUtil.requestUri(
+                DeploymentEndpointUtil.resolveRequestUri(
                         context.getDeployment(),
                         type, request.path(),
                         request.query()

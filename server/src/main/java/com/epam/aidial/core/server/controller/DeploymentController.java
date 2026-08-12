@@ -193,7 +193,7 @@ public class DeploymentController {
                 case CHAT_IFACE: {
                     plan.useModels = true;
                     plan.useApplications = true;
-                    plan.appFilters.add(app -> DeploymentEndpointUtil.declaresInterface(app, InterfaceType.OPENAI_CHAT_COMPLETIONS));
+                    plan.appFilters.add(app -> DeploymentEndpointUtil.isInterfaceDeclared(app, InterfaceType.OPENAI_CHAT_COMPLETIONS));
                     plan.modelFilters.add(model -> model.getType() == ModelType.CHAT);
                     break;
                 }
@@ -314,7 +314,7 @@ public class DeploymentController {
         if (app.getMcp() != null) {
             interfaces.add(MCP_IFACE);
         }
-        if (DeploymentEndpointUtil.declaresInterface(app, InterfaceType.OPENAI_CHAT_COMPLETIONS)) {
+        if (DeploymentEndpointUtil.isInterfaceDeclared(app, InterfaceType.OPENAI_CHAT_COMPLETIONS)) {
             interfaces.add(CHAT_IFACE);
         }
         if (app.getViewerUrl() != null) {
@@ -336,7 +336,7 @@ public class DeploymentController {
     private static List<String> supportedInterfaces(Deployment deployment) {
         List<String> result = new ArrayList<>();
         for (InterfaceType type : InterfaceType.values()) {
-            if (DeploymentEndpointUtil.declaresInterface(deployment, type)) {
+            if (DeploymentEndpointUtil.isInterfaceDeclared(deployment, type)) {
                 result.add(type.getValue());
             }
         }

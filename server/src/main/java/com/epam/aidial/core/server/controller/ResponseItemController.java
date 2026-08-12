@@ -45,15 +45,10 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ResponseItemController implements Controller {
 
-
     private final Proxy proxy;
     private final ProxyContext context;
     private final String dialResponseId;
     private final Operation operation;
-
-    private static String responsesBase(Deployment deployment) {
-        return DeploymentEndpointUtil.responsesBaseUri(deployment);
-    }
 
     @Override
     @ApiOperations({
@@ -154,7 +149,7 @@ public class ResponseItemController implements Controller {
 
     private Future<Void> dispatch(ResponseMapping mapping) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName());
-        if (DeploymentEndpointUtil.servingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES) == null) {
+        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES) == null) {
             return context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API")
                     .mapEmpty();
         }
@@ -187,12 +182,13 @@ public class ResponseItemController implements Controller {
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment,
                         null,
-                        dep -> DeploymentEndpointUtil.servingEndpoint(dep, InterfaceType.OPENAI_RESPONSES),
+                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES),
                         mapping.getUpstreamKey());
         Upstream upstream = upstreamRoute.next();
 
         String query = context.getRequest().query();
-        String targetUrl = responsesBase(deployment) + "/" + mapping.getUpstreamResponseId() + operation.suffix
+        String targetUrl = DeploymentEndpointUtil.resolveResponsesBaseUri(deployment)
+                + "/" + mapping.getUpstreamResponseId() + operation.suffix
                 + (query != null ? "?" + query : "");
 
         return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream)

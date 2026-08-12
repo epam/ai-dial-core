@@ -45,7 +45,7 @@ public class ChatCompletionInterceptorController extends BaseInterceptorControll
     protected String buildUri(ProxyContext context) {
         HttpServerRequest request = context.getRequest();
         // the deployment here is the interceptor itself, so the {id} segment names the interceptor
-        return DeploymentEndpointUtil.requestUri(context.getDeployment(),
+        return DeploymentEndpointUtil.resolveRequestUri(context.getDeployment(),
                 InterfaceType.OPENAI_CHAT_COMPLETIONS, request.path(), request.query());
     }
 
