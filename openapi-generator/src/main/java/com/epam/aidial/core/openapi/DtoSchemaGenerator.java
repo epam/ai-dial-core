@@ -1,5 +1,7 @@
 package com.epam.aidial.core.openapi;
 
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.ApiSchemaType;
 import com.epam.aidial.core.openapi.annotations.ApiSubType;
 import com.epam.aidial.core.openapi.annotations.ApiSubTypes;
 import com.fasterxml.classmate.ResolvedType;
@@ -65,6 +67,10 @@ public class DtoSchemaGenerator {
 
         configBuilder.forTypesInGeneral().withCustomDefinitionProvider((javaType, context) -> {
             CustomDefinition definition = createMapSchemaDefinition(javaType, context);
+            if (definition != null) {
+                return definition;
+            }
+            definition = createExplicitOneOfDefinition(javaType, context);
             if (definition != null) {
                 return definition;
             }
@@ -137,6 +143,41 @@ public class DtoSchemaGenerator {
         ObjectNode schema = context.getGeneratorConfig().createObjectNode();
         schema.put("type", "object");
         schema.set("additionalProperties", context.createDefinitionReference(params.get(1)));
+
+        return new CustomDefinition(schema);
+    }
+
+    private CustomDefinition createExplicitOneOfDefinition(ResolvedType javaType, SchemaGenerationContext context) {
+        Class<?> clazz = javaType.getErasedType();
+        ApiSchema apiSchema = clazz.getAnnotation(ApiSchema.class);
+        if (apiSchema == null) {
+            return null;
+        }
+
+        boolean hasOneOf = apiSchema.oneOf().length > 0
+                || apiSchema.oneOfTypes().length > 0
+                || apiSchema.oneOfSchemaRefs().length > 0;
+        if (!hasOneOf) {
+            return null;
+        }
+
+        ObjectNode schema = context.getGeneratorConfig().createObjectNode();
+        ArrayNode oneOf = schema.putArray("oneOf");
+
+        for (Class<?> entry : apiSchema.oneOf()) {
+            oneOf.add(context.createDefinitionReference(context.getTypeContext().resolve(entry)));
+        }
+        for (ApiSchemaType entry : apiSchema.oneOfTypes()) {
+            ResolvedType resolvedEntry = entry.typeArguments().length > 0
+                    ? context.getTypeContext().resolve(entry.implementation(), entry.typeArguments())
+                    : context.getTypeContext().resolve(entry.implementation());
+            oneOf.add(context.createDefinitionReference(resolvedEntry));
+        }
+        for (String ref : apiSchema.oneOfSchemaRefs()) {
+            ObjectNode refNode = context.getGeneratorConfig().createObjectNode();
+            refNode.put(REF_KEY, COMPONENTS_PREFIX + ref);
+            oneOf.add(refNode);
+        }
 
         return new CustomDefinition(schema);
     }
