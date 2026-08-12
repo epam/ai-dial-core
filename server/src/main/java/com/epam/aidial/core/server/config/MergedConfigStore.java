@@ -47,6 +47,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.server.util.PlatformCanonicalIdUtil.lastSegment;
 
@@ -989,9 +990,9 @@ public final class MergedConfigStore implements ConfigStore {
     private static void putSchemaInPlace(Map<String, String> schemas, Map<String, String> aliasesById,
                                          String canonicalId, Object entity) {
         String body = schemaBody(entity);
-        schemas.put(canonicalId, body);
+        String previousBody = schemas.put(canonicalId, body);
         try {
-            recordSchemaAlias(schemas, aliasesById, canonicalId, ProxyUtil.BLOB_MAPPER.readTree(body));
+            recordSchemaAlias(schemas, aliasesById, canonicalId, previousBody, ProxyUtil.BLOB_MAPPER.readTree(body));
         } catch (JsonProcessingException e) {
             log.warn("Failed to parse schema body for $id alias index: {} ({})", canonicalId, e.getMessage());
         }
@@ -1008,9 +1009,12 @@ public final class MergedConfigStore implements ConfigStore {
      * derivable last-path-segment, so this index bridges $id-keyed file entries and
      * canonical-id-keyed blob entries.
      *
-     * <p>An update may change this entity's own $id — evict any alias {@code canonicalId} held
-     * under its previous $id first, so the old $id stops resolving once the body no longer
-     * carries it. No-op during a full rebuild, where {@code aliasesById} starts empty each pass.
+     * <p>An update may change this entity's own $id. {@code previousBody} — the body this same
+     * canonical id held immediately before this call (the return value of the {@code schemas.put}/
+     * {@code remove} the caller just performed, or {@code null} on a fresh create) — is read
+     * directly for its own $id and evicted by that key, an O(1) targeted removal rather than a
+     * scan over every alias for one matching this canonical id's value. {@code null} on a fresh
+     * create, so there is nothing to evict there.
      *
      * <p>Same transient gap as {@link #removeEntityInPlace}'s javadoc describes for a deleted
      * canonical id, but triggered by an <em>update</em> rather than a delete: the file entry
@@ -1022,12 +1026,26 @@ public final class MergedConfigStore implements ConfigStore {
      * deleting the entity that was shadowing it.
      */
     public static void recordSchemaAlias(Map<String, String> schemas, Map<String, String> aliasesById,
-                                          String canonicalId, JsonNode node) {
-        aliasesById.values().removeIf(canonicalId::equals);
+                                          String canonicalId, String previousBody, JsonNode node) {
         JsonNode idNode = node.get("$id");
-        if (idNode != null && idNode.isTextual()) {
-            schemas.remove(idNode.asText());
-            aliasesById.put(idNode.asText(), canonicalId);
+        String newId = idNode != null && idNode.isTextual() ? idNode.asText() : null;
+        String oldId = previousBody == null ? null : extractSchemaId(previousBody);
+        if (oldId != null && !oldId.equals(newId)) {
+            aliasesById.remove(oldId);
+        }
+        if (newId != null) {
+            schemas.remove(newId);
+            aliasesById.put(newId, canonicalId);
+        }
+    }
+
+    @Nullable
+    private static String extractSchemaId(String body) {
+        try {
+            JsonNode idNode = ProxyUtil.BLOB_MAPPER.readTree(body).get("$id");
+            return idNode != null && idNode.isTextual() ? idNode.asText() : null;
+        } catch (JsonProcessingException e) {
+            return null;
         }
     }
 
@@ -1053,12 +1071,18 @@ public final class MergedConfigStore implements ConfigStore {
             case PROJECT_KEY -> config.getKeys().remove(canonicalId);
             case ROUTE -> config.getRoutes().remove(canonicalId);
             case APP_TYPE_SCHEMA -> {
-                config.getApplicationTypeSchemas().remove(canonicalId);
-                config.getSchemaAliasesById().values().removeIf(canonicalId::equals);
+                String removedBody = config.getApplicationTypeSchemas().remove(canonicalId);
+                String id = removedBody == null ? null : extractSchemaId(removedBody);
+                if (id != null) {
+                    config.getSchemaAliasesById().remove(id);
+                }
             }
             case CATALOG_SCHEMA -> {
-                config.getCatalogSchemas().remove(canonicalId);
-                config.getCatalogSchemaAliasesById().values().removeIf(canonicalId::equals);
+                String removedBody = config.getCatalogSchemas().remove(canonicalId);
+                String id = removedBody == null ? null : extractSchemaId(removedBody);
+                if (id != null) {
+                    config.getCatalogSchemaAliasesById().remove(id);
+                }
             }
             case APPLICATION -> config.getApplications().remove(canonicalId);
             case TOOL_SET -> config.getToolsets().remove(canonicalId);
@@ -1375,14 +1399,16 @@ public final class MergedConfigStore implements ConfigStore {
             }
             case APP_TYPE_SCHEMA -> {
                 Map<String, String> schemas = config.getApplicationTypeSchemas();
-                warnIfReplaced(type, canonicalId, schemas.put(canonicalId, node.toString()));
-                recordSchemaAlias(schemas, config.getSchemaAliasesById(), canonicalId, node);
+                String previousBody = schemas.put(canonicalId, node.toString());
+                warnIfReplaced(type, canonicalId, previousBody);
+                recordSchemaAlias(schemas, config.getSchemaAliasesById(), canonicalId, previousBody, node);
                 return null;
             }
             case CATALOG_SCHEMA -> {
                 Map<String, String> catalogSchemas = config.getCatalogSchemas();
-                warnIfReplaced(type, canonicalId, catalogSchemas.put(canonicalId, node.toString()));
-                recordSchemaAlias(catalogSchemas, config.getCatalogSchemaAliasesById(), canonicalId, node);
+                String previousBody = catalogSchemas.put(canonicalId, node.toString());
+                warnIfReplaced(type, canonicalId, previousBody);
+                recordSchemaAlias(catalogSchemas, config.getCatalogSchemaAliasesById(), canonicalId, previousBody, node);
                 return null;
             }
             case APPLICATION -> {

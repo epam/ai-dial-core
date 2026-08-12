@@ -637,9 +637,9 @@ public class AdminApplyController {
                     } catch (JsonProcessingException e) {
                         return;
                     }
-                    scratch.getApplicationTypeSchemas().put(entry.name(), json);
+                    String previousJson = scratch.getApplicationTypeSchemas().put(entry.name(), json);
                     MergedConfigStore.recordSchemaAlias(scratch.getApplicationTypeSchemas(),
-                            scratch.getSchemaAliasesById(), entry.name(), entry.spec());
+                            scratch.getSchemaAliasesById(), entry.name(), previousJson, entry.spec());
                 }
                 case "CatalogSchema" -> {
                     String json;
@@ -648,9 +648,9 @@ public class AdminApplyController {
                     } catch (JsonProcessingException e) {
                         return;
                     }
-                    scratch.getCatalogSchemas().put(entry.name(), json);
+                    String previousJson = scratch.getCatalogSchemas().put(entry.name(), json);
                     MergedConfigStore.recordSchemaAlias(scratch.getCatalogSchemas(),
-                            scratch.getCatalogSchemaAliasesById(), entry.name(), entry.spec());
+                            scratch.getCatalogSchemaAliasesById(), entry.name(), previousJson, entry.spec());
                 }
                 default -> { /* unknown kinds never reach this code path */ }
             }
