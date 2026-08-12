@@ -18,6 +18,7 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
 
     private static final String SALESFORCE_SCOPE = "applications/app-with-services/external_services/salesforce";
     private static final String BILLING_SCOPE = "applications/app-with-services/external_services/billing-api";
+    private static final String DIAL_NATIVE_SCOPE = "applications/app-with-services/external_services/dial";
 
     private static final String OAUTH_TOKEN_RESPONSE = """
             {
@@ -1013,7 +1014,7 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
         assertEquals(200, resp.status(), () -> resp.body());
         JsonNode arr = ProxyUtil.MAPPER.readTree(resp.body());
         assertTrue(arr.isArray());
-        assertEquals(2, arr.size());
+        assertEquals(3, arr.size());
         assertFalse(resp.body().contains("test-client-secret"), "client_secret must not be leaked in list");
         for (JsonNode node : arr) {
             assertNotNull(node.get("id"));
@@ -1519,6 +1520,46 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
         Response badCred = send(HttpMethod.POST, "/v1/ops/external-service/credentials", null,
                 "{\"url\":\"" + badScope + "\"}", "api-key", badKey.getPerRequestKey());
         assertEquals(400, badCred.status(), () -> badCred.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testSignInRejectedForDialNativeService() {
+        Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "USER",
+                    "authentication_type": "DIAL_NATIVE"
+                }
+                """.formatted(DIAL_NATIVE_SCOPE), "authorization", "user");
+        assertEquals(400, signIn.status());
+        assertTrue(signIn.body().contains("not applicable"), signIn.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testSignInRejectedForDialNativeServiceAtApplicationLevel() {
+        Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "APPLICATION",
+                    "authentication_type": "DIAL_NATIVE"
+                }
+                """.formatted(DIAL_NATIVE_SCOPE), "authorization", "user");
+        assertEquals(400, signIn.status());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testSignOutRejectedForDialNativeServiceAtUserLevel() {
+        Response signOut = send(HttpMethod.POST, "/v1/ops/external-service/signout", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "USER",
+                    "authentication_type": "DIAL_NATIVE"
+                }
+                """.formatted(DIAL_NATIVE_SCOPE), "authorization", "user");
+        assertEquals(400, signOut.status(), signOut.body());
     }
 
     private ApiKeyData newAppKey(String sourceDeployment, String role) {
