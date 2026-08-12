@@ -256,6 +256,13 @@ public class AccessTokenValidatorTest {
         assertThrows(IllegalArgumentException.class, () -> validator.resolveProvider(null));
     }
 
+    @Test
+    public void testResolveProvider_withoutTokenFailsForSingleProviderToo() {
+        JsonObject single = new JsonObject().put("idp1", idpConfig.getJsonObject("idp1"));
+        AccessTokenValidator validator = new AccessTokenValidator(single, vertx, taskExecutor, client, "DEBUG");
+        assertThrows(IllegalArgumentException.class, () -> validator.resolveProvider(null));
+    }
+
     private static String getBearerHeaderValue(String token) {
         return String.format("bearer %s", token);
     }

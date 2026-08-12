@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.data.OfflineCredentialsSignInRequest;
 import com.epam.aidial.core.server.data.OfflineCredentialsStatus;
 import com.epam.aidial.core.server.log.ExternalServiceAuditLog;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
+import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.util.CredentialsDescriptorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.validation.ValidationUtil;
@@ -166,8 +167,8 @@ public class OfflineCredentialsController {
         }
         String tokenUserId = tokenValidator.resolveIdTokenUserId(authHeader(), idToken);
         if (tokenUserId == null || !tokenUserId.equals(context.getUserId())) {
-            throw new HttpException(HttpStatus.FORBIDDEN,
-                    "The authorization code belongs to a different user than the caller");
+            // PermissionDeniedException, so the audit event records DENIED rather than a generic ERROR.
+            throw new PermissionDeniedException("The authorization code belongs to a different user than the caller");
         }
         // Refresh runs with the user absent, so the provider must be recoverable from the record alone.
         credentials.setIssuer(tokenValidator.extractIdTokenIssuer(idToken));

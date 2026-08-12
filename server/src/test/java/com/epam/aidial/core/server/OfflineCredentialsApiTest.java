@@ -264,7 +264,7 @@ public class OfflineCredentialsApiTest extends ResourceBaseTest {
                     .toList();
             assertEquals(1, events.size(), events::toString);
             assertTrue(events.get(0).contains("action=SIGN_IN"), events::toString);
-            assertFalse(events.get(0).contains("outcome=SUCCESS"), events::toString);
+            assertTrue(events.get(0).contains("outcome=DENIED"), events::toString);
         } finally {
             auditLogger.setLevel(previous);
             auditLogger.detachAppender(appender);

@@ -165,12 +165,13 @@ public class AccessTokenValidator {
      * @throws JWTDecodeException when the access token is opaque, so the issuer cannot be read from it.
      */
     IdentityProvider resolveProvider(String authHeader) {
-        if (providers.size() == 1) {
-            return providers.get(0);
-        }
         String accessToken = extractTokenFromHeader(authHeader);
         if (accessToken == null) {
             throw new IllegalArgumentException("Access token must be presented in Auth header");
+        }
+        // The single-provider answer never needs the issuer, which keeps opaque tokens usable there.
+        if (providers.size() == 1) {
+            return providers.get(0);
         }
         return resolveProviderByIssuer(IdentityProvider.decodeJwtToken(accessToken).getIssuer());
     }
