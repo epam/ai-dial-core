@@ -75,8 +75,7 @@ public class ResourceCredentialsService {
         verifier.accept(resourceCredentials);
         resourceCredentials.setIdToken(null);
 
-        byte[] encryptedBody = encrypt(credentialsDescriptor, resourceCredentials);
-        resourceService.putResourceBytes(credentialsDescriptor.toResourceDescriptor(), encryptedBody, EtagHeader.ANY);
+        storeEncrypted(credentialsDescriptor, resourceCredentials);
         log.info("Resource credentials for resourceId={}, bucket={} stored successfully",
                 credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
     }
@@ -213,6 +212,10 @@ public class ResourceCredentialsService {
         long now = timeProvider.getCurrentTime();
         credentials.setCreatedAt(now);
         credentials.setUpdatedAt(now);
+        storeEncrypted(credentialsDescriptor, credentials);
+    }
+
+    private void storeEncrypted(CredentialsDescriptor credentialsDescriptor, ResourceCredentials credentials) {
         byte[] encryptedBody = encrypt(credentialsDescriptor, credentials);
         resourceService.putResourceBytes(credentialsDescriptor.toResourceDescriptor(), encryptedBody, EtagHeader.ANY);
     }
