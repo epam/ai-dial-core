@@ -2,6 +2,8 @@ package com.epam.aidial.core.config;
 
 import com.epam.aidial.core.config.databind.LocalizedValueDeserializer;
 import com.epam.aidial.core.config.databind.LocalizedValueSerializer;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.ApiSchemaType;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
@@ -17,6 +19,10 @@ import java.util.Map;
  * legacy/majority form and are wire-identical to a raw string field; the map form is only
  * emitted/accepted when more than one locale is present.
  */
+@ApiSchema(
+        oneOf = {String.class},
+        oneOfTypes = {@ApiSchemaType(implementation = Map.class, typeArguments = {String.class, String.class})}
+)
 @Getter
 @JsonDeserialize(using = LocalizedValueDeserializer.class)
 @JsonSerialize(using = LocalizedValueSerializer.class)

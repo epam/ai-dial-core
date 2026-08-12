@@ -1,6 +1,7 @@
 package com.epam.aidial.core.openapi;
 
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.ApiSchemaType;
 
 import java.lang.annotation.Annotation;
 import java.util.Objects;
@@ -43,6 +44,11 @@ public final class ApiSchemaBuilder {
             @Override
             public String[] oneOfSchemaRefs() {
                 return new String[0];
+            }
+
+            @Override
+            public ApiSchemaType[] oneOfTypes() {
+                return new ApiSchemaType[0];
             }
 
             @Override
@@ -103,6 +109,11 @@ public final class ApiSchemaBuilder {
             @Override
             public String[] oneOfSchemaRefs() {
                 return new String[0];
+            }
+
+            @Override
+            public ApiSchemaType[] oneOfTypes() {
+                return new ApiSchemaType[0];
             }
 
             @Override

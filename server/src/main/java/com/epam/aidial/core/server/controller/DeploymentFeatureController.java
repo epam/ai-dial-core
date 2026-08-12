@@ -300,6 +300,7 @@ public class DeploymentFeatureController {
     private void handleResponse(BufferingReadStream responseStream) {
         Buffer proxyResponseBody = responseStream.getContent();
         context.setResponseBody(proxyResponseBody);
+        context.setResponseBodyTimestamp(System.currentTimeMillis());
         proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
         finalizeRequest();
     }

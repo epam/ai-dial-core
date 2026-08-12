@@ -43,28 +43,6 @@ public class ChatCompletionInterceptorControllerTest {
     private HttpServerRequest request;
 
     @Test
-    void rewritesDeploymentSegmentToInterceptorName() {
-        assertEquals("/openai/deployments/my-interceptor/chat/completions",
-                ChatCompletionInterceptorController.rewriteDeploymentSegment(
-                        "/openai/deployments/initial-model/chat/completions", "my-interceptor"));
-    }
-
-    @Test
-    void leavesNonMatchingPathUnchanged() {
-        assertEquals("/some/other/path",
-                ChatCompletionInterceptorController.rewriteDeploymentSegment("/some/other/path", "my-interceptor"));
-    }
-
-    @Test
-    void rewritesMultiSegmentDeploymentIdToInterceptorName() {
-        // Platform-bucket entities are addressed by a multi-segment canonical id
-        // (e.g. models/platform/{name}); the whole id must collapse to the target name.
-        assertEquals("/openai/deployments/my-interceptor/chat/completions",
-                ChatCompletionInterceptorController.rewriteDeploymentSegment(
-                        "/openai/deployments/models/platform/initial-model/chat/completions", "my-interceptor"));
-    }
-
-    @Test
     void buildUri_legacyFlow_noQuery() {
         Model deployment = new Model();
         deployment.setName("my-interceptor");
@@ -72,6 +50,7 @@ public class ChatCompletionInterceptorControllerTest {
 
         when(context.getDeployment()).thenReturn(deployment);
         when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/original-model/chat/completions");
         when(request.query()).thenReturn(null);
 
         ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0);
@@ -89,6 +68,7 @@ public class ChatCompletionInterceptorControllerTest {
 
         when(context.getDeployment()).thenReturn(deployment);
         when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/original-model/chat/completions");
         when(request.query()).thenReturn("api-version=2024-05");
 
         ChatCompletionInterceptorController controller = new ChatCompletionInterceptorController(proxy, context, 0);
@@ -220,6 +200,7 @@ public class ChatCompletionInterceptorControllerTest {
 
         when(context.getDeployment()).thenReturn(interceptor);
         when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/interceptor/chat/completions");
         when(request.query()).thenReturn(null);
 
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, Answers.RETURNS_DEEP_STUBS));

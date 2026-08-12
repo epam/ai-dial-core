@@ -4,6 +4,7 @@ import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.ApiSchemaType;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -114,6 +115,11 @@ class EndpointValidatorTest {
             @Override
             public String[] oneOfSchemaRefs() {
                 return new String[0];
+            }
+
+            @Override
+            public ApiSchemaType[] oneOfTypes() {
+                return new ApiSchemaType[0];
             }
 
             @Override

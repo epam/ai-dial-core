@@ -25,6 +25,7 @@ import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.ToolSetService;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -192,7 +193,7 @@ public class DeploymentController {
                 case CHAT_IFACE: {
                     plan.useModels = true;
                     plan.useApplications = true;
-                    plan.appFilters.add(app -> app.supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS));
+                    plan.appFilters.add(app -> DeploymentEndpointUtil.isInterfaceDeclared(app, InterfaceType.OPENAI_CHAT_COMPLETIONS));
                     plan.modelFilters.add(model -> model.getType() == ModelType.CHAT);
                     break;
                 }
@@ -313,7 +314,7 @@ public class DeploymentController {
         if (app.getMcp() != null) {
             interfaces.add(MCP_IFACE);
         }
-        if (app.supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS)) {
+        if (DeploymentEndpointUtil.isInterfaceDeclared(app, InterfaceType.OPENAI_CHAT_COMPLETIONS)) {
             interfaces.add(CHAT_IFACE);
         }
         if (app.getViewerUrl() != null) {
@@ -332,15 +333,10 @@ public class DeploymentController {
         return toolSetData;
     }
 
-    /**
-     * Typed interface types ({@link InterfaceType}) the deployment exposes, via either the new
-     * {@code interfaces} map or a legacy endpoint. Embedding models also expose
-     * {@code openaiChatCompletions} since their endpoint is registered under that interface key.
-     */
     private static List<String> supportedInterfaces(Deployment deployment) {
         List<String> result = new ArrayList<>();
         for (InterfaceType type : InterfaceType.values()) {
-            if (deployment.supportsInterface(type)) {
+            if (DeploymentEndpointUtil.isInterfaceDeclared(deployment, type)) {
                 result.add(type.getValue());
             }
         }

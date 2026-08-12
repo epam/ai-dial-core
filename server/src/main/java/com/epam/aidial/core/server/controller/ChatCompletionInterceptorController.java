@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -12,22 +11,17 @@ import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSe
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpServerRequest;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class ChatCompletionInterceptorController extends BaseInterceptorController {
-
-    private static final Pattern DEPLOYMENT_PATH =
-            Pattern.compile("(/openai/deployments/)(.+?)(/(?:completions|chat/completions|embeddings))$");
 
     public ChatCompletionInterceptorController(Proxy proxy, ProxyContext context, int interceptorIndex) {
         super(proxy, context, interceptorIndex, List.of(
@@ -49,18 +43,10 @@ public class ChatCompletionInterceptorController extends BaseInterceptorControll
 
     @Override
     protected String buildUri(ProxyContext context) {
-        Deployment deployment = context.getDeployment();
         HttpServerRequest request = context.getRequest();
-        String query = request.query();
-        String baseUrl = deployment.getInterfaceBaseUrl(InterfaceType.OPENAI_CHAT_COMPLETIONS);
-        if (baseUrl != null) {
-            // Rewrite the {id} segment to the interceptor's own name (or overrideName, if set), then base_url + path.
-            String name = UrlUtil.encodePathSegment(deployment.getTargetName());
-            String path = rewriteDeploymentSegment(request.path(), name);
-            return query == null ? baseUrl + path : baseUrl + path + "?" + query;
-        }
-        // Legacy flow: verbatim endpoint + query.
-        return query == null ? deployment.getEndpoint() : deployment.getEndpoint() + "?" + query;
+        // the deployment here is the interceptor itself, so the {id} segment names the interceptor
+        return DeploymentEndpointUtil.resolveRequestUri(context.getDeployment(),
+                InterfaceType.OPENAI_CHAT_COMPLETIONS, request.path(), request.query());
     }
 
     @Override
@@ -71,10 +57,5 @@ public class ChatCompletionInterceptorController extends BaseInterceptorControll
     @Override
     protected BufferingReadStream.BaseEventListener createListener(Proxy proxy, ProxyContext context) {
         return new DeploymentPostController.ChatCompletionSseListener(List.of(new CollectResponseChatCompletionAttachmentsFn(proxy, context)));
-    }
-
-    static String rewriteDeploymentSegment(String path, String name) {
-        Matcher m = DEPLOYMENT_PATH.matcher(path);
-        return m.matches() ? m.group(1) + name + m.group(3) : path;
     }
 }
