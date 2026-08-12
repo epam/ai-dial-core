@@ -13,7 +13,6 @@ import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
-import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -47,7 +46,6 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
-import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
@@ -468,44 +466,7 @@ public class ExternalServiceCredentialsController {
     }
 
     private void respondError(String message, Throwable error) {
-        HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
-        String body = null;
-
-        switch (error) {
-            case HttpException e -> {
-                status = e.getStatus();
-                body = e.getMessage();
-            }
-            case ResourceNotFoundException resourceNotFoundException -> {
-                status = HttpStatus.NOT_FOUND;
-                body = resourceNotFoundException.getMessage();
-            }
-            case IllegalArgumentException illegalArgumentException -> {
-                status = HttpStatus.BAD_REQUEST;
-                body = illegalArgumentException.getMessage();
-            }
-            case ConstraintViolationException constraintViolationException -> {
-                status = HttpStatus.BAD_REQUEST;
-                body = constraintViolationException.getMessage();
-            }
-            case PermissionDeniedException permissionDeniedException -> {
-                status = HttpStatus.FORBIDDEN;
-                body = permissionDeniedException.getMessage();
-            }
-            case EncryptionException ignored -> {
-                // Never surface crypto internals to the caller.
-                status = HttpStatus.INTERNAL_SERVER_ERROR;
-                body = message;
-            }
-            case null, default -> body = message;
-        }
-
-        // Log server-side failures with the trace id; keep the client body generic.
-        if (status.is5xx()) {
-            log.warn("{} (trace_id={})", message, context.getTraceId(), error);
-        }
-
-        context.respond(status, body);
+        ExternalServiceErrorHandler.respond(context, message, error);
     }
 
     private record ResolvedExternalService(Application application,

@@ -459,12 +459,17 @@ public class IdentityProvider {
         return promise.future().onFailure(error -> log.warn("Can't extract claims from user info endpoint '{}':", userInfoUrl, error));
     }
 
-    private ExtractedClaims from(DecodedJWT jwt) {
-        String userKey = jwt.getClaim(loggingKey).asString();
+    private static Map<String, Object> claimsOf(DecodedJWT jwt) {
         Map<String, Object> map = new HashMap<>();
         for (Map.Entry<String, Claim> e : jwt.getClaims().entrySet()) {
             map.put(e.getKey(), e.getValue().as(Object.class));
         }
+        return map;
+    }
+
+    private ExtractedClaims from(DecodedJWT jwt) {
+        String userKey = jwt.getClaim(loggingKey).asString();
+        Map<String, Object> map = claimsOf(jwt);
         logClaims(map);
         return toExtractedClaims(map, extractUserRoles(map), userKey);
     }
@@ -506,12 +511,22 @@ public class IdentityProvider {
         }
     }
 
+    /** The user id this provider would derive from an ID token, via the same {@code userIdPath} as a request. */
+    String extractUserIdFromIdToken(String idToken) {
+        return extractStringClaim(claimsOf(decodeJwtToken(idToken)), userIdPath);
+    }
+
+    boolean matchesIssuer(String issuer) {
+        return issuerPattern != null && issuer != null && issuerPattern.matcher(issuer).matches();
+    }
+
+    /** Whether the provider can disclaim an issuer at all — without a pattern, a non-match proves nothing. */
+    boolean hasIssuerPattern() {
+        return issuerPattern != null;
+    }
+
     boolean match(DecodedJWT jwt) {
-        if (issuerPattern == null) {
-            return false;
-        }
-        String issuer = jwt.getIssuer();
-        return issuerPattern.matcher(issuer).matches();
+        return matchesIssuer(jwt.getIssuer());
     }
 
     boolean hasUserinfoUrl() {

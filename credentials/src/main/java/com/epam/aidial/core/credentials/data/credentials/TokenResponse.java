@@ -22,4 +22,8 @@ public class TokenResponse {
 
     @JsonProperty("expires_in")
     private Long expiresIn;
+
+    /** Present when {@code openid} was requested; only offline-credentials sign-in reads it. */
+    @JsonProperty("id_token")
+    private String idToken;
 }
