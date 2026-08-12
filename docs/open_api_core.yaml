@@ -14112,12 +14112,9 @@ components:
         with:
           type: string
     LocalizedValue:
-      type: object
-      properties:
-        localeMap:
-          $ref: "#/components/schemas/MapStringString"
-        plainValue:
-          type: string
+      oneOf:
+      - type: string
+      - $ref: "#/components/schemas/MapStringString"
     MapStringApplication:
       type: object
       additionalProperties:
