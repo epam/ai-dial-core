@@ -44,6 +44,8 @@ public class AnalyticsLogContext {
     private final String userId;
     private final List<String> userRoles;
     private final String userDisplayName;
+    // the whole claim payload as the identity provider returned it; filtered by analytics.claimsAllowlist on write
+    private final ObjectNode userClaims;
     private final Map<String, List<String>> requestHeaders;
 
     private final String deploymentName;
@@ -65,6 +67,8 @@ public class AnalyticsLogContext {
     private final TokenUsage tokenUsage;
     private final List<UsagePerModel> usagePerModel;
 
+    private final long operationDurationMs;
+
     public static AnalyticsLogContext from(ProxyContext context, String assembledStreamingResponse) {
         Buffer responseBody = context.getResponseBody();
         return AnalyticsLogContext.builder()
@@ -79,6 +83,7 @@ public class AnalyticsLogContext {
                 .userId(context.getUserId())
                 .userRoles(context.getUserRoles())
                 .userDisplayName(context.getUserDisplayName())
+                .userClaims(context.getUserClaims())
                 .requestHeaders(toHeadersMap(context.getRequest().headers()))
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
                 .parentDeployment(getParentDeployment(
@@ -98,6 +103,7 @@ public class AnalyticsLogContext {
                 .assembledStreamingResponse(assembledStreamingResponse)
                 .tokenUsage(context.getTokenUsage())
                 .usagePerModel(context.getUsagePerModel())
+                .operationDurationMs(context.calculateOperationDurationMs())
                 .build();
     }
 
@@ -114,6 +120,7 @@ public class AnalyticsLogContext {
                 .userId(record.userId())
                 .userRoles(record.userRoles())
                 .userDisplayName(record.userDisplayName())
+                .userClaims(record.userClaims())
                 .requestHeaders(record.requestHeaders())
                 .deploymentName(record.deploymentName())
                 .parentDeployment(record.parentDeployment())
@@ -127,7 +134,20 @@ public class AnalyticsLogContext {
                 .responseBody(result == null ? null : result.body())
                 .tokenUsage(result == null ? null : result.usage())
                 .usagePerModel(usagePerModel)
+                .operationDurationMs(operationDurationMs(record))
                 .build();
+    }
+
+    /**
+     * A job has no response body to measure against, so it is measured from when the core accepted the request to
+     * when it emits the log entry. That includes the poller's detection lag — up to
+     * {@code backgroundJob.maxPollIntervalMs} once the backoff has grown — and an expired job reports the whole time
+     * the core waited before giving up. A live request stops at its response body instead, see
+     * {@link ProxyContext#calculateOperationDurationMs()}.
+     */
+    private static long operationDurationMs(BackgroundJobRecord record) {
+        // both bounds are wall-clock, so a backwards clock adjustment in between must not produce a negative duration
+        return Math.max(0, System.currentTimeMillis() - record.requestTimestamp());
     }
 
     public static Map<String, List<String>> toHeadersMap(MultiMap headers) {
