@@ -31,7 +31,7 @@ jobs:
       - name: debug OpenAPI specification before replaceSpec job
         shell: bash
         run: |
-          cat open_api_core.yaml
+          cat docs/open_api_core.yaml
       - name: Regenerate and lint OpenAPI specification
         shell: bash
         env:
@@ -44,7 +44,7 @@ jobs:
       - name: debug OpenAPI specification after replaceSpec job
         shell: bash
         run: |
-          head -n 5 open_api_core.yaml
+          head -n 5 docs/open_api_core.yaml
       - name: Commit updated OpenAPI specification if changed
         shell: bash
         run: |
