@@ -62,7 +62,7 @@ import java.lang.annotation.Target;
  * </pre>
  */
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.FIELD, ElementType.METHOD, ElementType.ANNOTATION_TYPE})
+@Target({ElementType.FIELD, ElementType.METHOD, ElementType.ANNOTATION_TYPE, ElementType.TYPE})
 public @interface ApiSchema {
 
     // ========== Primary Schema Definition ==========
@@ -122,6 +122,12 @@ public @interface ApiSchema {
      * Combined with oneOf classes into oneOf schema.
      */
     String[] oneOfSchemaRefs() default {};
+
+    /**
+     * oneOf composition - entries that need generic type arguments (e.g. Map&lt;String, String&gt;),
+     * which a bare {@code Class<?>} in {@link #oneOf()} cannot express.
+     */
+    ApiSchemaType[] oneOfTypes() default {};
 
     /**
      * allOf composition - Class<?> elements (intersection/extension).

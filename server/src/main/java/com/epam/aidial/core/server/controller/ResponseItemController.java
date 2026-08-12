@@ -20,6 +20,7 @@ import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -44,20 +45,10 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ResponseItemController implements Controller {
 
-    private static final String OPENAI_RESPONSES_BASE_PATH = "/openai/v1/responses";
-
     private final Proxy proxy;
     private final ProxyContext context;
     private final String dialResponseId;
     private final Operation operation;
-
-    /**
-     * New flow: base_url + /openai/v1/responses. Legacy flow: the verbatim responsesEndpoint.
-     */
-    private static String responsesBase(Deployment deployment) {
-        String baseUrl = deployment.getInterfaceBaseUrl(InterfaceType.OPENAI_RESPONSES);
-        return baseUrl != null ? baseUrl + OPENAI_RESPONSES_BASE_PATH : deployment.getResponsesEndpoint();
-    }
 
     @Override
     @ApiOperations({
@@ -158,7 +149,7 @@ public class ResponseItemController implements Controller {
 
     private Future<Void> dispatch(ResponseMapping mapping) {
         Deployment deployment = proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName());
-        if (!deployment.supportsInterface(InterfaceType.OPENAI_RESPONSES)) {
+        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES) == null) {
             return context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API")
                     .mapEmpty();
         }
@@ -191,12 +182,13 @@ public class ResponseItemController implements Controller {
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment,
                         null,
-                        dep -> dep.resolveEndpoint(InterfaceType.OPENAI_RESPONSES),
+                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES),
                         mapping.getUpstreamKey());
         Upstream upstream = upstreamRoute.next();
 
         String query = context.getRequest().query();
-        String targetUrl = responsesBase(deployment) + "/" + mapping.getUpstreamResponseId() + operation.suffix
+        String targetUrl = DeploymentEndpointUtil.resolveResponsesBaseUri(deployment)
+                + "/" + mapping.getUpstreamResponseId() + operation.suffix
                 + (query != null ? "?" + query : "");
 
         return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream)

@@ -8,6 +8,8 @@ import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.auth0.jwt.interfaces.Verification;
+import com.epam.aidial.core.config.AuthenticationType;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -20,6 +22,7 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpHeaders;
@@ -101,6 +104,10 @@ public class IdentityProvider {
     private final GetUserRoleFn getUserRoleFn;
 
     private final String audience;
+
+    /** OAuth client used to obtain offline credentials on a user's behalf; null unless configured. */
+    @Getter
+    private final ResourceAuthSettings offlineClient;
 
     /**
      * The path to the claim to extract user display name
@@ -202,6 +209,8 @@ public class IdentityProvider {
 
         audience = settings.getString("audience", null);
 
+        offlineClient = parseOfflineClient(settings.getJsonObject("offlineClient"));
+
         userDisplayName = getClaimPath(settings, "userDisplayName", null);
 
         userIdPath = getClaimPath(settings, "userIdPath", new String[]{USER_SUB});
@@ -219,6 +228,26 @@ public class IdentityProvider {
 
     private static String[] getClaimPath(JsonObject settings, String claimName, String[] defaultPath) {
         return settings.containsKey(claimName) ? parseClaimPath(settings.getString(claimName)) : defaultPath;
+    }
+
+    /** Modelled as {@link ResourceAuthSettings} so the token service handles it without a parallel code path. */
+    private static ResourceAuthSettings parseOfflineClient(JsonObject offlineClient) {
+        if (offlineClient == null) {
+            return null;
+        }
+        String clientId = Objects.requireNonNull(offlineClient.getString("clientId"), "offlineClient.clientId is missed");
+        String tokenEndpoint = Objects.requireNonNull(offlineClient.getString("tokenEndpoint"), "offlineClient.tokenEndpoint is missed");
+        String authorizationEndpoint = Objects.requireNonNull(
+                offlineClient.getString("authorizationEndpoint"), "offlineClient.authorizationEndpoint is missed");
+        return ResourceAuthSettings.builder()
+                .authenticationType(AuthenticationType.OAUTH)
+                .clientId(clientId)
+                .clientSecret(offlineClient.getString("clientSecret"))
+                .authorizationEndpoint(authorizationEndpoint)
+                .tokenEndpoint(tokenEndpoint)
+                .redirectUri(offlineClient.getString("redirectUri"))
+                .scopesSupported(getAsStringList(offlineClient, "scopes", List.of("openid", "offline_access")))
+                .build();
     }
 
     private static List<String> getAsStringList(JsonObject settings, String key, List<String> defaultValue) {
@@ -430,15 +459,19 @@ public class IdentityProvider {
         return promise.future().onFailure(error -> log.warn("Can't extract claims from user info endpoint '{}':", userInfoUrl, error));
     }
 
-    private ExtractedClaims from(DecodedJWT jwt) {
-        String userKey = jwt.getClaim(loggingKey).asString();
+    private static Map<String, Object> claimsOf(DecodedJWT jwt) {
         Map<String, Object> map = new HashMap<>();
         for (Map.Entry<String, Claim> e : jwt.getClaims().entrySet()) {
             map.put(e.getKey(), e.getValue().as(Object.class));
         }
+        return map;
+    }
+
+    private ExtractedClaims from(DecodedJWT jwt) {
+        String userKey = jwt.getClaim(loggingKey).asString();
+        Map<String, Object> map = claimsOf(jwt);
         logClaims(map);
-        return new ExtractedClaims(extractStringClaim(map, userIdPath), extractUserRoles(map), extractUserHash(userKey),
-                extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
+        return toExtractedClaims(map, extractUserRoles(map), userKey);
     }
 
     private void from(String accessToken, JsonObject userInfo, Promise<ExtractedClaims> promise) {
@@ -447,17 +480,22 @@ public class IdentityProvider {
         if (getUserRoleFn != null) {
             getUserRoleFn.apply(accessToken, map).onFailure(promise::fail).onSuccess(roles -> {
                 logClaims(map);
-                ExtractedClaims extractedClaims = new ExtractedClaims(extractStringClaim(map, userIdPath), roles, extractUserHash(userKey),
-                        extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
-                promise.complete(extractedClaims);
+                promise.complete(toExtractedClaims(map, roles, userKey));
             });
         } else {
             logClaims(map);
-            ExtractedClaims extractedClaims =
-                    new ExtractedClaims(extractStringClaim(map, userIdPath), extractUserRoles(map), extractUserHash(userKey),
-                            extractUserClaims(map), extractStringClaim(map, projectPath), extractStringClaim(map, userDisplayName));
-            promise.complete(extractedClaims);
+            promise.complete(toExtractedClaims(map, extractUserRoles(map), userKey));
         }
+    }
+
+    private ExtractedClaims toExtractedClaims(Map<String, Object> map, List<String> roles, String userKey) {
+        return new ExtractedClaims(
+                extractStringClaim(map, userIdPath),
+                roles,
+                extractUserHash(userKey),
+                extractUserClaims(map),
+                extractStringClaim(map, projectPath),
+                extractStringClaim(map, userDisplayName));
     }
 
     private void logClaims(Map<String, Object> claims) {
@@ -473,12 +511,22 @@ public class IdentityProvider {
         }
     }
 
+    /** The user id this provider would derive from an ID token, via the same {@code userIdPath} as a request. */
+    String extractUserIdFromIdToken(String idToken) {
+        return extractStringClaim(claimsOf(decodeJwtToken(idToken)), userIdPath);
+    }
+
+    boolean matchesIssuer(String issuer) {
+        return issuerPattern != null && issuer != null && issuerPattern.matcher(issuer).matches();
+    }
+
+    /** Whether the provider can disclaim an issuer at all — without a pattern, a non-match proves nothing. */
+    boolean hasIssuerPattern() {
+        return issuerPattern != null;
+    }
+
     boolean match(DecodedJWT jwt) {
-        if (issuerPattern == null) {
-            return false;
-        }
-        String issuer = jwt.getIssuer();
-        return issuerPattern.matcher(issuer).matches();
+        return matchesIssuer(jwt.getIssuer());
     }
 
     boolean hasUserinfoUrl() {

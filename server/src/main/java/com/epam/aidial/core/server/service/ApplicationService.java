@@ -180,19 +180,19 @@ public class ApplicationService {
                                                                    ExternalServicesWriteMode externalServicesWriteMode) {
         prepareApplication(resource, application, preserveForwardAuthToken);
 
-        MutableObject<List<String>> removedExternalServices = new MutableObject<>(List.of());
+        MutableObject<List<String>> purgeableExternalServices = new MutableObject<>(List.of());
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
             verifySchemaRichApp(application, existing);
             prepareApplicationFunction(resource, application, existing);
             prepareAdminManagedFields(application, existing, adminManagedFieldsWriteMode);
             List<String> externalServices = externalServiceService.processOnWrite(resource, application, existing, externalServicesWriteMode);
-            removedExternalServices.setValue(externalServices);
+            purgeableExternalServices.setValue(externalServices);
             return ProxyUtil.convertToString(application);
         });
 
-        // Purge credentials of services dropped by this write (after commit), like the dedicated DELETE.
-        externalServiceService.purgeApplicationCredentials(resource, removedExternalServices.get());
+        // Purge credentials of services this write dropped or changed the auth type of (after commit).
+        externalServiceService.purgeApplicationCredentials(resource, purgeableExternalServices.get());
 
         return Pair.of(meta, application);
     }

@@ -204,6 +204,7 @@ class RouteRequestBodyHandler {
     private void handleResponse(BufferingReadStream responseStream) {
         Buffer proxyResponseBody = responseStream.getContent();
         context.setResponseBody(proxyResponseBody);
+        context.setResponseBodyTimestamp(System.currentTimeMillis());
         controller.handleProxyResponseBody(proxyResponseBody).onComplete(result -> {
             if (result.failed()) {
                 log.warn("Failed to handle proxy response", result.cause());
