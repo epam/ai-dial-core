@@ -411,6 +411,28 @@ class ResourceCredentialsServiceTest {
     }
 
     @Test
+    void testGetRefreshedResourceCredentials_DialNativeNeverServesLeftoverRecords() {
+        // A USER-level record stored while the service was OAUTH/API_KEY survives a switch to DIAL_NATIVE
+        // (only APPLICATION-level records are purged), so retrieval must refuse by the *current* auth type.
+        ResourceAuthSettings authSettings = Mockito.mock(ResourceAuthSettings.class);
+        when(authSettings.getAuthenticationType()).thenReturn(AuthenticationType.DIAL_NATIVE);
+
+        Assertions.assertNull(service.getRefreshedResourceCredentials(
+                Mockito.mock(CredentialsLocator.class), authSettings, "userSub"));
+        Mockito.verifyNoInteractions(resourceService);
+    }
+
+    @Test
+    void testGetRefreshedUserCredentials_DialNativeNeverServesLeftoverRecords() {
+        ResourceAuthSettings authSettings = Mockito.mock(ResourceAuthSettings.class);
+        when(authSettings.getAuthenticationType()).thenReturn(AuthenticationType.DIAL_NATIVE);
+
+        Assertions.assertNull(service.getRefreshedUserCredentials(
+                Mockito.mock(CredentialsLocator.class), authSettings, "owner"));
+        Mockito.verifyNoInteractions(resourceService);
+    }
+
+    @Test
     void testGetAndRefreshCredentials_ResponseWithoutRefreshTokenKeepsTheExistingOne() {
         // RFC 6749 §6: a refresh response that omits refresh_token leaves the existing one in force. Providers
         // that do not rotate return exactly this, and dropping it would end offline access permanently.

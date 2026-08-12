@@ -213,11 +213,20 @@ public class ResourceCredentialsService {
         return resourceService.deleteResource(credentialsDescriptor.toResourceDescriptor(), EtagHeader.ANY);
     }
 
+    /**
+     * NONE has no credential by definition; DIAL_NATIVE has none <b>per service</b> — a record left from before a
+     * switch to either type must never be served, and APPLICATION-level purging cannot reach USER-level leftovers.
+     */
+    private static boolean hasNoServiceCredential(ResourceAuthSettings authSettings) {
+        AuthenticationType type = authSettings.getAuthenticationType();
+        return type == AuthenticationType.NONE || type == AuthenticationType.DIAL_NATIVE;
+    }
+
     @Nullable
     public ResourceCredentials getRefreshedResourceCredentials(CredentialsLocator credentialsLocator,
                                                                ResourceAuthSettings authSettings,
                                                                String userSub) {
-        if (authSettings.getAuthenticationType() == AuthenticationType.NONE) {
+        if (hasNoServiceCredential(authSettings)) {
             return null;
         }
 
@@ -263,7 +272,7 @@ public class ResourceCredentialsService {
     public ResourceCredentials getRefreshedUserCredentials(CredentialsLocator credentialsLocator,
                                                            ResourceAuthSettings authSettings,
                                                            String ownerUserId) {
-        if (authSettings.getAuthenticationType() == AuthenticationType.NONE) {
+        if (hasNoServiceCredential(authSettings)) {
             return null;
         }
 
