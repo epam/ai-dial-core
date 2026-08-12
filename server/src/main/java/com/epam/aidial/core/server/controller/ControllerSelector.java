@@ -62,6 +62,18 @@ public class ControllerSelector {
             ExternalServiceManagementController controller = new ExternalServiceManagementController(proxy, context);
             return () -> controller.deleteExternalService(appId, serviceId);
         });
+        post(RouteTemplate.EXTERNAL_SERVICE_CONSENT, (proxy, context, pathMatcher) -> {
+            String appId = UrlUtil.decodePath(pathMatcher.group("appId"));
+            String serviceId = UrlUtil.decodePath(pathMatcher.group("id"));
+            ExternalServiceManagementController controller = new ExternalServiceManagementController(proxy, context);
+            return () -> controller.grantConsent(appId, serviceId);
+        });
+        delete(RouteTemplate.EXTERNAL_SERVICE_CONSENT, (proxy, context, pathMatcher) -> {
+            String appId = UrlUtil.decodePath(pathMatcher.group("appId"));
+            String serviceId = UrlUtil.decodePath(pathMatcher.group("id"));
+            ExternalServiceManagementController controller = new ExternalServiceManagementController(proxy, context);
+            return () -> controller.withdrawConsent(appId, serviceId);
+        });
 
         // API-managed applications/toolsets in the platform bucket. Registered before the generic
         // RESOURCE/RESOURCE_METADATA routes so /v1/(applications|toolsets)/platform/... is not

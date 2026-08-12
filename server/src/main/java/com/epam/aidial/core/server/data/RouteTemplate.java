@@ -267,6 +267,11 @@ public enum RouteTemplate {
         "^/v1/applications/(?<appId>.+?)/external-services/(?<id>[^/]+)$",
         "/v1/applications/{appId}/external-services/{id}"
     ),
+    // Admin consent for a DIAL-native service: a separate door from sign-in, with its own authorization rule.
+    EXTERNAL_SERVICE_CONSENT(
+        "^/v1/applications/(?<appId>.+?)/external-services/(?<id>[^/]+)/consent$",
+        "/v1/applications/{appId}/external-services/{id}/consent"
+    ),
 
     // Other routes
     CONFIG(

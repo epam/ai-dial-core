@@ -1,11 +1,26 @@
 package com.epam.aidial.core.server;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.AuthenticationType;
+import com.epam.aidial.core.config.ExternalService;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
+
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -1522,6 +1537,236 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
         assertEquals(400, badCred.status(), () -> badCred.body());
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // Admin consent for DIAL-native services (§4)
+    // ---------------------------------------------------------------------------------------------
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testAdminCanGrantAndWithdrawConsent() {
+        Response grant = send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "admin");
+        assertEquals(200, grant.status(), grant.body());
+
+        Response withdraw = send(HttpMethod.DELETE, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "admin");
+        assertEquals(200, withdraw.status(), withdraw.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testNonAdminCannotGrantConsent() {
+        Response grant = send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "user");
+        assertEquals(403, grant.status(), grant.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testNonAdminCannotWithdrawConsent() {
+        send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "admin");
+
+        Response withdraw = send(HttpMethod.DELETE, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "user");
+        assertEquals(403, withdraw.status(), withdraw.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testConsentRejectedForNonDialNativeService() {
+        Response grant = send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/salesforce/consent",
+                null, "", "authorization", "admin");
+        assertEquals(400, grant.status(), grant.body());
+        assertTrue(grant.body().contains("DIAL_NATIVE"), grant.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testConsentForDynamicAppWithSpaceInPath() {
+        // The route hands the controller a decoded app id, so the scope must be re-encoded before it is parsed
+        // again — a raw space fails URI parsing outright, and any re-encoding difference would make the grant
+        // and the redemption address different storage keys.
+        Application app = new Application();
+        app.setEndpoint("http://localhost:7001/v1/x");
+        app.setExternalServices(Map.of("dial", new ExternalService()
+                .setAuthSettings(ResourceAuthSettings.builder()
+                        .authenticationType(AuthenticationType.DIAL_NATIVE)
+                        .build())));
+        dial.getProxy().getApplicationService().putApplication(
+                ResourceDescriptorFactory.fromPublicUrl("applications/public/my%20app"),
+                EtagHeader.ANY, null, app, false, AdminManagedFieldsWriteMode.AUTHORITATIVE);
+
+        String consent = "/v1/applications/public/my%20app/external-services/dial/consent";
+        Response grant = send(HttpMethod.POST, consent, null, "", "authorization", "admin");
+        assertEquals(200, grant.status(), grant.body());
+
+        // Withdraw reports true only if it addressed the very record the grant wrote.
+        Response withdraw = send(HttpMethod.DELETE, consent, null, "", "authorization", "admin");
+        verify(withdraw, 200, "true");
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testAuthTypeChangePurgesApplicationLevelCredentials() {
+        // Without the purge, the API_KEY record stored below would survive the switch to DIAL_NATIVE — sitting
+        // exactly where the consent check looks, as an approval no administrator ever granted.
+        putDynamicApp("type-change-app", AuthenticationType.API_KEY);
+
+        Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "applications/public/type-change-app/external_services/svc",
+                    "credentials_level": "APPLICATION",
+                    "authentication_type": "API_KEY",
+                    "api_key": "app-key"
+                }
+                """, "authorization", "admin");
+        assertEquals(200, signIn.status(), signIn.body());
+        assertEquals("SIGNED_IN", dynamicAppLevelStatus("public/type-change-app"));
+
+        Response put = send(HttpMethod.PUT, "/v1/applications/public/type-change-app/external-services/svc", null, """
+                { "auth_settings": { "authentication_type": "DIAL_NATIVE" } }
+                """, "authorization", "admin");
+        assertEquals(200, put.status(), put.body());
+
+        assertEquals("SIGNED_OUT", dynamicAppLevelStatus("public/type-change-app"));
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testAuthTypeChangeOnApplicationWritePurgesApplicationLevelCredentials() {
+        // Same invariant through the whole-application write path (processOnWrite), not the per-service PUT.
+        putDynamicApp("write-change-app", AuthenticationType.API_KEY);
+
+        Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "applications/public/write-change-app/external_services/svc",
+                    "credentials_level": "APPLICATION",
+                    "authentication_type": "API_KEY",
+                    "api_key": "app-key"
+                }
+                """, "authorization", "admin");
+        assertEquals(200, signIn.status(), signIn.body());
+        assertEquals("SIGNED_IN", dynamicAppLevelStatus("public/write-change-app"));
+
+        putDynamicApp("write-change-app", AuthenticationType.DIAL_NATIVE);
+
+        assertEquals("SIGNED_OUT", dynamicAppLevelStatus("public/write-change-app"));
+    }
+
+    private void putDynamicApp(String name, AuthenticationType type) {
+        Application app = new Application();
+        app.setEndpoint("http://localhost:7001/v1/x");
+        ResourceAuthSettings.ResourceAuthSettingsBuilder auth = ResourceAuthSettings.builder().authenticationType(type);
+        if (type == AuthenticationType.API_KEY) {
+            auth.apiKeyHeader("X-API-Key");
+        }
+        app.setExternalServices(Map.of("svc", new ExternalService().setAuthSettings(auth.build())));
+        dial.getProxy().getApplicationService().putApplication(
+                ResourceDescriptorFactory.fromPublicUrl("applications/public/" + name),
+                EtagHeader.ANY, null, app, false, AdminManagedFieldsWriteMode.AUTHORITATIVE);
+    }
+
+    private String dynamicAppLevelStatus(String appId) {
+        Response list = send(HttpMethod.GET, "/v1/applications/" + appId + "/external-services",
+                null, "", "authorization", "admin");
+        assertEquals(200, list.status(), list.body());
+        for (JsonNode service : ProxyUtil.convertToObject(list.body(), JsonNode.class)) {
+            if ("svc".equals(service.get("id").asText())) {
+                return service.get("auth_settings").get("app_level_auth_status").asText();
+            }
+        }
+        throw new AssertionError("service 'svc' missing from " + list.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testConsentForUnknownServiceIsNotFound() {
+        Response grant = send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/nope/consent",
+                null, "", "authorization", "admin");
+        assertEquals(404, grant.status(), grant.body());
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Status for DIAL-native services (§8 item 6a): app level means approved, user level means the
+    // caller's platform-wide offline credentials — never a per-service sign-in, which does not exist.
+    // ---------------------------------------------------------------------------------------------
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testDialNativeAppLevelStatusFollowsConsent() {
+        assertEquals("SIGNED_OUT", dialNativeStatus("app_level_auth_status", "admin"));
+
+        send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "admin");
+        assertEquals("SIGNED_IN", dialNativeStatus("app_level_auth_status", "admin"));
+
+        send(HttpMethod.DELETE, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "admin");
+        assertEquals("SIGNED_OUT", dialNativeStatus("app_level_auth_status", "admin"));
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testConsentDoesNotAffectOtherServicesStatus() {
+        send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "admin");
+
+        JsonNode salesforce = externalService("salesforce", "admin");
+        assertEquals("SIGNED_OUT", salesforce.get("auth_settings").get("app_level_auth_status").asText());
+        assertEquals("SIGNED_OUT", salesforce.get("auth_settings").get("user_level_auth_status").asText());
+    }
+
+    private String dialNativeStatus(String field, String user) {
+        return externalService("dial", user).get("auth_settings").get(field).asText();
+    }
+
+    private JsonNode externalService(String serviceId, String user) {
+        Response list = send(HttpMethod.GET, "/v1/applications/app-with-services/external-services",
+                null, "", "authorization", user);
+        assertEquals(200, list.status(), list.body());
+        for (JsonNode service : ProxyUtil.convertToObject(list.body(), JsonNode.class)) {
+            if (serviceId.equals(service.get("id").asText())) {
+                return service;
+            }
+        }
+        throw new AssertionError("service '" + serviceId + "' missing from " + list.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testConsentDecisionsAreAudited() {
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_OBO_AUDIT");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        auditLogger.addAppender(appender);
+        Level previous = auditLogger.getLevel();
+        auditLogger.setLevel(Level.INFO);
+        try {
+            send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                    null, "", "authorization", "admin");
+            send(HttpMethod.DELETE, "/v1/applications/app-with-services/external-services/dial/consent",
+                    null, "", "authorization", "admin");
+            // a refusal must be recorded too
+            send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                    null, "", "authorization", "user");
+
+            List<String> events = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .filter(m -> m.startsWith("event=external_service_consent"))
+                    .toList();
+            assertEquals(3, events.size(), events::toString);
+            assertTrue(events.get(0).contains("action=GRANT"), events::toString);
+            assertTrue(events.get(0).contains("outcome=SUCCESS"), events::toString);
+            assertTrue(events.get(0).contains("application_id=app-with-services"), events::toString);
+            assertTrue(events.get(1).contains("action=WITHDRAW"), events::toString);
+            assertTrue(events.get(2).contains("outcome=DENIED"), events::toString);
+        } finally {
+            auditLogger.setLevel(previous);
+            auditLogger.detachAppender(appender);
+        }
+    }
+
     @Test
     @DialConfigLocation("dial-config/external-service-credentials.json")
     void testSignInRejectedForDialNativeService() {
@@ -1547,6 +1792,27 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
                 }
                 """.formatted(DIAL_NATIVE_SCOPE), "authorization", "user");
         assertEquals(400, signIn.status());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testSignOutCannotRemoveAdminConsent() {
+        // The consent record lives at APPLICATION level under the same scope the generic sign-out addresses, and
+        // sign-out admits app owners — so without this refusal an owner could withdraw an admin's decision, unaudited.
+        send(HttpMethod.POST, "/v1/applications/app-with-services/external-services/dial/consent",
+                null, "", "authorization", "admin");
+
+        Response signOut = send(HttpMethod.POST, "/v1/ops/external-service/signout", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "APPLICATION",
+                    "authentication_type": "DIAL_NATIVE"
+                }
+                """.formatted(DIAL_NATIVE_SCOPE), "authorization", "admin");
+        assertEquals(400, signOut.status(), signOut.body());
+        assertTrue(signOut.body().contains("not applicable"), signOut.body());
+
+        assertEquals("SIGNED_IN", dialNativeStatus("app_level_auth_status", "admin"));
     }
 
     @Test
