@@ -15,6 +15,9 @@ public enum InterfaceType {
 
     @JsonAlias({"openai_chat_completions"})
     OPENAI_CHAT_COMPLETIONS("openaiChatCompletions", List.of("prefix.body.tools", "prefix.body.messages")),
+    // an embeddings request carries no prompt prefix to cache, so it contributes no cache keys
+    @JsonAlias({"openai_embeddings"})
+    OPENAI_EMBEDDINGS("openaiEmbeddings", List.of()),
     @JsonAlias({"openai_responses"})
     OPENAI_RESPONSES("openaiResponses", List.of("prefix.body.tools", "prefix.body.instructions", "prefix.body.input")),
     @JsonAlias({"anthropic_messages"})
