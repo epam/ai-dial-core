@@ -43,7 +43,7 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          if git diff --quiet docs/open_api_core.yaml; then
+          if git diff --quiet HEAD -- docs/open_api_core.yaml; then
             echo "docs/open_api_core.yaml is up to date — nothing to commit."
           else
             echo "docs/open_api_core.yaml has changed — committing and pushing."
