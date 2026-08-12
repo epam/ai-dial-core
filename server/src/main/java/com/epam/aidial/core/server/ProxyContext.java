@@ -234,7 +234,7 @@ public class ProxyContext {
      * produce a response body, e.g. a deployment without an endpoint, fall back to the current time. Both bounds are
      * wall-clock, so a backwards clock adjustment in between must not produce a negative duration.
      */
-    public long getOperationDurationMs() {
+    public long calculateOperationDurationMs() {
         long end = responseBodyTimestamp == 0 ? System.currentTimeMillis() : responseBodyTimestamp;
         return Math.max(0, end - requestTimestamp);
     }

@@ -103,7 +103,7 @@ public class AnalyticsLogContext {
                 .assembledStreamingResponse(assembledStreamingResponse)
                 .tokenUsage(context.getTokenUsage())
                 .usagePerModel(context.getUsagePerModel())
-                .operationDurationMs(context.getOperationDurationMs())
+                .operationDurationMs(context.calculateOperationDurationMs())
                 .build();
     }
 
@@ -143,7 +143,7 @@ public class AnalyticsLogContext {
      * when it emits the log entry. That includes the poller's detection lag — up to
      * {@code backgroundJob.maxPollIntervalMs} once the backoff has grown — and an expired job reports the whole time
      * the core waited before giving up. A live request stops at its response body instead, see
-     * {@link ProxyContext#getOperationDurationMs()}.
+     * {@link ProxyContext#calculateOperationDurationMs()}.
      */
     private static long operationDurationMs(BackgroundJobRecord record) {
         // both bounds are wall-clock, so a backwards clock adjustment in between must not produce a negative duration

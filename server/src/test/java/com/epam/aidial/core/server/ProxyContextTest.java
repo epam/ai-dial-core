@@ -24,7 +24,7 @@ public class ProxyContextTest {
         context.setRequestTimestamp(1000L);
         context.setResponseBodyTimestamp(2500L);
 
-        assertEquals(1500, context.getOperationDurationMs());
+        assertEquals(1500, context.calculateOperationDurationMs());
     }
 
     @Test
@@ -33,7 +33,7 @@ public class ProxyContextTest {
         ProxyContext context = context(null);
         context.setResponseBodyTimestamp(0L);
 
-        long duration = context.getOperationDurationMs();
+        long duration = context.calculateOperationDurationMs();
         assertTrue(duration >= 0 && duration < 60_000, "Unexpected duration: " + duration);
     }
 
@@ -44,7 +44,7 @@ public class ProxyContextTest {
         // clock moved backwards between the two measurements
         context.setResponseBodyTimestamp(1000L);
 
-        assertEquals(0, context.getOperationDurationMs());
+        assertEquals(0, context.calculateOperationDurationMs());
     }
 
     @Test
