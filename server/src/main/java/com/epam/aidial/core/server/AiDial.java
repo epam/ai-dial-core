@@ -39,6 +39,7 @@ import com.epam.aidial.core.server.controller.WellKnownResourceMetadataControlle
 import com.epam.aidial.core.server.data.ApiKeyValidation;
 import com.epam.aidial.core.server.http.HttpProxySelector;
 import com.epam.aidial.core.server.limiter.RateLimiter;
+import com.epam.aidial.core.server.log.AnalyticsSettings;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
@@ -131,7 +132,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -144,8 +144,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
-import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 
 @Slf4j
 @Setter
@@ -197,13 +195,7 @@ public class AiDial {
 
             AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx, settings("asyncTaskExecutor"));
 
-            JsonObject analyticsSettings = settings("analytics");
-            boolean collectClaims = analyticsSettings.getBoolean("collectClaims", false);
-            boolean collectHeaders = analyticsSettings.getBoolean("collectHeaders", false);
-            // default is defined in the bundled aidial.settings.json and always merged in
-            List<Pattern> headersBlacklist = parseHeaderPatterns(analyticsSettings.getJsonArray("headersBlacklist"));
-            List<Pattern> headersAllowlist = parseHeaderPatterns(analyticsSettings.getJsonArray("headersAllowlist"));
-            LogStore logStore = new GfLogStore(collectClaims, collectHeaders, headersBlacklist, headersAllowlist);
+            LogStore logStore = new GfLogStore(AnalyticsSettings.from(settings("analytics")));
 
             if (accessTokenValidator == null) {
                 String claimsLogLevel = settings.getString("claimsLogLevel", "DEBUG");
@@ -671,24 +663,6 @@ public class AiDial {
         OpenTelemetryOptions otelOpts = new OpenTelemetryOptions(openTelemetry);
         otelOpts.setFactory(new DialTracingFactory(otelOpts.getFactory()));
         vertxOptions.setTracingOptions(otelOpts);
-    }
-
-    private static List<Pattern> parseHeaderPatterns(JsonArray value) {
-        if (value == null) {
-            return null;
-        }
-        List<Pattern> patterns = new ArrayList<>();
-        for (Object item : value) {
-            if (!(item instanceof String s) || s.isBlank()) {
-                continue;
-            }
-            try {
-                patterns.add(Pattern.compile(s.trim(), Pattern.CASE_INSENSITIVE));
-            } catch (PatternSyntaxException e) {
-                log.warn("Ignoring invalid analytics header pattern '{}': {}", s, e.getMessage());
-            }
-        }
-        return patterns;
     }
 
     private static String getOtlSetting(String envVar, String systemProperty) {
