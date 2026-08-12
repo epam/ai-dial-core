@@ -18,13 +18,6 @@ info:
     ```
     <br>
 
-    Header parameter name: `Api-Key`
-
-    <hr style="margin:1em 0px;border-bottom:1px solid rgb(63, 63, 70);border-top-width:0px"\>
-
-    #### HTTP Authorization: BearerAuth
-
-    <br>
 
     ```bash
     Authorization: Bearer <JWT>
