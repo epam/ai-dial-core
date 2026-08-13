@@ -44,10 +44,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           if [ -z "$(git status --short docs/open_api_core.yaml)" ]; then
+            echo "docs/open_api_core.yaml is up to date — nothing to commit."
+          else
             echo "docs/open_api_core.yaml has changed — committing and pushing."
             git add docs/open_api_core.yaml
             git commit -m "chore: update generated OpenAPI specification"
             git push origin HEAD:${{ github.head_ref }}
-          else
-            echo "docs/open_api_core.yaml is up to date — nothing to commit."
           fi
