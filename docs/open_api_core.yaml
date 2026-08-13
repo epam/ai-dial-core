@@ -10434,8 +10434,8 @@ components:
           - assistant
           - tool
         content:
-          type: string
           nullable: true
+          type: string
         refusal:
           type: string
           nullable: true
