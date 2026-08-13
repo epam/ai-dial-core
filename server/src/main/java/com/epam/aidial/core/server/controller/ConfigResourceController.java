@@ -1113,7 +1113,7 @@ public class ConfigResourceController implements Controller {
             if (existing == null) {
                 return null;
             }
-            Object entity = readAndDecrypt(resourceType, existing.getValue(), descriptor);
+            Object entity = deserializeBlob(resourceType, existing.getValue());
             return Pair.of(existing.getKey().getEtag(), projector.apply(path, entity));
         }).onSuccess(result -> {
             if (result == null) {
@@ -1135,16 +1135,14 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Deserializes and decrypts a blob body for {@link #handleSingleGetFromBlob}. Applications and
-     * toolsets encrypt secrets outside the {@code @EncryptedField}/{@link SecretFieldProcessor}
-     * path (per-resource, via {@link ApplicationService}/{@link ToolSetService}), so they're
-     * re-fetched through those services' own decrypting reads rather than decoded from
-     * {@code body} directly — mirrors {@code MergedConfigStore.decryptManagedEntity}.
+     * Deserializes a blob body for {@link #handleSingleGetFromBlob}. No decryption is performed:
+     * secret fields on entity types are {@code @JsonProperty(WRITE_ONLY)} and are therefore
+     * suppressed by Jackson on serialization regardless of their content; APPLICATION and TOOL_SET
+     * secrets are additionally redacted by the projector ({@link #redactExternalServiceSecrets}/
+     * {@link #redactAuthSettingsSecrets}).
      */
-    private Object readAndDecrypt(ResourceTypes type, String body, ResourceDescriptor descriptor) {
+    private Object deserializeBlob(ResourceTypes type, String body) {
         return switch (type) {
-            case APPLICATION -> applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
-            case TOOL_SET -> toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
             case APP_TYPE_SCHEMA, CATALOG_SCHEMA -> {
                 try {
                     yield ProxyUtil.BLOB_MAPPER.readTree(body);
@@ -1154,15 +1152,12 @@ public class ConfigResourceController implements Controller {
                 }
             }
             default -> {
-                Object entity;
                 try {
-                    entity = treeToEntity(ProxyUtil.BLOB_MAPPER.readTree(body), entityClassFor(entityType));
+                    yield treeToEntity(ProxyUtil.BLOB_MAPPER.readTree(body), entityClassFor(entityType));
                 } catch (JsonProcessingException e) {
                     throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Stored entity is malformed at " + locationOf(e));
                 }
-                secretFieldProcessor.decryptFields(entity, descriptor);
-                yield entity;
             }
         };
     }
