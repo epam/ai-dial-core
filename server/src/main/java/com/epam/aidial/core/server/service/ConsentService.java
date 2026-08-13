@@ -7,7 +7,6 @@ import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -17,11 +16,8 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.ArrayDeque;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-
-import static com.epam.aidial.core.server.util.PlatformCanonicalIdUtil.lastSegment;
 
 @Slf4j
 public class ConsentService {
@@ -91,35 +87,15 @@ public class ConsentService {
         }
         if (executionPath != null) {
             for (String dep : executionPath) {
-                if (findConsentDeployment(consent, dep) == null) {
+                if (!consent.getDeployments().containsKey(dep)) {
                     fail(currentDeploymentId);
                 }
             }
         }
-        Consent.Deployment consentDeployment = findConsentDeployment(consent, currentDeploymentId);
+        Consent.Deployment consentDeployment = consent.getDeployments().get(currentDeploymentId);
         if (consentDeployment == null || !consentDeployment.isConsentRequired()) {
             fail(currentDeploymentId);
         }
-    }
-
-    /**
-     * Looks up a deployment's consent record by id, falling back to a last-segment match when the
-     * exact key misses. Compat for consent records persisted before deployment.getName() reverted
-     * from canonical id (e.g. "models/platform/gpt-4") to short name for API-managed deployments —
-     * without this, every such record would silently fail re-consent after upgrade.
-     */
-    private static Consent.Deployment findConsentDeployment(Consent consent, String id) {
-        Consent.Deployment exact = consent.getDeployments().get(id);
-        if (exact != null) {
-            return exact;
-        }
-        String shortId = lastSegment(id);
-        for (Map.Entry<String, Consent.Deployment> entry : consent.getDeployments().entrySet()) {
-            if (lastSegment(entry.getKey()).equals(shortId)) {
-                return entry.getValue();
-            }
-        }
-        return null;
     }
 
     private String getRootDeploymentId(ProxyContext context, Deployment current) {

@@ -370,7 +370,7 @@ public class MergedConfigStoreReplicaUpdateTest {
 
         store.applyReplicaEvent(descriptor, ResourceEvent.Action.CREATE);
 
-        Model applied = store.get().getModels().get(MODEL_ID);
+        Model applied = store.get().getModels().get(descriptor.getName());
         assertEquals("GPT-4", applied.getDisplayName().getPlainValue());
         verify(secretFieldProcessor).decryptFields(any(Model.class), eq(descriptor));
         verifyNoInteractions(apiKeyStore);

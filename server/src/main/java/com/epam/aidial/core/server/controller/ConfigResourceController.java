@@ -1011,14 +1011,11 @@ public class ConfigResourceController implements Controller {
         // Slice U.4: secret fields drop on response via @JsonProperty(WRITE_ONLY) — there is no
         // ?reveal_secrets=true reveal flow and no security-admin tier.
         return switch (resourceType()) {
-            case MODEL -> handleSingleGet(
-                    config.getModels(), ResourceTypes.MODEL,
+            case MODEL -> handleSingleGetFromBlob(ResourceTypes.MODEL,
                     (key, model) -> projectItem(model, key));
-            case INTERCEPTOR -> handleSingleGet(
-                    config.getInterceptors(), ResourceTypes.INTERCEPTOR,
+            case INTERCEPTOR -> handleSingleGetFromBlob(ResourceTypes.INTERCEPTOR,
                     (key, interceptor) -> projectItem(interceptor, key));
-            case ROLE -> handleSingleGet(
-                    config.getRoles(), ResourceTypes.ROLE,
+            case ROLE -> handleSingleGetFromBlob(ResourceTypes.ROLE,
                     (key, role) -> projectItem(role, key));
             case PROJECT_KEY -> handleSingleGet(
                     config.getKeys(), ResourceTypes.PROJECT_KEY,
@@ -1028,17 +1025,21 @@ public class ConfigResourceController implements Controller {
                     (key, route) -> projectItem(route, key));
             case APP_TYPE_SCHEMA -> handleSchemaGet(config.getApplicationTypeSchemas(), ResourceTypes.APP_TYPE_SCHEMA, admin);
             case CATALOG_SCHEMA -> handleSchemaGet(config.getCatalogSchemas(), ResourceTypes.CATALOG_SCHEMA, admin);
-            case APPLICATION -> handleSingleGet(
-                    config.getApplications(), ResourceTypes.APPLICATION,
+            case APPLICATION -> handleSingleGetFromBlob(ResourceTypes.APPLICATION,
                     (key, application) -> redactExternalServiceSecrets(projectItem(application, key)));
-            case TOOL_SET -> handleSingleGet(
-                    config.getToolsets(), ResourceTypes.TOOL_SET,
+            case TOOL_SET -> handleSingleGetFromBlob(ResourceTypes.TOOL_SET,
                     (key, toolSet) -> redactAuthSettingsSecrets(projectItem(toolSet, key)));
             case GLOBAL_SETTINGS -> handleSettingsGet(config);
             default -> respondMethodNotAllowed();
         };
     }
 
+    /**
+     * Per-entity GET for {@code PROJECT_KEY}/{@code ROUTE} only — these two types still key
+     * {@code Config}'s in-memory map by canonical id (never migrated to short-name keying, see
+     * {@code short-name-keyed-config-maps.md}), so file-sourced entries never share a key with a
+     * blob-sourced one and this lookup can safely stay in-memory.
+     */
     private <T> Future<?> handleSingleGet(Map<String, T> source,
                                           ResourceTypes resourceType,
                                           BiFunction<String, T, ObjectNode> projector) {
@@ -1076,6 +1077,79 @@ public class ConfigResourceController implements Controller {
         }
         context.respond(HttpStatus.NOT_FOUND);
         return Future.succeededFuture();
+    }
+
+    /**
+     * Per-entity GET for {@code MODEL}/{@code INTERCEPTOR}/{@code ROLE}/{@code APPLICATION}/
+     * {@code TOOL_SET} — these five types key {@code Config}'s in-memory map by short name, the
+     * same key a file-sourced entry for the same logical entity already uses (see
+     * {@code short-name-keyed-config-maps.md}), so the map can no longer tell a genuinely
+     * blob-managed entity apart from a file-only one sharing that short name. This reads and
+     * decrypts blob storage directly by descriptor instead — the same pattern PUT/DELETE already
+     * use for these types — so this endpoint only ever serves entities that actually exist in the
+     * {@code platform} bucket. {@code Config}'s map stays purely a runtime-resolution structure.
+     */
+    private Future<?> handleSingleGetFromBlob(ResourceTypes resourceType, BiFunction<String, Object, ObjectNode> projector) {
+        if (path == null || path.isEmpty()) {
+            context.respond(HttpStatus.NOT_FOUND);
+            return Future.succeededFuture();
+        }
+        ResourceDescriptor descriptor = descriptorFor(resourceType);
+        boolean admin = authorizationService.isAdmin(context);
+        EtagHeader etag = ProxyUtil.etag(context.getRequest());
+
+        taskExecutor.submit(() -> {
+            // getResourceWithMetadata validates the conditional header itself (throws the
+            // appropriate HttpException for If-None-Match/If-Match), so a 304/412 short-circuits
+            // here before any decrypt work runs.
+            Pair<ResourceItemMetadata, String> existing = resourceService.getResourceWithMetadata(descriptor, etag);
+            if (existing == null) {
+                return null;
+            }
+            Object entity = readAndDecrypt(resourceType, existing.getValue(), descriptor);
+            return Pair.of(existing.getKey().getEtag(), projector.apply(path, entity));
+        }).onSuccess(result -> {
+            if (result == null) {
+                Map<String, InvalidEntityRecord> invalid = mergedConfigStore.getInvalidEntities()
+                        .getOrDefault(resourceType, Map.of());
+                InvalidEntityRecord invalidRecord = invalid.get(canonicalId());
+                if (invalidRecord != null) {
+                    context.respond(HttpStatus.OK, projectInvalidItem(invalidRecord, admin));
+                } else {
+                    context.respond(HttpStatus.NOT_FOUND);
+                }
+                return;
+            }
+            context.putHeader(HttpHeaders.ETAG, result.getKey())
+                    .respond(HttpStatus.OK, result.getValue());
+        }).onFailure(this::handleWriteError);
+
+        return Future.succeededFuture();
+    }
+
+    /**
+     * Deserializes and decrypts a blob body for {@link #handleSingleGetFromBlob}. Applications and
+     * toolsets encrypt secrets outside the {@code @EncryptedField}/{@link SecretFieldProcessor}
+     * path (per-resource, via {@link ApplicationService}/{@link ToolSetService}), so they're
+     * re-fetched through those services' own decrypting reads rather than decoded from
+     * {@code body} directly — mirrors {@code MergedConfigStore.decryptManagedEntity}.
+     */
+    private Object readAndDecrypt(ResourceTypes type, String body, ResourceDescriptor descriptor) {
+        return switch (type) {
+            case APPLICATION -> applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
+            case TOOL_SET -> toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
+            default -> {
+                Object entity;
+                try {
+                    entity = treeToEntity(ProxyUtil.BLOB_MAPPER.readTree(body), entityClassFor(entityType));
+                } catch (JsonProcessingException e) {
+                    throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
+                            "Stored entity is malformed at " + locationOf(e));
+                }
+                secretFieldProcessor.decryptFields(entity, descriptor);
+                yield entity;
+            }
+        };
     }
 
     /**
@@ -1305,10 +1379,6 @@ public class ConfigResourceController implements Controller {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "Request body must be a JSON object");
             }
             return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
-                // This route is platform-bucket-only (see the dedicated /v1/(applications|toolsets)/
-                // platform/... routes), so unlike the generic ResourceController path every write
-                // here is materialized into Config and subject to deployment-id uniqueness.
-                rejectDuplicateDeploymentId(descriptor);
                 Object decrypted;
                 // The platform bucket requires explicit admin access for every operation (see
                 // AdminRoleAuthorizationService), not just an admin-AND-public-bucket combination like
@@ -1323,7 +1393,7 @@ public class ConfigResourceController implements Controller {
                     toolSetService.putToolSet(descriptor, etag, author, toolSet, true);
                     decrypted = toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
                 }
-                mergedConfigStore.applyEntityWrite(type, MergedConfigStore.canonicalId(descriptor), decrypted);
+                mergedConfigStore.applyEntityWrite(type, MergedConfigStore.mapKeyFor(type, descriptor), decrypted);
                 return resourceService.getResourceMetadata(descriptor);
             }));
         }).onSuccess(meta -> context.putHeader(HttpHeaders.ETAG, meta.getEtag())
@@ -1353,7 +1423,7 @@ public class ConfigResourceController implements Controller {
                     throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + descriptor.getUrl());
                 }
             }
-            mergedConfigStore.applyEntityDelete(type, MergedConfigStore.canonicalId(descriptor));
+            mergedConfigStore.applyEntityDelete(type, MergedConfigStore.mapKeyFor(type, descriptor));
             return true;
         })).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
 
@@ -1452,10 +1522,6 @@ public class ConfigResourceController implements Controller {
                     if (entity instanceof Model m) {
                         checkCrossReferences(m);
                     }
-                    ResourceTypes writeType = resourceType();
-                    if (writeType == ResourceTypes.MODEL || writeType == ResourceTypes.INTERCEPTOR) {
-                        rejectDuplicateDeploymentId(descriptor);
-                    }
                     if (spec.isKey()) {
                         keyEntity = (Key) entity;
                         validateKeyForApiWrite(keyEntity, "PUT");
@@ -1487,7 +1553,7 @@ public class ConfigResourceController implements Controller {
                     secretFieldProcessor.decryptFields(entity, descriptor);
                 }
                 mergedConfigStore.applyEntityWrite(typeOf(descriptor),
-                        MergedConfigStore.canonicalId(descriptor),
+                        MergedConfigStore.mapKeyFor(typeOf(descriptor), descriptor),
                         entity != null ? entity : requestNode);
                 return meta;
             }));
@@ -1552,7 +1618,7 @@ public class ConfigResourceController implements Controller {
             if (deletedSecret != null) {
                 apiKeyStore.removeKey(deletedSecret);
             }
-            mergedConfigStore.applyEntityDelete(typeOf(descriptor), MergedConfigStore.canonicalId(descriptor));
+            mergedConfigStore.applyEntityDelete(typeOf(descriptor), MergedConfigStore.mapKeyFor(typeOf(descriptor), descriptor));
             return true;
         })).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
 
@@ -1692,24 +1758,6 @@ public class ConfigResourceController implements Controller {
             context.respond(HttpStatus.NOT_FOUND, notFound.getMessage());
         } else {
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
-        }
-    }
-
-    /**
-     * Rejects a MODEL/INTERCEPTOR/APPLICATION/TOOL_SET write whose derived short name is already
-     * claimed by a different deployment (of any of those four types) in the live merged Config —
-     * the partial-update-path counterpart of {@code ConfigPostProcessor.skipOnDuplicate}, which
-     * only runs during a full rebuild. See {@link ConfigPostProcessor#isDeploymentIdTaken}.
-     */
-    private void rejectDuplicateDeploymentId(ResourceDescriptor descriptor) {
-        Config snapshot = mergedConfigStore.get();
-        if (snapshot == null) {
-            return;
-        }
-        String canonicalId = MergedConfigStore.canonicalId(descriptor);
-        if (ConfigPostProcessor.isDeploymentIdTaken(snapshot, canonicalId)) {
-            throw new HttpException(HttpStatus.CONFLICT,
-                    "Deployment ID '" + path + "' is already used by a different entity");
         }
     }
 

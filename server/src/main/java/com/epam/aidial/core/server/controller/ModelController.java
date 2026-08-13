@@ -47,7 +47,7 @@ public class ModelController {
     )
     public Future<?> getModel(String modelId) {
         Config config = context.getConfig();
-        Model model = config.getModel(modelId);
+        Model model = config.getModels().get(modelId);
 
         if (model == null) {
             return context.respond(HttpStatus.NOT_FOUND);

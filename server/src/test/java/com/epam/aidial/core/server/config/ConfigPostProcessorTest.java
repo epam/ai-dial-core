@@ -104,8 +104,7 @@ public class ConfigPostProcessorTest {
         ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
 
         assertTrue(config.getToolsets().containsKey("toolsets/platform/my-toolset"));
-        // Name is the short name (last path segment), not the canonical id.
-        assertEquals("my-toolset", config.getToolsets().get("toolsets/platform/my-toolset").getName());
+        assertEquals("toolsets/platform/my-toolset", config.getToolsets().get("toolsets/platform/my-toolset").getName());
     }
 
     @Test

@@ -75,41 +75,26 @@ public class Config {
 
     @JsonIgnore
     public Deployment selectDeployment(String deploymentId) {
-        Application application = resolve(applications, "applications", deploymentId);
+        Application application = applications.get(deploymentId);
         if (application != null) {
             return application;
         }
 
-        Model model = resolve(models, "models", deploymentId);
+        Model model = models.get(deploymentId);
         if (model != null) {
             return model;
         }
 
-        ToolSet toolSet = resolve(toolsets, "toolsets", deploymentId);
+        ToolSet toolSet = toolsets.get(deploymentId);
         if (toolSet != null) {
             return toolSet;
         }
 
-        return resolve(interceptors, "interceptors", deploymentId);
+        return interceptors.get(deploymentId);
     }
 
     public boolean isDeploymentExists(String deploymentId) {
         return selectDeployment(deploymentId) != null;
-    }
-
-    @JsonIgnore
-    public Model getModel(String id) {
-        return resolve(models, "models", id);
-    }
-
-    @JsonIgnore
-    public Role getRole(String id) {
-        return resolve(roles, "roles", id);
-    }
-
-    @JsonIgnore
-    public Interceptor getInterceptor(String id) {
-        return resolve(interceptors, "interceptors", id);
     }
 
     /**
@@ -131,8 +116,8 @@ public class Config {
     /**
      * Resolves a schema by its $id: verbatim lookup first (canonical-id callers, and file entries
      * already keyed by $id), then falls back through the $id → canonical-id alias index for a
-     * migrated blob entry. A schema's $id is not derivable from its path, so unlike {@link
-     * #resolve}, the alias index must be maintained explicitly (see {@code MergedConfigStore}).
+     * migrated blob entry. A schema's $id is not derivable from its path, so the alias index must
+     * be maintained explicitly (see {@code MergedConfigStore}).
      *
      * @return the schema body, or {@code null} if {@code schemaId} is null or unresolved
      */
@@ -147,20 +132,5 @@ public class Config {
         }
         String canonicalId = aliasesById.get(id);
         return canonicalId == null ? null : schemas.get(canonicalId);
-    }
-
-    /**
-     * Resolves a deployment-map lookup by id. Tries {@code id} verbatim first (canonical-id
-     * callers, and not-yet-migrated file entries keyed by short name), then falls back to the
-     * derived canonical id {@code typeSegment/platform/id} for a short-name lookup against a
-     * migrated blob entry. {@code typeSegment} is a string literal because this module has no
-     * dependency on storage/ResourceTypes.
-     */
-    private static <V> V resolve(Map<String, V> entities, String typeSegment, String id) {
-        V direct = entities.get(id);
-        if (direct != null) {
-            return direct;
-        }
-        return entities.get(typeSegment + "/platform/" + id);
     }
 }

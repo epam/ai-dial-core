@@ -31,8 +31,6 @@ import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 
-import static com.epam.aidial.core.server.util.PlatformCanonicalIdUtil.lastSegment;
-
 /**
  * Post-processes a freshly-loaded {@link Config} in two passes (slice 2S.9):
  *
@@ -128,7 +126,7 @@ public final class ConfigPostProcessor {
         if (model == null) {
             return;
         }
-        model.setName(lastSegment(canonicalId));
+        model.setName(canonicalId);
         List<ValidationWarning> warnings = new ArrayList<>();
         validatePricing(model, warnings);
         if (onSkip != null) {
@@ -151,7 +149,7 @@ public final class ConfigPostProcessor {
     static void validateSingleInterceptor(Config config, String canonicalId) {
         Interceptor interceptor = config.getInterceptors().get(canonicalId);
         if (interceptor != null) {
-            interceptor.setName(lastSegment(canonicalId));
+            interceptor.setName(canonicalId);
         }
     }
 
@@ -162,7 +160,7 @@ public final class ConfigPostProcessor {
     static void validateSingleRole(Config config, String canonicalId) {
         Role role = config.getRoles().get(canonicalId);
         if (role != null) {
-            role.setName(lastSegment(canonicalId));
+            role.setName(canonicalId);
         }
     }
 
@@ -174,7 +172,7 @@ public final class ConfigPostProcessor {
     static void validateSingleApplication(Config config, String canonicalId) {
         Application application = config.getApplications().get(canonicalId);
         if (application != null) {
-            application.setName(lastSegment(canonicalId));
+            application.setName(canonicalId);
         }
     }
 
@@ -185,7 +183,7 @@ public final class ConfigPostProcessor {
     static void validateSingleToolSet(Config config, String canonicalId) {
         ToolSet toolSet = config.getToolsets().get(canonicalId);
         if (toolSet != null) {
-            toolSet.setName(lastSegment(canonicalId));
+            toolSet.setName(canonicalId);
         }
     }
 
@@ -250,7 +248,7 @@ public final class ConfigPostProcessor {
                 continue;
             }
             Model model = entry.getValue();
-            model.setName(lastSegment(name));
+            model.setName(name);
             log.debug("Loading {}", model);
             List<ValidationWarning> warnings = new ArrayList<>();
             validatePricing(model, warnings);
@@ -273,19 +271,20 @@ public final class ConfigPostProcessor {
 
     /**
      * Validates that every interceptor reference on the supplied model resolves
-     * within {@code config}. Resolve-aware ({@code config.getInterceptor}) rather than a raw
-     * {@code containsKey}, so a short-name reference to a migrated (canonical-id-keyed, with the
-     * file entry shadowed) interceptor is not wrongly treated as dangling. Returns {@code true}
-     * when every reference resolves (no warnings appended).
+     * within the merged {@code config.interceptors} map. {@link MergedConfigStore}
+     * keys file entries by simple name and API entries by canonical ID; either
+     * shape is accepted via {@code containsKey}. Returns {@code true} when every
+     * reference resolves (no warnings appended).
      */
     public static boolean validateCrossReferences(Model model, Config config, List<ValidationWarning> warnings) {
         List<String> refs = model.getInterceptors();
         if (refs == null || refs.isEmpty()) {
             return true;
         }
+        Map<String, Interceptor> interceptors = config.getInterceptors();
         for (int i = 0; i < refs.size(); i++) {
             String ref = refs.get(i);
-            if (ref == null || config.getInterceptor(ref) == null) {
+            if (ref == null || !interceptors.containsKey(ref)) {
                 warnings.add(new ValidationWarning("interceptors[" + i + "]",
                         "Interceptor '" + ref + "' not found in config"));
             }
@@ -321,7 +320,7 @@ public final class ConfigPostProcessor {
                 continue;
             }
             Application application = entry.getValue();
-            application.setName(lastSegment(name));
+            application.setName(name);
             validateExternalServices(application);
             log.debug("Loading {}", application);
         }
@@ -375,7 +374,7 @@ public final class ConfigPostProcessor {
         for (Map.Entry<String, Role> entry : config.getRoles().entrySet()) {
             String name = entry.getKey();
             Role role = entry.getValue();
-            role.setName(lastSegment(name));
+            role.setName(name);
             log.debug("Start loading role `{}`", role.getName());
             for (Map.Entry<String, Limit> limitEntry : role.getLimits().entrySet()) {
                 log.debug("Loading {} for deployment `{}`", limitEntry.getValue(), limitEntry.getKey());
@@ -394,7 +393,7 @@ public final class ConfigPostProcessor {
                 continue;
             }
             Interceptor interceptor = entry.getValue();
-            interceptor.setName(lastSegment(name));
+            interceptor.setName(name);
             log.debug("Loading {}", interceptor);
         }
     }
@@ -410,7 +409,7 @@ public final class ConfigPostProcessor {
             }
             if (isValidToolSetKey(name)) {
                 ToolSet toolSet = entry.getValue();
-                toolSet.setName(lastSegment(name));
+                toolSet.setName(name);
                 log.debug("Loading {}", entry.getValue());
             } else {
                 log.warn("Invalid ToolSet name: {}", name);
@@ -423,18 +422,11 @@ public final class ConfigPostProcessor {
      * Returns true and removes the offending entry when the name was already seen.
      * Abort mode ({@code onSkip == null}) preserves {@link FileConfigStore}'s today-behavior:
      * throw {@link IllegalStateException} and roll back the load.
-     *
-     * <p>Dedupes on the <b>derived short name</b>
-     * ({@link com.epam.aidial.core.server.util.PlatformCanonicalIdUtil#lastSegment}), not the raw map key —
-     * deployment-id uniqueness is a client-facing (short-name) concept, and a file entry
-     * (bare key {@code gpt-4}) and a blob entry of a different type (canonical key
-     * {@code applications/platform/gpt-4}) resolve to the same short name for
-     * {@link Config#selectDeployment}. Comparing raw keys would miss that collision entirely.
      */
     private static boolean skipOnDuplicate(String name, ResourceTypes type, Set<String> deploymentIds,
                                            @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip,
                                            Iterator<?> iterator) {
-        if (deploymentIds.add(lastSegment(name))) {
+        if (deploymentIds.add(name)) {
             return false;
         }
         if (onSkip == null) {
@@ -445,33 +437,6 @@ public final class ConfigPostProcessor {
                 List.of(new ValidationWarning("name", "Duplicate deployment ID: " + name))));
         iterator.remove();
         return true;
-    }
-
-    /**
-     * Cross-type deployment-id uniqueness check for single-entity writes (partial-update path,
-     * {@code /v1/admin/apply}): true if {@code canonicalId}'s derived short name is already used
-     * by a <i>different</i> model/application/interceptor/toolset entry in {@code config}.
-     * {@link #skipOnDuplicate} enforces the same invariant during a full rebuild via a shared
-     * {@code deploymentIds} set spanning all four types; this is the equivalent check for a write
-     * that only touches one entity at a time and never runs skipOnDuplicate. Excludes
-     * {@code canonicalId} itself so updating an existing entity in place isn't flagged as a
-     * duplicate of its own prior version.
-     */
-    public static boolean isDeploymentIdTaken(Config config, String canonicalId) {
-        String shortName = lastSegment(canonicalId);
-        return shortNameTakenIn(config.getModels(), canonicalId, shortName)
-                || shortNameTakenIn(config.getApplications(), canonicalId, shortName)
-                || shortNameTakenIn(config.getInterceptors(), canonicalId, shortName)
-                || shortNameTakenIn(config.getToolsets(), canonicalId, shortName);
-    }
-
-    private static boolean shortNameTakenIn(Map<String, ?> map, String canonicalId, String shortName) {
-        for (String key : map.keySet()) {
-            if (!key.equals(canonicalId) && lastSegment(key).equals(shortName)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static boolean isValidResourceKey(String resourceKey) {

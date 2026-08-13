@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.limiter;
 
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.CostLimit;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.RoleBasedEntity;
@@ -325,14 +325,14 @@ public class RateLimiter {
             // find limits for user roles which match to required roles
             userRoles = context.getUserRoles().stream().filter(role -> roleBasedEntity.getUserRoles().contains(role)).toList();
         }
-        Config config = context.getConfig();
-        Limit defaultUserLimit = getLimit(config, DEFAULT_USER_ROLE, name, DEFAULT_LIMIT);
+        Map<String, Role> roles = context.getConfig().getRoles();
+        Limit defaultUserLimit = getLimit(roles, DEFAULT_USER_ROLE, name, DEFAULT_LIMIT);
         if (userRoles.isEmpty()) {
             return defaultUserLimit;
         }
         Limit limit = null;
         for (String userRole : userRoles) {
-            Limit candidate = getLimit(config, userRole, name, null);
+            Limit candidate = getLimit(roles, userRole, name, null);
             if (candidate != null) {
                 if (limit == null) {
                     limit = new Limit();
@@ -357,14 +357,14 @@ public class RateLimiter {
 
     private CostLimit getCostLimitByUser(ProxyContext context) {
         List<String> userRoles = context.getUserRoles();
-        Config config = context.getConfig();
-        CostLimit defaultUserCostLimit = getCostLimit(config, DEFAULT_USER_ROLE, DEFAULT_COST_LIMIT);
+        Map<String, Role> roles = context.getConfig().getRoles();
+        CostLimit defaultUserCostLimit = getCostLimit(roles, DEFAULT_USER_ROLE, DEFAULT_COST_LIMIT);
         if (userRoles.isEmpty()) {
             return defaultUserCostLimit;
         }
         CostLimit costLimit = null;
         for (String userRole : userRoles) {
-            CostLimit candidate = getCostLimit(config, userRole, null);
+            CostLimit candidate = getCostLimit(roles, userRole, null);
             if (candidate != null) {
                 if (costLimit == null) {
                     costLimit = new CostLimit();
@@ -396,29 +396,14 @@ public class RateLimiter {
         return "costs";
     }
 
-    private static Limit getLimit(Config config, String userRole, String name, Limit defaultLimit) {
-        Role role = config.getRole(userRole);
-        if (role == null) {
-            return defaultLimit;
-        }
-        Limit limit = role.getLimits().get(name);
-        if (limit != null) {
-            return limit;
-        }
-        // Compat: a Role.limits entry may still be keyed by the canonical id a previously-shipped
-        // build exposed for API-managed deployments (e.g. "models/platform/gpt-4") before
-        // deployment.getName() reverted to the short name. Fall back to a last-segment match so
-        // those pre-existing entries keep resolving after upgrade.
-        for (Map.Entry<String, Limit> entry : role.getLimits().entrySet()) {
-            if (entry.getKey().endsWith("/" + name)) {
-                return entry.getValue();
-            }
-        }
-        return defaultLimit;
+    private static Limit getLimit(Map<String, Role> roles, String userRole, String name, Limit defaultLimit) {
+        return Optional.ofNullable(roles.get(userRole))
+                .map(role -> role.getLimits().get(name))
+                .orElse(defaultLimit);
     }
 
-    private static CostLimit getCostLimit(Config config, String userRole, CostLimit defaultCostLimit) {
-        return Optional.ofNullable(config.getRole(userRole))
+    private static CostLimit getCostLimit(Map<String, Role> roles, String userRole, CostLimit defaultCostLimit) {
+        return Optional.ofNullable(roles.get(userRole))
                 .map(Role::getCostLimit)
                 .orElse(defaultCostLimit);
     }

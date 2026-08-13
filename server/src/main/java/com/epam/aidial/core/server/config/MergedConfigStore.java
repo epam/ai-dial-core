@@ -337,14 +337,14 @@ public final class MergedConfigStore implements ConfigStore {
     void applyReplicaEvent(ResourceDescriptor descriptor, ResourceEvent.Action action) {
         try {
             ResourceTypes type = (ResourceTypes) descriptor.getType();
-            String canonicalId = canonicalId(descriptor);
+            String mapKey = mapKeyFor(type, descriptor);
             if (action == ResourceEvent.Action.DELETE) {
-                applyReplicaDelete(type, canonicalId);
+                applyReplicaDelete(type, mapKey);
                 return;
             }
             String body = resourceService.getResource(descriptor);
             if (body == null) {
-                applyReplicaDelete(type, canonicalId);
+                applyReplicaDelete(type, mapKey);
                 return;
             }
             JsonNode node = ProxyUtil.BLOB_MAPPER.readTree(body);
@@ -372,7 +372,7 @@ public final class MergedConfigStore implements ConfigStore {
                     // applyReplicaDelete). On rotation (secret changed) the old auth bearer must be
                     // revoked so the previous secret no longer authenticates (FINDING #2).
                     Config snapshot = this.config;
-                    Key prior = snapshot == null ? null : snapshot.getKeys().get(canonicalId);
+                    Key prior = snapshot == null ? null : snapshot.getKeys().get(mapKey);
                     String oldSecret = prior == null ? null : prior.getKey();
                     if (secret != null && !secret.isBlank()) {
                         ApiKeyData data = new ApiKeyData();
@@ -383,7 +383,7 @@ public final class MergedConfigStore implements ConfigStore {
                         apiKeyStore.removeKey(oldSecret);
                     }
                 }
-                applyEntityWrite(type, canonicalId, entity);
+                applyEntityWrite(type, mapKey, entity);
             } finally {
                 rebuildLock.unlock();
             }
@@ -394,7 +394,7 @@ public final class MergedConfigStore implements ConfigStore {
         }
     }
 
-    private void applyReplicaDelete(ResourceTypes type, String canonicalId) {
+    private void applyReplicaDelete(ResourceTypes type, String mapKey) {
         if (type == ResourceTypes.GLOBAL_SETTINGS) {
             applySettingsDelete();
             return;
@@ -407,13 +407,13 @@ public final class MergedConfigStore implements ConfigStore {
         try {
             if (type == ResourceTypes.PROJECT_KEY) {
                 Config snapshot = this.config;
-                Key existing = snapshot == null ? null : snapshot.getKeys().get(canonicalId);
+                Key existing = snapshot == null ? null : snapshot.getKeys().get(mapKey);
                 String secret = existing == null ? null : existing.getKey();
                 if (secret != null && !secret.isBlank()) {
                     apiKeyStore.removeKey(secret);
                 }
             }
-            applyEntityDelete(type, canonicalId);
+            applyEntityDelete(type, mapKey);
         } finally {
             rebuildLock.unlock();
         }
@@ -819,24 +819,27 @@ public final class MergedConfigStore implements ConfigStore {
         if (!MODE_SKIP.equals(onInvalidEntity)) {
             return null;
         }
-        return (skippedType, error) -> recordSkippedByMapKey(nextInvalid, skippedType, error, id -> null);
+        // Partial-update writes are always API-sourced — this path never touches file config.
+        return (skippedType, error) -> recordSkippedByMapKey(nextInvalid, skippedType, error, id -> null, true);
     }
 
     /**
-     * Records a {@link InvalidEntityException} routed via {@code onSkip}, classifying the source the
-     * same way the full {@code rebuild()} path does: a map key carrying a {@code '/'} is an API-sourced
-     * canonical id, while a bare key is a file-defined simple name that we expand to its canonical id.
+     * Records a {@link InvalidEntityException} routed via {@code onSkip}. The map key's shape still
+     * tells us the canonical id and display name: a key carrying a {@code '/'} already is the
+     * canonical id, while a bare key is a short name we expand via {@code type/platform/name}. That
+     * derivation is independent of source, but the {@code source} label itself needs an explicit
+     * {@code fromApi} — for the five short-name-keyed types a file entry and a blob entry now share
+     * the identical (bare) key shape, so the caller must supply real provenance instead of guessing.
      * {@code payloadByCanonicalId} supplies the parsed blob body (rebuild) or {@code null} (partial update).
      */
     private void recordSkippedByMapKey(Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid,
                                        ResourceTypes type, InvalidEntityException error,
-                                       Function<String, JsonNode> payloadByCanonicalId) {
+                                       Function<String, JsonNode> payloadByCanonicalId, boolean fromApi) {
         String mapKey = error.getMapKey();
-        boolean fromApi = mapKey.contains("/");
-        String canonicalId = fromApi
+        String canonicalId = mapKey.contains("/")
                 ? mapKey
                 : canonicalId(type, locationStrategy.resolveBucket(type, EntityLocationStrategy.PLATFORM_SCOPE), mapKey);
-        String simpleName = fromApi ? lastSegment(mapKey) : mapKey;
+        String simpleName = lastSegment(mapKey);
         recordInvalid(nextInvalid, type, canonicalId, simpleName, error.getMessage(), error.getWarnings(),
                 payloadByCanonicalId.apply(canonicalId), REASON_VALIDATION, fromApi ? "api" : "file");
     }
@@ -962,29 +965,19 @@ public final class MergedConfigStore implements ConfigStore {
 
     private static void putEntityInPlace(Config config, ResourceTypes type, String canonicalId, Object entity) {
         switch (type) {
-            case MODEL -> putNameAddressed(config.getModels(), canonicalId, (Model) entity);
-            case INTERCEPTOR -> putNameAddressed(config.getInterceptors(), canonicalId, (Interceptor) entity);
-            case ROLE -> putNameAddressed(config.getRoles(), canonicalId, (Role) entity);
+            case MODEL -> config.getModels().put(canonicalId, (Model) entity);
+            case INTERCEPTOR -> config.getInterceptors().put(canonicalId, (Interceptor) entity);
+            case ROLE -> config.getRoles().put(canonicalId, (Role) entity);
             case PROJECT_KEY -> config.getKeys().put(canonicalId, (Key) entity);
             case ROUTE -> config.getRoutes().put(canonicalId, (Route) entity);
             case APP_TYPE_SCHEMA ->
                     putSchemaInPlace(config.getApplicationTypeSchemas(), config.getApplicationSchemaAliasesById(), canonicalId, entity);
             case CATALOG_SCHEMA ->
                     putSchemaInPlace(config.getCatalogSchemas(), config.getCatalogSchemaAliasesById(), canonicalId, entity);
-            case APPLICATION -> putNameAddressed(config.getApplications(), canonicalId, (Application) entity);
-            case TOOL_SET -> putNameAddressed(config.getToolsets(), canonicalId, (ToolSet) entity);
+            case APPLICATION -> config.getApplications().put(canonicalId, (Application) entity);
+            case TOOL_SET -> config.getToolsets().put(canonicalId, (ToolSet) entity);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
-    }
-
-    /**
-     * Puts a name-addressed entity under its canonical id, then removes the file-defined entry
-     * sharing its short name (blob shadows file), so a subsequent short-name {@code resolve}
-     * hits the freshly-written blob entity rather than a stale file entry.
-     */
-    private static <V> void putNameAddressed(Map<String, V> map, String canonicalId, V entity) {
-        map.put(canonicalId, entity);
-        map.remove(lastSegment(canonicalId));
     }
 
     private static void putSchemaInPlace(Map<String, String> schemas, Map<String, String> aliasesById,
@@ -1029,12 +1022,6 @@ public final class MergedConfigStore implements ConfigStore {
         }
     }
 
-    /**
-     * Removes only the canonical-id entry. Deliberately does <b>not</b> restore the file-defined
-     * entry that {@link #putNameAddressed}/{@link #shadowFileEntry} shadowed when the blob entity
-     * was created — an accepted, transient gap: the short name stays unreachable until the next
-     * full {@link #rebuild()} restores it. Do not add restoration logic here.
-     */
     private static void removeEntityInPlace(Config config, ResourceTypes type, String canonicalId) {
         switch (type) {
             case MODEL -> config.getModels().remove(canonicalId);
@@ -1108,9 +1095,9 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
         merged.setGlobalInterceptors(base.getGlobalInterceptors());
         // Wire the (still-being-populated) local maps onto merged now rather than after the blob
-        // scan below — same references either way, but it lets addBlobEntity/removeAddedEntity/
-        // shadowFileEntry dispatch off a single Config parameter instead of a positional map per
-        // type (they used to take 9-11 map parameters each).
+        // scan below — same references either way, but it lets addBlobEntity/removeAddedEntity
+        // dispatch off a single Config parameter instead of a positional map per type (they used
+        // to take 9-11 map parameters each).
         merged.setModels(models);
         merged.setInterceptors(interceptors);
         merged.setRoles(roles);
@@ -1130,6 +1117,12 @@ public final class MergedConfigStore implements ConfigStore {
         // can classify the source without inferring from map-key shape — file secrets may be Base64
         // and contain '/' (OQ-12). The merged keys map itself still folds both for config consumers.
         Map<String, Key> apiKeysByCanonicalId = new HashMap<>();
+        // For models/interceptors/roles/applications/toolsets, a blob entry's map key (its short
+        // name) is indistinguishable in shape from a file entry's — both are bare, slash-free names.
+        // Track which (type, short name) pairs actually came from a blob this rebuild, so the
+        // semantic pass below can classify a skipped entity as "api" vs "file" correctly instead of
+        // guessing from key shape (which only works for the still-canonical-id-keyed types).
+        Map<ResourceTypes, Set<String>> apiSourcedKeys = new EnumMap<>(ResourceTypes.class);
 
         for (ResourceTypes type : MANAGED_TYPES) {
             for (String scope : locationStrategy.listScopes(type)) {
@@ -1137,12 +1130,6 @@ public final class MergedConfigStore implements ConfigStore {
                 if (bucket == null) {
                     continue;
                 }
-                // File-shadowing only makes sense for the platform-scoped copy of a type — the same
-                // guard onResourceEvent applies for the identical reason (APPLICATION/TOOL_SET also
-                // resolve for the public bucket). Currently a no-op since listScopes only ever
-                // returns the platform scope, but keeps this loop safe if that changes.
-                boolean isPlatformBucket = bucket.equals(
-                        locationStrategy.resolveBucket(type, EntityLocationStrategy.PLATFORM_SCOPE));
                 String bucketLocation = bucket + ResourceDescriptor.PATH_SEPARATOR;
                 ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(type, bucket, bucketLocation, "");
                 List<Pair<ResourceItemMetadata, String>> items =
@@ -1155,6 +1142,11 @@ public final class MergedConfigStore implements ConfigStore {
                         continue;
                     }
                     String canonicalId = canonicalId(type, bucket, name);
+                    // Blob entries for these five types key Config's map by short name, the same
+                    // key a file-sourced entry for the same logical entity already uses — no
+                    // derivation, no shadowing. Every other managed type keeps using the canonical
+                    // id as its map key.
+                    String mapKey = isNameAddressed(type) ? name : canonicalId;
                     JsonNode node;
                     try {
                         // Parse once into JsonNode; reused below for typed deserialization and as the
@@ -1172,7 +1164,7 @@ public final class MergedConfigStore implements ConfigStore {
                             type, bucket, bucketLocation, name);
                     Object added;
                     try {
-                        added = addBlobEntity(merged, type, canonicalId, node);
+                        added = addBlobEntity(merged, type, mapKey, node);
                     } catch (Exception parseError) {
                         recordInvalid(pendingInvalid, type, canonicalId, name,
                                 "JSON parse failure: " + parseError.getMessage(),
@@ -1187,7 +1179,7 @@ public final class MergedConfigStore implements ConfigStore {
                         } catch (Exception decryptError) {
                             // Roll back the partial insertion so decryption-failure entities never
                             // reach addProjectKeys (locked 2S.9 invariant).
-                            removeAddedEntity(merged, type, canonicalId);
+                            removeAddedEntity(merged, type, mapKey);
                             recordInvalid(pendingInvalid, type, canonicalId, name,
                                     "Decryption failure: " + decryptError.getMessage(),
                                     List.of(new ValidationWarning("body", decryptError.getMessage())),
@@ -1197,12 +1189,8 @@ public final class MergedConfigStore implements ConfigStore {
                         if (type == ResourceTypes.PROJECT_KEY) {
                             apiKeysByCanonicalId.put(canonicalId, (Key) added);
                         }
-                        // Shadow the file-defined entry sharing this canonical id's short name,
-                        // gated on successful decryption above — if decryption failed, removeAddedEntity
-                        // rolled the blob entity back, so the file entry must stay in this rebuild's map.
-                        // Also gated on isPlatformBucket — see the comment where it's computed above.
-                        if (isPlatformBucket) {
-                            shadowFileEntry(merged, type, canonicalId);
+                        if (isNameAddressed(type)) {
+                            apiSourcedKeys.computeIfAbsent(type, t -> new HashSet<>()).add(mapKey);
                         }
                     }
                     blobBodies.put(canonicalId, node);
@@ -1226,7 +1214,11 @@ public final class MergedConfigStore implements ConfigStore {
                                 error.getMapKey(), error.getMessage());
                         return;
                     }
-                    recordSkippedByMapKey(pendingInvalid, type, error, blobBodies::get);
+                    // For the short-name-keyed types, key shape no longer tells file from blob
+                    // (see apiSourcedKeys above); everything else still resolves via shape alone.
+                    boolean fromApi = error.getMapKey().contains("/")
+                            || apiSourcedKeys.getOrDefault(type, Set.of()).contains(error.getMapKey());
+                    recordSkippedByMapKey(pendingInvalid, type, error, blobBodies::get, fromApi);
                 }
                 : null;
         // File partition = base file keys (keyed by secret); API partition = PROJECT_KEY blob entries
@@ -1234,11 +1226,11 @@ public final class MergedConfigStore implements ConfigStore {
         // consumers, but the ApiKeyStore feed stays explicitly source-classified (FINDING #7).
         ConfigPostProcessor.processSemantic(merged, apiKeyStore, base.getKeys(), apiKeysByCanonicalId, onSkip);
 
-        // ConfigPostProcessor sets entity.name = mapKey: canonical ID for API entries
-        // ("models/platform/foo"), simple name for file entries ("gpt-4"). This is the OQ-23 contract:
-        // canonical IDs surface on legacy /openai/models, /openai/deployments, and rate-limit
-        // role-limit lookups for API-managed deployments. The new admin Configuration API listing
-        // controller projects simpleName(mapKey) independently per design 03 §4.
+        // ConfigPostProcessor sets entity.name = mapKey. For models/interceptors/roles/
+        // applications/toolsets the map key is now always the short name ("gpt-4"), whether the
+        // entry is file- or blob-sourced, so /openai/models, /openai/deployments, and rate-limit
+        // role-limit lookups see the same short form either way. Keys/routes/schemas are unaffected
+        // — their map key stays the canonical id for API entries, as before.
 
         boolean overlayFromApi = applySettingsOverlay(merged, pendingInvalid);
         Map<ResourceTypes, Map<String, InvalidEntityRecord>> finalInvalid =
@@ -1337,6 +1329,26 @@ public final class MergedConfigStore implements ConfigStore {
     }
 
     /**
+     * The key {@code Config}'s in-memory maps use for {@code descriptor}'s entity: the short name
+     * (last path segment) for models/interceptors/roles/applications/toolsets, so blob-sourced and
+     * file-sourced entries of the same logical entity share one map key — no derivation, no
+     * shadowing, no separate canonical-id keying to reconcile. Every other managed type (keys,
+     * routes, schemas) keeps using the canonical id as its map key, unchanged. Callers that already
+     * have a {@link ResourceDescriptor} should use this instead of building the canonical id and
+     * then parsing the short name back out of it.
+     */
+    public static String mapKeyFor(ResourceTypes type, ResourceDescriptor descriptor) {
+        return isNameAddressed(type) ? descriptor.getName() : canonicalId(descriptor);
+    }
+
+    private static boolean isNameAddressed(ResourceTypes type) {
+        return switch (type) {
+            case MODEL, INTERCEPTOR, ROLE, APPLICATION, TOOL_SET -> true;
+            default -> false;
+        };
+    }
+
+    /**
      * Reads the type-map to mutate off {@code config} rather than taking one map parameter per
      * managed type — {@code config}'s maps are wired up by {@link #rebuild} before the blob scan
      * that calls this runs, so they're already the right (still being populated) instances.
@@ -1397,23 +1409,6 @@ public final class MergedConfigStore implements ConfigStore {
                 /* GLOBAL_SETTINGS is a singleton — design 02 §4 leaves union-by-key out of scope. */
                 return null;
             }
-        }
-    }
-
-    /**
-     * Removes the file-defined entry sharing {@code canonicalId}'s short name from the
-     * name-addressed type maps (models/interceptors/roles/applications/toolsets), so blob wins
-     * over the file entry it just shadowed. No-op for types that aren't name-addressed (keys,
-     * routes, schemas — schemas use the $id index instead, see {@link #recordSchemaAlias}).
-     */
-    private static void shadowFileEntry(Config config, ResourceTypes type, String canonicalId) {
-        switch (type) {
-            case MODEL -> config.getModels().remove(lastSegment(canonicalId));
-            case INTERCEPTOR -> config.getInterceptors().remove(lastSegment(canonicalId));
-            case ROLE -> config.getRoles().remove(lastSegment(canonicalId));
-            case APPLICATION -> config.getApplications().remove(lastSegment(canonicalId));
-            case TOOL_SET -> config.getToolsets().remove(lastSegment(canonicalId));
-            default -> { /* not name-addressed */ }
         }
     }
 

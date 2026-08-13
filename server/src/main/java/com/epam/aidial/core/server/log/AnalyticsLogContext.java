@@ -26,8 +26,6 @@ import java.util.Optional;
 import java.util.Scanner;
 import javax.annotation.Nullable;
 
-import static com.epam.aidial.core.server.util.PlatformCanonicalIdUtil.lastSegment;
-
 @Slf4j
 @Getter
 @Builder
@@ -150,11 +148,7 @@ public class AnalyticsLogContext {
         int i = executionPath.size() - 2;
         for (int j = interceptors.size() - 1; i >= 0 && j >= 0; i--, j--) {
             String deployment = executionPath.get(i);
-            // executionPath entries are always the resolved deployment.getName() (short name);
-            // interceptors holds the raw config reference, which may be a short name or a
-            // canonical id (e.g. "interceptors/platform/my-interceptor") - normalize before
-            // comparing so a canonical-id reference doesn't look like a path mismatch.
-            String interceptor = lastSegment(interceptors.get(j));
+            String interceptor = interceptors.get(j);
             if (!deployment.equals(interceptor)) {
                 log.warn("Can't find parent deployment because interceptor path doesn't match: expected - {}, actual - {}", interceptor, deployment);
                 return null;

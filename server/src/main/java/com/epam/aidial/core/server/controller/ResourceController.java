@@ -678,7 +678,7 @@ public class ResourceController extends AccessControlBaseController {
                 }
                 Config config = context.getConfig();
                 for (String interceptor : application.getInterceptors()) {
-                    if (config.getInterceptor(interceptor) == null) {
+                    if (!config.getInterceptors().containsKey(interceptor)) {
                         throw new HttpException(BAD_REQUEST, "Unknown interceptor: " + interceptor);
                     }
                 }

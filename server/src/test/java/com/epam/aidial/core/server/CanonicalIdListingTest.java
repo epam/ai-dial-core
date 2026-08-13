@@ -10,10 +10,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * HTTP integration tests locking the short-name-addressing contract: the {@code id}/{@code model}
  * fields on the legacy {@code /openai/models} and {@code /openai/deployments} listings surface
  * the short name (last path segment) for API-managed entries, matching file-sourced entries —
- * never the canonical id. The admin Configuration API ({@code /v1/{type}/{bucket}/...}) GET +
- * listing projection is unaffected: it independently projects the canonical ID (map key)
- * regardless of entity name, so operators can still copy-paste the identifier verbatim into
- * per-entity URLs.
+ * never the canonical id. The admin Configuration API ({@code /v1/{type}/{bucket}/...}) GET is
+ * blob-storage-backed directly (not the in-memory map), and also projects the short name — the
+ * URL's own {@code name} segment — for the same reason.
  */
 public class CanonicalIdListingTest extends ResourceBaseTest {
 
@@ -64,17 +63,17 @@ public class CanonicalIdListingTest extends ResourceBaseTest {
     }
 
     @Test
-    void testApiManagedModelAdminGetProjectsCanonicalId() {
-        // Polish.1 (2026-05-08): admin GET projects the canonical ID for API-managed entries so
-        // operators can copy-paste the identifier verbatim. File-sourced entries keep their simple
-        // name. Under U.0 the per-entity GET still projects the canonical ID.
+    void testApiManagedModelAdminGetProjectsShortName() {
+        // Admin GET reads blob storage directly by descriptor (not the in-memory map — see
+        // short-name-keyed-config-maps.md), so it projects the URL's own short-name segment,
+        // matching how the entity is keyed in Config for runtime resolution.
         verify(send(HttpMethod.PUT, "/v1/models/platform/admin-listing-projection", null, API_MODEL_BODY,
                 "authorization", "admin", "If-None-Match", "*"), 200);
 
         Response single = send(HttpMethod.GET, "/v1/models/platform/admin-listing-projection", null, "",
                 "authorization", "admin");
         verify(single, 200);
-        assertTrue(single.body().contains("\"name\":\"models/platform/admin-listing-projection\""),
-                () -> "Admin GET must project canonical ID for API entries: " + single.body());
+        assertTrue(single.body().contains("\"name\":\"admin-listing-projection\""),
+                () -> "Admin GET must project the short name for API entries: " + single.body());
     }
 }
