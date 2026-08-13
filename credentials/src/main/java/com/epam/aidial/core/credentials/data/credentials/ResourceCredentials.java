@@ -23,6 +23,9 @@ public class ResourceCredentials {
     private String accessToken;
     @ToString.Exclude
     private String refreshToken;
+    /** Set only during sign-in so the caller can verify who the exchange was for; never returned to clients. */
+    @ToString.Exclude
+    private String idToken;
     private long createdAt;
     private long updatedAt;
     private Long expiresInSeconds;
@@ -31,4 +34,6 @@ public class ResourceCredentials {
     // Owner's recorded consent to offline (on-behalf-of) use of this credential. Legacy blobs deserialize as false.
     @JsonAlias({"offlineUsageConsent", "offline_usage_consent"})
     private boolean offlineUsageConsent;
+    /** Issuer, recorded at sign-in because a refresh runs with no caller token to derive it from. */
+    private String issuer;
 }

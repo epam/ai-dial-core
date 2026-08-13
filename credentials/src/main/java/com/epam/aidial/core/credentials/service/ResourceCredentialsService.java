@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -48,6 +49,18 @@ public class ResourceCredentialsService {
                                        ResourceAuthSettings resourceAuthSettings,
                                        ResourceSignInRequest resourceSignInRequest,
                                        String userId) {
+        addResourceCredentials(credentialsDescriptor, resourceAuthSettings, resourceSignInRequest, userId, credentials -> { });
+    }
+
+    /**
+     * As above, but runs {@code verifier} on the issued credentials <b>before</b> anything is stored, so a caller
+     * can refuse them. The ID token is verification material and is cleared rather than persisted.
+     */
+    public void addResourceCredentials(CredentialsDescriptor credentialsDescriptor,
+                                       ResourceAuthSettings resourceAuthSettings,
+                                       ResourceSignInRequest resourceSignInRequest,
+                                       String userId,
+                                       Consumer<ResourceCredentials> verifier) {
         log.info("Adding resource credentials for resourceId={}, bucket={}, credentialsLevel={}",
                 credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName(), resourceSignInRequest.getCredentialsLevel());
         ResourceCredentialsFactory factory = resourceCredentialsFactoryProvider.getFactory(resourceSignInRequest.getAuthenticationType());
@@ -59,8 +72,10 @@ public class ResourceCredentialsService {
             resourceCredentials.setOfflineUsageConsent(resourceSignInRequest.isOfflineUsageConsent());
         }
 
-        byte[] encryptedBody = encrypt(credentialsDescriptor, resourceCredentials);
-        resourceService.putResourceBytes(credentialsDescriptor.toResourceDescriptor(), encryptedBody, EtagHeader.ANY);
+        verifier.accept(resourceCredentials);
+        resourceCredentials.setIdToken(null);
+
+        storeEncrypted(credentialsDescriptor, resourceCredentials);
         log.info("Resource credentials for resourceId={}, bucket={} stored successfully",
                 credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
     }
@@ -190,11 +205,42 @@ public class ResourceCredentialsService {
         }
     }
 
+    /** Stores a prepared record directly, for records with no credential material to fetch. Stamps both times. */
+    public void putCredentialsRecord(CredentialsDescriptor credentialsDescriptor, ResourceCredentials credentials) {
+        log.info("Storing credentials record for resourceId={}, bucket={}",
+                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
+        long now = timeProvider.getCurrentTime();
+        credentials.setCreatedAt(now);
+        credentials.setUpdatedAt(now);
+        storeEncrypted(credentialsDescriptor, credentials);
+    }
+
+    private void storeEncrypted(CredentialsDescriptor credentialsDescriptor, ResourceCredentials credentials) {
+        byte[] encryptedBody = encrypt(credentialsDescriptor, credentials);
+        resourceService.putResourceBytes(credentialsDescriptor.toResourceDescriptor(), encryptedBody, EtagHeader.ANY);
+    }
+
+    /** Deletes one record addressed directly, for records that are not app-scoped. */
+    public boolean deleteCredentialsRecord(CredentialsDescriptor credentialsDescriptor) {
+        log.info("Deleting resource credentials for resourceId={}, bucket={}",
+                credentialsDescriptor.getResourceId(), credentialsDescriptor.getBucketName());
+        return resourceService.deleteResource(credentialsDescriptor.toResourceDescriptor(), EtagHeader.ANY);
+    }
+
+    /**
+     * NONE has no credential by definition; DIAL_NATIVE has none <b>per service</b> — a record left from before a
+     * switch to either type must never be served, and APPLICATION-level purging cannot reach USER-level leftovers.
+     */
+    private static boolean hasNoServiceCredential(ResourceAuthSettings authSettings) {
+        AuthenticationType type = authSettings.getAuthenticationType();
+        return type == AuthenticationType.NONE || type == AuthenticationType.DIAL_NATIVE;
+    }
+
     @Nullable
     public ResourceCredentials getRefreshedResourceCredentials(CredentialsLocator credentialsLocator,
                                                                ResourceAuthSettings authSettings,
                                                                String userSub) {
-        if (authSettings.getAuthenticationType() == AuthenticationType.NONE) {
+        if (hasNoServiceCredential(authSettings)) {
             return null;
         }
 
@@ -240,7 +286,7 @@ public class ResourceCredentialsService {
     public ResourceCredentials getRefreshedUserCredentials(CredentialsLocator credentialsLocator,
                                                            ResourceAuthSettings authSettings,
                                                            String ownerUserId) {
-        if (authSettings.getAuthenticationType() == AuthenticationType.NONE) {
+        if (hasNoServiceCredential(authSettings)) {
             return null;
         }
 
@@ -339,7 +385,11 @@ public class ResourceCredentialsService {
         resourceCredentials.setExpiresInSeconds(newAccessTokenResponse.getExpiresIn());
         resourceCredentials.setUpdatedAt(timeProvider.getCurrentTime());
         resourceCredentials.setAccessToken(newAccessTokenResponse.getAccessToken());
-        resourceCredentials.setRefreshToken(newAccessTokenResponse.getRefreshToken());
+        // RFC 6749 §6: no refresh token in the response leaves the existing one in force. Overwriting it with
+        // null would end offline access on providers that do not rotate.
+        if (newAccessTokenResponse.getRefreshToken() != null) {
+            resourceCredentials.setRefreshToken(newAccessTokenResponse.getRefreshToken());
+        }
         log.debug("Finished updating expired token for Resource: {}", resourceId);
     }
 

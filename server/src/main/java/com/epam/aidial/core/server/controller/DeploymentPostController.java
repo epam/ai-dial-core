@@ -34,6 +34,7 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UsagePerModelInjector;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
@@ -69,7 +70,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
-                new BuildUpstreamCacheFn(proxy, context),
+                new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_CHAT_COMPLETIONS),
                 new CollectDeploymentsFn(proxy, context));
     }
 
@@ -190,7 +191,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
                         dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(app);
                     }
 
-                    if (!dep.supportsInterface(InterfaceType.OPENAI_CHAT_COMPLETIONS)) {
+                    if (DeploymentEndpointUtil.resolveServingEndpoint(dep, requestedInterface()) == null) {
                         throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "");
                     }
 
@@ -284,10 +285,21 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         }
     }
 
+    /**
+     * The interface the request path targets. Read from the path rather than from a named group in
+     * {@code RouteTemplate.POST_DEPLOYMENT}: named groups become placeholders in the server span name,
+     * which would stop telling the three actions apart.
+     */
+    private InterfaceType requestedInterface() {
+        return context.getRequest().path().endsWith("/embeddings")
+                ? InterfaceType.OPENAI_EMBEDDINGS
+                : InterfaceType.OPENAI_CHAT_COMPLETIONS;
+    }
+
     @SneakyThrows
     private void sendRequest() {
         if (nextUpstream()) {
-            createProxyRequest(InterfaceType.OPENAI_CHAT_COMPLETIONS)
+            createProxyRequest(requestedInterface())
                     .onSuccess(this::handleProxyRequest)
                     .onFailure(this::handleProxyConnectionError);
         }
@@ -320,10 +332,11 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         }
 
         String upstreamId = context.getRequest().headers().get(HEADER_UPSTREAM_ID);
+        InterfaceType type = requestedInterface();
         UpstreamRoute upstreamRoute;
         try {
             upstreamRoute = proxy.getUpstreamRouteProvider().get(deployment, context.getCacheBreakpointContext(),
-                    dep -> dep.resolveEndpoint(InterfaceType.OPENAI_CHAT_COMPLETIONS), upstreamId);
+                    dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, type), upstreamId);
         } catch (HttpException e) {
             respond(e.getStatus(), e.getMessage());
             return;

@@ -5,6 +5,11 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.AuthenticationType;
+import com.epam.aidial.core.config.CredentialsLevel;
+import com.epam.aidial.core.config.ResourceAuthSettings;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
+import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -16,6 +21,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
@@ -1110,6 +1116,138 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
 
     private static int count(String haystack, String needle) {
         return haystack.split(Pattern.quote(needle), -1).length - 1;
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // DIAL-native redemption (§5): admin consent + the owner's offline credentials
+    // ---------------------------------------------------------------------------------------------
+
+    private static final String DIAL_NATIVE_SCOPE = "applications/app-with-services/external_services/dial";
+    private static final String DIAL_NATIVE_CONSENT =
+            "/v1/applications/app-with-services/external-services/dial/consent";
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testDialNativeRedemptionRefusedWithoutAdminConsent() {
+        Response obo = obo(DIAL_NATIVE_SCOPE, "user", SCHEDULER_KEY);
+        assertEquals(403, obo.status(), () -> obo.body());
+        assertTrue(obo.body().contains("not approved"), obo.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testDialNativeRedemptionRefusedWhenOwnerHasNoOfflineCredentials() {
+        verify(send(HttpMethod.POST, DIAL_NATIVE_CONSENT, null, "", "authorization", "admin"), 200, "true");
+
+        Response obo = obo(DIAL_NATIVE_SCOPE, "user", SCHEDULER_KEY);
+        assertEquals(409, obo.status(), () -> obo.body());
+        assertTrue(obo.body().contains("offline access"), obo.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testDialNativeRedemptionRefusedForUntrustedCaller() {
+        send(HttpMethod.POST, DIAL_NATIVE_CONSENT, null, "", "authorization", "admin");
+
+        Response obo = obo(DIAL_NATIVE_SCOPE, "user", UNTRUSTED_KEY);
+        assertEquals(403, obo.status(), () -> obo.body());
+        // The identity gate runs first, so an untrusted caller learns nothing about consent or the owner.
+        assertTrue(obo.body().contains("app_identity"), obo.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testWithdrawnConsentStopsRedemption() {
+        send(HttpMethod.POST, DIAL_NATIVE_CONSENT, null, "", "authorization", "admin");
+        assertEquals(409, obo(DIAL_NATIVE_SCOPE, "user", SCHEDULER_KEY).status());
+
+        verify(send(HttpMethod.DELETE, DIAL_NATIVE_CONSENT, null, "", "authorization", "admin"), 200, "true");
+
+        Response after = obo(DIAL_NATIVE_SCOPE, "user", SCHEDULER_KEY);
+        assertEquals(403, after.status(), () -> after.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testDialNativeRedemptionReturnsOwnerToken() {
+        send(HttpMethod.POST, DIAL_NATIVE_CONSENT, null, "", "authorization", "admin");
+        stubOfflineProvider();
+        putOfflineCredentials(true, "owner-access-token");
+
+        Response obo = obo(DIAL_NATIVE_SCOPE, "user", SCHEDULER_KEY);
+        assertEquals(200, obo.status(), () -> obo.body());
+        assertTrue(obo.body().contains("Bearer owner-access-token"), obo.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testDialNativeRedemptionRefusedWithoutOwnerOfflineConsent() {
+        // getRefreshedUserCredentials returns a record lacking offline consent UN-refreshed, leaving the refusal to
+        // this caller — so serving it would hand out a stale token the owner never agreed to offline use of.
+        send(HttpMethod.POST, DIAL_NATIVE_CONSENT, null, "", "authorization", "admin");
+        stubOfflineProvider();
+        putOfflineCredentials(false, "stale-access-token");
+
+        Response obo = obo(DIAL_NATIVE_SCOPE, "user", SCHEDULER_KEY);
+        assertEquals(409, obo.status(), () -> obo.body());
+        assertFalse(obo.body().contains("stale-access-token"), obo.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testLeftoverAppLevelCredentialDoesNotPassAsAdminConsent() {
+        // The consent slot is the same APPLICATION-level storage ordinary credentials use while a service is
+        // OAUTH/API_KEY. A record left from before a switch to DIAL_NATIVE is not an administrator's approval,
+        // even though it sits exactly where the consent check looks.
+        CredentialsDescriptor consentSlot = new CredentialsDescriptor(
+                "applications/config/app-with-services/external_services/dial",
+                ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION);
+        dial.getProxy().getResourceCredentialsService().putCredentialsRecord(consentSlot, ResourceCredentials.builder()
+                .resourceId(consentSlot.getResourceId())
+                .credentialsLevel(CredentialsLevel.APPLICATION)
+                .authenticationType(AuthenticationType.OAUTH)
+                .accessToken("leftover-app-token")
+                .build());
+
+        Response obo = obo(DIAL_NATIVE_SCOPE, "user", SCHEDULER_KEY);
+        assertEquals(403, obo.status(), () -> obo.body());
+        assertTrue(obo.body().contains("not approved"), obo.body());
+    }
+
+    private void stubOfflineProvider() {
+        Mockito.when(validator.resolveOfflineClientByIssuer(Mockito.any())).thenReturn(ResourceAuthSettings.builder()
+                .authenticationType(AuthenticationType.OAUTH)
+                .clientId("dial-credentials-manager")
+                .tokenEndpoint("http://localhost:9876/token")
+                .build());
+    }
+
+    /** Writes the owner's platform-wide offline record directly; sign-in itself is covered elsewhere. */
+    private void putOfflineCredentials(boolean offlineConsent, String accessToken) {
+        CredentialsDescriptor descriptor = new CredentialsDescriptor("offline",
+                encryptionService.encrypt("Users/user/"), "Users/user/");
+        dial.getProxy().getResourceCredentialsService().putCredentialsRecord(descriptor, ResourceCredentials.builder()
+                .resourceId("offline")
+                .credentialsLevel(CredentialsLevel.USER)
+                .authenticationType(AuthenticationType.OAUTH)
+                .userId("user")
+                .accessToken(accessToken)
+                .issuer("http://idp/realms/dial")
+                .offlineUsageConsent(offlineConsent)
+                .build());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testDialNativeSignInIsRejected() {
+        Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                {
+                    "url": "%s",
+                    "credentials_level": "USER",
+                    "authentication_type": "DIAL_NATIVE"
+                }
+                """.formatted(DIAL_NATIVE_SCOPE), "authorization", "user");
+        assertEquals(400, signIn.status(), () -> signIn.body());
     }
 
     private Response obo(String url, String ownerUserId, String apiKeyValue) {

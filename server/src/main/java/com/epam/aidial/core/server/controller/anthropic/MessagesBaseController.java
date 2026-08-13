@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.controller.BaseDeploymentPostController;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
@@ -19,6 +20,7 @@ import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -46,6 +48,12 @@ import java.util.List;
 @Slf4j
 abstract class MessagesBaseController extends BaseDeploymentPostController {
 
+    /**
+     * Path markers an adapter's {@code base_url} carries when it translates the Anthropic Messages request
+     * into another API.
+     */
+    private static final List<String> TRANSLATION_MARKERS = List.of("to-chat-completions", "to-responses");
+
     protected final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
 
     /**
@@ -57,7 +65,16 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
 
     protected MessagesBaseController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
-        this.enhancementFunctions = List.of(
+        this.enhancementFunctions = buildEnhancementFunctions();
+    }
+
+    /**
+     * The shared chain. {@link MessagesController} overrides this to append {@link
+     * com.epam.aidial.core.server.function.BuildUpstreamCacheFn} — {@code count_tokens} does not
+     * generate, so it must not build a cache breakpoint context.
+     */
+    protected List<BaseRequestFunction<RequestObject>> buildEnhancementFunctions() {
+        return List.of(
                 new CollectRequestStandardAttachmentsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context),
                 new EnhanceDeploymentRequestFn(proxy, context),
@@ -127,7 +144,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
             deployment = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
         }
 
-        if (!deployment.supportsInterface(InterfaceType.ANTHROPIC_MESSAGES)) {
+        if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.ANTHROPIC_MESSAGES) == null) {
             throw new HttpException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "Anthropic messages not supported for this deployment type"
@@ -160,7 +177,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
         UpstreamRoute upstreamRoute = proxy.getUpstreamRouteProvider()
                 .get(deployment, context.getCacheBreakpointContext(),
-                        dep -> dep.resolveEndpoint(InterfaceType.ANTHROPIC_MESSAGES), upstreamId);
+                        dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.ANTHROPIC_MESSAGES), upstreamId);
 
         context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
@@ -190,11 +207,25 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
 
     /**
      * The body's {@code model} may have been replaced by {@code overrideName}, so the deployment id is
-     * carried to the adapter out of band.
+     * carried to the adapter out of band. Translating adapters additionally receive the deployment features,
+     * which tell them which parameters the target API accepts.
      */
     @Override
     protected void enrichProxyRequestHeaders(HttpClientRequest proxyRequest) {
         proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, deploymentId);
+
+        if (isTranslatingUpstream(context.getProxyRequestUri())) {
+            proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_FEATURES,
+                    ProxyUtil.convertToString(FeaturesData.createDeploymentFeatures(context.getDeployment())));
+        }
+    }
+
+    /**
+     * A translating adapter converts the Anthropic Messages request into another API before calling the
+     * upstream; it is recognized by the translation marker its {@code base_url} carries.
+     */
+    private static boolean isTranslatingUpstream(String uri) {
+        return uri != null && TRANSLATION_MARKERS.stream().anyMatch(uri::contains);
     }
 
     private void handleProxyResponse(HttpClientResponse proxyResponse) {

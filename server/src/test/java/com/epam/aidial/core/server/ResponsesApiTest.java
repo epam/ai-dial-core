@@ -15,6 +15,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertLinesMatch;
@@ -53,6 +55,51 @@ public class ResponsesApiTest extends ResourceBaseTest {
                 assertEquals(18, limitStats.getMonthTokenStats().getUsed());
             }
         }
+    }
+
+    @Test
+    public void testAutoCachingPinsSecondTurnToSameUpstream() throws IOException, InterruptedException {
+        AtomicReference<String> firstUpstreamKey = new AtomicReference<>();
+        AtomicReference<String> secondUpstreamKey = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = HttpClientBuilder.create().disableAutomaticRetries().build()) {
+            server.map(HttpMethod.POST, "/openai/v1/responses", request -> {
+                String upstreamKey = request.getHeader("X-UPSTREAM-KEY");
+                if (firstUpstreamKey.get() == null) {
+                    firstUpstreamKey.set(upstreamKey);
+                } else {
+                    secondUpstreamKey.set(upstreamKey);
+                }
+                long expireAt = Instant.now().plusSeconds(600).getEpochSecond();
+                return TestWebServer.createResponse(200,
+                        "{\"id\":\"resp_1\",\"object\":\"response\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}",
+                        "Content-Type", "application/json",
+                        "X-DIAL-CACHE-BREAKPOINT-PATH", "prefix.body.input[0]",
+                        "X-DIAL-CACHE-EXPIRE-AT", String.valueOf(expireAt));
+            });
+
+            String firstTurn = "{\"model\":\"responses-cache\",\"stream\":false,\"store\":false,"
+                    + "\"input\":[{\"role\":\"user\",\"content\":\"Hello\"}]}";
+            Response first = post(client, firstTurn);
+            assertEquals(200, first.status());
+            Thread.sleep(1000); // wait for the async Redis update after the first turn
+
+            String secondTurn = "{\"model\":\"responses-cache\",\"stream\":false,\"store\":false,"
+                    + "\"input\":[{\"role\":\"user\",\"content\":\"Hello\"},{\"role\":\"assistant\",\"content\":\"Hi there\"}]}";
+            Response second = post(client, secondTurn);
+            assertEquals(200, second.status());
+
+            assertNotNull(firstUpstreamKey.get());
+            assertEquals(firstUpstreamKey.get(), secondUpstreamKey.get());
+        }
+    }
+
+    private Response post(CloseableHttpClient client, String body) throws IOException {
+        String uri = "http://127.0.0.1:" + serverPort + "/openai/v1/responses";
+        HttpUriRequestBase request = new HttpUriRequestBase(HttpMethod.POST.name(), URI.create(uri));
+        request.setHeader("Authorization", "Bearer proxyKey1");
+        request.setHeader("content-type", "application/json");
+        request.setEntity(new StringEntity(body, StandardCharsets.UTF_8));
+        return client.execute(request, ResourceBaseTest::toResponse);
     }
 
     private HttpUriRequest createHttpUriRequest() {

@@ -52,7 +52,12 @@ An object containing parameters for each [model](#models).
 * `responsesDefaults`: Default parameters applied if a request doesn't contain them in an OpenAI Responses API call. Works the same way as `defaults` for the chat completions API.
 * `interfaces`: An alternative to the flat `endpoint`/`responsesEndpoint` fields for declaring routing targets, keyed by interface type. Both shapes are first-class — pick whichever you prefer per model. Refer to [models.<model_name>.interfaces](#modelsmodel_nameinterfaces).
 * `interceptors`: A list of interceptors to be triggered for the given model. Refer to [Interceptors](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/6.interceptors.md) to learn more.
-* `fieldsHashingOrder`: A list of chat completion request components that defines an order in which they are used to compute a hash of the request. The components of the request are identified by strings `prefix.body.tools` and `prefix.body.messages`. The default value of the parameter is ["prefix.body.tools", "prefix.body.messages"], meaning the hash is first computed for the tools definitions, then extended with the hash of the messages. It reflects the relative order of tools and messages components when they are converted to tokens and fed into a typical LLM. The hash is used uniquely identify prefixes of the request that are marked by [cache breakpoints](https://docs.dialx.ai/tutorials/developers/prompt-caching). It enables DIAL Core to redirect independent requests that are sharing the same prefix to the same upstream endpoint. This is essential to enable context caching feature of LLM since their caching scope is limited to a simple upstream endpoint.
+* `fieldsHashingOrder`: **Deprecated, no longer has any effect.** It used to let `POST /openai/deployments/{deployment_name}/chat/completions` customize the order in which request components are hashed for upstream-cache pinning. DIAL Core now always uses a built-in, non-configurable order per interface, fixed by that API's wire format — the same mechanism `POST /anthropic/v1/messages` and `POST /openai/v1/responses` use:
+  - OpenAI Chat Completions: `prefix.body.tools`, `prefix.body.messages`.
+  - Anthropic Messages: `prefix.body.tools`, `prefix.body.system`, `prefix.body.messages` (block-level, i.e. `messages[i].content[j]`).
+  - OpenAI Responses: `prefix.body.tools`, `prefix.body.instructions`, `prefix.body.input`.
+
+  The hash uniquely identifies prefixes of the request that are marked by [cache breakpoints](https://docs.dialx.ai/tutorials/developers/prompt-caching) and lets DIAL Core redirect independent requests sharing the same prefix to the same upstream endpoint — essential for LLM providers whose caching scope is limited to a single upstream endpoint. For Anthropic, candidates come from the client's native `cache_control` blocks and/or `autoCachingSupported`; for Responses, only from `autoCachingSupported` (OpenAI prompt caching has no client breakpoint concept). The `fieldsHashingOrder` field is still accepted in config for backward compatibility, but its value is ignored.
 * `features`: An object with the model features that define optional capabilities of the model. Refer to [models.<model_name>.features](#modelsmodel_namefeatures).
 * `limits`: An object with the model token limits. Refer to [models.<model_name>.limits](#modelsmodel_namelimits)
 * `pricing`: An object with the model cost estimation parameters. Refer to [models.<model_name>.pricing](#modelsmodel_namepricing).
@@ -151,9 +156,14 @@ If both `interfaces` and a legacy field are declared for the same interface type
 
 Supported interface types for models:
 
-* `openaiChatCompletions`: the OpenAI deployments POST family (`chat/completions`, `completions`, `embeddings`). Peer of `endpoint`.
+* `openaiChatCompletions`: the OpenAI deployments POST family (`chat/completions`, `completions`). Peer of `endpoint`.
+* `openaiEmbeddings`: the OpenAI deployments `embeddings` endpoint.
 * `openaiResponses`: the OpenAI Responses API. Peer of `responsesEndpoint`.
 * `anthropicMessages`: the Anthropic Messages API (`/anthropic/v1/messages`, `/anthropic/v1/messages/count_tokens`).
+
+The `interfaces` map is strict: chat completions is configured via `openaiChatCompletions` and embeddings via `openaiEmbeddings`, and one never stands in for the other — a model declaring only `openaiChatCompletions` answers `503` to `embeddings`, and a model declaring only `openaiEmbeddings` answers `503` to `chat/completions` and `completions`. The untyped legacy `endpoint` predates the split and keeps serving `embeddings` requests verbatim, so models configured before the split keep working unchanged.
+
+Only the interface types a model declares are reported in the `interfaces` array of the `/v1/deployments` listing. A legacy `endpoint` is advertised as the interface matching what the model says it is: `openaiEmbeddings` when `type` is `embedding`, `openaiChatCompletions` otherwise — so an embedding model configured this way reports `openaiEmbeddings` and `"chat_completion": false`, even though that one endpoint still serves the whole deployments POST family.
 
 Each value is an object with the following fields:
 
@@ -168,6 +178,12 @@ Each value is an object with the following fields:
         "interfaces": {
             "openaiChatCompletions": { "base_url": "http://localhost:7005" },
             "openaiResponses": { "base_url": "http://localhost:7005" }
+        }
+    },
+    "text-embedding-3-small": {
+        "type": "embedding",
+        "interfaces": {
+            "openaiEmbeddings": { "base_url": "http://localhost:7006" }
         }
     }
 }

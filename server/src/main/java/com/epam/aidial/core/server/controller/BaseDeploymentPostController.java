@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
@@ -290,15 +291,15 @@ public class BaseDeploymentPostController {
         return proxy.getClient().request(options);
     }
 
-    /**
-     * Routes by interface type, forwarding to the URI resolved by
-     * {@link Deployment#resolveRequestUri(InterfaceType, String, String)}. {@code request.uri()} already
-     * includes path and query.
-     */
     protected Future<HttpClientRequest> createProxyRequest(InterfaceType type) {
         HttpServerRequest request = context.getRequest();
-        return createProxyRequest(context.getDeployment()
-                .resolveRequestUri(type, request.uri(), request.query()));
+        return createProxyRequest(
+                DeploymentEndpointUtil.resolveRequestUri(
+                        context.getDeployment(),
+                        type, request.path(),
+                        request.query()
+                )
+        );
     }
 
     protected Future<HttpClientResponse> sendProxyRequest(

@@ -267,6 +267,11 @@ public enum RouteTemplate {
         "^/v1/applications/(?<appId>.+?)/external-services/(?<id>[^/]+)$",
         "/v1/applications/{appId}/external-services/{id}"
     ),
+    // Admin consent for a DIAL-native service: a separate door from sign-in, with its own authorization rule.
+    EXTERNAL_SERVICE_CONSENT(
+        "^/v1/applications/(?<appId>.+?)/external-services/(?<id>[^/]+)/consent$",
+        "/v1/applications/{appId}/external-services/{id}/consent"
+    ),
 
     // Other routes
     CONFIG(
@@ -288,6 +293,15 @@ public enum RouteTemplate {
     USER_USAGE(
             "^/v1/user/usage$",
             "/v1/user/usage"
+    ),
+    // The caller's own offline credentials: status plus the parameters chat needs to start the flow.
+    OFFLINE_CREDENTIALS(
+            "^/v1/user/offline-credentials$",
+            "/v1/user/offline-credentials"
+    ),
+    OFFLINE_CREDENTIALS_OPERATIONS(
+            "^/v1/user/offline-credentials/(signin|signout)$",
+            "/v1/user/offline-credentials/{operation}"
     ),
     APP_SCHEMAS(
             "^/v1/application_type_schemas/(schemas|schema|meta_schema)$",

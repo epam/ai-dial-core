@@ -149,9 +149,25 @@ Priority order:
 | printAuthorizationHeader                 |       false       | No | If `true`, logs the raw `Authorization` header value at `DEBUG` level for each request. Intended for debugging JWT/identity provider setup only. **Note**: the header may contain sensitive tokens; do not enable in production. |
 | mcpHttpClient.connectTimeout             |        10000        |    No    | Connect timeout in milliseconds for the shared `java.net.http.HttpClient` used when the server calls out to MCP servers (toolset tool listing/execution, API key sign-in validation).                                                                                                                          |
 | analytics.collectClaims                  |       false        |    No    | If `true`, adds a `claims` object (`user_id`, `roles`, `user_display_name`) to each analytics log entry. **Note**: these claims may contain personal data (e.g. user id or display name); enable only where logging such data is acceptable.                                              |
+| analytics.claimsAllowlist                |     _(empty)_      |    No    | JSON array of claims to add to the `claims` object of each analytics log entry, taken verbatim from the identity provider's token or user info response. Each entry is a dot-separated path (e.g. `email`, `resource_access.roles`) and is emitted under that exact path as its key; missing claims are omitted. `["*"]` collects every top-level claim. See [Collecting claims](#collecting-claims) below. **Note**: claim values are written unhashed, so this puts plain-text personal data in logs.        |
 | analytics.collectHeaders                 |       false        |    No    | If `true`, adds a `headers` object with the request headers to each analytics log entry, filtered by `analytics.headersAllowlist` / `analytics.headersBlacklist`. **Note**: enabling this may write sensitive data to logs; curate the lists for your setup.                                                                  |
 | analytics.headersBlacklist               | ["authorization", "api-key", "cookie", "proxy-authorization"] | No | JSON array of case-insensitive regex patterns (full-match); request headers whose name matches any pattern are excluded when `analytics.collectHeaders` is enabled. Literal names (e.g. `authorization`) match themselves; use patterns like `x-stainless-.*` to drop a whole family of headers.                                                                                                                                                                           |
 | analytics.headersAllowlist               |     _(disabled)_     | No | Optional JSON array of case-insensitive regex patterns (full-match). When present, only request headers whose name matches at least one pattern are collected (`analytics.headersBlacklist` still wins over the allowlist). Omit the key to disable the allowlist and collect all non-blocked headers. Example — keep just OTel and useful client headers: `["traceparent", "tracestate", "user-agent", "x-forwarded-.*"]`.                                                                                                                                                                           |
+
+#### Collecting claims
+
+`analytics.collectClaims` and `analytics.claimsAllowlist` are independent: either one alone is enough to emit the
+`claims` object, and each contributes only its own members. While `collectClaims` is on, an allowlist entry named
+`user_id`, `roles` or `user_display_name` is skipped whenever that member was already written from the fixed set.
+
+Because each allowlist entry is emitted under the exact path it was configured with, one list can cover several
+providers that name the same thing differently — e.g. `["email", "upn", "preferred_username"]`. Paths that are not
+dot-separated claim names (`"."`, `"a..b"`) are rejected at startup with a warning. A claim value larger than 4 KB is
+emitted as a truncated string ending in `>>`, the same marker used for oversized headers and bodies.
+
+Prefer the hashed user id where you can: when `identityProviders.*.loggingKey` points at the email claim and
+`identityProviders.*.obfuscateUserEmail` is left enabled, `user.id` already identifies the same user as a salted hash,
+without putting the raw address in the log.
 
 
 <details> 
@@ -175,6 +191,7 @@ Priority order:
 | identityProviders.*.audience                  |    -    |    No    | If the setting is set it will be validated against the claim `aud` in JWT                                                                                                                                                                                                                                                                                                               |
 | identityProviders.*.userDisplayName           |    -    |    No    | Path to the claim in JWT token or user info response where user display name can be taken.                                                                                                                                                                                                                                                                                              |
 | identityProviders.*.userIdPath           |   sub   |    No    | Path to the claim in JWT token or user info response where user ID can be taken. Can differ based on each IDP. E.g. Microsoft Entra ID uses `oid`.                                                                                                                                                                                                                                                                                                        |
+| identityProviders.*.offlineClient             |    -    |    No    | OAuth client core uses to obtain a user's platform-wide offline credentials for `DIAL_NATIVE` external services (`/v1/user/offline-credentials`). Object with `clientId` (required), `tokenEndpoint` (required), `authorizationEndpoint` (required), `clientSecret`, `redirectUri` and `scopes` (default `["openid", "offline_access"]`). **Note**: `issuerPattern` must also match the issuer of **ID tokens** minted by this client — on Microsoft Entra ID, v1 access tokens (`sts.windows.net/...`) and v2 ID tokens (`login.microsoftonline.com/.../v2.0`) carry different issuers, and a pattern covering only one of them breaks the later credential refresh. |
 
 </details>
 

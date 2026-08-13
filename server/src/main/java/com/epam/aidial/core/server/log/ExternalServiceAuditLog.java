@@ -33,19 +33,49 @@ public final class ExternalServiceAuditLog {
     /** One event per OBO retrieval outcome; {@code error} is {@code null} on success. */
     public static void oboRetrieval(ProxyContext context, String applicationId, String externalServiceId,
                                     String ownerUserId, RuntimeException error) {
-        String outcome = switch (error) {
+        // reason echoes only the exception message, never a response body or secret — keep it that way.
+        AUDIT.info("event=obo_credential_retrieval outcome={} actor={} owner_user_id={} application_id={} "
+                        + "external_service_id={} trace_id={}{}",
+                outcomeOf(error), actorEvidence(context), sanitizeToken(ownerUserId), sanitizeToken(applicationId),
+                sanitizeToken(externalServiceId), context.getTraceId(), reasonOf(error));
+    }
+
+    /**
+     * One event per change to a user's own offline credentials. The subject is the caller: these endpoints are
+     * self-service, so actor and owner are the same person.
+     */
+    public static void offlineCredentials(ProxyContext context, String action, RuntimeException error) {
+        AUDIT.info("event=offline_credentials action={} outcome={} actor={} user_id={} trace_id={}{}",
+                sanitizeToken(action), outcomeOf(error), actorEvidence(context),
+                sanitizeToken(context.getUserId()), context.getTraceId(),
+                reasonOf(error));
+    }
+
+    /**
+     * One event per administrator decision on an application's use of a DIAL-native service. Records who decided,
+     * since consent reaches every user who has enabled offline credentials.
+     */
+    public static void consent(ProxyContext context, String applicationId, String externalServiceId,
+                               String action, RuntimeException error) {
+        AUDIT.info("event=external_service_consent action={} outcome={} actor={} admin_user_id={} "
+                        + "application_id={} external_service_id={} trace_id={}{}",
+                sanitizeToken(action), outcomeOf(error), actorEvidence(context),
+                sanitizeToken(context.getUserId()), sanitizeToken(applicationId),
+                sanitizeToken(externalServiceId), context.getTraceId(), reasonOf(error));
+    }
+
+    private static String outcomeOf(RuntimeException error) {
+        return switch (error) {
             case null -> "SUCCESS";
             case ConsentRequiredException ignored -> "CONSENT_REQUIRED";
             case PermissionDeniedException ignored -> "DENIED";
             case ResourceNotFoundException ignored -> "NOT_FOUND";
             default -> "ERROR";
         };
-        // reason echoes only the exception message, never a response body or secret — keep it that way.
-        AUDIT.info("event=obo_credential_retrieval outcome={} actor={} owner_user_id={} application_id={} "
-                        + "external_service_id={} trace_id={}{}",
-                outcome, actorEvidence(context), sanitizeToken(ownerUserId), sanitizeToken(applicationId),
-                sanitizeToken(externalServiceId), context.getTraceId(),
-                error == null ? "" : " reason=\"%s\"".formatted(sanitizeReason(error.getMessage())));
+    }
+
+    private static String reasonOf(RuntimeException error) {
+        return error == null ? "" : " reason=\"%s\"".formatted(sanitizeReason(error.getMessage()));
     }
 
     // Non-secret evidence of the calling actor: the DIAL key's project and/or the workload JWT's azp. Both are

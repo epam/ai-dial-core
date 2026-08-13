@@ -24,6 +24,7 @@ import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
+import com.epam.aidial.core.server.service.ExternalServiceStatusEnricher;
 import com.epam.aidial.core.server.service.ExternalServicesWriteMode;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
@@ -590,6 +591,8 @@ public class ResourceController extends AccessControlBaseController {
         if (services == null || services.isEmpty()) {
             return;
         }
+        ExternalServiceStatusEnricher enricher = new ExternalServiceStatusEnricher(
+                context, proxy.getResourceAuthSettingsService());
         for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
             ResourceAuthSettings authSettings = entry.getValue() == null ? null : entry.getValue().getAuthSettings();
             if (authSettings == null) {
@@ -598,7 +601,7 @@ public class ResourceController extends AccessControlBaseController {
             try {
                 String scopeId = descriptor.getUrl() + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + entry.getKey();
                 CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
-                proxy.getResourceAuthSettingsService().setExternalServiceAuthStatuses(locator, authSettings, context.getUserId());
+                enricher.enrich(locator, authSettings);
             } catch (RuntimeException e) {
                 log.warn("Failed to compute external-service status for '{}' on '{}'", entry.getKey(), descriptor.getUrl(), e);
             }
