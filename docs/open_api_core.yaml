@@ -1,1 +1,384 @@
-full change
+openapi: 3.0.0
+info:
+  title: DIAL Core API
+  description: |-
+    The API provides a unified interface to calling chat/completion and embedding models, as well as accessing and sharing files, conversations, and prompts.
+
+    # Authorization
+    All API requests must include the API key (or a [per-request key](https://docs.dialx.ai/platform/core/per-request-keys) when it is required) in the `Api-Key` HTTP header or the JWT token in the `Authorization` HTTP header.
+
+    <hr style="margin:1em 0px;border-bottom:1px solid rgb(63, 63, 70);border-top-width:0px"\>
+
+    #### Authorization with API Key (or with per-request key): ApiKeyAuth
+
+    <br>
+
+    ```bash
+    Api-Key: DIAL_API_KEY
+    ```
+    <br>
+
+    Header parameter name: `Api-Key`
+
+    <hr style="margin:1em 0px;border-bottom:1px solid rgb(63, 63, 70);border-top-width:0px"\>
+
+    #### HTTP Authorization: BearerAuth
+
+    <br>
+
+    ```bash
+    Authorization: Bearer <JWT>
+    ```
+
+    <br>
+
+    HTTP Authorization Scheme: `bearer`
+
+    Bearer format: `JWT`
+  version: 0.0.0
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+servers:
+- url: https://chat.<company>.com
+security:
+- ApiKeyAuth: []
+tags:
+- name: Admin
+- name: Anthropic
+- name: Applications
+- name: Catalog
+- name: Client channel
+- name: Code interpreter
+- name: Config
+- name: Conversations
+- name: Deployment Feature
+- name: Deployment listing
+- name: Deployments
+- name: External Services
+- name: Files
+- name: Global Settings
+- name: Interceptors
+- name: Keys
+- name: LLM
+- name: Limits
+- name: MCP
+- name: Models
+- name: Notifications
+- name: Prompts
+- name: Publications
+- name: Responses API
+- name: Roles
+- name: Routes
+- name: Schemas
+- name: Sharing
+- name: Skills
+- name: Toolsets
+- name: User Consent
+paths:
+  /anthropic/v1/messages:
+    post:
+      tags:
+      - Anthropic
+      summary: /anthropic/v1/messages
+      operationId: createAnthropicMessage
+      parameters:
+      - name: anthropic-version
+        in: header
+        description: "The Anthropic API version (e.g., 2023-06-01)"
+        required: true
+        schema:
+          type: string
+      - name: X-DIAL-CACHE-POLICY
+        in: header
+        description: Upstream selection policy for prompt-caching deployments (availability-priority or cache-priority).
+        required: false
+        schema:
+          type: string
+          enum:
+          - availability-priority
+          - cache-priority
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProxyRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            X-UPSTREAM-ATTEMPTS:
+              description: Number of upstream attempts performed before returning the response
+              required: false
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "415":
+          description: Unsupported Media Type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "503":
+          description: "The engine is currently overloaded, please try again later."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /anthropic/v1/messages/count_tokens:
+    post:
+      tags:
+      - Anthropic
+      summary: /anthropic/v1/messages/count_tokens
+      operationId: countAnthropicMessageTokens
+      parameters:
+      - name: anthropic-version
+        in: header
+        description: "The Anthropic API version (e.g., 2023-06-01)"
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProxyRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            X-UPSTREAM-ATTEMPTS:
+              description: Number of upstream attempts performed before returning the response
+              required: false
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "415":
+          description: Unsupported Media Type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "502":
+          description: Failed to connect to upstream server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "503":
+          description: "The engine is currently overloaded, please try again later."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /openai/applications:
+    get:
+      tags:
+      - Deployment listing
+      summary: /openai/applications
+      operationId: getApplications
+      description: Call this endpoint to get extended details about the available Applications.
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDataApplicationData"
+              examples:
+                ApplicationDataSample:
+                  value:
+                    data:
+                    - id: gpt-world
+                      application: gpt-world
+                      display_name: GPT World
+                      icon_url: https://chat.<company>.com/gpt_world.svg
+                      description: "This application producing answer based on the curated set of LLM related publications.\\n\\nThe source of publications is [arxiv.org](https://arxiv.org/). GPT World is classic example of conversational semantic search application.\\nOn every new user question, it performs summarization using GPT-4, calculates embedding using text-embedding-ada-002 model and then it uses chunks of text from curated set.\\n\\nThis is DIAL version of the [original demo](https://deltix.io/interactive-gpt-world-map.html) with [TSNE map](https://en.wikipedia.org/wiki/T-distributed_stochastic_neighbor_embedding)."
+                      owner: organization-owner
+                      object: application
+                      status: succeeded
+                      created_at: 1672534800
+                      updated_at: 1672534800
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-codeSamples:
+      - lang: cURL
+        label: CURL
+        source: "curl https://chat.<company>.com/openai/applications \\\n  -H \"Api-Key: DIAL_API_KEY\"          \n"
+  /openai/applications/{application_name}:
+    get:
+      tags:
+      - Deployment listing
+      summary: "/openai/applications/{application_name}"
+      description: |
+        Call this endpoint to get extended information about an Application by its name.
+      operationId: getApplication
+      parameters:
+      - name: application_name
+        in: path
+        description: The name of the Application.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationData"
+              examples:
+                ApplicationDataSample:
+                  value:
+                    id: gpt-world
+                    application: gpt-world
+                    display_name: GPT World
+                    icon_url: https://chat.<company>.com/gpt_world.svg
+                    description: "This application producing answer based on the curated set of LLM related publications.\\n\\nThe source of publications is [arxiv.org](https://arxiv.org/). GPT World is classic example of conversational semantic search application.\\nOn every new user question, it performs summarization using GPT-4, calculates embedding using text-embedding-ada-002 model and then it uses chunks of text from curated set.\\n\\nThis is DIAL version of the [original demo](https://deltix.io/interactive-gpt-world-map.html) with [TSNE map](https://en.wikipedia.org/wiki/T-distributed_stochastic_neighbor_embedding)."
+                    owner: organization-owner
+                    object: application
+                    status: succeeded
+                    created_at: 1672534800
+                    updated_at: 1672534800
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-codeSamples:
+      - lang: cURL
+        label: CURL
+        source: "curl https://chat.<company>.com/openai/applications/gpt-world \\\n  -H \"Api-Key: DIAL_API_KEY\"        \n"
