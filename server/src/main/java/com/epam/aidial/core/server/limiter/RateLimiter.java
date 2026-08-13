@@ -23,6 +23,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import lombok.RequiredArgsConstructor;
@@ -74,9 +75,19 @@ public class RateLimiter {
                 // tokens - which is impossible anyway, since only total tokens are kept and pricing reloads
                 ResourceDescriptor deploymentCostDescription =
                         getResourceDescription(bucket, getPathToDeploymentCosts(roleBasedEntity.getName()));
+                // recovered, not composed: attribution is reporting-only and never back-fills anyway, so a
+                // failure there must not be reported as a failure to record the spend that enforces. Letting
+                // it fail the pair would leave an operator unable to tell the two apart in the logs
+                Future<Void> attribution = taskExecutor
+                        .submit(() -> updateCostLimit(deploymentCostDescription, cost))
+                        .recover(error -> {
+                            log.warn("Failed to attribute cost to deployment {}. The enforced total is unaffected",
+                                    roleBasedEntity.getName(), error);
+                            return Future.succeededFuture();
+                        });
                 costFuture = Future.all(
                                 taskExecutor.submit(() -> updateCostLimit(costResourceDescription, cost)),
-                                taskExecutor.submit(() -> updateCostLimit(deploymentCostDescription, cost)))
+                                attribution)
                         .mapEmpty();
             } else {
                 costFuture = Future.succeededFuture();
@@ -192,10 +203,26 @@ public class RateLimiter {
             // DEFAULT_COST_LIMIT leaves every cost window at the unlimited sentinel: an entry reports the
             // deployment's attributed spend, and only the global budget can cap it
             LimitStats limitStats = create(limit, DEFAULT_COST_LIMIT);
+            Map<String, Counter> deploymentCounters = new HashMap<>();
+            try {
+                deploymentCounters.put(recordPath(bucketLocation, getPathToTokens(name)),
+                        new Counter(limitStats, RecordType.TOKENS));
+                deploymentCounters.put(recordPath(bucketLocation, getPathToRequests(name)),
+                        new Counter(limitStats, RecordType.REQUESTS));
+                deploymentCounters.put(recordPath(bucketLocation, getPathToDeploymentCosts(name)),
+                        new Counter(limitStats, RecordType.COSTS));
+            } catch (RuntimeException e) {
+                // A name that cannot form a resource path: a brace or a quote fails URL decoding, an
+                // over-long one fails the path-size check. Its counters were never written either, so skip
+                // it rather than fail the response for every other deployment. Broad on purpose - the only
+                // thing these three calls do is build a path, and the size check reports an
+                // IllegalArgumentException, which the controller otherwise maps to 401 for an unresolvable
+                // caller
+                log.warn("Skipping deployment {}: its limit records have no valid path", name, e);
+                continue;
+            }
             collected.put(name, limitStats);
-            counters.put(recordPath(bucketLocation, getPathToTokens(name)), new Counter(limitStats, RecordType.TOKENS));
-            counters.put(recordPath(bucketLocation, getPathToRequests(name)), new Counter(limitStats, RecordType.REQUESTS));
-            counters.put(recordPath(bucketLocation, getPathToDeploymentCosts(name)), new Counter(limitStats, RecordType.COSTS));
+            counters.putAll(deploymentCounters);
         }
 
         // the caller's budget and the spend against it, held apart from the per-deployment entries; its
@@ -205,8 +232,17 @@ public class RateLimiter {
         counters.put(recordPath(bucketLocation, getPathToCosts()), new Counter(costStats, RecordType.COSTS));
 
         for (Pair<ResourceItemMetadata, String> loaded : readCounters(bucketLocation, counters.keySet(), timestamp)) {
-            Counter counter = counters.get(loaded.getKey().getDescriptor().getAbsoluteFilePath());
-            counter.type().collect(loaded.getValue(), counter.stats(), timestamp);
+            String path = loaded.getKey().getDescriptor().getAbsoluteFilePath();
+            Counter counter = counters.get(path);
+            try {
+                counter.type().collect(loaded.getValue(), counter.stats(), timestamp);
+            } catch (RuntimeException e) {
+                // A document that no longer parses leaves that one window at zero rather than failing the
+                // whole report. It must not propagate: ProxyUtil.convertToObject reports a parse failure as
+                // an IllegalArgumentException, which the controller maps to 401 for an unresolvable caller,
+                // so one corrupt record would otherwise log the caller out
+                log.warn("Ignoring unreadable limit record {}", path, e);
+            }
         }
 
         UserLimitStats userLimitStats = new UserLimitStats();
@@ -249,11 +285,18 @@ public class RateLimiter {
                     items.add(metadata);
                 }
             }
-            nextToken = page.getNextToken();
+            // decoded before being fed back: the token is percent-encoded for HTTP clients, while the blob
+            // provider takes the marker verbatim. Re-sending it encoded resumes past the true marker for any
+            // key holding an escapable character - a space encodes to %20, which sorts after it - silently
+            // skipping the records in between
+            nextToken = UrlUtil.decodePath(page.getNextToken());
         } while (nextToken != null);
 
         List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
-        resourceService.load(items, loaded, timestamp - RateWindow.MONTH.window());
+        // locked: counters are mutated through computeResource, and an unlocked blob fallback writes the
+        // stale blob value back as synced, which would overwrite a concurrent increment and drop its pending
+        // flush. Read-only sweeps do not opt in, so the config rebuild keeps its lock-free fan-out
+        resourceService.load(items, loaded, timestamp - RateWindow.MONTH.window(), true);
         return loaded;
     }
 
@@ -337,10 +380,6 @@ public class RateLimiter {
             return;
         }
         rateLimit.update(timestamp, limitStats);
-    }
-
-    private LimitStats create(Limit limit) {
-        return create(limit, null);
     }
 
     private LimitStats create(Limit limit, CostLimit costLimit) {

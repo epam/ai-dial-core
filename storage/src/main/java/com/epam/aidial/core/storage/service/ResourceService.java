@@ -186,7 +186,9 @@ public class ResourceService implements AutoCloseable {
         this.syncBatch = settings.syncBatch;
         this.cacheExpiration = Duration.ofMillis(settings.cacheExpiration);
         this.compressionMinSize = settings.compressionMinSize;
-        this.blobFallbackConcurrency = settings.blobFallbackConcurrency;
+        // at least one permit: a non-positive setting would otherwise park every fallback read forever,
+        // since the wait is deliberately untimed
+        this.blobFallbackConcurrency = Math.max(1, settings.blobFallbackConcurrency);
         this.prefix = prefix;
         this.resourceQueue = "resource:" + BlobStorageUtil.toStoragePath(prefix, "queue");
         this.resourceTypeExpiration = Objects.requireNonNullElseGet(settings.resourceTypesExpiration, Map::of);
@@ -332,7 +334,7 @@ public class ResourceService implements AutoCloseable {
      * Loads content of resource metadata into the result.
      */
     public void load(List<ResourceItemMetadata> items, List<Pair<ResourceItemMetadata, String>> result) {
-        load(items, result, Long.MIN_VALUE);
+        load(items, result, Long.MIN_VALUE, false);
     }
 
     /**
@@ -345,22 +347,33 @@ public class ResourceService implements AutoCloseable {
      * costs no extra request. Note that it is only meaningful for a miss: a resource written more often than
      * {@link Settings#syncPeriod} keeps deferring its own flush, so it stays in Redis behind an arbitrarily
      * stale blob object - which is why Redis is consulted first and the cutoff never judges a cached resource.
+     *
+     * @param lockOnFallback take the resource lock around each fallback read. Required for a resource mutated
+     *                       through {@link #computeResource}: the fallback writes the blob value back into
+     *                       Redis, marking the key synced and dropping it from the sync queue, so racing a
+     *                       concurrent update would overwrite the newer value and discard its pending flush.
+     *                       Left off for read-only sweeps, where the lock would add two Redis round-trips per
+     *                       missed item to paths such as the config rebuild.
      */
     @SneakyThrows
-    public void load(List<ResourceItemMetadata> items, List<Pair<ResourceItemMetadata, String>> result, long blobCutoff) {
+    public void load(List<ResourceItemMetadata> items, List<Pair<ResourceItemMetadata, String>> result,
+                     long blobCutoff, boolean lockOnFallback) {
         final int size = items.size();
         int batches = size / BATCH_SIZE;
         int rem = size % BATCH_SIZE;
         int cur = 0;
 
-        // shared across chunks, otherwise each chunk would get its own allowance
+        // Shared across this call's chunks, otherwise each chunk would get its own allowance. Deliberately
+        // NOT shared across calls: this bounds the fan-out of one bulk read, which is what can explode, and
+        // a service-wide pool would let an interactive endpoint starve the config-reload sweep that also
+        // goes through here - the wait is untimed and unfair, so that block could be indefinite.
         Semaphore blobPermits = new Semaphore(blobFallbackConcurrency);
         List<Future<List<Pair<ResourceItemMetadata, String>>>> futures = new ArrayList<>();
         for (int i = 0; i < batches; i++) {
             int end = cur + BATCH_SIZE;
             int start = cur;
             Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
-                    .submit(() -> runReadBatch(start, end, items, blobCutoff, blobPermits));
+                    .submit(() -> runReadBatch(start, end, items, blobCutoff, blobPermits, lockOnFallback));
             futures.add(future);
             cur = end;
         }
@@ -368,7 +381,7 @@ public class ResourceService implements AutoCloseable {
             int end = cur + rem;
             int start = cur;
             Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
-                    .submit(() -> runReadBatch(start, end, items, blobCutoff, blobPermits));
+                    .submit(() -> runReadBatch(start, end, items, blobCutoff, blobPermits, lockOnFallback));
             futures.add(future);
         }
 
@@ -379,7 +392,8 @@ public class ResourceService implements AutoCloseable {
 
     @SneakyThrows
     private List<Pair<ResourceItemMetadata, String>> runReadBatch(
-            int start, int end, List<ResourceItemMetadata> items, long blobCutoff, Semaphore blobPermits) {
+            int start, int end, List<ResourceItemMetadata> items, long blobCutoff, Semaphore blobPermits,
+            boolean lockOnFallback) {
         if (end - start <= 0) {
             return List.of();
         }
@@ -425,7 +439,7 @@ public class ResourceService implements AutoCloseable {
                 // own socket timeout already bounds
                 blobPermits.acquire();
                 try {
-                    return getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, false);
+                    return getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, lockOnFallback);
                 } finally {
                     blobPermits.release();
                 }
@@ -1362,9 +1376,10 @@ public class ResourceService implements AutoCloseable {
          */
         private int compressionMinSize;
         /**
-         * Caps how many {@link ResourceService#load} cache misses may hit blob storage at once, so a large
-         * bulk read cannot exhaust the blob client's connection pool. Keep it at or below the pool size the
-         * blob provider is configured with.
+         * Caps how many cache misses one {@link ResourceService#load} call may send to blob storage at once,
+         * so a single bulk read cannot fan out without bound. The allowance is per call, so it does not cap
+         * concurrent readers in aggregate - keep it at or below the pool size the blob provider is configured
+         * with, and size that pool for the readers you expect.
          */
         private int blobFallbackConcurrency = 32;
         /**

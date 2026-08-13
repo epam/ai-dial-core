@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.data.UserLimitStats;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
@@ -94,6 +95,18 @@ public class LimitController {
     }
 
     private Future<?> respondWithUserStats(boolean dropEmpty) {
+        // Resolved here rather than inferred from the failure below: an unresolvable caller is the only 401,
+        // and it is the only condition this can tell apart. Deeper in, IllegalArgumentException means
+        // something else entirely - a corrupt counter document, or unparsable blob metadata - and answering
+        // 401 to those would sign the user out over a server-side data problem.
+        try {
+            BucketBuilder.buildInitiatorBucket(context);
+        } catch (IllegalArgumentException e) {
+            context.respond(HttpStatus.UNAUTHORIZED, e.getMessage());
+            log.warn("LimitController. Can't resolve the request initiator", e);
+            return Future.succeededFuture();
+        }
+
         // no executor hop: listAccessibleModels only streams over the in-memory config, and
         // getUserStats submits the blocking part itself
         proxy.getRateLimiter().getUserStats(context, listAccessibleModels(), dropEmpty)
@@ -119,14 +132,9 @@ public class LimitController {
     }
 
     private void handleUserLimitsError(Throwable error) {
-        if (error instanceof IllegalArgumentException) {
-            // neither a JWT subject nor an API-key project - there is no caller to report limits for
-            context.respond(HttpStatus.UNAUTHORIZED, error.getMessage());
-            log.warn("LimitController. Can't resolve the request initiator", error);
-        } else {
-            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to get user limit stats");
-            log.error("LimitController. Failed to get user limit stats", error);
-        }
+        // the caller was already resolved before dispatch, so anything reaching here is a server-side fault
+        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to get user limit stats");
+        log.error("LimitController. Failed to get user limit stats", error);
     }
 
     private void handleRequestError(String deploymentId, Throwable error) {

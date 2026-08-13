@@ -259,7 +259,7 @@ without putting the raw address in the log.
 | resources.syncBatch                     |   4096   |    No    | How many resources to sync in one go.                                                              |
 | resources.cacheExpiration               |  300000  |    No    | Expiration in milliseconds for synced resources in Redis.                                          |
 | resources.compressionMinSize            |   256    |    No    | Compress a resource with gzip if its size in bytes more or equal to this value.                    |
-| resources.blobFallbackConcurrency       |    32    |    No    | How many bulk-read cache misses may hit object storage at once. Keep at or below the blob pool size. |
+| resources.blobFallbackConcurrency       |    32    |    No    | How many cache misses one bulk read may send to object storage at once. Per call, not a global cap. |
 | resources.resourceTypesExpiration       |      |    No    | Define expiration time per resource type in milliseconds                                           |
 | resources.resourceTypesExpiration.FILE |      |  5 mins  | Define expiration time for files                                                                   |
 | resources.resourceTypesExpiration.CONVERSATION |      |  5 mins  | Define expiration time for converations                                                            |

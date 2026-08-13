@@ -157,6 +157,10 @@ public class LimitApiTest extends ResourceBaseTest {
                 "authorization", "no-subject");
         // the message proves the 401 came from resolving the initiator, not from the auth layer
         verifyNotExact(response, 401, "Can't find user bucket");
+
+        // the usage endpoint answers identically - both resolve the caller before doing any work
+        verifyNotExact(send(HttpMethod.GET, "/v1/user/usage", null, null, "authorization", "no-subject"),
+                401, "Can't find user bucket");
     }
 
     /**

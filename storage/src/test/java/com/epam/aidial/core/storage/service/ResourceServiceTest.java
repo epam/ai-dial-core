@@ -305,7 +305,7 @@ public class ResourceServiceTest {
 
         long cutoff = 2_000L;
         List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
-        spied.load(List.of(item(fresh, 3_000L), item(stale, 1_000L)), loaded, cutoff);
+        spied.load(List.of(item(fresh, 3_000L), item(stale, 1_000L)), loaded, cutoff, false);
 
         assertEquals(Map.of(fresh, "fresh"), bodies(loaded));
         Mockito.verify(spy, Mockito.never()).load(stale.getAbsoluteFilePath());
@@ -321,7 +321,7 @@ public class ResourceServiceTest {
         service.putResource(cached, "current", EtagHeader.NEW_ONLY);
 
         List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
-        service.load(List.of(item(cached, 1_000L)), loaded, System.currentTimeMillis());
+        service.load(List.of(item(cached, 1_000L)), loaded, System.currentTimeMillis(), false);
 
         assertEquals(Map.of(cached, "current"), bodies(loaded));
     }

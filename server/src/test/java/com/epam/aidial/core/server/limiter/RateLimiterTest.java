@@ -18,13 +18,17 @@ import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.AfterAll;
@@ -72,6 +76,8 @@ public class RateLimiterTest {
     private BlobStorage blobStorage;
 
     private Path testDir;
+
+    private ResourceService resourceService;
 
     private RateLimiter rateLimiter;
 
@@ -137,7 +143,7 @@ public class RateLimiterTest {
 
         LockService lockService = new LockService(redissonClient, null);
         ResourceService.Settings settings = new ResourceService.Settings(64 * 1048576, 1048576, 60000, 120000, 4096, 300000, 256);
-        ResourceService resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
+        resourceService = new ResourceService(mock(TimerService.class), redissonClient, blobStorage,
                 lockService, settings, null);
         rateLimiter = new RateLimiter(taskExecutor, resourceService);
     }
@@ -637,6 +643,38 @@ public class RateLimiterTest {
     }
 
     /**
+     * A name that cannot form a resource path must not take the whole response down with it. A config key may
+     * hold characters a resource path cannot: a brace fails URL decoding, and an over-long name fails the
+     * 900-byte path check with an {@link IllegalArgumentException} - which the controller maps to 401, since
+     * that is what an unresolvable caller throws. Neither may reach it.
+     */
+    @Test
+    public void testGetUserStats_SkipsDeploymentWhoseNameHasNoValidPath() {
+        Config config = new Config();
+        Role role = new Role();
+        role.setLimits(Map.of());
+        config.setRoles(Map.of("role", role));
+
+        ProxyContext proxyContext = userContext(config, List.of("role"));
+        stubInlineExecutor();
+
+        Model usable = model("usable-model");
+        // a brace fails URL decoding; an over-long name fails the path-size check with the same
+        // IllegalArgumentException the controller maps to 401
+        Model braced = model("chat{v1}");
+        Model tooLong = model("m".repeat(1024));
+        Future<UserLimitStats> future = rateLimiter
+                .getUserStats(proxyContext, List.of(braced, tooLong, usable), false);
+        assertNull(future.cause(), String.valueOf(future.cause()));
+        UserLimitStats stats = future.result();
+
+        assertNotNull(stats);
+        assertEquals(List.of("usable-model"), List.copyOf(stats.getDeployments().keySet()));
+        // the caller's budget is still reported, so the response stays usable
+        assertNotNull(stats.getDayCostStats());
+    }
+
+    /**
      * A deployment named "costs" writes to "costs/costs", a sibling of the caller's global "costs" document,
      * so the two cannot be confused for one another.
      */
@@ -791,6 +829,45 @@ public class RateLimiterTest {
 
         assertNotNull(future);
         assertInstanceOf(IllegalArgumentException.class, future.cause());
+    }
+
+    /**
+     * A counter document that no longer parses must leave that one window at zero, not fail the report -
+     * and above all must not escape as the {@link IllegalArgumentException} that
+     * {@code ProxyUtil.convertToObject} raises, since the controller reads that as an unresolvable caller
+     * and answers 401, which clients treat as an expired session.
+     */
+    @Test
+    public void testGetUserStats_IgnoresUnreadableCounterRecord() {
+        Config config = new Config();
+        Role role = new Role();
+        role.setLimits(Map.of());
+        config.setRoles(Map.of("role", role));
+
+        ProxyContext proxyContext = userContext(config, List.of("role"));
+        Model model = model("corrupt-model");
+        stubInlineExecutor();
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setTotalTokens(42);
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        // limit() writes the request counter, increase() the token one
+        assertEquals(HttpStatus.OK, rateLimiter.limit(proxyContext, model).result().status());
+        assertNull(rateLimiter.increase(model, bucket, tokenUsage, null, null).cause());
+
+        // corrupt the token counter in place, leaving the request counter intact
+        ResourceDescriptor tokens = ResourceDescriptorFactory
+                .fromEncoded(ResourceTypes.LIMIT, bucket, bucket, "corrupt-model/tokens");
+        resourceService.putResource(tokens, "{\"minute\":\"not-a-bucket\"}", EtagHeader.ANY);
+
+        Future<UserLimitStats> future = rateLimiter.getUserStats(proxyContext, List.of(model), false);
+
+        assertNull(future.cause(), String.valueOf(future.cause()));
+        LimitStats stats = future.result().getDeployments().get("corrupt-model");
+        assertNotNull(stats);
+        // the unreadable window reports zero, and the intact one still reports its usage
+        assertEquals(0, stats.getMinuteTokenStats().getUsed());
+        assertEquals(1, stats.getHourRequestStats().getUsed());
     }
 
     private ProxyContext userContext(Config config, List<String> roles) {
