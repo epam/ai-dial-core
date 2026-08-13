@@ -266,15 +266,7 @@ public class ExternalServiceManagementController {
     }
 
     private ResolvedApp resolveApp(String appId) {
-        // See ExternalServiceCredentialsController.resolveApplication: appId omits the "applications/"
-        // type prefix, so resolve verbatim first, then by canonical id so a platform-bucket app hits
-        // its materialized in-memory entry ("applications/platform/my-app") — with decrypted secrets —
-        // instead of being read from blob. A config-managed (platform) app resolves as a static app,
-        // access-controlled by its userRoles like a config-file app rather than by folder rules.
         Deployment deployment = context.getConfig().selectDeployment(appId);
-        if (deployment == null) {
-            deployment = context.getConfig().selectDeployment(CredentialsLocatorFactory.APPLICATIONS_PREFIX + appId);
-        }
         if (deployment instanceof Application configApp) {
             return new ResolvedApp(configApp, null, null, true);
         }

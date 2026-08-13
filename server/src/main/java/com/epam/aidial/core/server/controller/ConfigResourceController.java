@@ -1379,6 +1379,7 @@ public class ConfigResourceController implements Controller {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "Request body must be a JSON object");
             }
             return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
+                rejectDuplicateDeploymentId(type, path);
                 Object decrypted;
                 // The platform bucket requires explicit admin access for every operation (see
                 // AdminRoleAuthorizationService), not just an admin-AND-public-bucket combination like
@@ -1521,6 +1522,10 @@ public class ConfigResourceController implements Controller {
                     entity = treeToEntity(source, spec.entityClass());
                     if (entity instanceof Model m) {
                         checkCrossReferences(m);
+                    }
+                    ResourceTypes writeType = resourceType();
+                    if (writeType == ResourceTypes.MODEL || writeType == ResourceTypes.INTERCEPTOR) {
+                        rejectDuplicateDeploymentId(writeType, path);
                     }
                     if (spec.isKey()) {
                         keyEntity = (Key) entity;
@@ -1665,6 +1670,23 @@ public class ConfigResourceController implements Controller {
         if (owner != null && !owner.equals(thisCanonicalId)) {
             throw new HttpException(HttpStatus.CONFLICT,
                     "Schema $id '" + id + "' is already used by '" + owner + "'");
+        }
+    }
+
+    /**
+     * Rejects a MODEL/INTERCEPTOR/APPLICATION/TOOL_SET write whose short name is already claimed
+     * by a different deployment (of any of those four types) in the live merged Config — the
+     * partial-update-path counterpart of {@code ConfigPostProcessor.skipOnDuplicate}, which only
+     * runs during a full rebuild. See {@link ConfigPostProcessor#isDeploymentIdTaken}.
+     */
+    private void rejectDuplicateDeploymentId(ResourceTypes type, String shortName) {
+        Config snapshot = mergedConfigStore.get();
+        if (snapshot == null) {
+            return;
+        }
+        if (ConfigPostProcessor.isDeploymentIdTaken(snapshot, type, shortName)) {
+            throw new HttpException(HttpStatus.CONFLICT,
+                    "Deployment ID '" + shortName + "' is already used by a different entity");
         }
     }
 

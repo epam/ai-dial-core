@@ -37,9 +37,10 @@ import javax.annotation.Nullable;
  * <ul>
  *   <li><b>Structural</b> — drops file-defined entries whose map key contains
  *       {@code /} (cross-entity reserved path separator). Always run; cannot
- *       fail per-entity. Only applied to file-sourced maps —
- *       {@link MergedConfigStore} skips this pass for the merged config because
- *       blob entries legitimately key by canonical ID.</li>
+ *       fail per-entity. Only applied to file-sourced maps — {@link MergedConfigStore}
+ *       skips this pass for the merged config: blob-sourced models/applications/
+ *       interceptors/roles/toolsets key by short name (never contains {@code /}), and
+ *       keys/routes/schemas key by canonical id legitimately.</li>
  *   <li><b>Semantic</b> — name back-fill, deployment-id uniqueness, ToolSet
  *       resource-key validation, route ordering, {@link ApiKeyStore} hookup.
  *       Each per-entity violation either throws (default {@code abort} mode,
@@ -120,13 +121,13 @@ public final class ConfigPostProcessor {
      * only — {@code onSkip == null} means cross-refs are not validated (matches file-loaded
      * abort path in {@link #processModels}).
      */
-    static void validateSingleModel(Config config, String canonicalId,
+    static void validateSingleModel(Config config, String mapKey,
                                     @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
-        Model model = config.getModels().get(canonicalId);
+        Model model = config.getModels().get(mapKey);
         if (model == null) {
             return;
         }
-        model.setName(canonicalId);
+        model.setName(mapKey);
         List<ValidationWarning> warnings = new ArrayList<>();
         validatePricing(model, warnings);
         if (onSkip != null) {
@@ -136,20 +137,20 @@ public final class ConfigPostProcessor {
             return;
         }
         if (onSkip == null) {
-            throw new InvalidEntityException(ResourceTypes.MODEL, canonicalId, warnings);
+            throw new InvalidEntityException(ResourceTypes.MODEL, mapKey, warnings);
         }
-        config.getModels().remove(canonicalId);
-        onSkip.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, canonicalId, warnings));
+        config.getModels().remove(mapKey);
+        onSkip.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, mapKey, warnings));
     }
 
     /**
      * Targeted per-type helper. Sets {@code interceptor.name} from the map key. No cross-ref
      * validation — interceptors have no outbound refs.
      */
-    static void validateSingleInterceptor(Config config, String canonicalId) {
-        Interceptor interceptor = config.getInterceptors().get(canonicalId);
+    static void validateSingleInterceptor(Config config, String mapKey) {
+        Interceptor interceptor = config.getInterceptors().get(mapKey);
         if (interceptor != null) {
-            interceptor.setName(canonicalId);
+            interceptor.setName(mapKey);
         }
     }
 
@@ -157,10 +158,10 @@ public final class ConfigPostProcessor {
      * Targeted per-type helper. Sets {@code role.name} from the map key. {@code Role.limits}
      * keys are loose-refs (warning-only today) so no cross-ref validation runs.
      */
-    static void validateSingleRole(Config config, String canonicalId) {
-        Role role = config.getRoles().get(canonicalId);
+    static void validateSingleRole(Config config, String mapKey) {
+        Role role = config.getRoles().get(mapKey);
         if (role != null) {
-            role.setName(canonicalId);
+            role.setName(mapKey);
         }
     }
 
@@ -169,10 +170,10 @@ public final class ConfigPostProcessor {
      * {@code application.name} from the map key. No cross-ref validation — applications have
      * no outbound refs checked here.
      */
-    static void validateSingleApplication(Config config, String canonicalId) {
-        Application application = config.getApplications().get(canonicalId);
+    static void validateSingleApplication(Config config, String mapKey) {
+        Application application = config.getApplications().get(mapKey);
         if (application != null) {
-            application.setName(canonicalId);
+            application.setName(mapKey);
         }
     }
 
@@ -180,10 +181,10 @@ public final class ConfigPostProcessor {
      * Targeted per-type helper for {@link MergedConfigStore} partial-update path. Sets
      * {@code toolSet.name} from the map key.
      */
-    static void validateSingleToolSet(Config config, String canonicalId) {
-        ToolSet toolSet = config.getToolsets().get(canonicalId);
+    static void validateSingleToolSet(Config config, String mapKey) {
+        ToolSet toolSet = config.getToolsets().get(mapKey);
         if (toolSet != null) {
-            toolSet.setName(canonicalId);
+            toolSet.setName(mapKey);
         }
     }
 
@@ -206,10 +207,10 @@ public final class ConfigPostProcessor {
             List<ValidationWarning> warnings = new ArrayList<>();
             validateCrossReferences(model, config, warnings);
             if (!warnings.isEmpty()) {
-                String canonicalId = entry.getKey();
+                String mapKey = entry.getKey();
                 iterator.remove();
                 onSkip.accept(ResourceTypes.MODEL,
-                        new InvalidEntityException(ResourceTypes.MODEL, canonicalId, warnings));
+                        new InvalidEntityException(ResourceTypes.MODEL, mapKey, warnings));
             }
         }
     }
@@ -271,10 +272,10 @@ public final class ConfigPostProcessor {
 
     /**
      * Validates that every interceptor reference on the supplied model resolves
-     * within the merged {@code config.interceptors} map. {@link MergedConfigStore}
-     * keys file entries by simple name and API entries by canonical ID; either
-     * shape is accepted via {@code containsKey}. Returns {@code true} when every
-     * reference resolves (no warnings appended).
+     * within the merged {@code config.interceptors} map — file- and blob-sourced
+     * interceptors alike key by short name, so a plain {@code containsKey} against
+     * that one map key shape is enough. Returns {@code true} when every reference
+     * resolves (no warnings appended).
      */
     public static boolean validateCrossReferences(Model model, Config config, List<ValidationWarning> warnings) {
         List<String> refs = model.getInterceptors();
@@ -439,6 +440,24 @@ public final class ConfigPostProcessor {
         return true;
     }
 
+    public static boolean isDeploymentIdTaken(Config config, ResourceTypes type, String shortName) {
+        return switch (type) {
+            case MODEL -> config.getApplications().containsKey(shortName)
+                    || config.getToolsets().containsKey(shortName)
+                    || config.getInterceptors().containsKey(shortName);
+            case APPLICATION -> config.getModels().containsKey(shortName)
+                    || config.getToolsets().containsKey(shortName)
+                    || config.getInterceptors().containsKey(shortName);
+            case TOOL_SET -> config.getModels().containsKey(shortName)
+                    || config.getApplications().containsKey(shortName)
+                    || config.getInterceptors().containsKey(shortName);
+            case INTERCEPTOR -> config.getModels().containsKey(shortName)
+                    || config.getApplications().containsKey(shortName)
+                    || config.getToolsets().containsKey(shortName);
+            default -> throw new IllegalArgumentException("Not a deployment type: " + type);
+        };
+    }
+
     private static boolean isValidResourceKey(String resourceKey) {
         return RESOURCE_KEY_PATTERN.matcher(resourceKey).matches();
     }
@@ -448,14 +467,10 @@ public final class ConfigPostProcessor {
         return RESOURCE_KEY_PATTERN.pattern();
     }
 
-    // Bare file-sourced toolset names have no '/'; API-managed toolsets are keyed by their canonical
-    // id ("toolsets/platform/name") — validate only the trailing short-name segment in that case, same
-    // as the plain-name case would validate the whole (slash-free) string. Only ToolSet map keys are
-    // ever canonical-id-shaped this way — other RESOURCE_KEY_PATTERN callers (e.g. external-service
-    // ids) must keep going through the strict isValidResourceKey above.
+    // ToolSet map keys are always short names now, file- and blob-sourced alike — same check as
+    // isValidResourceKey. Kept as its own named entry point since ToolSet call sites reason about
+    // it as "the toolset key check" rather than the generic one.
     public static boolean isValidToolSetKey(String resourceKey) {
-        int slash = resourceKey.lastIndexOf('/');
-        String candidate = slash < 0 ? resourceKey : resourceKey.substring(slash + 1);
-        return RESOURCE_KEY_PATTERN.matcher(candidate).matches();
+        return isValidResourceKey(resourceKey);
     }
 }
