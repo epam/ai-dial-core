@@ -451,7 +451,7 @@ public class AdminApplyController {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Failed to serialize schema for " + id);
         }
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-        pending.add(new EntityChange(type, MergedConfigStore.mapKeyFor(type, descriptor), spec));
+        pending.add(new EntityChange(type, MergedConfigStore.mapKeyFor(descriptor), spec));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
@@ -471,7 +471,7 @@ public class AdminApplyController {
         }
         String blobBody = ConfigResourceController.serializeForBlob(entity);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-        pending.add(new EntityChange(type, MergedConfigStore.mapKeyFor(type, descriptor), entity));
+        pending.add(new EntityChange(type, MergedConfigStore.mapKeyFor(descriptor), entity));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
@@ -543,7 +543,7 @@ public class AdminApplyController {
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
         // Slice 4S.4: decrypt-in-place so partial-update receives plaintext upstream secrets.
         secretFieldProcessor.decryptFields(model, descriptor);
-        pending.add(new EntityChange(ResourceTypes.MODEL, MergedConfigStore.mapKeyFor(ResourceTypes.MODEL, descriptor), model));
+        pending.add(new EntityChange(ResourceTypes.MODEL, MergedConfigStore.mapKeyFor(descriptor), model));
         return new EntityResult(id, invalid ? AdminApplyStatus.APPLIED_INVALID : AdminApplyStatus.APPLIED, null);
     }
 
@@ -568,7 +568,7 @@ public class AdminApplyController {
                 AdminManagedFieldsWriteMode.AUTHORITATIVE);
         if (platform) {
             Application decrypted = applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
-            pending.add(new EntityChange(ResourceTypes.APPLICATION, MergedConfigStore.mapKeyFor(ResourceTypes.APPLICATION, descriptor), decrypted));
+            pending.add(new EntityChange(ResourceTypes.APPLICATION, MergedConfigStore.mapKeyFor(descriptor), decrypted));
         }
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
@@ -589,7 +589,7 @@ public class AdminApplyController {
         toolSetService.putToolSet(descriptor, EtagHeader.ANY, null, toolSet, true);
         if (platform) {
             ToolSet decrypted = toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
-            pending.add(new EntityChange(ResourceTypes.TOOL_SET, MergedConfigStore.mapKeyFor(ResourceTypes.TOOL_SET, descriptor), decrypted));
+            pending.add(new EntityChange(ResourceTypes.TOOL_SET, MergedConfigStore.mapKeyFor(descriptor), decrypted));
         }
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }

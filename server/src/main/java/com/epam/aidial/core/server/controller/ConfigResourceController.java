@@ -1382,7 +1382,7 @@ public class ConfigResourceController implements Controller {
                     }
                     default -> throw new IllegalArgumentException("Unexpected resource type: " + type);
                 };
-                mergedConfigStore.applyEntityWrite(type, MergedConfigStore.mapKeyFor(type, descriptor), decrypted);
+                mergedConfigStore.applyEntityWrite(type, MergedConfigStore.mapKeyFor(descriptor), decrypted);
                 return resourceService.getResourceMetadata(descriptor);
             }));
         }).onSuccess(meta -> context.putHeader(HttpHeaders.ETAG, meta.getEtag())
@@ -1414,7 +1414,7 @@ public class ConfigResourceController implements Controller {
                 }
                 default -> throw new IllegalArgumentException("Unexpected resource type: " + type);
             }
-            mergedConfigStore.applyEntityDelete(type, MergedConfigStore.mapKeyFor(type, descriptor));
+            mergedConfigStore.applyEntityDelete(type, MergedConfigStore.mapKeyFor(descriptor));
             return true;
         })).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
 
@@ -1552,7 +1552,7 @@ public class ConfigResourceController implements Controller {
                     secretFieldProcessor.decryptFields(entity, descriptor);
                 }
                 mergedConfigStore.applyEntityWrite(typeOf(descriptor),
-                        MergedConfigStore.mapKeyFor(typeOf(descriptor), descriptor),
+                        MergedConfigStore.mapKeyFor(descriptor),
                         entity != null ? entity : requestNode);
                 return meta;
             }));
@@ -1617,7 +1617,7 @@ public class ConfigResourceController implements Controller {
             if (deletedSecret != null) {
                 apiKeyStore.removeKey(deletedSecret);
             }
-            mergedConfigStore.applyEntityDelete(typeOf(descriptor), MergedConfigStore.mapKeyFor(typeOf(descriptor), descriptor));
+            mergedConfigStore.applyEntityDelete(typeOf(descriptor), MergedConfigStore.mapKeyFor(descriptor));
             return true;
         })).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
 

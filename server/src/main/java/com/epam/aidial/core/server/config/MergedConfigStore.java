@@ -338,7 +338,7 @@ public final class MergedConfigStore implements ConfigStore {
     void applyReplicaEvent(ResourceDescriptor descriptor, ResourceEvent.Action action) {
         try {
             ResourceTypes type = (ResourceTypes) descriptor.getType();
-            String mapKey = mapKeyFor(type, descriptor);
+            String mapKey = mapKeyFor(descriptor);
             if (action == ResourceEvent.Action.DELETE) {
                 applyReplicaDelete(type, mapKey);
                 return;
@@ -1052,9 +1052,11 @@ public final class MergedConfigStore implements ConfigStore {
         Map<String, Key> apiKeysByCanonicalId = new HashMap<>();
         // For models/interceptors/roles/applications/toolsets, a blob entry's map key (its short
         // name) is indistinguishable in shape from a file entry's — both are bare, slash-free names.
-        // Track which (type, short name) pairs actually came from a blob this rebuild, so the
-        // semantic pass below can classify a skipped entity as "api" vs "file" correctly instead of
-        // guessing from key shape (which only works for the still-canonical-id-keyed types).
+        // Schemas are locally-keyed too (by decoded $id); their $id always contains '/' so the
+        // shape-based check in the skip lambda already classifies them as "api", but they are
+        // tracked here for completeness. Track which (type, mapKey) pairs came from a blob this
+        // rebuild so the semantic pass can classify a skipped entity as "api" vs "file" correctly
+        // instead of guessing from key shape (which only works for the still-canonical-id-keyed types).
         Map<ResourceTypes, Set<String>> apiSourcedKeys = new EnumMap<>(ResourceTypes.class);
 
         for (ResourceTypes type : MANAGED_TYPES) {
@@ -1075,10 +1077,6 @@ public final class MergedConfigStore implements ConfigStore {
                         continue;
                     }
                     String canonicalId = canonicalId(type, bucket, name);
-                    // Blob entries for these five types key Config's map by short name, the same
-                    // key a file-sourced entry for the same logical entity already uses — no
-                    // derivation, no shadowing. Every other managed type keeps using the canonical
-                    // id as its map key.
                     String mapKey = isLocallyKeyed(type) ? localKey(type, name) : canonicalId;
                     JsonNode node;
                     try {
@@ -1272,7 +1270,8 @@ public final class MergedConfigStore implements ConfigStore {
      * Callers that already have a {@link ResourceDescriptor} should use this instead of building
      * the canonical id and then parsing the key back out of it.
      */
-    public static String mapKeyFor(ResourceTypes type, ResourceDescriptor descriptor) {
+    public static String mapKeyFor(ResourceDescriptor descriptor) {
+        ResourceTypes type = (ResourceTypes) descriptor.getType();
         return isLocallyKeyed(type) ? localKey(type, descriptor.getName()) : canonicalId(descriptor);
     }
 
