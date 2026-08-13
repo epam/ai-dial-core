@@ -1,0 +1,6 @@
+description: A particular embedding input which embeddings model translates to an embedding vector.
+oneOf:
+  - type: string
+    description: Input text to get embeddings for, encoded as a string.
+  - $ref: "#/components/schemas/RequestAttachment"
+  - $ref: "#/components/schemas/EmbeddingsCustomInputCompoundElement"

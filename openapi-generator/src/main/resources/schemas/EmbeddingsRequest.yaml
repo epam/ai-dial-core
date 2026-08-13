@@ -1,6 +1,53 @@
-allOf:
-  - $ref: '#/components/schemas/AzureEmbeddingsRequest'
 type: object
 properties:
+  input:
+    description: |-
+      The input text to generate embeddings for. It can be either:
+      - a string,
+      - an array of strings,
+      - an array of token ids <i>(representing a single tokenized string)</i> and
+      - an array of arrays of token ids <i>(representing an array of tokenized strings)</i>.
+      
+      **Note:** representation of strings as an array of token ids may not be supported by certain models.
+    anyOf:
+      - type: string
+        description: The string that will be turned into an embedding.
+      - type: array
+        items:
+          type: string
+        description: The array of strings that will be turned into embeddings.
+      - type: array
+        items:
+          type: integer
+        description: The array of token ids that will be turned into an embedding.
+      - type: array
+        items:
+          type: array
+          items:
+            type: integer
+        description: The array of arrays of token ids that will be turned into embeddings.
+  custom_input:
+    $ref: '#/components/schemas/EmbeddingsCustomInput'
+  user:
+    type: string
+    description: A unique identifier representing the end-user.
+  encoding_format:
+    description: The format in which the embeddings are returned.
+    type: string
+    enum:
+      - float
+      - base64
+    default: float
+    example: base64
+  dimensions:
+    description: |-
+      The number of dimensions the resulting output embeddings should have.
+      
+      **Note:** instruction may not be supported by some models.
+    type: integer
+    example: 512
   custom_fields:
-    $ref: '#/components/schemas/EmbeddingsRequestCustomFields'
+    $ref: '#/components/schemas/EmbeddingsCustomFields'
+required:
+  - input
+

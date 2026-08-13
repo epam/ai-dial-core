@@ -1,0 +1,36 @@
+type: object
+properties:
+  index:
+    type: integer
+    description: |-
+      In *streaming* chat completion responses, each stage includes an `index` field
+      indicating its position in the final ordered list. This field is required because
+      stages may arrive out of order, and the client must reconstruct the correct
+      sequence using `index`.
+      <br><br>
+      In *non-streaming* responses, the `index` field is omitted because a stage's
+      position is already determined by its place in the returned list.
+  name:
+    type: string
+    description: The name of the stage.
+  content:
+    type: string
+    description: The contents of the stage.
+  attachments:
+    type: array
+    items:
+      $ref: "#/components/schemas/ChatCompletionResponseAttachment"
+    description: List of attachments to the stage.
+  status:
+    type: string
+    nullable: true
+    description: |-
+      The execution status of the stage. Available status values:
+      
+      * `null`: The stage is in progress.
+      * `completed`: The stage is completed.
+      * `failed`: The stage is failed.
+required:
+  - index
+  - name
+  - status

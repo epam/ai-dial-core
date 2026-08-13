@@ -1,0 +1,14 @@
+oneOf:
+  - type: object
+    properties:
+      name:
+        type: string
+        description: The name of an addon defined in the DIAL Core config.
+  - type: object
+    properties:
+      url:
+        type: string
+        description: |
+          The URL pointing to an OpenAI Plugin Schema.
+          <br><br>
+          See for example the [to-do plugin](https://github.com/openai/plugins-quickstart/blob/main/.well-known/ai-plugin.json).
