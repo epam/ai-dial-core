@@ -67,7 +67,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
@@ -332,19 +331,36 @@ public class ResourceService implements AutoCloseable {
     /**
      * Loads content of resource metadata into the result.
      */
-    @SneakyThrows
     public void load(List<ResourceItemMetadata> items, List<Pair<ResourceItemMetadata, String>> result) {
+        load(items, result, Long.MIN_VALUE);
+    }
+
+    /**
+     * Loads content of resource metadata into the result. Redis lookups are pipelined in {@link #BATCH_SIZE}
+     * chunks, and only the chunks' cache misses fall back to blob storage.
+     *
+     * <p>A cache miss whose {@link ResourceItemMetadata#getUpdatedAt()} predates {@code blobCutoff} is skipped
+     * instead of being fetched, so a caller reading rolling counters does not pay for bodies that cannot hold
+     * anything within its window. The timestamp comes from the listing that produced {@code items}, so this
+     * costs no extra request. Note that it is only meaningful for a miss: a resource written more often than
+     * {@link Settings#syncPeriod} keeps deferring its own flush, so it stays in Redis behind an arbitrarily
+     * stale blob object - which is why Redis is consulted first and the cutoff never judges a cached resource.
+     */
+    @SneakyThrows
+    public void load(List<ResourceItemMetadata> items, List<Pair<ResourceItemMetadata, String>> result, long blobCutoff) {
         final int size = items.size();
         int batches = size / BATCH_SIZE;
         int rem = size % BATCH_SIZE;
         int cur = 0;
 
+        // shared across chunks, otherwise each chunk would get its own allowance
+        Semaphore blobPermits = new Semaphore(blobFallbackConcurrency);
         List<Future<List<Pair<ResourceItemMetadata, String>>>> futures = new ArrayList<>();
         for (int i = 0; i < batches; i++) {
             int end = cur + BATCH_SIZE;
             int start = cur;
             Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
-                    .submit(() -> runReadBatch(start, end, items));
+                    .submit(() -> runReadBatch(start, end, items, blobCutoff, blobPermits));
             futures.add(future);
             cur = end;
         }
@@ -352,7 +368,7 @@ public class ResourceService implements AutoCloseable {
             int end = cur + rem;
             int start = cur;
             Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
-                    .submit(() -> runReadBatch(start, end, items));
+                    .submit(() -> runReadBatch(start, end, items, blobCutoff, blobPermits));
             futures.add(future);
         }
 
@@ -362,7 +378,8 @@ public class ResourceService implements AutoCloseable {
     }
 
     @SneakyThrows
-    private List<Pair<ResourceItemMetadata, String>> runReadBatch(int start, int end, List<ResourceItemMetadata> items) {
+    private List<Pair<ResourceItemMetadata, String>> runReadBatch(
+            int start, int end, List<ResourceItemMetadata> items, long blobCutoff, Semaphore blobPermits) {
         if (end - start <= 0) {
             return List.of();
         }
@@ -388,124 +405,42 @@ public class ResourceService implements AutoCloseable {
             ResourceItemMetadata metadata = items.get(start + j);
             if (redisResult == null) {
                 missed.add(metadata);
-            } else {
+            } else if (redisResult.exists()) {
                 Pair<ResourceItemMetadata, String> pair = Pair.of(toResourceItemMetadata(metadata.getDescriptor(), redisResult),
                         new String(redisResult.body, StandardCharsets.UTF_8));
                 result.add(pair);
             }
+            // else: cached as absent, so omitted - its blob object can still be listed until the delete
+            // syncs, and a tombstone carries no body to decode
         }
         log.debug("Number of missing resources in Redis cache: {}", missed.size());
         List<Future<Pair<ResourceItemMetadata, String>>> futures = new ArrayList<>();
         for (ResourceItemMetadata metadata : missed) {
-            Future<Pair<ResourceItemMetadata, String>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
-                    .submit(() -> getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, false));
+            Long updatedAt = metadata.getUpdatedAt();
+            if (updatedAt != null && updatedAt < blobCutoff) {
+                continue;
+            }
+            Future<Pair<ResourceItemMetadata, String>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR.submit(() -> {
+                // the wait needs no timeout - a permit is held for one blob read, which the blob client's
+                // own socket timeout already bounds
+                blobPermits.acquire();
+                try {
+                    return getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, false);
+                } finally {
+                    blobPermits.release();
+                }
+            });
             futures.add(future);
         }
-        log.debug("Start loading missing resources from blob storage: {}", missed.size());
+        log.debug("Start loading missing resources from blob storage: {}", futures.size());
         for (Future<Pair<ResourceItemMetadata, String>> future : futures) {
             Pair<ResourceItemMetadata, String> res = future.get();
             if (res != null) {
                 result.add(res);
             }
         }
-        log.debug("Finish loading missed resources from blob storage: {}", missed.size());
+        log.debug("Finish loading missed resources from blob storage: {}", futures.size());
         return result;
-    }
-
-    /**
-     * Reads many resources in one go. Redis lookups are pipelined in {@link #BATCH_SIZE} chunks, and only
-     * the chunks' cache misses fall back to blob storage - a resource cached as absent costs no blob call.
-     *
-     * <p>Resources that do not exist are omitted from the result rather than mapped to null. Duplicate
-     * descriptors are collapsed, so the result never holds more entries than the request had distinct ones.
-     */
-    public Map<ResourceDescriptor, String> getResources(List<ResourceDescriptor> descriptors) {
-        List<ResourceDescriptor> distinct = descriptors.stream().distinct().toList();
-        if (distinct.isEmpty()) {
-            return Map.of();
-        }
-
-        // shared across chunks, otherwise each chunk would get its own allowance
-        Semaphore blobPermits = new Semaphore(blobFallbackConcurrency);
-        List<Future<Map<ResourceDescriptor, String>>> futures = new ArrayList<>();
-        for (int start = 0; start < distinct.size(); start += BATCH_SIZE) {
-            List<ResourceDescriptor> chunk = distinct.subList(start, Math.min(start + BATCH_SIZE, distinct.size()));
-            futures.add(VIRTUAL_THREAD_PER_TASK_EXECUTOR.submit(() -> getResourceChunk(chunk, blobPermits)));
-        }
-
-        Map<ResourceDescriptor, String> result = new HashMap<>();
-        awaitAll(futures, result::putAll);
-        return result;
-    }
-
-    private Map<ResourceDescriptor, String> getResourceChunk(List<ResourceDescriptor> descriptors, Semaphore blobPermits) {
-        RBatch batch = redis.createBatch();
-        for (ResourceDescriptor descriptor : descriptors) {
-            RMapAsync<String, byte[]> map = batch.getMap(redisKey(descriptor), REDIS_MAP_CODEC);
-            map.getAllAsync(REDIS_FIELDS);
-        }
-        List<?> responses = batch.execute().getResponses();
-
-        Map<ResourceDescriptor, String> result = new HashMap<>();
-        List<ResourceDescriptor> missed = new ArrayList<>();
-        for (int i = 0; i < responses.size(); i++) {
-            ResourceDescriptor descriptor = descriptors.get(i);
-            @SuppressWarnings("unchecked")
-            Map<String, byte[]> fields = (Map<String, byte[]>) responses.get(i);
-            Result cached = toResult(fields, redisKey(descriptor));
-            if (cached == null) {
-                missed.add(descriptor);
-            } else if (cached.exists()) {
-                result.put(descriptor, new String(cached.body, StandardCharsets.UTF_8));
-            }
-        }
-
-        List<Future<Pair<ResourceDescriptor, String>>> futures = new ArrayList<>();
-        for (ResourceDescriptor descriptor : missed) {
-            futures.add(VIRTUAL_THREAD_PER_TASK_EXECUTOR.submit(() -> {
-                // interruptible on purpose: awaitAll cancels siblings on the first failure.
-                // The wait itself needs no timeout - permits are held for one blob read, which the
-                // blob client's own socket timeout bounds
-                blobPermits.acquire();
-                try {
-                    // no lock: a bulk read tolerates a concurrent double-fetch, same as runReadBatch
-                    return Pair.of(descriptor, getResource(descriptor, EtagHeader.ANY, false));
-                } finally {
-                    blobPermits.release();
-                }
-            }));
-        }
-        awaitAll(futures, loaded -> {
-            if (loaded.getValue() != null) {
-                result.put(loaded.getKey(), loaded.getValue());
-            }
-        });
-        return result;
-    }
-
-    /**
-     * Consumes every future's result in order, cancelling the remaining ones as soon as one fails so a
-     * doomed bulk read does not wait for its siblings. Cancellation is best effort: it interrupts the
-     * task, but work a cancelled task has already handed to a nested future still runs to completion.
-     *
-     * <p>An {@link ExecutionException} is unwrapped, so callers that map exception type to an HTTP
-     * status see the original storage exception instead of the wrapper.
-     */
-    @SneakyThrows
-    private static <T> void awaitAll(List<Future<T>> futures, Consumer<T> consumer) {
-        try {
-            for (Future<T> future : futures) {
-                consumer.accept(future.get());
-            }
-        } catch (Throwable e) {
-            futures.forEach(future -> future.cancel(true));
-
-            if (e instanceof ExecutionException) {
-                e = e.getCause();
-            }
-
-            throw e;
-        }
     }
 
     private static MetadataBase storageToResourceMetadata(StorageMetadata meta, ResourceDescriptor folder) {
@@ -1427,9 +1362,9 @@ public class ResourceService implements AutoCloseable {
          */
         private int compressionMinSize;
         /**
-         * Caps how many {@link ResourceService#getResources} cache misses may hit blob storage at once,
-         * so a large bulk read cannot exhaust the blob client's connection pool. Keep it at or below
-         * the pool size the blob provider is configured with.
+         * Caps how many {@link ResourceService#load} cache misses may hit blob storage at once, so a large
+         * bulk read cannot exhaust the blob client's connection pool. Keep it at or below the pool size the
+         * blob provider is configured with.
          */
         private int blobFallbackConcurrency = 32;
         /**

@@ -74,9 +74,29 @@ public class LimitController {
             }
     )
     public Future<?> getUserLimits() {
+        return respondWithUserStats(false);
+    }
+
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/user/usage",
+            operationId = "getUserUsage",
+            tags = {"Limits"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = UserLimitStats.class)),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 500),
+                    @ApiResponse(code = 503)
+            }
+    )
+    public Future<?> getUserUsage() {
+        return respondWithUserStats(true);
+    }
+
+    private Future<?> respondWithUserStats(boolean dropEmpty) {
         // no executor hop: listAccessibleModels only streams over the in-memory config, and
-        // getUserLimitStats submits the blocking part itself
-        proxy.getRateLimiter().getUserLimitStats(context, listAccessibleModels())
+        // getUserStats submits the blocking part itself
+        proxy.getRateLimiter().getUserStats(context, listAccessibleModels(), dropEmpty)
                 .onSuccess(stats -> {
                     if (stats == null) {
                         context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Limit storage is not available");
@@ -89,8 +109,8 @@ public class LimitController {
     }
 
     /**
-     * Only models are reported: DIAL does not persist rate-limit history for applications, toolsets or
-     * routes, so their entries would be permanently zero. See {@link UserLimitStats}.
+     * Only models are reported: DIAL never writes rate-limit counters for applications, toolsets or routes,
+     * so an entry for one would report zeros against a limit that cannot fire. See {@link UserLimitStats}.
      */
     private List<Model> listAccessibleModels() {
         return context.getConfig().getModels().values().stream()

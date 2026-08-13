@@ -23,9 +23,11 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
+import java.util.concurrent.ExecutionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -207,16 +209,16 @@ public class ResourceServiceTest {
     }
 
     @Test
-    public void testGetResourcesEmpty() {
-        assertEquals(Map.of(), service.getResources(List.of()));
+    public void testLoadEmpty() {
+        assertEquals(Map.of(), load(service, List.of()));
     }
 
     /**
-     * 120 descriptors span three Redis pipelines, so this covers the chunking loop and the semaphore
-     * being shared across chunks rather than per chunk.
+     * 120 items span three Redis pipelines, so this covers the chunking loop and the semaphore being
+     * shared across chunks rather than per chunk.
      */
     @Test
-    public void testGetResourcesAcrossMultipleChunks() {
+    public void testLoadAcrossMultipleChunks() {
         List<ResourceDescriptor> descriptors = new ArrayList<>();
         for (int i = 0; i < 120; i++) {
             ResourceDescriptor descriptor = resource("chunked_" + i);
@@ -224,7 +226,7 @@ public class ResourceServiceTest {
             descriptors.add(descriptor);
         }
 
-        Map<ResourceDescriptor, String> result = service.getResources(descriptors);
+        Map<ResourceDescriptor, String> result = load(service, descriptors);
 
         assertEquals(120, result.size());
         for (int i = 0; i < 120; i++) {
@@ -233,19 +235,7 @@ public class ResourceServiceTest {
     }
 
     @Test
-    public void testGetResourcesDeduplicatesDescriptors() {
-        ResourceDescriptor descriptor = resource("duplicated");
-        service.putResource(descriptor, "body", EtagHeader.NEW_ONLY);
-
-        Map<ResourceDescriptor, String> result = service.getResources(
-                List.of(descriptor, descriptor, resource("duplicated"), descriptor));
-
-        assertEquals(1, result.size());
-        assertEquals("body", result.get(descriptor));
-    }
-
-    @Test
-    public void testGetResourcesOmitsMissingAndDeleted() {
+    public void testLoadOmitsMissingAndDeleted() {
         ResourceDescriptor existing = resource("existing");
         ResourceDescriptor deleted = resource("deleted");
         ResourceDescriptor neverCreated = resource("never_created");
@@ -253,17 +243,18 @@ public class ResourceServiceTest {
         service.putResource(deleted, "body", EtagHeader.NEW_ONLY);
         assertTrue(service.deleteResource(deleted, EtagHeader.ANY));
 
-        Map<ResourceDescriptor, String> result = service.getResources(List.of(existing, deleted, neverCreated));
+        Map<ResourceDescriptor, String> result = load(service, List.of(existing, deleted, neverCreated));
 
         assertEquals(Map.of(existing, "body"), result);
     }
 
     /**
-     * A delete leaves a tombstone in Redis, so the descriptor must be answered from the cache without
-     * a blob call - that is the whole point of distinguishing a cache miss from a cached absence.
+     * A delete leaves a tombstone in Redis, so the item must be answered from the cache without a blob
+     * call - that is the whole point of distinguishing a cache miss from a cached absence. A tombstone
+     * also carries no body, so returning it would fail on decoding.
      */
     @Test
-    public void testGetResourcesSkipsBlobCallForResourceCachedAsAbsent() {
+    public void testLoadSkipsBlobCallForResourceCachedAsAbsent() {
         BlobStorage spy = Mockito.spy(storage);
         ResourceService spied = serviceWithBlobStorage(spy, "cached-absent");
 
@@ -272,16 +263,16 @@ public class ResourceServiceTest {
         assertTrue(spied.deleteResource(deleted, EtagHeader.ANY));
         Mockito.clearInvocations(spy);
 
-        assertEquals(Map.of(), spied.getResources(List.of(deleted)));
+        assertEquals(Map.of(), load(spied, List.of(deleted)));
         Mockito.verify(spy, Mockito.never()).load(Mockito.anyString());
     }
 
     /**
-     * Resources present in blob storage but absent from Redis: every descriptor is a cache miss, so
-     * this drives the semaphore-guarded blob fallback across more than one chunk.
+     * Resources present in blob storage but absent from Redis: every item is a cache miss, so this drives
+     * the semaphore-guarded blob fallback across more than one chunk.
      */
     @Test
-    public void testGetResourcesFallsBackToBlobStorage() {
+    public void testLoadFallsBackToBlobStorage() {
         List<ResourceDescriptor> descriptors = new ArrayList<>();
         for (int i = 0; i < 60; i++) {
             ResourceDescriptor descriptor = resource("blob_only_" + i);
@@ -290,7 +281,7 @@ public class ResourceServiceTest {
             descriptors.add(descriptor);
         }
 
-        Map<ResourceDescriptor, String> result = service.getResources(descriptors);
+        Map<ResourceDescriptor, String> result = load(service, descriptors);
 
         assertEquals(60, result.size());
         for (int i = 0; i < 60; i++) {
@@ -299,18 +290,77 @@ public class ResourceServiceTest {
     }
 
     /**
-     * The blob fallback runs on nested futures, so without unwrapping the caller would see an
-     * {@link java.util.concurrent.ExecutionException} and lose the exception type that maps to an HTTP status.
+     * The cutoff exists to keep a bulk read from fetching bodies that cannot hold anything of interest.
+     * It applies to cache misses only, so this drops the resource from Redis first.
      */
     @Test
-    public void testGetResourcesPropagatesBlobFailureUnwrapped() {
+    public void testLoadSkipsStaleCacheMisses() {
+        BlobStorage spy = Mockito.spy(storage);
+        ResourceService spied = serviceWithBlobStorage(spy, "stale-miss");
+
+        ResourceDescriptor fresh = resource("fresh_miss");
+        ResourceDescriptor stale = resource("stale_miss");
+        storage.store(fresh.getAbsoluteFilePath(), "application/json", null, Map.of(), "fresh".getBytes());
+        storage.store(stale.getAbsoluteFilePath(), "application/json", null, Map.of(), "stale".getBytes());
+
+        long cutoff = 2_000L;
+        List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
+        spied.load(List.of(item(fresh, 3_000L), item(stale, 1_000L)), loaded, cutoff);
+
+        assertEquals(Map.of(fresh, "fresh"), bodies(loaded));
+        Mockito.verify(spy, Mockito.never()).load(stale.getAbsoluteFilePath());
+    }
+
+    /**
+     * A resource written more often than the sync delay never flushes, so its blob object keeps an
+     * arbitrarily old timestamp while Redis holds the current body. The cutoff must not reach it.
+     */
+    @Test
+    public void testLoadServesCachedResourceRegardlessOfCutoff() {
+        ResourceDescriptor cached = resource("hot_key");
+        service.putResource(cached, "current", EtagHeader.NEW_ONLY);
+
+        List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
+        service.load(List.of(item(cached, 1_000L)), loaded, System.currentTimeMillis());
+
+        assertEquals(Map.of(cached, "current"), bodies(loaded));
+    }
+
+    /**
+     * A failing blob read must surface rather than be swallowed into a partial result. It arrives wrapped,
+     * as it always has on this path - the bulk read deliberately does not cancel its siblings, because
+     * interrupting an in-flight blob read can leave the underlying handle open.
+     */
+    @Test
+    public void testLoadPropagatesBlobFailure() {
         BlobStorage failing = Mockito.mock(BlobStorage.class);
         Mockito.when(failing.load(Mockito.anyString())).thenThrow(new IllegalStateException("blob is down"));
         ResourceService broken = serviceWithBlobStorage(failing, "failing-blob");
 
-        IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> broken.getResources(List.of(resource("unreadable"))));
-        assertEquals("blob is down", error.getMessage());
+        ExecutionException error = assertThrows(ExecutionException.class,
+                () -> load(broken, List.of(resource("unreadable"))));
+        // wrapped once per future the read passed through - the chunk task and the per-resource fallback
+        Throwable root = error;
+        while (root.getCause() != null) {
+            root = root.getCause();
+        }
+        assertEquals("blob is down", root.getMessage());
+    }
+
+    private static Map<ResourceDescriptor, String> load(ResourceService target, List<ResourceDescriptor> descriptors) {
+        List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
+        target.load(descriptors.stream().map(descriptor -> item(descriptor, null)).toList(), loaded);
+        return bodies(loaded);
+    }
+
+    private static ResourceItemMetadata item(ResourceDescriptor descriptor, Long updatedAt) {
+        return new ResourceItemMetadata(descriptor).setUpdatedAt(updatedAt);
+    }
+
+    private static Map<ResourceDescriptor, String> bodies(List<Pair<ResourceItemMetadata, String>> loaded) {
+        Map<ResourceDescriptor, String> result = new HashMap<>();
+        loaded.forEach(pair -> result.put(pair.getKey().getDescriptor(), pair.getValue()));
+        return result;
     }
 
     private ResourceService serviceWithBlobStorage(BlobStorage blobStorage, String prefix) {

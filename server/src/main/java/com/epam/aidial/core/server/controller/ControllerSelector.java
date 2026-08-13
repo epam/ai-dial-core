@@ -211,6 +211,10 @@ public class ControllerSelector {
             LimitController controller = new LimitController(proxy, context);
             return controller::getUserLimits;
         });
+        get(RouteTemplate.USER_USAGE, (proxy, context, pathMatcher) -> {
+            LimitController controller = new LimitController(proxy, context);
+            return controller::getUserUsage;
+        });
         get(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             ConsentController controller = new ConsentController(context, proxy);

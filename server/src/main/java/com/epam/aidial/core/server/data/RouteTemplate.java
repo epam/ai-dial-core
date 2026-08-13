@@ -285,6 +285,10 @@ public enum RouteTemplate {
             "^/v1/user/limits$",
             "/v1/user/limits"
     ),
+    USER_USAGE(
+            "^/v1/user/usage$",
+            "/v1/user/usage"
+    ),
     APP_SCHEMAS(
             "^/v1/application_type_schemas/(schemas|schema|meta_schema)$",
             "/v1/application_type_schemas/{operation}"

@@ -7,11 +7,13 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class LimitApiTest extends ResourceBaseTest {
 
@@ -96,10 +98,12 @@ public class LimitApiTest extends ResourceBaseTest {
         // windows the role leaves unspecified fall back to unlimited
         assertEquals(Long.MAX_VALUE, configured.get("weekTokenStats").get("total").asLong());
 
-        // cost is per caller, so it appears once at the top level and never on a deployment
+        // the caller's budget sits at the top level; an entry carries its own attributed spend against the
+        // unlimited sentinel, because only the global budget can cap spend on a single deployment
         assertNotNull(body.get("dayCostStats"));
         assertEquals(0, new BigDecimal("0").compareTo(body.get("dayCostStats").get("used").decimalValue()));
-        assertNull(configured.get("dayCostStats"));
+        assertEquals(Long.MAX_VALUE, configured.get("dayCostStats").get("total").asLong());
+        assertEquals(0, new BigDecimal("0").compareTo(configured.get("dayCostStats").get("used").decimalValue()));
     }
 
     @Test
@@ -120,18 +124,7 @@ public class LimitApiTest extends ResourceBaseTest {
 
     @Test
     public void testGetUserLimits_ReportsUsageAfterCompletion() {
-        String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"model\":\"gpt-3-turbo\","
-                + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}],"
-                + "\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20,\"total_tokens\":30}}";
-
-        try (TestWebServer server = new TestWebServer(4848)) {
-            server.map(HttpMethod.POST, "/chat/completions", 200, answer);
-
-            Response response = send(HttpMethod.POST, "/openai/deployments/gpt-3-turbo/chat/completions", null,
-                    "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
-                    "content-type", "application/json");
-            verify(response, 200);
-        }
+        completion("gpt-3-turbo");
 
         JsonNode used = deployment(getUserLimits(), "gpt-3-turbo");
         assertEquals(100, used.get("minuteTokenStats").get("total").asLong());
@@ -166,8 +159,54 @@ public class LimitApiTest extends ResourceBaseTest {
         verifyNotExact(response, 401, "Can't find user bucket");
     }
 
+    /**
+     * The two endpoints differ only in which deployments appear: usage is a subset of limits, and a caller
+     * who has used nothing gets an empty set rather than a row of zeros per accessible model.
+     */
+    @Test
+    public void testGetUserUsage_ReportsSubsetOfLimits() {
+        assertEquals(List.of(), deploymentIds(getUserUsage()));
+        // the limits response still labels every accessible model
+        assertNotNull(deployment(getUserLimits(), "test-model-v1"));
+
+        completion("gpt-3-turbo");
+
+        assertEquals(List.of("gpt-3-turbo"), deploymentIds(getUserUsage()));
+        List<String> limits = deploymentIds(getUserLimits());
+        assertTrue(limits.contains("gpt-3-turbo"), limits::toString);
+        assertTrue(limits.size() > 1, limits::toString);
+
+        JsonNode usage = deployment(getUserUsage(), "gpt-3-turbo");
+        JsonNode all = deployment(getUserLimits(), "gpt-3-turbo");
+        for (String window : List.of("minuteTokenStats", "dayTokenStats", "hourRequestStats")) {
+            assertEquals(all.get(window).get("total").asLong(), usage.get(window).get("total").asLong(), window);
+            assertEquals(all.get(window).get("used").asLong(), usage.get(window).get("used").asLong(), window);
+        }
+    }
+
+    private void completion(String deployment) {
+        String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"model\":\"" + deployment + "\","
+                + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}],"
+                + "\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20,\"total_tokens\":30}}";
+
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/chat/completions", 200, answer);
+
+            Response response = send(HttpMethod.POST, "/openai/deployments/" + deployment + "/chat/completions", null,
+                    "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                    "content-type", "application/json");
+            verify(response, 200);
+        }
+    }
+
     private JsonNode getUserLimits() {
         Response response = send(HttpMethod.GET, "/v1/user/limits", null, null);
+        verify(response, 200);
+        return readJson(response);
+    }
+
+    private JsonNode getUserUsage() {
+        Response response = send(HttpMethod.GET, "/v1/user/usage", null, null);
         verify(response, 200);
         return readJson(response);
     }
@@ -184,11 +223,12 @@ public class LimitApiTest extends ResourceBaseTest {
     }
 
     private static JsonNode deploymentOrNull(JsonNode body, String id) {
-        for (JsonNode deployment : body.get("deployments")) {
-            if (id.equals(deployment.get("id").asText())) {
-                return deployment;
-            }
-        }
-        return null;
+        return body.get("deployments").get(id);
+    }
+
+    private static List<String> deploymentIds(JsonNode body) {
+        List<String> ids = new ArrayList<>();
+        body.get("deployments").fieldNames().forEachRemaining(ids::add);
+        return ids;
     }
 }

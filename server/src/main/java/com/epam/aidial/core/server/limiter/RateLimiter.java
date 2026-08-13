@@ -7,7 +7,6 @@ import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.RoleBasedEntity;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.CostItemLimitStats;
-import com.epam.aidial.core.server.data.DeploymentLimitStats;
 import com.epam.aidial.core.server.data.ItemLimitStats;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.data.UserLimitStats;
@@ -17,6 +16,9 @@ import com.epam.aidial.core.server.util.ModelCostCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -25,13 +27,17 @@ import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -40,6 +46,7 @@ public class RateLimiter {
     private static final Limit DEFAULT_LIMIT = new Limit();
     private static final CostLimit DEFAULT_COST_LIMIT = new CostLimit();
     private static final String DEFAULT_USER_ROLE = "default";
+    private static final int LIST_PAGE_SIZE = 1000;
 
     private final AsyncTaskExecutor taskExecutor;
 
@@ -61,9 +68,16 @@ public class RateLimiter {
                     usage.setAggCost(cost);
                 }
 
-                String costsPath = getPathToCosts();
-                ResourceDescriptor costResourceDescription = getResourceDescription(bucket, costsPath);
-                costFuture = taskExecutor.submit(() -> updateCostLimit(costResourceDescription, cost));
+                ResourceDescriptor costResourceDescription = getResourceDescription(bucket, getPathToCosts());
+                // the global document is what enforces; the deployment-scoped one only attributes the same
+                // figure, so that a bulk report can break spend down without re-deriving it from stored
+                // tokens - which is impossible anyway, since only total tokens are kept and pricing reloads
+                ResourceDescriptor deploymentCostDescription =
+                        getResourceDescription(bucket, getPathToDeploymentCosts(roleBasedEntity.getName()));
+                costFuture = Future.all(
+                                taskExecutor.submit(() -> updateCostLimit(costResourceDescription, cost)),
+                                taskExecutor.submit(() -> updateCostLimit(deploymentCostDescription, cost)))
+                        .mapEmpty();
             } else {
                 costFuture = Future.succeededFuture();
             }
@@ -77,7 +91,7 @@ public class RateLimiter {
                 tokenFuture = taskExecutor.submit(() -> updateTokenLimit(tokenResourceDescription, usage.getTotalTokens()));
             }
 
-            // Wait for both updates to complete if both exist
+            // Wait for every update to complete
             return Future.all(tokenFuture, costFuture).mapEmpty();
         } catch (Throwable e) {
             return Future.failedFuture(e);
@@ -132,86 +146,158 @@ public class RateLimiter {
     }
 
     /**
-     * Collects limits and rolling usage for many deployments in one shot.
+     * Collects limits and rolling usage for every deployment the caller can access.
      *
-     * <p>Cost is resolved once for the whole batch: both the limit and the counter are per caller, not
-     * per deployment. Reads go through {@link ResourceService#getResources}, which pipelines them in
-     * chunks rather than one round-trip, so this is not an atomic snapshot of the counters. One
-     * timestamp is shared across the parse instead, so every window in the response is computed
-     * against the same instant.
+     * <p>The key set comes from config, so a deployment the caller can no longer access cannot be reported
+     * and one that was never used is still reported - with its real limits against zeros, assembled without
+     * touching storage. Which records to read is decided by a single recursive listing of the caller's
+     * {@code limits/} folder rather than by asking storage for every expected key, so an installation with
+     * many models does not pay a lookup per model.
+     *
+     * <p>Reads are pipelined in chunks rather than issued as one round-trip, so this is not an atomic
+     * snapshot of the counters. One timestamp is shared across the projection instead, so every window in
+     * the response is computed against the same instant.
+     *
+     * @param dropEmpty omit deployments whose every window is zero, which is what separates
+     *                  {@code GET /v1/user/usage} from {@code GET /v1/user/limits}
      */
-    public Future<UserLimitStats> getUserLimitStats(ProxyContext context, List<? extends RoleBasedEntity> deployments) {
+    public Future<UserLimitStats> getUserStats(
+            ProxyContext context, List<? extends RoleBasedEntity> deployments, boolean dropEmpty) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
                 return Future.succeededFuture();
             }
-            return taskExecutor.submit(() -> collectUserLimitStats(context, deployments));
+            return taskExecutor.submit(() -> collectUserStats(context, deployments, dropEmpty));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
     }
 
-    private UserLimitStats collectUserLimitStats(ProxyContext context, List<? extends RoleBasedEntity> deployments) {
+    private UserLimitStats collectUserStats(
+            ProxyContext context, List<? extends RoleBasedEntity> deployments, boolean dropEmpty) {
         String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
-        ResourceDescriptor costsResource = getResourceDescription(bucketLocation, getPathToCosts());
-
-        List<DeploymentResources> perDeployment = new ArrayList<>();
-        List<ResourceDescriptor> resources = new ArrayList<>();
-        resources.add(costsResource);
-        for (RoleBasedEntity deployment : deployments) {
-            DeploymentResources entry = new DeploymentResources(deployment,
-                    getResourceDescription(bucketLocation, getPathToTokens(deployment.getName())),
-                    getResourceDescription(bucketLocation, getPathToRequests(deployment.getName())));
-            perDeployment.add(entry);
-            resources.add(entry.tokens());
-            resources.add(entry.requests());
-        }
-        Map<ResourceDescriptor, String> bodies = resourceService.getResources(resources);
-
+        // one instant for the age cutoff and the projection alike, so no window can disagree with another
         long timestamp = System.currentTimeMillis();
-        UserLimitStats userLimitStats = new UserLimitStats();
 
+        Map<String, LimitStats> collected = new TreeMap<>();
+        Map<String, Counter> counters = new HashMap<>();
+        for (RoleBasedEntity deployment : deployments) {
+            String name = deployment.getName();
+            Limit limit = getLimitByUser(context, deployment);
+            if (limit == null) {
+                log.warn("Limit is not found for {}", name);
+                continue;
+            }
+            // DEFAULT_COST_LIMIT leaves every cost window at the unlimited sentinel: an entry reports the
+            // deployment's attributed spend, and only the global budget can cap it
+            LimitStats limitStats = create(limit, DEFAULT_COST_LIMIT);
+            collected.put(name, limitStats);
+            counters.put(recordPath(bucketLocation, getPathToTokens(name)), new Counter(limitStats, RecordType.TOKENS));
+            counters.put(recordPath(bucketLocation, getPathToRequests(name)), new Counter(limitStats, RecordType.REQUESTS));
+            counters.put(recordPath(bucketLocation, getPathToDeploymentCosts(name)), new Counter(limitStats, RecordType.COSTS));
+        }
+
+        // the caller's budget and the spend against it, held apart from the per-deployment entries; its
+        // record is a sibling of theirs, so a deployment named "costs" lands on "costs/costs" and cannot
+        // collide with it
         LimitStats costStats = create(DEFAULT_LIMIT, getCostLimitByUser(context));
-        collectCostLimitStats(bodies.get(costsResource), costStats, timestamp);
+        counters.put(recordPath(bucketLocation, getPathToCosts()), new Counter(costStats, RecordType.COSTS));
+
+        for (Pair<ResourceItemMetadata, String> loaded : readCounters(bucketLocation, counters.keySet(), timestamp)) {
+            Counter counter = counters.get(loaded.getKey().getDescriptor().getAbsoluteFilePath());
+            counter.type().collect(loaded.getValue(), counter.stats(), timestamp);
+        }
+
+        UserLimitStats userLimitStats = new UserLimitStats();
         userLimitStats.setMinuteCostStats(costStats.getMinuteCostStats());
         userLimitStats.setDayCostStats(costStats.getDayCostStats());
         userLimitStats.setWeekCostStats(costStats.getWeekCostStats());
         userLimitStats.setMonthCostStats(costStats.getMonthCostStats());
 
-        List<DeploymentLimitStats> collected = new ArrayList<>();
-        for (DeploymentResources entry : perDeployment) {
-            String name = entry.deployment().getName();
-            Limit limit = getLimitByUser(context, entry.deployment());
-            if (limit == null) {
-                log.warn("Limit is not found for {}", name);
-                continue;
-            }
-            // no cost limit: cost is reported once at the top level, so nothing here collects it
-            LimitStats limitStats = create(limit);
-            collectTokenLimitStats(bodies.get(entry.tokens()), limitStats, timestamp);
-            collectRequestLimitStats(bodies.get(entry.requests()), limitStats, timestamp);
-            collected.add(toDeploymentLimitStats(name, limitStats));
+        if (dropEmpty) {
+            collected.values().removeIf(stats -> !hasUsage(stats));
         }
-        collected.sort(Comparator.comparing(DeploymentLimitStats::getId));
-        userLimitStats.setDeployments(collected);
+        userLimitStats.setDeployments(new LinkedHashMap<>(collected));
 
         return userLimitStats;
     }
 
-    private record DeploymentResources(RoleBasedEntity deployment, ResourceDescriptor tokens, ResourceDescriptor requests) {
+    /**
+     * Lists the caller's {@code limits/} folder and reads the bodies of the records that belong to the
+     * response, ignoring any other name the listing turns up. A record last written before the widest
+     * window opened is left unread: {@link RateWindow#MONTH} keeps 30 one-day intervals, so nothing older
+     * can still project to a non-zero figure.
+     */
+    private List<Pair<ResourceItemMetadata, String>> readCounters(
+            String bucketLocation, Set<String> wanted, long timestamp) {
+        ResourceDescriptor folder = ResourceDescriptorFactory
+                .fromEncoded(ResourceTypes.LIMIT, bucketLocation, bucketLocation, null);
+
+        List<ResourceItemMetadata> items = new ArrayList<>();
+        String nextToken = null;
+        do {
+            ResourceFolderMetadata page = resourceService.getFolderMetadata(folder, nextToken, LIST_PAGE_SIZE, true);
+            if (page == null) {
+                // a root folder is never reported as missing, so this only guards against a provider
+                // returning nothing mid-pagination - keep what was already collected
+                break;
+            }
+            for (MetadataBase item : page.getItems()) {
+                if (item instanceof ResourceItemMetadata metadata
+                        && wanted.contains(metadata.getDescriptor().getAbsoluteFilePath())) {
+                    items.add(metadata);
+                }
+            }
+            nextToken = page.getNextToken();
+        } while (nextToken != null);
+
+        List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
+        resourceService.load(items, loaded, timestamp - RateWindow.MONTH.window());
+        return loaded;
     }
 
-    private static DeploymentLimitStats toDeploymentLimitStats(String name, LimitStats limitStats) {
-        DeploymentLimitStats stats = new DeploymentLimitStats();
-        stats.setId(name);
-        stats.setMinuteTokenStats(limitStats.getMinuteTokenStats());
-        stats.setDayTokenStats(limitStats.getDayTokenStats());
-        stats.setWeekTokenStats(limitStats.getWeekTokenStats());
-        stats.setMonthTokenStats(limitStats.getMonthTokenStats());
-        stats.setHourRequestStats(limitStats.getHourRequestStats());
-        stats.setDayRequestStats(limitStats.getDayRequestStats());
-        return stats;
+    private static boolean hasUsage(LimitStats stats) {
+        return stats.getMinuteTokenStats().getUsed() > 0
+                || stats.getDayTokenStats().getUsed() > 0
+                || stats.getWeekTokenStats().getUsed() > 0
+                || stats.getMonthTokenStats().getUsed() > 0
+                || stats.getHourRequestStats().getUsed() > 0
+                || stats.getDayRequestStats().getUsed() > 0
+                || stats.getMinuteCostStats().getUsed().signum() > 0
+                || stats.getDayCostStats().getUsed().signum() > 0
+                || stats.getWeekCostStats().getUsed().signum() > 0
+                || stats.getMonthCostStats().getUsed().signum() > 0;
+    }
+
+    private String recordPath(String bucketLocation, String path) {
+        return getResourceDescription(bucketLocation, path).getAbsoluteFilePath();
+    }
+
+    private record Counter(LimitStats stats, RecordType type) {
+    }
+
+    private enum RecordType {
+        TOKENS {
+            @Override
+            void collect(String json, LimitStats stats, long timestamp) {
+                collectTokenLimitStats(json, stats, timestamp);
+            }
+        },
+        REQUESTS {
+            @Override
+            void collect(String json, LimitStats stats, long timestamp) {
+                collectRequestLimitStats(json, stats, timestamp);
+            }
+        },
+        COSTS {
+            @Override
+            void collect(String json, LimitStats stats, long timestamp) {
+                collectCostLimitStats(json, stats, timestamp);
+            }
+        };
+
+        abstract void collect(String json, LimitStats stats, long timestamp);
     }
 
     private void collectTokenLimitStats(ProxyContext context, LimitStats limitStats, long timestamp, String name) {
@@ -487,6 +573,10 @@ public class RateLimiter {
 
     private static String getPathToCosts() {
         return "costs";
+    }
+
+    private static String getPathToDeploymentCosts(String name) {
+        return String.format("%s/costs", name);
     }
 
     private static Limit getLimit(Map<String, Role> roles, String userRole, String name, Limit defaultLimit) {
