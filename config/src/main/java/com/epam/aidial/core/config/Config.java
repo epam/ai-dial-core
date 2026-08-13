@@ -80,9 +80,6 @@ public class Config {
         return selectDeployment(deploymentId) != null;
     }
 
-    /**
-     * @return the schema body, or {@code null} if {@code schemaId} is null or unresolved
-     */
     @JsonIgnore
     public String getCustomApplicationSchema(URI schemaId) {
         if (schemaId == null) {
@@ -91,9 +88,6 @@ public class Config {
         return applicationTypeSchemas.get(schemaId.toString());
     }
 
-    /**
-     * @return the schema body, or {@code null} if {@code schemaId} is null or unresolved
-     */
     @JsonIgnore
     public String getCatalogSchema(URI schemaId) {
         if (schemaId == null) {
