@@ -20,6 +20,7 @@ import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.mutable.MutableBoolean;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -42,7 +43,8 @@ public class ExternalServiceService {
 
     /**
      * On an application write: validate, drop computed statuses, preserve omitted client_secrets, encrypt
-     * at rest. Returns ids removed by this write so the caller can purge their APP-level credentials.
+     * at rest. Returns ids whose APP-level credentials this write invalidated — services dropped outright and
+     * services whose {@code authentication_type} changed — so the caller can purge them.
      *
      * <p>With {@link ExternalServicesWriteMode#PRESERVE_IF_OMITTED} (the request omitted {@code external_services},
      * e.g. a partial update saving other properties) the stored services are carried forward untouched.
@@ -62,7 +64,7 @@ public class ExternalServiceService {
         }
         preserveOmittedSecrets(application, existing);
         encryptSecrets(resource, application);
-        return removedServiceIds(application, existing);
+        return findPurgeableServiceIds(application, existing);
     }
 
     // Drop APP-level credentials for removed services, else a same-id re-create inherits the old token/secret.
@@ -82,19 +84,30 @@ public class ExternalServiceService {
         }
     }
 
-    private static List<String> removedServiceIds(Application application, Application existing) {
+    // A removed service's record must not be inherited by a same-id re-create, and a type change makes the old
+    // record meaningless at best — at worst a leftover credential would pass as DIAL_NATIVE admin consent.
+    private static List<String> findPurgeableServiceIds(Application application, Application existing) {
         if (existing == null || existing.getExternalServices() == null || existing.getExternalServices().isEmpty()) {
             return List.of();
         }
         Map<String, ExternalService> newServices = application.getExternalServices() == null
                 ? Map.of() : application.getExternalServices();
-        List<String> removed = new ArrayList<>();
-        for (String id : existing.getExternalServices().keySet()) {
-            if (!newServices.containsKey(id)) {
-                removed.add(id);
+        List<String> purgeable = new ArrayList<>();
+        for (Map.Entry<String, ExternalService> entry : existing.getExternalServices().entrySet()) {
+            ExternalService updated = newServices.get(entry.getKey());
+            if (updated == null || authTypeChanged(entry.getValue(), updated)) {
+                purgeable.add(entry.getKey());
             }
         }
-        return removed;
+        return purgeable;
+    }
+
+    private static boolean authTypeChanged(ExternalService existing, ExternalService updated) {
+        if (existing == null || existing.getAuthSettings() == null
+                || updated == null || updated.getAuthSettings() == null) {
+            return false;
+        }
+        return existing.getAuthSettings().getAuthenticationType() != updated.getAuthSettings().getAuthenticationType();
     }
 
     // Same resource id/bucket as CredentialsLocatorFactory.fromExternalServiceScope for a dynamic app, so the
@@ -108,6 +121,7 @@ public class ExternalServiceService {
 
     public ExternalService putExternalService(ResourceDescriptor resource, String serviceId, ExternalService service, String author) {
         verifyApplication(resource);
+        MutableBoolean typeChanged = new MutableBoolean(false);
         resourceService.computeResource(resource, EtagHeader.ANY, author, json -> {
             Application app = ProxyUtil.convertToObject(json, Application.class);
             if (app == null) {
@@ -120,7 +134,8 @@ public class ExternalServiceService {
             ExternalService existing = app.getExternalServices().get(serviceId);
             validateOne(serviceId, service, existing == null);
             clearAuthStatuses(service);
-            if (existing != null && existing.getAuthSettings() != null
+            typeChanged.setValue(authTypeChanged(existing, service));
+            if (existing != null && !typeChanged.booleanValue() && existing.getAuthSettings() != null
                     && service.getAuthSettings() != null && service.getAuthSettings().getClientSecret() == null
                     && existing.getAuthSettings().getClientSecret() != null) {
                 service.getAuthSettings().setClientSecret(existing.getAuthSettings().getClientSecret());
@@ -129,6 +144,10 @@ public class ExternalServiceService {
             encryptSecrets(resource, app);
             return ProxyUtil.convertToString(app);
         });
+        // After commit, like the application write path: the old-type record must not survive under the new type.
+        if (typeChanged.booleanValue()) {
+            purgeApplicationCredentials(resource, List.of(serviceId));
+        }
         return service;
     }
 
@@ -205,7 +224,9 @@ public class ExternalServiceService {
                 continue;
             }
             ExternalService existingService = existing.getExternalServices().get(entry.getKey());
-            if (existingService != null && existingService.getAuthSettings() != null
+            // Never carry a secret across an authentication_type change — it belonged to the old type.
+            if (existingService != null && !authTypeChanged(existingService, service)
+                    && existingService.getAuthSettings() != null
                     && existingService.getAuthSettings().getClientSecret() != null) {
                 service.getAuthSettings().setClientSecret(existingService.getAuthSettings().getClientSecret());
             }

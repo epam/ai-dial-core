@@ -350,6 +350,7 @@ public class McpProxyController implements Controller {
     private void handleResponse(BufferingReadStream responseStream) {
         Buffer proxyResponseBody = responseStream.getContent();
         context.setResponseBody(proxyResponseBody);
+        context.setResponseBodyTimestamp(System.currentTimeMillis());
         finalizeRequest();
         logStore.save(AnalyticsLogContext.from(context, null));
     }
@@ -383,6 +384,7 @@ public class McpProxyController implements Controller {
         }
         future.onSuccess(result -> {
             context.setResponseBody(result);
+            context.setResponseBodyTimestamp(System.currentTimeMillis());
             respond(responseStatus, result);
             logStore.save(AnalyticsLogContext.from(context, null));
         }).onFailure(error -> {

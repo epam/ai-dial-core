@@ -1,11 +1,14 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.ResourceAuthSettings;
+import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
+import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -17,10 +20,12 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ExternalServiceData;
+import com.epam.aidial.core.server.log.ExternalServiceAuditLog;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ExternalServiceService;
+import com.epam.aidial.core.server.service.ExternalServiceStatusEnricher;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.UserExternalServiceService;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -41,6 +46,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /** Admin/app-owner CRUD for an application's external-service definitions; static-config apps are read-only. */
 @Slf4j
@@ -55,6 +61,7 @@ public class ExternalServiceManagementController {
     private final EncryptionService encryptionService;
     private final ResourceCredentialsService resourceCredentialsService;
     private final ResourceAuthSettingsService resourceAuthSettingsService;
+    private final ExternalServiceStatusEnricher statusEnricher;
 
     public ExternalServiceManagementController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -66,6 +73,7 @@ public class ExternalServiceManagementController {
         this.encryptionService = proxy.getEncryptionService();
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.resourceAuthSettingsService = proxy.getResourceAuthSettingsService();
+        this.statusEnricher = new ExternalServiceStatusEnricher(context, resourceAuthSettingsService);
     }
 
     @ApiOperation(
@@ -320,7 +328,7 @@ public class ExternalServiceManagementController {
         ResourceAuthSettings safe = authSettings == null ? null : authSettings.withoutSecrets();
         if (withStatus && safe != null) {
             CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId(appId, serviceId), context);
-            resourceAuthSettingsService.setExternalServiceAuthStatuses(locator, safe, context.getUserId());
+            statusEnricher.enrich(locator, safe);
         }
         return new ExternalServiceData()
                 .setId(serviceId)
@@ -330,28 +338,120 @@ public class ExternalServiceManagementController {
     }
 
     private void respondError(String message, Throwable error) {
-        HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
-        String body = null;
-        switch (error) {
-            case HttpException e -> {
-                status = e.getStatus();
-                body = e.getMessage();
+        ExternalServiceErrorHandler.respond(context, message, error);
+    }
+
+    /**
+     * An administrator approves this application's use of a DIAL-native service. Applies to every user who has
+     * offline credentials, not only those who opted into this application.
+     */
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/applications/{appId}/external-services/{id}/consent",
+            operationId = "grantExternalServiceConsent",
+            tags = {"External Services"},
+            parameters = {
+                    @ApiParameter(name = "appId", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.EXTERNAL_SERVICE_APP_ID),
+                    @ApiParameter(name = "id", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.EXTERNAL_SERVICE_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = Boolean.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
             }
-            case ResourceNotFoundException e -> {
-                status = HttpStatus.NOT_FOUND;
-                body = e.getMessage();
+    )
+    public Future<?> grantConsent(String appId, String serviceId) {
+        return consentOperation(appId, serviceId, "GRANT", "Can't grant consent", service -> {
+            CredentialsDescriptor descriptor = consentDescriptor(appId, serviceId);
+            // The record's existence is the approval; who granted it is in the audit event, which keeps history.
+            resourceCredentialsService.putCredentialsRecord(descriptor, ResourceCredentials.builder()
+                    .resourceId(descriptor.getResourceId())
+                    .credentialsLevel(CredentialsLevel.APPLICATION)
+                    .authenticationType(service.getAuthSettings().getAuthenticationType())
+                    .build());
+            return true;
+        });
+    }
+
+    /** Withdraws the approval. The application stops working for every user immediately. */
+    @ApiOperation(
+            method = "DELETE",
+            path = "/v1/applications/{appId}/external-services/{id}/consent",
+            operationId = "withdrawExternalServiceConsent",
+            tags = {"External Services"},
+            parameters = {
+                    @ApiParameter(name = "appId", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.EXTERNAL_SERVICE_APP_ID),
+                    @ApiParameter(name = "id", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.EXTERNAL_SERVICE_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
+                            body = @ApiSchema(implementation = Boolean.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
             }
-            case PermissionDeniedException e -> {
-                status = HttpStatus.FORBIDDEN;
-                body = e.getMessage();
-            }
-            case IllegalArgumentException e -> {
-                status = HttpStatus.BAD_REQUEST;
-                body = e.getMessage();
-            }
-            case null, default -> log.warn(message, error);
+    )
+    public Future<?> withdrawConsent(String appId, String serviceId) {
+        return consentOperation(appId, serviceId, "WITHDRAW", "Can't withdraw consent",
+                service -> resourceCredentialsService.deleteCredentialsRecord(consentDescriptor(appId, serviceId)));
+    }
+
+    /** Both consent operations are the same act with a different verb: admin only, and audited either way. */
+    private Future<?> consentOperation(String appId, String serviceId, String action, String errorMessage,
+                                       Function<ExternalService, Boolean> operation) {
+        taskExecutor.submit(() -> {
+            requireAdmin();
+            return operation.apply(resolveDialNativeService(appId, serviceId));
+        })
+                .onComplete(result -> ExternalServiceAuditLog.consent(
+                        context, appId, serviceId, action, ExternalServiceErrorHandler.asRuntime(result.cause())))
+                .onSuccess(applied -> context.respond(HttpStatus.OK, applied))
+                .onFailure(error -> respondError(errorMessage, error));
+        return Future.succeededFuture();
+    }
+
+    /** Consent is meaningful only for DIAL-native services; other types are authorized by a stored credential. */
+    private ExternalService resolveDialNativeService(String appId, String serviceId) {
+        ResolvedApp resolved = resolveApp(appId);
+        ExternalService service = resolved.application.getExternalServices() == null
+                ? null : resolved.application.getExternalServices().get(serviceId);
+        if (service == null || service.getAuthSettings() == null) {
+            throw new ResourceNotFoundException(
+                    "External service '%s' is not defined for application '%s'".formatted(serviceId, appId));
         }
-        context.respond(status, body);
+        if (service.getAuthSettings().getAuthenticationType() != AuthenticationType.DIAL_NATIVE) {
+            throw new HttpException(HttpStatus.BAD_REQUEST,
+                    "Consent applies only to %s services".formatted(AuthenticationType.DIAL_NATIVE));
+        }
+        return service;
+    }
+
+    /**
+     * Administrators only — an app owner approving their own application would be granting it the right to act as
+     * every user with offline credentials. Checked before the service is resolved, so 403 leaks nothing.
+     */
+    private void requireAdmin() {
+        if (!accessService.hasAdminAccess(context)) {
+            throw new PermissionDeniedException("Only administrators may consent to a DIAL-native external service");
+        }
+    }
+
+    private CredentialsDescriptor consentDescriptor(String appId, String serviceId) {
+        // scopeId encodes both parts: the ids arrive decoded, and fromExternalServiceScope decodes again.
+        CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId(appId, serviceId), context);
+        CredentialsDescriptor descriptor = locator.getCredentialsDescriptors().get(CredentialsLevel.APPLICATION);
+        if (descriptor == null) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Application-level consent is not supported for: " + appId);
+        }
+        return descriptor;
     }
 
     private record ResolvedApp(Application application, ResourceDescriptor descriptor, String author, boolean staticApp) {

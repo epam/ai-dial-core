@@ -52,7 +52,7 @@ class TokenServiceTest {
                 .build();
 
         when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
-                .thenReturn(new TokenResponse("access", "refresh", 3600L));
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
 
         tokenService.getToken("resource-1", authSettings, signInRequest);
 
@@ -83,7 +83,7 @@ class TokenServiceTest {
                 .build();
 
         when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
-                .thenReturn(new TokenResponse("access", "refresh", 3600L));
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
 
         tokenService.getToken("resource-1", authSettings, signInRequest);
 
@@ -114,7 +114,7 @@ class TokenServiceTest {
                 .build();
 
         when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
-                .thenReturn(new TokenResponse("access", "refresh", 3600L));
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
 
         tokenService.getToken("resource-1", authSettings, signInRequest);
 
@@ -145,7 +145,7 @@ class TokenServiceTest {
                 .build();
 
         when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
-                .thenReturn(new TokenResponse("access", "refresh", 3600L));
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
 
         tokenService.getToken("resource-1", authSettings, signInRequest);
 
@@ -200,7 +200,7 @@ class TokenServiceTest {
                 .build();
 
         when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
-                .thenReturn(new TokenResponse("access", "refresh", 3600L));
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
 
         tokenService.getToken("resource-1", authSettings, signInRequest);
 
@@ -236,7 +236,7 @@ class TokenServiceTest {
                 .build();
 
         when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
-                .thenReturn(new TokenResponse("access", "refresh", 3600L));
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
 
         tokenService.getToken("resource-1", authSettings, signInRequest);
 
@@ -279,7 +279,7 @@ class TokenServiceTest {
                 .build();
 
         when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
-                .thenReturn(new TokenResponse("access", "refresh", 3600L));
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
 
         tokenService.getToken("resource-1", authSettings, signInRequest);
 
@@ -326,7 +326,7 @@ class TokenServiceTest {
                 .build();
 
         when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
-                .thenReturn(new TokenResponse("new-access", "new-refresh", 3600L));
+                .thenReturn(TokenResponse.builder().accessToken("new-access").refreshToken("new-refresh").expiresIn(3600L).build());
 
         tokenService.getToken("resource-1", authSettings, "old-refresh-token");
 
@@ -358,7 +358,7 @@ class TokenServiceTest {
                 .build();
 
         when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
-                .thenReturn(new TokenResponse("new-access", "new-refresh", 3600L));
+                .thenReturn(TokenResponse.builder().accessToken("new-access").refreshToken("new-refresh").expiresIn(3600L).build());
 
         tokenService.getToken("resource-1", authSettings, "old-refresh-token");
 
@@ -382,7 +382,7 @@ class TokenServiceTest {
 
         when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
                 .thenThrow(oauthError(HttpStatus.BAD_REQUEST, "invalid_client", "Missing client_id"))
-                .thenReturn(new TokenResponse("access", "refresh", 3600L));
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
 
         TokenResponse response = tokenService.getToken("resource-1", basicAuthSettings(),
                 ResourceSignInRequest.builder().code("auth-code").build());
@@ -410,7 +410,7 @@ class TokenServiceTest {
 
         when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
                 .thenThrow(new HttpException(HttpStatus.UNAUTHORIZED, "Authorization server returns 401 error code", Map.of(), null))
-                .thenReturn(new TokenResponse("access", "refresh", 3600L));
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
 
         TokenResponse response = tokenService.getToken("resource-1", basicAuthSettings(),
                 ResourceSignInRequest.builder().code("auth-code").build());
@@ -427,7 +427,7 @@ class TokenServiceTest {
         when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
                 .thenThrow(oauthError(HttpStatus.BAD_REQUEST, "invalid_grant",
                         "Client ID does not match the one used in the initial request."))
-                .thenReturn(new TokenResponse("access", "refresh", 3600L));
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
 
         TokenResponse response = tokenService.getToken("resource-1", basicAuthSettings(),
                 ResourceSignInRequest.builder().code("auth-code").build());
@@ -442,7 +442,7 @@ class TokenServiceTest {
 
         when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
                 .thenThrow(oauthError(HttpStatus.BAD_REQUEST, "invalid_request", "client_id is required"))
-                .thenReturn(new TokenResponse("access", "refresh", 3600L));
+                .thenReturn(TokenResponse.builder().accessToken("access").refreshToken("refresh").expiresIn(3600L).build());
 
         TokenResponse response = tokenService.getToken("resource-1", basicAuthSettings(),
                 ResourceSignInRequest.builder().code("auth-code").build());
@@ -506,7 +506,7 @@ class TokenServiceTest {
 
         when(resourceAuthorizationClient.executePost(any(), any(), any(), any(), any()))
                 .thenThrow(oauthError(HttpStatus.BAD_REQUEST, "invalid_client", "Missing client_id"))
-                .thenReturn(new TokenResponse("new-access", "new-refresh", 3600L));
+                .thenReturn(TokenResponse.builder().accessToken("new-access").refreshToken("new-refresh").expiresIn(3600L).build());
 
         TokenResponse response = tokenService.getToken("resource-1", basicAuthSettings(), "old-refresh-token");
 

@@ -12,6 +12,9 @@ import lombok.experimental.UtilityClass;
 @UtilityClass
 public class CredentialsDescriptorFactory {
 
+    /** Reserved resource id for a user's offline credentials; deliberately not an app-scoped path. */
+    public static final String OFFLINE_CREDENTIALS_ID = "offline";
+
     public static CredentialsDescriptor fromAnyUrl(
             String resourceId,
             CredentialsLevel credentialsLevel,
@@ -71,6 +74,21 @@ public class CredentialsDescriptorFactory {
         String location = BucketBuilder.USER_BUCKET_PATTERN.formatted(ownerUserId);
         String name = proxyContext.getProxy().getEncryptionService().encrypt(location);
         return new BucketInfo(name, location);
+    }
+
+    /**
+     * The caller's offline credentials. The reserved id sits outside the shape
+     * {@code parseExternalServiceScope} requires, so no app-facing endpoint can address it.
+     */
+    public static CredentialsDescriptor offlineCredentials(ProxyContext proxyContext) {
+        BucketInfo bucket = getUserBucketInfo(proxyContext);
+        return new CredentialsDescriptor(OFFLINE_CREDENTIALS_ID, bucket.name(), bucket.location());
+    }
+
+    /** The same record for an arbitrary owner — the redemption path, where the caller is not the owner. */
+    public static CredentialsDescriptor offlineCredentialsForUser(ProxyContext proxyContext, String ownerUserId) {
+        BucketInfo bucket = getUserBucketInfoForUser(proxyContext, ownerUserId);
+        return new CredentialsDescriptor(OFFLINE_CREDENTIALS_ID, bucket.name(), bucket.location());
     }
 
     public static BucketInfo getPublicBucketInfo() {

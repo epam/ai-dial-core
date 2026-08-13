@@ -27,6 +27,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.DeploymentService;
+import com.epam.aidial.core.server.service.ExternalServiceStatusEnricher;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.UserExternalServiceService;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -461,6 +462,7 @@ public class ApplicationController {
             return;
         }
         String appId = appPart(data.getId());
+        ExternalServiceStatusEnricher enricher = new ExternalServiceStatusEnricher(context, resourceAuthSettingsService);
         for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
             ResourceAuthSettings authSettings = entry.getValue().getAuthSettings();
             if (authSettings == null) {
@@ -470,7 +472,7 @@ public class ApplicationController {
                 String scopeId = CredentialsLocatorFactory.APPLICATIONS_PREFIX + appId
                         + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + entry.getKey();
                 CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId, context);
-                resourceAuthSettingsService.setExternalServiceAuthStatuses(locator, authSettings, context.getUserId());
+                enricher.enrich(locator, authSettings);
             } catch (RuntimeException e) {
                 log.warn("Failed to compute external-service status for '{}' on '{}'", entry.getKey(), data.getId(), e);
             }

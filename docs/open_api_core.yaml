@@ -2964,6 +2964,105 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/applications/{appId}/external-services/{id}/consent:
+    post:
+      tags:
+      - External Services
+      summary: "/v1/applications/{appId}/external-services/{id}/consent"
+      operationId: grantExternalServiceConsent
+      parameters:
+      - name: appId
+        in: path
+        description: The application ID. Can be either a static config application name or a dynamic application path.
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: The external service ID defined in the application's external_services configuration.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: boolean
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    delete:
+      tags:
+      - External Services
+      summary: "/v1/applications/{appId}/external-services/{id}/consent"
+      operationId: withdrawExternalServiceConsent
+      parameters:
+      - name: appId
+        in: path
+        description: The application ID. Can be either a static config application name or a dynamic application path.
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        description: The external service ID defined in the application's external_services configuration.
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: boolean
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/applications/{bucket}/{application_path}:
     get:
       tags:
@@ -11800,6 +11899,105 @@ paths:
       - lang: cURL
         label: Access Token
         source: "curl -X GET https://chat.<company>.com/v1/user/info \\\n  -H \"Authorization: Bearer YOUR_ACCESS_TOKEN\"          \n"
+  /v1/user/offline-credentials:
+    get:
+      tags:
+      - External Services
+      summary: /v1/user/offline-credentials
+      operationId: getOfflineCredentials
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfflineCredentialsStatus"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/user/offline-credentials/signin:
+    post:
+      tags:
+      - External Services
+      summary: /v1/user/offline-credentials/signin
+      operationId: offlineCredentialsSignIn
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OfflineCredentialsSignInRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: boolean
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/user/offline-credentials/signout:
+    post:
+      tags:
+      - External Services
+      summary: /v1/user/offline-credentials/signout
+      operationId: offlineCredentialsSignOut
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: boolean
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/{deployment_name}/rate:
     post:
       summary: "/v1/{deployment_name}/rate"
@@ -12891,6 +13089,7 @@ components:
       - OAUTH
       - API_KEY
       - NONE
+      - DIAL_NATIVE
     AzureEmbeddingsRequest:
       required:
       - input
@@ -14112,12 +14311,9 @@ components:
         with:
           type: string
     LocalizedValue:
-      type: object
-      properties:
-        localeMap:
-          $ref: "#/components/schemas/MapStringString"
-        plainValue:
-          type: string
+      oneOf:
+      - type: string
+      - $ref: "#/components/schemas/MapStringString"
     MapStringApplication:
       type: object
       additionalProperties:
@@ -14547,6 +14743,35 @@ components:
           type: string
         url:
           type: string
+    OfflineCredentialsSignInRequest:
+      type: object
+      properties:
+        code:
+          type: string
+        redirectUri:
+          type: string
+    OfflineCredentialsStatus:
+      type: object
+      properties:
+        connect:
+          $ref: "#/components/schemas/OfflineCredentialsStatusConnect"
+        connected:
+          type: boolean
+        available:
+          type: boolean
+    OfflineCredentialsStatusConnect:
+      type: object
+      properties:
+        authorization_endpoint:
+          type: string
+        client_id:
+          type: string
+        redirect_uri:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
     Pattern:
       type: object
     PerRequestReceiver:

@@ -62,6 +62,18 @@ public class ControllerSelector {
             ExternalServiceManagementController controller = new ExternalServiceManagementController(proxy, context);
             return () -> controller.deleteExternalService(appId, serviceId);
         });
+        post(RouteTemplate.EXTERNAL_SERVICE_CONSENT, (proxy, context, pathMatcher) -> {
+            String appId = UrlUtil.decodePath(pathMatcher.group("appId"));
+            String serviceId = UrlUtil.decodePath(pathMatcher.group("id"));
+            ExternalServiceManagementController controller = new ExternalServiceManagementController(proxy, context);
+            return () -> controller.grantConsent(appId, serviceId);
+        });
+        delete(RouteTemplate.EXTERNAL_SERVICE_CONSENT, (proxy, context, pathMatcher) -> {
+            String appId = UrlUtil.decodePath(pathMatcher.group("appId"));
+            String serviceId = UrlUtil.decodePath(pathMatcher.group("id"));
+            ExternalServiceManagementController controller = new ExternalServiceManagementController(proxy, context);
+            return () -> controller.withdrawConsent(appId, serviceId);
+        });
 
         // API-managed applications/toolsets in the platform bucket. Registered before the generic
         // RESOURCE/RESOURCE_METADATA routes so /v1/(applications|toolsets)/platform/... is not
@@ -207,6 +219,18 @@ public class ControllerSelector {
             return () -> controller.handle(deploymentId, getter, false);
         });
         get(RouteTemplate.USER_INFO, (proxy, context, pathMatcher) -> new UserInfoController(context));
+        get(RouteTemplate.OFFLINE_CREDENTIALS, (proxy, context, pathMatcher) -> {
+            OfflineCredentialsController controller = new OfflineCredentialsController(proxy, context);
+            return controller::getStatus;
+        });
+        post(RouteTemplate.OFFLINE_CREDENTIALS_OPERATIONS, (proxy, context, pathMatcher) -> {
+            OfflineCredentialsController controller = new OfflineCredentialsController(proxy, context);
+            return switch (pathMatcher.group(1)) {
+                case "signin" -> controller::signIn;
+                case "signout" -> controller::signOut;
+                default -> null;
+            };
+        });
         get(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             ConsentController controller = new ConsentController(context, proxy);

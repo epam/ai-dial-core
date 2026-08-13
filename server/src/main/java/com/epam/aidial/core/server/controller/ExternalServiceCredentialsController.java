@@ -8,12 +8,12 @@ import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.credentials.AuthorizationHeader;
+import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
-import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.credentials.service.AuthorizationHeaderProvider;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -30,12 +30,15 @@ import com.epam.aidial.core.server.data.ExternalServiceCredentialsResponse;
 import com.epam.aidial.core.server.data.OboCredentialsRequest;
 import com.epam.aidial.core.server.log.ExternalServiceAuditLog;
 import com.epam.aidial.core.server.security.AccessService;
+import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.AppIdentityMatcher;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ConsentRequiredException;
+import com.epam.aidial.core.server.service.OfflineCredentialsRequiredException;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.UserExternalServiceService;
+import com.epam.aidial.core.server.util.CredentialsDescriptorFactory;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -47,7 +50,6 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
-import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
@@ -66,6 +68,7 @@ public class ExternalServiceCredentialsController {
     private final EncryptionService encryptionService;
     private final ApplicationService applicationService;
     private final UserExternalServiceService userExternalServiceService;
+    private final AccessTokenValidator accessTokenValidator;
 
     public ExternalServiceCredentialsController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -76,6 +79,7 @@ public class ExternalServiceCredentialsController {
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.authorizationHeaderProvider = proxy.getAuthorizationHeaderProvider();
         this.userExternalServiceService = proxy.getUserExternalServiceService();
+        this.accessTokenValidator = proxy.getTokenValidator();
     }
 
     @ApiOperation(
@@ -108,6 +112,7 @@ public class ExternalServiceCredentialsController {
                         ResolvedExternalService resolved = resolveExternalService(request.getUrl());
                         ResourceAuthSettings authSettings = resolved.externalService.getAuthSettings();
                         validateAuthType(authSettings.getAuthenticationType(), request.getAuthenticationType());
+                        rejectDialNative("Sign-in", authSettings.getAuthenticationType());
 
                         verifyAccess(resolved, request.getCredentialsLevel());
 
@@ -168,6 +173,7 @@ public class ExternalServiceCredentialsController {
                     ResolvedExternalService resolved = resolveExternalService(request.getUrl());
                     ResourceAuthSettings authSettings = resolved.externalService.getAuthSettings();
                     validateAuthType(authSettings.getAuthenticationType(), request.getAuthenticationType());
+                    rejectDialNative("Sign-out", authSettings.getAuthenticationType());
                     verifyAccess(resolved, request.getCredentialsLevel());
 
                     CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(request.getUrl(), context);
@@ -290,6 +296,14 @@ public class ExternalServiceCredentialsController {
                         ExternalService externalService = resolveExternalServiceDefinition(
                                 app.application, scope[0], scope[1], request.getOwnerUserId());
                         ResourceAuthSettings authSettings = externalService.getAuthSettings();
+
+                        if (AuthenticationType.DIAL_NATIVE.equals(authSettings.getAuthenticationType())) {
+                            ExternalServiceCredentialsResponse dialNative =
+                                    redeemOfflineCredentials(request, scope[0], scope[1]);
+                            ExternalServiceAuditLog.oboRetrieval(context, scope[0], scope[1], request.getOwnerUserId(), null);
+                            return dialNative;
+                        }
+
                         CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScopeForOwner(
                                 request.getUrl(), request.getOwnerUserId(), context);
                         ResourceCredentials credentials = resourceCredentialsService.getRefreshedUserCredentials(
@@ -317,6 +331,95 @@ public class ExternalServiceCredentialsController {
                 .onFailure(error -> respondError("Can't get on-behalf-of external service credentials", error));
 
         return Future.succeededFuture();
+    }
+
+    /**
+     * Redemption for a DIAL-native service: the owner acts through their own offline credentials, and the
+     * application is authorized by an administrator's consent rather than by anything it holds.
+     */
+    private ExternalServiceCredentialsResponse redeemOfflineCredentials(OboCredentialsRequest request,
+                                                                        String appPart,
+                                                                        String serviceId) {
+        requireAdminConsent(request.getUrl(), appPart, serviceId);
+
+        CredentialsDescriptor descriptor =
+                CredentialsDescriptorFactory.offlineCredentialsForUser(context, request.getOwnerUserId());
+        ResourceCredentials stored = resourceCredentialsService.getResourceCredentials(descriptor);
+        if (stored == null) {
+            throw new OfflineCredentialsRequiredException(
+                    "The owner has not enabled offline access, so nothing can act on their behalf");
+        }
+
+        ResourceAuthSettings offlineClient = resolveOfflineClient(stored.getIssuer());
+
+        CredentialsLocator locator = new CredentialsLocator(descriptor.getResourceId(),
+                Map.of(CredentialsLevel.USER, new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation())));
+        ResourceCredentials credentials;
+        try {
+            credentials = resourceCredentialsService.getRefreshedUserCredentials(
+                    locator, offlineClient, request.getOwnerUserId());
+        } catch (HttpException e) {
+            throw translateRefreshFailure(e);
+        }
+        if (credentials == null) {
+            throw new OfflineCredentialsRequiredException(
+                    "The owner's offline credentials are no longer valid; they must connect again");
+        }
+        // getRefreshedUserCredentials returns the record un-refreshed without consent, leaving the refusal here.
+        if (!credentials.isOfflineUsageConsent()) {
+            throw new OfflineCredentialsRequiredException(
+                    "The owner's credentials do not permit offline use; they must connect again");
+        }
+        return toCredentialsResponse(credentials, request.getUrl());
+    }
+
+    /**
+     * The offline client of the identity provider that issued the stored credentials. Both failures are server-side
+     * state — a provider dropped from the settings, or one never configured for offline use — not a bad request.
+     */
+    private ResourceAuthSettings resolveOfflineClient(String issuer) {
+        ResourceAuthSettings offlineClient;
+        try {
+            offlineClient = accessTokenValidator.resolveOfflineClientByIssuer(issuer);
+        } catch (IllegalArgumentException e) {
+            throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "The identity provider that issued the owner's offline credentials is no longer configured");
+        }
+        if (offlineClient == null) {
+            throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Offline credentials are not configured for the identity provider that issued them");
+        }
+        return offlineClient;
+    }
+
+    /** An administrator must have approved this application's use of the service; declaring it grants nothing. */
+    private void requireAdminConsent(String url, String appPart, String serviceId) {
+        CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(url, context);
+        CredentialsDescriptor consent = locator.getCredentialsDescriptors().get(CredentialsLevel.APPLICATION);
+        ResourceCredentials record = consent == null ? null : resourceCredentialsService.getResourceCredentials(consent);
+        // Only a record the consent endpoint wrote counts. The same APPLICATION-level slot holds ordinary
+        // credentials while a service is OAUTH/API_KEY, and a leftover from before a switch to DIAL_NATIVE
+        // would otherwise pass as an administrator's approval the app owner granted themselves.
+        if (record == null || !AuthenticationType.DIAL_NATIVE.equals(record.getAuthenticationType())) {
+            throw new ConsentRequiredException(
+                    "Application '%s' is not approved to use '%s'".formatted(appPart, serviceId));
+        }
+    }
+
+    /**
+     * Keeps a permanent failure distinguishable from a retryable one. A 401 here means the <i>owner's</i> token was
+     * rejected, not the caller's, so it must not surface as one.
+     */
+    private RuntimeException translateRefreshFailure(HttpException e) {
+        if (e.getStatus() == HttpStatus.UNAUTHORIZED) {
+            return new OfflineCredentialsRequiredException(
+                    "The owner's offline credentials were rejected by the identity provider; they must connect again");
+        }
+        if (e.getStatus().getCode() >= 500) {
+            return new HttpException(HttpStatus.BAD_GATEWAY,
+                    "The identity provider could not be reached; this run may be retried");
+        }
+        return e;
     }
 
     private ExternalServiceCredentialsResponse toCredentialsResponse(ResourceCredentials credentials, String url) {
@@ -441,45 +544,21 @@ public class ExternalServiceCredentialsController {
         }
     }
 
+    /**
+     * A DIAL-native service has no credential to sign in with and nothing to sign out of: no USER-level record
+     * ever exists, and the APPLICATION-level record is the administrator's consent — deletable only through the
+     * audited, admin-only consent endpoint, never through the app-owner-accessible generic sign-out.
+     */
+    private void rejectDialNative(String operation, AuthenticationType configured) {
+        if (AuthenticationType.DIAL_NATIVE.equals(configured)) {
+            throw new IllegalArgumentException(("%s is not applicable to %s services: users manage offline access "
+                    + "via the offline-credentials endpoints, and an administrator manages consent separately")
+                    .formatted(operation, AuthenticationType.DIAL_NATIVE));
+        }
+    }
+
     private void respondError(String message, Throwable error) {
-        HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
-        String body = null;
-
-        switch (error) {
-            case HttpException e -> {
-                status = e.getStatus();
-                body = e.getMessage();
-            }
-            case ResourceNotFoundException resourceNotFoundException -> {
-                status = HttpStatus.NOT_FOUND;
-                body = resourceNotFoundException.getMessage();
-            }
-            case IllegalArgumentException illegalArgumentException -> {
-                status = HttpStatus.BAD_REQUEST;
-                body = illegalArgumentException.getMessage();
-            }
-            case ConstraintViolationException constraintViolationException -> {
-                status = HttpStatus.BAD_REQUEST;
-                body = constraintViolationException.getMessage();
-            }
-            case PermissionDeniedException permissionDeniedException -> {
-                status = HttpStatus.FORBIDDEN;
-                body = permissionDeniedException.getMessage();
-            }
-            case EncryptionException ignored -> {
-                // Never surface crypto internals to the caller.
-                status = HttpStatus.INTERNAL_SERVER_ERROR;
-                body = message;
-            }
-            case null, default -> body = message;
-        }
-
-        // Log server-side failures with the trace id; keep the client body generic.
-        if (status.is5xx()) {
-            log.warn("{} (trace_id={})", message, context.getTraceId(), error);
-        }
-
-        context.respond(status, body);
+        ExternalServiceErrorHandler.respond(context, message, error);
     }
 
     private record ResolvedExternalService(Application application,

@@ -1,4 +1,6 @@
 dependencies {
+    implementation project(':openapi-annotations')
+
     // External dependencies
     implementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
     implementation("com.networknt:json-schema-validator:${networknt_version}")

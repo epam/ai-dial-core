@@ -398,6 +398,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
@@ -440,6 +441,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
@@ -481,6 +483,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/app1/chat/completions");
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
@@ -522,6 +525,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
         when(proxy.getClient()).thenReturn(mock(HttpClient.class, RETURNS_DEEP_STUBS));
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
@@ -555,7 +559,7 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
-        when(request.uri()).thenReturn("/openai/deployments/name/chat/completions");
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         when(proxy.getClient()).thenReturn(httpClient);
         when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
@@ -582,9 +586,62 @@ public class DeploymentPostControllerTest {
 
         ArgumentCaptor<RequestOptions> captor = ArgumentCaptor.forClass(RequestOptions.class);
         verify(httpClient).request(captor.capture());
-        // new flow: base_url + exact ingress path (request.uri())
+        // new flow: base_url + exact ingress path
         assertEquals("/openai/deployments/name/chat/completions", captor.getValue().getURI());
         assertEquals("host", captor.getValue().getHost());
+    }
+
+    @Test
+    public void testHandleRequestBody_EmbeddingsInterfaceBaseUrl() {
+        HttpClient httpClient = mockEmbeddingsRequest();
+
+        Model model = new Model();
+        model.setName("name");
+        model.setInterfaces(Map.of(
+                InterfaceType.OPENAI_CHAT_COMPLETIONS.getValue(), new DeploymentInterface("http://chat-host"),
+                InterfaceType.OPENAI_EMBEDDINGS.getValue(), new DeploymentInterface("http://embeddings-host")));
+        when(context.getDeployment()).thenReturn(model);
+
+        controller.handleRequestBody(Buffer.buffer("{\"model\": \"name\", \"input\": \"text\"}"));
+
+        ArgumentCaptor<RequestOptions> captor = ArgumentCaptor.forClass(RequestOptions.class);
+        verify(httpClient).request(captor.capture());
+        assertEquals("/openai/deployments/name/embeddings", captor.getValue().getURI());
+        assertEquals("embeddings-host", captor.getValue().getHost());
+    }
+
+    @Test
+    public void testHandleRequestBody_EmbeddingsFallsBackToLegacyEndpoint() {
+        HttpClient httpClient = mockEmbeddingsRequest();
+
+        Model model = new Model();
+        model.setName("name");
+        model.setEndpoint("http://legacy-host/openai/deployments/ada/embeddings");
+        when(context.getDeployment()).thenReturn(model);
+
+        controller.handleRequestBody(Buffer.buffer("{\"model\": \"name\", \"input\": \"text\"}"));
+
+        ArgumentCaptor<RequestOptions> captor = ArgumentCaptor.forClass(RequestOptions.class);
+        verify(httpClient).request(captor.capture());
+        assertEquals("/openai/deployments/ada/embeddings", captor.getValue().getURI());
+        assertEquals("legacy-host", captor.getValue().getHost());
+    }
+
+    private HttpClient mockEmbeddingsRequest() {
+        UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
+        when(upstreamRoute.next()).thenReturn(new Upstream());
+        when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/name/embeddings");
+        HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
+        when(proxy.getClient()).thenReturn(httpClient);
+        when(proxy.getApiKeyStore()).thenReturn(mock(ApiKeyStore.class));
+        when(proxy.getClientOptions()).thenReturn(new HttpClientOptions());
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setInterceptorIndex(0);
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+        return httpClient;
     }
 
     @Test
@@ -692,6 +749,7 @@ public class DeploymentPostControllerTest {
         when(context.getRequest()).thenReturn(request);
         request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         when(context.getRequest()).thenReturn(request);
+        when(request.path()).thenReturn("/openai/deployments/applications%2Fbucket%2Fapp1/chat/completions");
         when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
         Application application = new Application();
         application.setName("applications/bucket/app1");

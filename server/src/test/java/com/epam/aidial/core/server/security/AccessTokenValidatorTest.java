@@ -22,7 +22,6 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -227,6 +226,41 @@ public class AccessTokenValidatorTest {
         assertThrows(IllegalArgumentException.class, () -> AccessTokenValidator.extractTokenFromHeader("wrong-token"));
         assertEquals("token", AccessTokenValidator.extractTokenFromHeader("bearer token"));
         assertEquals("token", AccessTokenValidator.extractTokenFromHeader("bearer token more"));
+    }
+
+    @Test
+    public void testResolveProviderByIssuer_singleProviderRefusesAnIssuerItDisclaims() {
+        // The lone provider is the only candidate, but a record minted by an identity provider that has since been
+        // removed must not be refreshed against it — that would use the wrong client.
+        JsonObject single = new JsonObject().put("idp1", idpConfig.getJsonObject("idp1"));
+        AccessTokenValidator validator = new AccessTokenValidator(single, vertx, taskExecutor, client, "DEBUG");
+
+        assertNotNull(validator.resolveProviderByIssuer("issue1"));
+        assertNotNull(validator.resolveProviderByIssuer(null));
+        assertThrows(IllegalArgumentException.class, () -> validator.resolveProviderByIssuer("issue2"));
+    }
+
+    @Test
+    public void testResolveProviderByIssuer_singleProviderWithoutPatternClaimsEveryIssuer() {
+        // Without an issuerPattern a non-match proves nothing, so the provider still answers.
+        JsonObject single = new JsonObject().put("idp1",
+                JsonObject.of("jwksUrl", "http://host1/keys", "rolePath", "role1"));
+        AccessTokenValidator validator = new AccessTokenValidator(single, vertx, taskExecutor, client, "DEBUG");
+
+        assertNotNull(validator.resolveProviderByIssuer("anything"));
+    }
+
+    @Test
+    public void testResolveProvider_withoutTokenFailsAsBadRequest() {
+        AccessTokenValidator validator = new AccessTokenValidator(idpConfig, vertx, taskExecutor, client, "DEBUG");
+        assertThrows(IllegalArgumentException.class, () -> validator.resolveProvider(null));
+    }
+
+    @Test
+    public void testResolveProvider_withoutTokenFailsForSingleProviderToo() {
+        JsonObject single = new JsonObject().put("idp1", idpConfig.getJsonObject("idp1"));
+        AccessTokenValidator validator = new AccessTokenValidator(single, vertx, taskExecutor, client, "DEBUG");
+        assertThrows(IllegalArgumentException.class, () -> validator.resolveProvider(null));
     }
 
     private static String getBearerHeaderValue(String token) {

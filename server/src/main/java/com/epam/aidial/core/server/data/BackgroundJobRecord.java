@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.Builder;
 
 import java.nio.charset.StandardCharsets;
@@ -30,6 +31,7 @@ public record BackgroundJobRecord(
         String userId,
         List<String> userRoles,
         String userDisplayName,
+        ObjectNode userClaims,
         Map<String, List<String>> requestHeaders,
         String deploymentName,
         String parentDeployment,
@@ -55,6 +57,7 @@ public record BackgroundJobRecord(
                 .userId(context.getUserId())
                 .userRoles(context.getUserRoles())
                 .userDisplayName(context.getUserDisplayName())
+                .userClaims(context.getUserClaims())
                 .requestHeaders(AnalyticsLogContext.toHeadersMap(context.getRequest().headers()))
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
                 .parentDeployment(AnalyticsLogContext.getParentDeployment(
