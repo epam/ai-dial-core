@@ -43,8 +43,9 @@ import javax.annotation.Nullable;
  *       {@code /} (cross-entity reserved path separator). Always run; cannot
  *       fail per-entity. Only applied to file-sourced maps — {@link MergedConfigStore}
  *       skips this pass for the merged config: blob-sourced models/applications/
- *       interceptors/roles/toolsets key by short name (never contains {@code /}), and
- *       keys/routes/schemas key by canonical id legitimately.</li>
+ *       interceptors/roles/toolsets key by short name (never contains {@code /}), schemas
+ *       key by decoded {@code $id} (which contains {@code /} legitimately), and keys/routes
+ *       key by canonical id legitimately.</li>
  *   <li><b>Semantic</b> — name back-fill, deployment-id uniqueness, ToolSet
  *       resource-key validation, route ordering, {@link ApiKeyStore} hookup.
  *       Each per-entity violation either throws (default {@code abort} mode,
