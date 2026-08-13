@@ -16,7 +16,11 @@ import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -174,6 +178,33 @@ public final class ConfigPostProcessor {
         Application application = config.getApplications().get(mapKey);
         if (application != null) {
             application.setName(mapKey);
+        }
+    }
+
+    /**
+     * Targeted per-type helper for {@link MergedConfigStore} partial-update path. Normalises
+     * the {@code $id} field in the stored schema body so it always matches the map key
+     * ({@code schemaId}), mirroring the S3 override applied at write time.
+     */
+    public static void validateSingleSchema(Config config, ResourceTypes type, String schemaId) {
+        Map<String, String> schemas = switch (type) {
+            case APP_TYPE_SCHEMA -> config.getApplicationTypeSchemas();
+            case CATALOG_SCHEMA  -> config.getCatalogSchemas();
+            default -> throw new IllegalArgumentException("Unexpected schema type: " + type);
+        };
+        String body = schemas.get(schemaId);
+        if (body == null) {
+            return;
+        }
+        try {
+            JsonNode node = ProxyUtil.BLOB_MAPPER.readTree(body);
+            JsonNode idNode = node.get("$id");
+            if (idNode == null || !schemaId.equals(idNode.asText())) {
+                ((ObjectNode) node).put("$id", schemaId);
+                schemas.put(schemaId, ProxyUtil.BLOB_MAPPER.writeValueAsString(node));
+            }
+        } catch (JsonProcessingException e) {
+            // Malformed body — leave as-is; schema validators will report it on next reload
         }
     }
 

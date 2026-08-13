@@ -56,23 +56,6 @@ public class Config {
 
     private List<String> globalInterceptors = List.of();
 
-    /**
-     * $id → canonical-id index for {@link #applicationTypeSchemas}, built at rebuild time from
-     * blob bodies: each key is a schema's own {@code $id} (as declared in its body), each value
-     * is the canonical id of the blob entry storing that schema. Bridges $id-keyed file entries
-     * and canonical-id-keyed blob entries, since a schema's $id is not derivable from its path.
-     *
-     * <p>For example, given a blob entry stored under canonical id
-     * {@code schemas/platform/my-schema} whose body declares
-     * {@code "$id": "https://example.com/schemas/my-schema.json"}, this map holds
-     * {@code "https://example.com/schemas/my-schema.json" → "schemas/platform/my-schema"}.
-     */
-    @JsonIgnore
-    private Map<String, String> applicationSchemaAliasesById = Map.of();
-
-    @JsonIgnore
-    private Map<String, String> catalogSchemaAliasesById = Map.of();
-
     @JsonIgnore
     public Deployment selectDeployment(String deploymentId) {
         Application application = applications.get(deploymentId);
@@ -102,7 +85,10 @@ public class Config {
      */
     @JsonIgnore
     public String getCustomApplicationSchema(URI schemaId) {
-        return resolveSchema(applicationTypeSchemas, applicationSchemaAliasesById, schemaId);
+        if (schemaId == null) {
+            return null;
+        }
+        return applicationTypeSchemas.get(schemaId.toString());
     }
 
     /**
@@ -110,27 +96,9 @@ public class Config {
      */
     @JsonIgnore
     public String getCatalogSchema(URI schemaId) {
-        return resolveSchema(catalogSchemas, catalogSchemaAliasesById, schemaId);
-    }
-
-    /**
-     * Resolves a schema by its $id: verbatim lookup first (canonical-id callers, and file entries
-     * already keyed by $id), then falls back through the $id → canonical-id alias index for a
-     * migrated blob entry. A schema's $id is not derivable from its path, so the alias index must
-     * be maintained explicitly (see {@code MergedConfigStore}).
-     *
-     * @return the schema body, or {@code null} if {@code schemaId} is null or unresolved
-     */
-    private static String resolveSchema(Map<String, String> schemas, Map<String, String> aliasesById, URI schemaId) {
         if (schemaId == null) {
             return null;
         }
-        String id = schemaId.toString();
-        String body = schemas.get(id);
-        if (body != null) {
-            return body;
-        }
-        String canonicalId = aliasesById.get(id);
-        return canonicalId == null ? null : schemas.get(canonicalId);
+        return catalogSchemas.get(schemaId.toString());
     }
 }

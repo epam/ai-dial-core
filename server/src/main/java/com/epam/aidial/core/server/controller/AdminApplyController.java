@@ -43,8 +43,11 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
@@ -53,6 +56,8 @@ import org.apache.commons.lang3.StringUtils;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
+
+import static com.epam.aidial.core.server.util.PlatformCanonicalIdUtil.lastSegment;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -272,8 +277,6 @@ public class AdminApplyController {
             scratch.setInterceptors(new HashMap<>(live.getInterceptors()));
             scratch.setApplicationTypeSchemas(new HashMap<>(live.getApplicationTypeSchemas()));
             scratch.setCatalogSchemas(new HashMap<>(live.getCatalogSchemas()));
-            scratch.setApplicationSchemaAliasesById(new HashMap<>(live.getApplicationSchemaAliasesById()));
-            scratch.setCatalogSchemaAliasesById(new HashMap<>(live.getCatalogSchemaAliasesById()));
             scratch.setApplications(new HashMap<>(live.getApplications()));
             scratch.setToolsets(new HashMap<>(live.getToolsets()));
             scratch.setRoles(new HashMap<>(live.getRoles()));
@@ -359,15 +362,11 @@ public class AdminApplyController {
                     if (!entry.spec().isObject()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, "Schema spec must be a JSON object");
                     }
-                    ConfigResourceController.rejectSchemaIdCollision(scratch, ResourceTypes.APP_TYPE_SCHEMA,
-                            entry.name(), entry.spec());
                 }
                 case "CatalogSchema" -> {
                     if (!entry.spec().isObject()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, "CatalogSchema spec must be a JSON object");
                     }
-                    ConfigResourceController.rejectSchemaIdCollision(scratch, ResourceTypes.CATALOG_SCHEMA,
-                            entry.name(), entry.spec());
                 }
                 default -> {
                     return new ValidationResult(id, ValidationStatus.FAILED, "Unknown kind: " + entry.kind());
@@ -402,8 +401,8 @@ public class AdminApplyController {
         }
         return switch (entry.kind()) {
             case "Settings" -> applySettings(entry, id, parsed);
-            case "Schema" -> applySchema(entry, id, parsed, scratch, pending, ResourceTypes.APP_TYPE_SCHEMA);
-            case "CatalogSchema" -> applySchema(entry, id, parsed, scratch, pending, ResourceTypes.CATALOG_SCHEMA);
+            case "Schema" -> applySchema(entry, id, parsed, pending, ResourceTypes.APP_TYPE_SCHEMA);
+            case "CatalogSchema" -> applySchema(entry, id, parsed, pending, ResourceTypes.CATALOG_SCHEMA);
             case "Interceptor" -> applyManagedEntity(entry, id, parsed, ResourceTypes.INTERCEPTOR, Interceptor.class, scratch, pending);
             case "Role" -> applyManagedEntity(entry, id, parsed, ResourceTypes.ROLE, Role.class, scratch, pending);
             case "Route" -> applyManagedEntity(entry, id, parsed, ResourceTypes.ROUTE, Route.class, scratch, pending);
@@ -427,29 +426,32 @@ public class AdminApplyController {
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applySchema(AdminManifest entry, String id, ParsedName parsed, Config scratch,
+    private EntityResult applySchema(AdminManifest entry, String id, ParsedName parsed,
                                      List<EntityChange> pending, ResourceTypes type) {
         if (!entry.spec().isObject()) {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Schema spec must be a JSON object");
         }
-        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
-                type, parsed.bucket(), parsed.location(), parsed.name());
-        try {
-            ConfigResourceController.rejectSchemaIdCollision(scratch, type,
-                    MergedConfigStore.canonicalId(descriptor), entry.spec());
-        } catch (HttpException e) {
-            return new EntityResult(id, AdminApplyStatus.FAILED, e.getMessage());
+        // parsed.name() is the percent-encoded $id segment from the manifest name; decode once.
+        String decodedSchemaId = UrlUtil.decodePath(parsed.name());
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecodedAtomicName(
+                type, parsed.bucket(), parsed.location(), decodedSchemaId);
+        // S3: ensure body.$id matches the derived $id from the canonical path.
+        JsonNode spec = entry.spec();
+        JsonNode idNode = spec.get("$id");
+        if (idNode == null || !decodedSchemaId.equals(idNode.asText())) {
+            spec = spec.deepCopy();
+            ((ObjectNode) spec).put("$id", decodedSchemaId);
         }
         String blobBody;
         try {
-            blobBody = ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec());
+            blobBody = ProxyUtil.BLOB_MAPPER.writeValueAsString(spec);
         } catch (JsonProcessingException e) {
             // Drop e.getOriginalMessage() — it can echo verbatim schema content (potentially
             // submitted secrets). Surface a generic failure tied to the entity id.
             return new EntityResult(id, AdminApplyStatus.FAILED, "Failed to serialize schema for " + id);
         }
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-        pending.add(new EntityChange(type, MergedConfigStore.canonicalId(descriptor), entry.spec()));
+        pending.add(new EntityChange(type, MergedConfigStore.mapKeyFor(type, descriptor), spec));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
@@ -629,26 +631,18 @@ public class AdminApplyController {
                     scratch.getToolsets().put(entry.name(), toolSet);
                 }
                 case "Schema" -> {
-                    String json;
+                    String schemaId = UrlUtil.decodePath(lastSegment(entry.name()));
                     try {
-                        json = ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec());
-                    } catch (JsonProcessingException e) {
-                        return;
+                        scratch.getApplicationTypeSchemas().put(schemaId, ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec()));
+                    } catch (JsonProcessingException ignored) {
                     }
-                    String previousJson = scratch.getApplicationTypeSchemas().put(entry.name(), json);
-                    MergedConfigStore.recordSchemaAlias(scratch.getApplicationTypeSchemas(),
-                            scratch.getApplicationSchemaAliasesById(), entry.name(), previousJson, entry.spec());
                 }
                 case "CatalogSchema" -> {
-                    String json;
+                    String schemaId = UrlUtil.decodePath(lastSegment(entry.name()));
                     try {
-                        json = ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec());
-                    } catch (JsonProcessingException e) {
-                        return;
+                        scratch.getCatalogSchemas().put(schemaId, ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec()));
+                    } catch (JsonProcessingException ignored) {
                     }
-                    String previousJson = scratch.getCatalogSchemas().put(entry.name(), json);
-                    MergedConfigStore.recordSchemaAlias(scratch.getCatalogSchemas(),
-                            scratch.getCatalogSchemaAliasesById(), entry.name(), previousJson, entry.spec());
                 }
                 default -> { /* unknown kinds never reach this code path */ }
             }

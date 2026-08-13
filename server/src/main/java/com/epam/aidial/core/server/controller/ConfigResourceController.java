@@ -46,6 +46,7 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -951,7 +952,11 @@ public class ConfigResourceController implements Controller {
         if (method == HttpMethod.GET || method == HttpMethod.HEAD) {
             return handleGet();
         }
+        ResourceTypes nameValidationType = resourceType();
+        boolean isSchemaType = nameValidationType == ResourceTypes.APP_TYPE_SCHEMA
+                || nameValidationType == ResourceTypes.CATALOG_SCHEMA;
         if ((method == HttpMethod.PUT || method == HttpMethod.DELETE)
+                && !isSchemaType
                 && !ENTITY_NAME_PATTERN.matcher(path == null ? "" : path).matches()) {
             context.respond(HttpStatus.BAD_REQUEST,
                     "Invalid entity name segment: must match " + ENTITY_NAME_PATTERN.pattern());
@@ -1003,9 +1008,8 @@ public class ConfigResourceController implements Controller {
         return respondMethodNotAllowed();
     }
 
-    private Future<?> handleGet() throws JsonProcessingException {
+    private Future<?> handleGet() {
         Config config = context.getConfig();
-        boolean admin = authorizationService.isAdmin(context);
         // Per-entity GET is blob-only (slice U.1): only canonical-ID lookups resolve here.
         // File-sourced entries are inspected via /v1/admin/config/file/{type}[/{name}].
         // Slice U.4: secret fields drop on response via @JsonProperty(WRITE_ONLY) — there is no
@@ -1023,8 +1027,10 @@ public class ConfigResourceController implements Controller {
             case ROUTE -> handleSingleGet(
                     config.getRoutes(), ResourceTypes.ROUTE,
                     (key, route) -> projectItem(route, key));
-            case APP_TYPE_SCHEMA -> handleSchemaGet(config.getApplicationTypeSchemas(), ResourceTypes.APP_TYPE_SCHEMA, admin);
-            case CATALOG_SCHEMA -> handleSchemaGet(config.getCatalogSchemas(), ResourceTypes.CATALOG_SCHEMA, admin);
+            case APP_TYPE_SCHEMA -> handleSingleGetFromBlob(ResourceTypes.APP_TYPE_SCHEMA,
+                    (schemaId, node) -> projectSchemaItem(schemaId, (JsonNode) node));
+            case CATALOG_SCHEMA -> handleSingleGetFromBlob(ResourceTypes.CATALOG_SCHEMA,
+                    (schemaId, node) -> projectSchemaItem(schemaId, (JsonNode) node));
             case APPLICATION -> handleSingleGetFromBlob(ResourceTypes.APPLICATION,
                     (key, application) -> redactExternalServiceSecrets(projectItem(application, key)));
             case TOOL_SET -> handleSingleGetFromBlob(ResourceTypes.TOOL_SET,
@@ -1080,14 +1086,15 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Per-entity GET for {@code MODEL}/{@code INTERCEPTOR}/{@code ROLE}/{@code APPLICATION}/
-     * {@code TOOL_SET} — these five types key {@code Config}'s in-memory map by short name, the
-     * same key a file-sourced entry for the same logical entity already uses, so the map can no
-     * longer tell a genuinely blob-managed entity apart from a file-only one sharing that short
-     * name. This reads and decrypts blob storage directly by descriptor instead — the same
-     * pattern PUT/DELETE already use for these types — so this endpoint only ever serves entities
-     * that actually exist in the {@code platform} bucket. {@code Config}'s map stays purely a
-     * runtime-resolution structure.
+     * Per-entity GET for locally-keyed types ({@code MODEL}, {@code INTERCEPTOR}, {@code ROLE},
+     * {@code APPLICATION}, {@code TOOL_SET}, {@code APP_TYPE_SCHEMA}, {@code CATALOG_SCHEMA}) —
+     * these types key {@code Config}'s in-memory map by a local identifier (short name or
+     * {@code $id}), the same key a file-sourced entry for the same logical entity already uses, so
+     * the map can no longer tell a genuinely blob-managed entity apart from a file-only one sharing
+     * that key. This reads blob storage directly by descriptor instead — the same pattern PUT/DELETE
+     * already use for these types — so this endpoint only ever serves entities that actually exist
+     * in the {@code platform} bucket. {@code Config}'s map stays purely a runtime-resolution
+     * structure.
      */
     private Future<?> handleSingleGetFromBlob(ResourceTypes resourceType, BiFunction<String, Object, ObjectNode> projector) {
         if (path == null || path.isEmpty()) {
@@ -1138,6 +1145,14 @@ public class ConfigResourceController implements Controller {
         return switch (type) {
             case APPLICATION -> applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
             case TOOL_SET -> toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
+            case APP_TYPE_SCHEMA, CATALOG_SCHEMA -> {
+                try {
+                    yield ProxyUtil.BLOB_MAPPER.readTree(body);
+                } catch (JsonProcessingException e) {
+                    throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
+                            "Stored schema is malformed at " + locationOf(e));
+                }
+            }
             default -> {
                 Object entity;
                 try {
@@ -1217,9 +1232,9 @@ public class ConfigResourceController implements Controller {
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case ROUTE -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROUTE,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
-            case APP_TYPE_SCHEMA -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.APP_TYPE_SCHEMA,
+            case APP_TYPE_SCHEMA -> ResourceDescriptorFactory.fromDecodedAtomicName(ResourceTypes.APP_TYPE_SCHEMA,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
-            case CATALOG_SCHEMA -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.CATALOG_SCHEMA,
+            case CATALOG_SCHEMA -> ResourceDescriptorFactory.fromDecodedAtomicName(ResourceTypes.CATALOG_SCHEMA,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case APPLICATION -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
@@ -1230,41 +1245,11 @@ public class ConfigResourceController implements Controller {
     }
 
     private String canonicalId() {
+        ResourceTypes type = resourceType();
+        if (type == ResourceTypes.APP_TYPE_SCHEMA || type == ResourceTypes.CATALOG_SCHEMA) {
+            return entityType + "/" + bucket + "/" + UrlUtil.encodePathSegment(path);
+        }
         return entityType + "/" + bucket + "/" + path;
-    }
-
-    private Future<?> handleSchemaGet(Map<String, String> schemas, ResourceTypes resourceType, boolean admin) throws JsonProcessingException {
-        Map<String, InvalidEntityRecord> invalid = mergedConfigStore.getInvalidEntities()
-                .getOrDefault(resourceType, Map.of());
-        if (path == null || path.isEmpty()) {
-            context.respond(HttpStatus.NOT_FOUND);
-            return Future.succeededFuture();
-        }
-        // Per-entity GET is blob-only (U.1): canonical-ID lookup only; file-defined schemas
-        // are inspected via /v1/admin/config/file/schemas/{name}.
-        String schemaJson = schemas.get(canonicalId());
-        if (schemaJson != null) {
-            final String matched = canonicalId();
-            final String json = schemaJson;
-            return respondNotModifiedIfMatched(matched)
-                    .onSuccess(notModified -> {
-                        if (!notModified) {
-                            try {
-                                context.respond(HttpStatus.OK, projectSchemaItem(matched, json));
-                            } catch (JsonProcessingException e) {
-                                context.respond(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
-                            }
-                        }
-                    })
-                    .onFailure(this::handleWriteError);
-        }
-        InvalidEntityRecord invalidRecord = invalid.get(canonicalId());
-        if (invalidRecord != null) {
-            context.respond(HttpStatus.OK, projectInvalidItem(invalidRecord, admin));
-            return Future.succeededFuture();
-        }
-        context.respond(HttpStatus.NOT_FOUND);
-        return Future.succeededFuture();
     }
 
     private Future<?> handleSettingsGet(Config config) {
@@ -1380,20 +1365,23 @@ public class ConfigResourceController implements Controller {
             }
             return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
                 rejectDuplicateDeploymentId(type, path);
-                Object decrypted;
                 // The platform bucket requires explicit admin access for every operation (see
                 // AdminRoleAuthorizationService), not just an admin-AND-public-bucket combination like
                 // ResourceController's adminPublicWrite — so, same as AdminApplyController's bulk apply,
                 // this path is always admin context and may preserve forwardAuthToken.
-                if (type == ResourceTypes.APPLICATION) {
-                    Application application = treeToEntity(requestNode, Application.class);
-                    applicationService.putApplication(descriptor, etag, author, application, true, AdminManagedFieldsWriteMode.AUTHORITATIVE);
-                    decrypted = applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
-                } else {
-                    ToolSet toolSet = treeToEntity(requestNode, ToolSet.class);
-                    toolSetService.putToolSet(descriptor, etag, author, toolSet, true);
-                    decrypted = toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
-                }
+                Object decrypted = switch (type) {
+                    case APPLICATION -> {
+                        Application application = treeToEntity(requestNode, Application.class);
+                        applicationService.putApplication(descriptor, etag, author, application, true, AdminManagedFieldsWriteMode.AUTHORITATIVE);
+                        yield applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
+                    }
+                    case TOOL_SET  -> {
+                        ToolSet toolSet = treeToEntity(requestNode, ToolSet.class);
+                        toolSetService.putToolSet(descriptor, etag, author, toolSet, true);
+                        yield toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
+                    }
+                    default -> throw new IllegalArgumentException("Unexpected resource type: " + type);
+                };
                 mergedConfigStore.applyEntityWrite(type, MergedConfigStore.mapKeyFor(type, descriptor), decrypted);
                 return resourceService.getResourceMetadata(descriptor);
             }));
@@ -1416,13 +1404,15 @@ public class ConfigResourceController implements Controller {
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
 
         taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
-            if (type == ResourceTypes.APPLICATION) {
-                applicationService.deleteApplication(descriptor, etag);
-            } else {
-                boolean deleted = toolSetService.deleteToolset(context, descriptor, etag);
-                if (!deleted) {
-                    throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + descriptor.getUrl());
+            switch (type) {
+                case APPLICATION -> applicationService.deleteApplication(descriptor, etag);
+                case TOOL_SET -> {
+                    boolean deleted = toolSetService.deleteToolset(context, descriptor, etag);
+                    if (!deleted) {
+                        throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + descriptor.getUrl());
+                    }
                 }
+                default -> throw new IllegalArgumentException("Unexpected resource type: " + type);
             }
             mergedConfigStore.applyEntityDelete(type, MergedConfigStore.mapKeyFor(type, descriptor));
             return true;
@@ -1475,8 +1465,12 @@ public class ConfigResourceController implements Controller {
                 if (spec.entityClass() == null) {
                     ResourceTypes schemaType = resourceType();
                     if (schemaType == ResourceTypes.APP_TYPE_SCHEMA || schemaType == ResourceTypes.CATALOG_SCHEMA) {
-                        rejectSchemaIdCollision(mergedConfigStore.get(), schemaType,
-                                MergedConfigStore.canonicalId(descriptor), requestNode);
+                        // S3: override body.$id to match the decoded URL segment so the blob always
+                        // round-trips cleanly — canonicalId = type/platform/encode($id), $id = path.
+                        JsonNode idNode = requestNode.get("$id");
+                        if (idNode == null || !path.equals(idNode.asText())) {
+                            ((ObjectNode) requestNode).put("$id", path);
+                        }
                     }
                     blobBody = requestNode.toString();
                 } else {
@@ -1634,43 +1628,6 @@ public class ConfigResourceController implements Controller {
         // prepareWrite() always builds descriptors with a ResourceTypes constant — see below;
         // ResourceDescriptor exposes the wider ResourceType interface so the cast is required here.
         return (ResourceTypes) descriptor.getType();
-    }
-
-    /**
-     * App-type/catalog schemas are looked up by their body-embedded {@code $id}
-     * ({@link Config#getCustomApplicationSchema}/{@link Config#getCatalogSchema}) via
-     * {@code MergedConfigStore}'s {@code $id -> canonicalId} alias index, which only ever holds
-     * one canonical id per $id. Reject a write whose $id is already claimed by a *different*
-     * canonical id, rather than let the index silently pick whichever write landed most recently.
-     * The alias index only ever contains blob-sourced entries (file-sourced schemas are keyed
-     * directly by $id and never added to it), so a file-schema sharing this $id — the expected
-     * pre-migration predecessor a blob write is meant to shadow — is never mistaken for a
-     * collision here.
-     *
-     * <p>Package-visible: shared with {@link AdminApplyController#applySchema}/
-     * {@link AdminApplyController#validateOnly}, the other write/precheck paths for these types.
-     * Takes a {@link Config} snapshot rather than {@link MergedConfigStore} so callers can pass
-     * either the live merged config or a batch-apply {@code scratch} clone.
-     */
-    static void rejectSchemaIdCollision(Config snapshot, ResourceTypes type, String thisCanonicalId, JsonNode requestNode) {
-        if (snapshot == null) {
-            return;
-        }
-        JsonNode idNode = requestNode.get("$id");
-        if (idNode == null || !idNode.isTextual()) {
-            return;
-        }
-        String id = idNode.asText();
-        Map<String, String> aliasesById = switch (type) {
-            case APP_TYPE_SCHEMA -> snapshot.getApplicationSchemaAliasesById();
-            case CATALOG_SCHEMA -> snapshot.getCatalogSchemaAliasesById();
-            default -> throw new IllegalArgumentException("Unsupported type for schema $id check: " + type);
-        };
-        String owner = aliasesById.get(id);
-        if (owner != null && !owner.equals(thisCanonicalId)) {
-            throw new HttpException(HttpStatus.CONFLICT,
-                    "Schema $id '" + id + "' is already used by '" + owner + "'");
-        }
     }
 
     /**
@@ -1877,10 +1834,7 @@ public class ConfigResourceController implements Controller {
         return node;
     }
 
-    private ObjectNode projectSchemaItem(String name, String json)
-            throws JsonProcessingException {
-        // applicationTypeSchemas stores raw JSON strings; parse for projection.
-        JsonNode schema = ProxyUtil.MAPPER.readTree(json);
+    private ObjectNode projectSchemaItem(String name, JsonNode schema) {
         ObjectNode node = ProxyUtil.MAPPER.createObjectNode();
         if (schema.isObject()) {
             node.setAll((ObjectNode) schema);

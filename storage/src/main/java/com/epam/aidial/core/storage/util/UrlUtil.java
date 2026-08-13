@@ -32,6 +32,25 @@ public class UrlUtil {
         return ENCODER.escape(segment);
     }
 
+    /**
+     * Escapes a JSON Schema {@code $id} so it can be stored as a flat blob-storage key: replaces
+     * {@code %} with {@code %25} first, then {@code /} with {@code %2F}. The result contains no
+     * literal {@code /} characters while preserving all other URI characters (e.g. {@code :}).
+     * Inverse: {@link #unescapeSchemaId}.
+     */
+    public static String escapeSchemaId(String schemaId) {
+        return schemaId.replace("%", "%25").replace("/", "%2F");
+    }
+
+    /**
+     * Reverses {@link #escapeSchemaId}: replaces {@code %2F} with {@code /} first, then
+     * {@code %25} with {@code %}. The reversed order ensures a literal {@code %2F} in the
+     * original value (stored as {@code %252F}) is restored correctly.
+     */
+    public static String unescapeSchemaId(String escaped) {
+        return escaped.replace("%2F", "/").replace("%25", "%");
+    }
+
     public String encodePath(@Nullable String path) {
         if (path == null) {
             return null;
