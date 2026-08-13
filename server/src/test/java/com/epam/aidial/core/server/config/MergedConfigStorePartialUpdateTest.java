@@ -99,11 +99,10 @@ public class MergedConfigStorePartialUpdateTest {
 
     @Test
     public void cascadeClassifiesInvalidatedModelsAsApiSourced() {
-        // Models are keyed by short name uniformly now (file- and blob-sourced alike, see
-        // short-name-keyed-config-maps.md), so key shape can no longer tell them apart. The
-        // partial-update path never touches file config either way, so every survivor this
-        // cascade walks is classified "api" — regardless of which source the model itself
-        // originally came from.
+        // Models are keyed by short name uniformly now (file- and blob-sourced alike), so key
+        // shape can no longer tell them apart. The partial-update path never touches file config
+        // either way, so every survivor this cascade walks is classified "api" — regardless of
+        // which source the model itself originally came from.
         Model firstModel = new Model();
         firstModel.setInterceptors(List.of(INTERCEPTOR_ID));
         Model secondModel = new Model();

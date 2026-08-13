@@ -64,9 +64,9 @@ public class CanonicalIdListingTest extends ResourceBaseTest {
 
     @Test
     void testApiManagedModelAdminGetProjectsShortName() {
-        // Admin GET reads blob storage directly by descriptor (not the in-memory map — see
-        // short-name-keyed-config-maps.md), so it projects the URL's own short-name segment,
-        // matching how the entity is keyed in Config for runtime resolution.
+        // Admin GET reads blob storage directly by descriptor (not the in-memory map), so it
+        // projects the URL's own short-name segment, matching how the entity is keyed in Config
+        // for runtime resolution.
         verify(send(HttpMethod.PUT, "/v1/models/platform/admin-listing-projection", null, API_MODEL_BODY,
                 "authorization", "admin", "If-None-Match", "*"), 200);
 

@@ -1036,9 +1036,9 @@ public class ConfigResourceController implements Controller {
 
     /**
      * Per-entity GET for {@code PROJECT_KEY}/{@code ROUTE} only — these two types still key
-     * {@code Config}'s in-memory map by canonical id (never migrated to short-name keying, see
-     * {@code short-name-keyed-config-maps.md}), so file-sourced entries never share a key with a
-     * blob-sourced one and this lookup can safely stay in-memory.
+     * {@code Config}'s in-memory map by canonical id (never migrated to short-name keying), so
+     * file-sourced entries never share a key with a blob-sourced one and this lookup can safely
+     * stay in-memory.
      */
     private <T> Future<?> handleSingleGet(Map<String, T> source,
                                           ResourceTypes resourceType,
@@ -1082,12 +1082,12 @@ public class ConfigResourceController implements Controller {
     /**
      * Per-entity GET for {@code MODEL}/{@code INTERCEPTOR}/{@code ROLE}/{@code APPLICATION}/
      * {@code TOOL_SET} — these five types key {@code Config}'s in-memory map by short name, the
-     * same key a file-sourced entry for the same logical entity already uses (see
-     * {@code short-name-keyed-config-maps.md}), so the map can no longer tell a genuinely
-     * blob-managed entity apart from a file-only one sharing that short name. This reads and
-     * decrypts blob storage directly by descriptor instead — the same pattern PUT/DELETE already
-     * use for these types — so this endpoint only ever serves entities that actually exist in the
-     * {@code platform} bucket. {@code Config}'s map stays purely a runtime-resolution structure.
+     * same key a file-sourced entry for the same logical entity already uses, so the map can no
+     * longer tell a genuinely blob-managed entity apart from a file-only one sharing that short
+     * name. This reads and decrypts blob storage directly by descriptor instead — the same
+     * pattern PUT/DELETE already use for these types — so this endpoint only ever serves entities
+     * that actually exist in the {@code platform} bucket. {@code Config}'s map stays purely a
+     * runtime-resolution structure.
      */
     private Future<?> handleSingleGetFromBlob(ResourceTypes resourceType, BiFunction<String, Object, ObjectNode> projector) {
         if (path == null || path.isEmpty()) {
