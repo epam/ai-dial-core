@@ -278,7 +278,7 @@ public class MessagesApiTest extends ResourceBaseTest {
     }
 
     @Test
-    public void testDeploymentFeaturesHeaderSentToTranslatingAdapter() throws IOException {
+    public void testDeploymentFeaturesHeaderSentToAdapter() throws IOException {
         AtomicReference<RecordedRequest> captured = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
             server.map(HttpMethod.POST, "/to-chat-completions" + MESSAGES_PATH, request -> {
@@ -301,23 +301,7 @@ public class MessagesApiTest extends ResourceBaseTest {
     }
 
     @Test
-    public void testDeploymentFeaturesHeaderSentToResponsesTranslatingAdapter() throws IOException {
-        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
-        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
-            server.map(HttpMethod.POST, "/to-responses" + MESSAGES_PATH, request -> {
-                captured.set(request);
-                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE, "Content-Type", "application/json");
-            });
-
-            Response response = post(client, MESSAGES_PATH, requestBody("claude-to-responses", false), "api-key", "proxyKey1");
-
-            assertEquals(200, response.status());
-            assertNotNull(captured.get().getHeader("X-DIAL-DEPLOYMENT-FEATURES"));
-        }
-    }
-
-    @Test
-    public void testDeploymentFeaturesHeaderOmittedForPassThroughAdapter() throws IOException {
+    public void testDeploymentFeaturesHeaderSentToPassThroughAdapter() throws IOException {
         AtomicReference<RecordedRequest> captured = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
             server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
@@ -328,7 +312,7 @@ public class MessagesApiTest extends ResourceBaseTest {
             Response response = post(client, MESSAGES_PATH, requestBody("claude-ns", false), "api-key", "proxyKey1");
 
             assertEquals(200, response.status());
-            assertNull(captured.get().getHeader("X-DIAL-DEPLOYMENT-FEATURES"));
+            assertNotNull(captured.get().getHeader("X-DIAL-DEPLOYMENT-FEATURES"));
         }
     }
 
