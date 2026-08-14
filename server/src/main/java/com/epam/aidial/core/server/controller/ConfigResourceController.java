@@ -1428,7 +1428,6 @@ public class ConfigResourceController implements Controller {
             return Future.succeededFuture();
         }
         ResourceDescriptor descriptor = spec.descriptor();
-        String name = path;
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
         String author = context.getUserDisplayName();
 
@@ -1552,7 +1551,7 @@ public class ConfigResourceController implements Controller {
                 return meta;
             }));
         }).onSuccess(meta -> context.putHeader(HttpHeaders.ETAG, meta.getEtag())
-                .respond(HttpStatus.OK, createNameEnvelope(name)))
+                .respond(HttpStatus.OK, createNameEnvelope(path)))
                 .onFailure(this::handleWriteError);
 
         return Future.succeededFuture();
