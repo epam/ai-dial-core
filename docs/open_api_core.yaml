@@ -11913,7 +11913,7 @@ paths:
         A deployment the caller has never used is reported, not omitted: its real limits arrive against zeros.
         Use `/v1/user/usage` for the short list of deployments actually used.
 
-        Six things to know before rendering this response:
+        Five things to know before rendering this response:
 
         1. **Models only.** Applications, toolsets and routes are not listed. DIAL never writes rate-limit
            counters for them, so an entry would report zeros against a limit that cannot fire. Tokens and
@@ -11925,13 +11925,11 @@ paths:
         3. **`*CostStats` means something different on the legacy endpoint.**
            `/v1/deployments/{deployment_name}/limits` returns the caller's *global* cost figures inside its
            per-deployment response. The shape is identical, so re-read the scope, not just the parser.
-        4. **The cost budget is the maximum across the caller's roles, not the sum.** Holding a role with a
-           $100 daily budget and another with $200 gives a $200 budget drawn from one shared pool - not $300.
-        5. **A limit is optional.** When no role configures one, `total` is `9223372036854775807`
+        4. **A limit is optional.** When no role configures one, `total` is `9223372036854775807`
            (`Long.MAX_VALUE`), meaning unlimited. That value exceeds JavaScript's `Number.MAX_SAFE_INTEGER`
            (`9007199254740991`), so treat any `total` at or above 2^53 as unlimited rather than rendering it
            as a `used / total` ratio.
-        6. **Every window is trailing, not calendar-aligned.** `day` is the last 24 hours, `week` the last 7
+        5. **Every window is trailing, not calendar-aligned.** `day` is the last 24 hours, `week` the last 7
            days, `month` the last 30 days - never "since midnight" or "since the 1st". As a result `used`
            decreases on its own as older activity ages out; there is no refund and no periodic reset.
            Eviction happens in steps on UTC boundaries at each window's granularity (1 hour for `day`, 1 day
