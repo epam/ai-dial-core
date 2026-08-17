@@ -56,11 +56,11 @@ import org.apache.commons.lang3.StringUtils;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
-
-import static com.epam.aidial.core.server.util.PlatformCanonicalIdUtil.lastSegment;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static com.epam.aidial.core.server.util.PlatformCanonicalIdUtil.lastSegment;
 
 @Slf4j
 public class AdminApplyController {
@@ -634,14 +634,16 @@ public class AdminApplyController {
                     String schemaId = UrlUtil.decodePath(lastSegment(entry.name()));
                     try {
                         scratch.getApplicationTypeSchemas().put(schemaId, ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec()));
-                    } catch (JsonProcessingException ignored) {
+                    } catch (JsonProcessingException e) {
+                        return;
                     }
                 }
                 case "CatalogSchema" -> {
                     String schemaId = UrlUtil.decodePath(lastSegment(entry.name()));
                     try {
                         scratch.getCatalogSchemas().put(schemaId, ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec()));
-                    } catch (JsonProcessingException ignored) {
+                    } catch (JsonProcessingException e) {
+                        return;
                     }
                 }
                 default -> { /* unknown kinds never reach this code path */ }
