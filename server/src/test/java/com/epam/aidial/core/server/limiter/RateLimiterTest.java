@@ -763,29 +763,8 @@ public class RateLimiterTest {
     }
 
     /**
-     * The controller turns a null result into 503: without Redis there is no usage history to report,
-     * which is different from a caller having no deployments.
-     */
-    @Test
-    public void testGetUserLimitStats_LimitStorageUnavailable() {
-        RateLimiter limiterWithoutStorage = new RateLimiter(taskExecutor, null);
-        // returns before reading any config, so the context needs no config store
-        ExtractedClaims claims = new ExtractedClaims("sub", List.of("role"), "user-hash",
-                ProxyUtil.MAPPER.createObjectNode(), null, null);
-        ProxyContext proxyContext = new ProxyContext(mock(Proxy.class), request, new ApiKeyData(),
-                claims, "trace-id", "span-id", "01");
-
-        Future<UserLimitStats> future = limiterWithoutStorage.getUserStats(
-                proxyContext, List.of(model("model")), false);
-
-        assertNotNull(future);
-        assertNull(future.cause());
-        assertNull(future.result());
-    }
-
-    /**
      * Neither a JWT subject nor an api-key project, so there is no bucket to read counters from. The
-     * controller maps this {@link IllegalArgumentException} to 401.
+     * controller maps this {@link IllegalArgumentException} to 500.
      */
     @Test
     public void testGetUserLimitStats_UnresolvableInitiator() {

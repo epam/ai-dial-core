@@ -206,7 +206,7 @@ public class ControllerSelector {
         get(RouteTemplate.DEPLOYMENT_LIMITS, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             LimitController controller = new LimitController(proxy, context);
-            return () -> controller.getLimits(deploymentId);
+            return () -> controller.getDeploymentLimits(deploymentId);
         });
         get(RouteTemplate.CONFIGURATION, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));

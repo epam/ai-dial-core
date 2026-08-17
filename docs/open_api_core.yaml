@@ -12404,12 +12404,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
-        "503":
-          description: "The engine is currently overloaded, please try again later."
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorData"
   /v1/user/offline-credentials:
     get:
       tags:
@@ -12591,12 +12585,6 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "500":
           description: The server had an error while processing your request.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorData"
-        "503":
-          description: "The engine is currently overloaded, please try again later."
           content:
             application/json:
               schema:

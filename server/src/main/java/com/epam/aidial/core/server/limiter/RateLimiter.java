@@ -16,14 +16,11 @@ import com.epam.aidial.core.server.util.ModelCostCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
-import com.epam.aidial.core.storage.data.MetadataBase;
-import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import lombok.RequiredArgsConstructor;
@@ -31,9 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -46,7 +41,6 @@ public class RateLimiter {
     private static final Limit DEFAULT_LIMIT = new Limit();
     private static final CostLimit DEFAULT_COST_LIMIT = new CostLimit();
     private static final String DEFAULT_USER_ROLE = "default";
-    private static final int DEFAULT_PAGE_SIZE = 1000;
 
     private final AsyncTaskExecutor taskExecutor;
 
@@ -165,10 +159,6 @@ public class RateLimiter {
     public Future<UserLimitStats> getUserStats(
             ProxyContext context, List<? extends RoleBasedEntity> deployments, boolean dropEmpty) {
         try {
-            // skip checking limits if redis is not available
-            if (resourceService == null) {
-                return Future.succeededFuture();
-            }
             return taskExecutor.submit(() -> collectUserStats(context, deployments, dropEmpty));
         } catch (Throwable e) {
             return Future.failedFuture(e);
@@ -181,15 +171,12 @@ public class RateLimiter {
         // one instant for the age cutoff and the projection alike, so no window can disagree with another
         long timestamp = System.currentTimeMillis();
 
-        Map<String, LimitStats> statsByDeployment = new LinkedHashMap<>();
+        UserLimitStats userLimitStats = new UserLimitStats();
+        Map<String, LimitStats> statsByDeployment = userLimitStats.getDeployments();
         Map<String, StatsTarget> targetsByRecordPath = new HashMap<>();
         for (RoleBasedEntity deployment : deployments) {
             String name = deployment.getName();
             Limit limit = getLimitByUser(context, deployment);
-            if (limit == null) {
-                log.warn("Limit is not found for {}", name);
-                continue;
-            }
             // DEFAULT_COST_LIMIT leaves every cost window at the unlimited sentinel: an entry reports the
             // deployment's attributed spend, and only the global budget can cap it
             LimitStats limitStats = create(limit, DEFAULT_COST_LIMIT);
@@ -215,14 +202,13 @@ public class RateLimiter {
         targetsByRecordPath.put(userCostsRecord, new StatsTarget(costStats, LimitType.COSTS));
 
         Set<String> recordPaths = targetsByRecordPath.keySet();
-        List<Pair<ResourceItemMetadata, String>> counters = readCounters(bucketLocation, recordPaths, timestamp);
-        for (Pair<ResourceItemMetadata, String> loaded : counters) {
+        List<Pair<ResourceItemMetadata, String>> records = loadLimitRecords(bucketLocation, recordPaths, timestamp);
+        for (Pair<ResourceItemMetadata, String> loaded : records) {
             String path = loaded.getKey().getDescriptor().getAbsoluteFilePath();
             StatsTarget target = targetsByRecordPath.get(path);
             target.type().collect(loaded.getValue(), target.stats(), timestamp);
         }
 
-        UserLimitStats userLimitStats = new UserLimitStats();
         userLimitStats.setMinuteCostStats(costStats.getMinuteCostStats());
         userLimitStats.setDayCostStats(costStats.getDayCostStats());
         userLimitStats.setWeekCostStats(costStats.getWeekCostStats());
@@ -231,49 +217,28 @@ public class RateLimiter {
         if (dropEmpty) {
             statsByDeployment.values().removeIf(stats -> !hasUsage(stats));
         }
-        userLimitStats.setDeployments(statsByDeployment);
 
         return userLimitStats;
     }
 
     /**
-     * Lists the caller's {@code limits/} folder and reads the bodies of the records that belong to the
+     * Lists the caller's {@code limits/} folder and loads the bodies of the records that belong to the
      * response, ignoring any other name the listing turns up. A record last written before the widest
      * window opened is left unread: {@link RateWindow#MONTH} keeps 30 one-day intervals, so nothing older
      * can still project to a non-zero figure. The age comes from the listing entry, so skipping one costs
      * nothing extra.
      */
-    private List<Pair<ResourceItemMetadata, String>> readCounters(
+    private List<Pair<ResourceItemMetadata, String>> loadLimitRecords(
             String bucketLocation, Set<String> wanted, long timestamp) {
         ResourceDescriptor folder = ResourceDescriptorFactory
                 .fromEncoded(ResourceTypes.LIMIT, bucketLocation, bucketLocation, null);
-
         long updatedAfter = timestamp - RateWindow.MONTH.window();
-        List<ResourceItemMetadata> items = new ArrayList<>();
-        String nextToken = null;
-        do {
-            ResourceFolderMetadata page = resourceService.getFolderMetadata(folder, nextToken, DEFAULT_PAGE_SIZE, true);
-            if (page == null) {
-                // a root folder is never reported as missing, so this only guards against a provider
-                // returning nothing mid-pagination - keep what was already collected
-                break;
-            }
-            for (MetadataBase item : page.getItems()) {
-                if (item instanceof ResourceItemMetadata metadata
+        // the page's item list is immutable, so the unwanted records are filtered out by replacing it
+        return resourceService.listResources(folder, page -> page.setItems(page.getItems().stream()
+                .filter(item -> item instanceof ResourceItemMetadata metadata
                         && wanted.contains(metadata.getDescriptor().getAbsoluteFilePath())
-                        && isWithinWidestWindow(metadata, updatedAfter)) {
-                    items.add(metadata);
-                }
-            }
-            // getFolderMetadata percent-encodes the marker for HTTP clients, while the blob provider takes
-            // it verbatim: re-sending it encoded resumes past the true marker for any key holding an
-            // escapable character - a space encodes to %20, which sorts after it
-            nextToken = UrlUtil.decodePath(page.getNextToken());
-        } while (nextToken != null);
-
-        List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
-        resourceService.load(items, loaded);
-        return loaded;
+                        && isWithinWidestWindow(metadata, updatedAfter))
+                .toList()));
     }
 
     private static boolean isWithinWidestWindow(ResourceItemMetadata metadata, long updatedAfter) {

@@ -47,7 +47,7 @@ public class LimitController {
                             description = OpenApiDescriptions.DEPLOYMENT_NAME)
             }
     )
-    public Future<?> getLimits(String deploymentId) {
+    public Future<?> getDeploymentLimits(String deploymentId) {
         proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId))
                 .compose(dep -> proxy.getRateLimiter().getLimitStats(dep, context))
                 .onSuccess(limitStats -> {
@@ -69,8 +69,7 @@ public class LimitController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = UserLimitStats.class)),
                     @ApiResponse(code = 401),
-                    @ApiResponse(code = 500),
-                    @ApiResponse(code = 503)
+                    @ApiResponse(code = 500)
             }
     )
     public Future<?> getUserLimits() {
@@ -85,8 +84,7 @@ public class LimitController {
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = UserLimitStats.class)),
                     @ApiResponse(code = 401),
-                    @ApiResponse(code = 500),
-                    @ApiResponse(code = 503)
+                    @ApiResponse(code = 500)
             }
     )
     public Future<?> getUserUsage() {
@@ -98,13 +96,8 @@ public class LimitController {
         // getUserStats submits the blocking part itself
         List<Model> models = listAccessibleModels();
         proxy.getRateLimiter().getUserStats(context, models, dropEmpty)
-                .onSuccess(stats -> {
-                    if (stats == null) {
-                        context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Limit storage is not available");
-                    } else {
-                        context.respond(HttpStatus.OK, stats);
-                    }
-                }).onFailure(this::handleUserLimitsError);
+                .onSuccess(stats -> context.respond(HttpStatus.OK, stats))
+                .onFailure(this::handleUserLimitsError);
 
         return Future.succeededFuture();
     }
