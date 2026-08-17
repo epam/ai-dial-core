@@ -1,11 +1,51 @@
 type: object
-required: [data,model,usage]
 properties:
+  object:
+    type: string
+    description: Object type. Always is `list`.
+  model:
+    type: string
+    description: The name of the model that generated the response.
   data:
     type: array
+    description: A list of generated vectors.
     items:
-      $ref: '#/components/schemas/Embedding'
-  model: {type: string}
-  object: {type: string, enum: [list]}
+      type: object
+      description: The representation of an embedding vector corresponding to `index`-th input.
+      properties:
+        index:
+          type: integer
+          description: The index of the embedding from `0` to `number of regular and custom inputs in the request - 1`.
+        object:
+          type: string
+          description: Object type. Always is `embedding`.
+        embedding:
+          description: Embedding output corresponding to the `index`-th embedding input. It's either an array of floats or base64-encoded vector depending on the value of `encoding_format` request parameter.
+          oneOf:
+            - type: array
+              items:
+                type: number
+            - type: string
+      required:
+        - index
+        - object
+        - embedding
   usage:
-    $ref: '#/components/schemas/Usage'
+    type: object
+    description: This field contains information about the tokens from the model that were used to generate the response.
+    properties:
+      prompt_tokens:
+        type: integer
+        description: The number of tokens in the request to the model.
+      total_tokens:
+        type: integer
+        description: The number of tokens in the request to the model.
+    required:
+      - prompt_tokens
+      - total_tokens
+required:
+  - object
+  - model
+  - data
+  - usage
+

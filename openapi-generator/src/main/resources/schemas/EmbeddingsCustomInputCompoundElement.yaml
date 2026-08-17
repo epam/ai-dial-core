@@ -1,0 +1,6 @@
+description: An embedding input composed of multiple strings and attachments.
+type: array
+items:
+  oneOf:
+    - type: string
+    - $ref: "#/components/schemas/RequestAttachment"
