@@ -287,10 +287,8 @@ public class RateLimiter {
         } while (nextToken != null);
 
         List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
-        // locked: counters are mutated through computeResource, and an unlocked blob fallback writes the
-        // stale blob value back as synced, which would overwrite a concurrent increment and drop its pending
-        // flush. Read-only sweeps do not opt in, so the config rebuild keeps its lock-free fan-out
-        resourceService.load(items, loaded, timestamp - RateWindow.MONTH.window(), true);
+        long updatedAfter = timestamp - RateWindow.MONTH.window();
+        resourceService.loadRecentlyUpdated(items, loaded, updatedAfter);
         return loaded;
     }
 

@@ -214,8 +214,7 @@ public class ResourceServiceTest {
     }
 
     /**
-     * 120 items span three Redis pipelines, so this covers the chunking loop and the semaphore being
-     * shared across chunks rather than per chunk.
+     * 120 items span three Redis pipelines, so this covers the chunking loop.
      */
     @Test
     public void testLoadAcrossMultipleChunks() {
@@ -269,7 +268,7 @@ public class ResourceServiceTest {
 
     /**
      * Resources present in blob storage but absent from Redis: every item is a cache miss, so this drives
-     * the semaphore-guarded blob fallback across more than one chunk.
+     * the blob fallback across more than one chunk.
      */
     @Test
     public void testLoadFallsBackToBlobStorage() {
@@ -303,9 +302,9 @@ public class ResourceServiceTest {
         storage.store(fresh.getAbsoluteFilePath(), "application/json", null, Map.of(), "fresh".getBytes());
         storage.store(stale.getAbsoluteFilePath(), "application/json", null, Map.of(), "stale".getBytes());
 
-        long cutoff = 2_000L;
+        long updatedAfter = 2_000L;
         List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
-        spied.load(List.of(item(fresh, 3_000L), item(stale, 1_000L)), loaded, cutoff, false);
+        spied.loadRecentlyUpdated(List.of(item(fresh, 3_000L), item(stale, 1_000L)), loaded, updatedAfter);
 
         assertEquals(Map.of(fresh, "fresh"), bodies(loaded));
         Mockito.verify(spy, Mockito.never()).load(stale.getAbsoluteFilePath());
@@ -321,7 +320,7 @@ public class ResourceServiceTest {
         service.putResource(cached, "current", EtagHeader.NEW_ONLY);
 
         List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
-        service.load(List.of(item(cached, 1_000L)), loaded, System.currentTimeMillis(), false);
+        service.loadRecentlyUpdated(List.of(item(cached, 1_000L)), loaded, System.currentTimeMillis());
 
         assertEquals(Map.of(cached, "current"), bodies(loaded));
     }
