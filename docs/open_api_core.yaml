@@ -38,7 +38,7 @@ info:
 
     # Deployment features
 
-    DIAL Core adds the `X-DIAL-DEPLOYMENT-FEATURES` header to every request it forwards to a deployment, regardless of the API being called: chat completions, completions, embeddings, [Responses API](https://platform.openai.com/docs/api-reference/responses) and [Anthropic Messages API](https://platform.claude.com/docs/en/api/messages) including `count_tokens`.
+    DIAL Core adds the `X-DIAL-DEPLOYMENT-FEATURES` header to every request it forwards to a deployment, regardless of the API being called.
 
     <br>
 
@@ -48,7 +48,7 @@ info:
 
     <br>
 
-    The value is a JSON object with the features of the deployment: the flags configured in `features` of the model or application in the [DIAL Core config](https://github.com/epam/ai-dial-core?tab=readme-ov-file#dynamic-settings), plus `chat_completion` and `responses_api` derived from the APIs the deployment declares. It tells the deployment which parameters its target API accepts, which is essential for adapters translating a request from one API into another.
+    The value is a JSON object with the features of the deployment: the flags configured in `features` of the model or application in the DIAL Core config.
 
     DIAL Core always sets this header itself, so a value sent by a client is overwritten and never reaches the deployment.
   version: 0.0.0
