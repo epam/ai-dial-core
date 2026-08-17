@@ -43,6 +43,7 @@ dependencies {
     implementation("net.logstash.logback:logstash-logback-encoder:${logstash_logback_version}")
     implementation("org.apache.commons:commons-lang3:${apache_commons_version}")
     implementation("org.apache.httpcomponents.client5:httpclient5:${apache_httpclient5_version}")
+    implementation("org.apache.httpcomponents.core5:httpcore5:${apache_httpcore5_version}")
     implementation("org.apache.jclouds.api:filesystem:${apache_jclouds_version}")
     implementation("org.apache.jclouds:jclouds-allblobstore:${apache_jclouds_version}")
     implementation("org.codehaus.janino:janino:${codehaus_janino_version}")
