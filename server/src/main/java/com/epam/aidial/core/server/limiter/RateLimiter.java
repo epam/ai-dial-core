@@ -76,20 +76,10 @@ public class RateLimiter {
                 // tokens - which is impossible anyway, since only total tokens are kept and pricing reloads
                 String deploymentCostsPath = getPathToDeploymentCosts(roleBasedEntity.getName());
                 ResourceDescriptor deploymentCostDescriptor = getResourceDescription(bucket, deploymentCostsPath);
-                // recovered, not composed: attribution is reporting-only and never back-fills anyway, so a
-                // failure there must not be reported as a failure to record the spend that enforces. Letting
-                // it fail the pair would leave an operator unable to tell the two apart in the logs
-                Future<Void> attribution = taskExecutor
-                        .submit(() -> updateCostLimit(deploymentCostDescriptor, cost))
-                        .recover(error -> {
-                            log.warn("Failed to attribute cost to deployment {}. The enforced total is unaffected",
-                                    roleBasedEntity.getName(), error);
-                            return Future.succeededFuture();
-                        });
-                costFuture = Future.all(
-                                taskExecutor.submit(() -> updateCostLimit(userCostDescriptor, cost)),
-                                attribution)
-                        .mapEmpty();
+                Future<Void> enforcedCostFuture = taskExecutor.submit(() -> updateCostLimit(userCostDescriptor, cost));
+                Future<Void> attributedCostFuture =
+                        taskExecutor.submit(() -> updateCostLimit(deploymentCostDescriptor, cost));
+                costFuture = Future.all(enforcedCostFuture, attributedCostFuture).mapEmpty();
             } else {
                 costFuture = Future.succeededFuture();
             }
