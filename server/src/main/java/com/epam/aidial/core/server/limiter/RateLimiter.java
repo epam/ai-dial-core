@@ -47,7 +47,7 @@ public class RateLimiter {
     private static final Limit DEFAULT_LIMIT = new Limit();
     private static final CostLimit DEFAULT_COST_LIMIT = new CostLimit();
     private static final String DEFAULT_USER_ROLE = "default";
-    private static final int LIST_PAGE_SIZE = 1000;
+    private static final int DEFAULT_PAGE_SIZE = 1000;
 
     private final AsyncTaskExecutor taskExecutor;
 
@@ -69,24 +69,25 @@ public class RateLimiter {
                     usage.setAggCost(cost);
                 }
 
-                ResourceDescriptor costResourceDescription = getResourceDescription(bucket, getPathToCosts());
+                String userCostsPath = getPathToCosts();
+                ResourceDescriptor userCostDescriptor = getResourceDescription(bucket, userCostsPath);
                 // the global document is what enforces; the deployment-scoped one only attributes the same
                 // figure, so that a bulk report can break spend down without re-deriving it from stored
                 // tokens - which is impossible anyway, since only total tokens are kept and pricing reloads
-                ResourceDescriptor deploymentCostDescription =
-                        getResourceDescription(bucket, getPathToDeploymentCosts(roleBasedEntity.getName()));
+                String deploymentCostsPath = getPathToDeploymentCosts(roleBasedEntity.getName());
+                ResourceDescriptor deploymentCostDescriptor = getResourceDescription(bucket, deploymentCostsPath);
                 // recovered, not composed: attribution is reporting-only and never back-fills anyway, so a
                 // failure there must not be reported as a failure to record the spend that enforces. Letting
                 // it fail the pair would leave an operator unable to tell the two apart in the logs
                 Future<Void> attribution = taskExecutor
-                        .submit(() -> updateCostLimit(deploymentCostDescription, cost))
+                        .submit(() -> updateCostLimit(deploymentCostDescriptor, cost))
                         .recover(error -> {
                             log.warn("Failed to attribute cost to deployment {}. The enforced total is unaffected",
                                     roleBasedEntity.getName(), error);
                             return Future.succeededFuture();
                         });
                 costFuture = Future.all(
-                                taskExecutor.submit(() -> updateCostLimit(costResourceDescription, cost)),
+                                taskExecutor.submit(() -> updateCostLimit(userCostDescriptor, cost)),
                                 attribution)
                         .mapEmpty();
             } else {
@@ -191,8 +192,8 @@ public class RateLimiter {
         // one instant for the age cutoff and the projection alike, so no window can disagree with another
         long timestamp = System.currentTimeMillis();
 
-        Map<String, LimitStats> collected = new TreeMap<>();
-        Map<String, Counter> counters = new HashMap<>();
+        Map<String, LimitStats> statsByDeployment = new TreeMap<>();
+        Map<String, StatsTarget> targetsByRecordPath = new HashMap<>();
         for (RoleBasedEntity deployment : deployments) {
             String name = deployment.getName();
             Limit limit = getLimitByUser(context, deployment);
@@ -203,14 +204,17 @@ public class RateLimiter {
             // DEFAULT_COST_LIMIT leaves every cost window at the unlimited sentinel: an entry reports the
             // deployment's attributed spend, and only the global budget can cap it
             LimitStats limitStats = create(limit, DEFAULT_COST_LIMIT);
-            Map<String, Counter> deploymentCounters = new HashMap<>();
+            Map<String, StatsTarget> deploymentTargets = new HashMap<>();
             try {
-                deploymentCounters.put(recordPath(bucketLocation, getPathToTokens(name)),
-                        new Counter(limitStats, RecordType.TOKENS));
-                deploymentCounters.put(recordPath(bucketLocation, getPathToRequests(name)),
-                        new Counter(limitStats, RecordType.REQUESTS));
-                deploymentCounters.put(recordPath(bucketLocation, getPathToDeploymentCosts(name)),
-                        new Counter(limitStats, RecordType.COSTS));
+                String tokensPath = getPathToTokens(name);
+                String requestsPath = getPathToRequests(name);
+                String costsPath = getPathToDeploymentCosts(name);
+                String tokensRecord = getLimitAbsolutePath(bucketLocation, tokensPath);
+                String requestsRecord = getLimitAbsolutePath(bucketLocation, requestsPath);
+                String costsRecord = getLimitAbsolutePath(bucketLocation, costsPath);
+                deploymentTargets.put(tokensRecord, new StatsTarget(limitStats, LimitType.TOKENS));
+                deploymentTargets.put(requestsRecord, new StatsTarget(limitStats, LimitType.REQUESTS));
+                deploymentTargets.put(costsRecord, new StatsTarget(limitStats, LimitType.COSTS));
             } catch (RuntimeException e) {
                 // A name that cannot form a resource path: a brace or a quote fails URL decoding, an
                 // over-long one fails the path-size check. Its counters were never written either, so skip
@@ -221,21 +225,25 @@ public class RateLimiter {
                 log.warn("Skipping deployment {}: its limit records have no valid path", name, e);
                 continue;
             }
-            collected.put(name, limitStats);
-            counters.putAll(deploymentCounters);
+            statsByDeployment.put(name, limitStats);
+            targetsByRecordPath.putAll(deploymentTargets);
         }
 
         // the caller's budget and the spend against it, held apart from the per-deployment entries; its
         // record is a sibling of theirs, so a deployment named "costs" lands on "costs/costs" and cannot
         // collide with it
-        LimitStats costStats = create(DEFAULT_LIMIT, getCostLimitByUser(context));
-        counters.put(recordPath(bucketLocation, getPathToCosts()), new Counter(costStats, RecordType.COSTS));
+        CostLimit userCostLimit = getCostLimitByUser(context);
+        LimitStats costStats = create(DEFAULT_LIMIT, userCostLimit);
+        String userCostsPath = getPathToCosts();
+        String userCostsRecord = getLimitAbsolutePath(bucketLocation, userCostsPath);
+        targetsByRecordPath.put(userCostsRecord, new StatsTarget(costStats, LimitType.COSTS));
 
-        for (Pair<ResourceItemMetadata, String> loaded : readCounters(bucketLocation, counters.keySet(), timestamp)) {
+        Set<String> recordPaths = targetsByRecordPath.keySet();
+        for (Pair<ResourceItemMetadata, String> loaded : readCounters(bucketLocation, recordPaths, timestamp)) {
             String path = loaded.getKey().getDescriptor().getAbsoluteFilePath();
-            Counter counter = counters.get(path);
+            StatsTarget target = targetsByRecordPath.get(path);
             try {
-                counter.type().collect(loaded.getValue(), counter.stats(), timestamp);
+                target.type().collect(loaded.getValue(), target.stats(), timestamp);
             } catch (RuntimeException e) {
                 // A document that no longer parses leaves that one window at zero rather than failing the
                 // whole report. It must not propagate: ProxyUtil.convertToObject reports a parse failure as
@@ -252,9 +260,9 @@ public class RateLimiter {
         userLimitStats.setMonthCostStats(costStats.getMonthCostStats());
 
         if (dropEmpty) {
-            collected.values().removeIf(stats -> !hasUsage(stats));
+            statsByDeployment.values().removeIf(stats -> !hasUsage(stats));
         }
-        userLimitStats.setDeployments(new LinkedHashMap<>(collected));
+        userLimitStats.setDeployments(new LinkedHashMap<>(statsByDeployment));
 
         return userLimitStats;
     }
@@ -273,7 +281,7 @@ public class RateLimiter {
         List<ResourceItemMetadata> items = new ArrayList<>();
         String nextToken = null;
         do {
-            ResourceFolderMetadata page = resourceService.getFolderMetadata(folder, nextToken, LIST_PAGE_SIZE, true);
+            ResourceFolderMetadata page = resourceService.getFolderMetadata(folder, nextToken, DEFAULT_PAGE_SIZE, true);
             if (page == null) {
                 // a root folder is never reported as missing, so this only guards against a provider
                 // returning nothing mid-pagination - keep what was already collected
@@ -313,14 +321,19 @@ public class RateLimiter {
                 || stats.getMonthCostStats().getUsed().signum() > 0;
     }
 
-    private String recordPath(String bucketLocation, String path) {
-        return getResourceDescription(bucketLocation, path).getAbsoluteFilePath();
+    private String getLimitAbsolutePath(String bucketLocation, String path) {
+        ResourceDescriptor descriptor = getResourceDescription(bucketLocation, path);
+        return descriptor.getAbsoluteFilePath();
     }
 
-    private record Counter(LimitStats stats, RecordType type) {
+    /**
+     * Where a stored limit record is collected into, and which kind of record it is: the same
+     * {@link LimitStats} is the target of all three records of one deployment, each filling its own windows.
+     */
+    private record StatsTarget(LimitStats stats, LimitType type) {
     }
 
-    private enum RecordType {
+    private enum LimitType {
         TOKENS {
             @Override
             void collect(String json, LimitStats stats, long timestamp) {
