@@ -35,6 +35,22 @@ info:
     HTTP Authorization Scheme: `bearer`
 
     Bearer format: `JWT`
+
+    # Deployment features
+
+    DIAL Core adds the `X-DIAL-DEPLOYMENT-FEATURES` header to every request it forwards to a deployment, regardless of the API being called.
+
+    <br>
+
+    ```bash
+    X-DIAL-DEPLOYMENT-FEATURES: {"tools":true,"max_tokens_supported":false,"custom_temperature_supported":false,"chat_completion":true,"responses_api":false}
+    ```
+
+    <br>
+
+    The value is a JSON object with the features of the deployment: the flags configured in `features` of the model or application in the DIAL Core config.
+
+    DIAL Core always sets this header itself, so a value sent by a client is overwritten and never reaches the deployment.
   version: 0.0.0
   license:
     name: Apache-2.0
