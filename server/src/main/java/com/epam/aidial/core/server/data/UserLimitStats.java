@@ -15,6 +15,12 @@ import java.util.Map;
  */
 @Data
 public class UserLimitStats {
+    /**
+     * The id of a deployment the caller can access, mapped to that deployment's limits and rolling usage.
+     * The value is the same {@link LimitStats} that {@code GET /v1/deployments/{deployment_name}/limits}
+     * returns, except for its {@code *CostStats}: there they are the caller's global budget, here they are
+     * the spend attributed to this deployment against the unlimited sentinel.
+     */
     private Map<String, LimitStats> deployments = new LinkedHashMap<>();
     private CostItemLimitStats minuteCostStats;
     private CostItemLimitStats dayCostStats;
