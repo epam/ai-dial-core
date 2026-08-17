@@ -289,43 +289,6 @@ public class ResourceServiceTest {
     }
 
     /**
-     * The cutoff exists to keep a bulk read from fetching bodies that cannot hold anything of interest.
-     * It applies to cache misses only, so this drops the resource from Redis first.
-     */
-    @Test
-    public void testLoadSkipsStaleCacheMisses() {
-        BlobStorage spy = Mockito.spy(storage);
-        ResourceService spied = serviceWithBlobStorage(spy, "stale-miss");
-
-        ResourceDescriptor fresh = resource("fresh_miss");
-        ResourceDescriptor stale = resource("stale_miss");
-        storage.store(fresh.getAbsoluteFilePath(), "application/json", null, Map.of(), "fresh".getBytes());
-        storage.store(stale.getAbsoluteFilePath(), "application/json", null, Map.of(), "stale".getBytes());
-
-        long updatedAfter = 2_000L;
-        List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
-        spied.loadRecentlyUpdated(List.of(item(fresh, 3_000L), item(stale, 1_000L)), loaded, updatedAfter);
-
-        assertEquals(Map.of(fresh, "fresh"), bodies(loaded));
-        Mockito.verify(spy, Mockito.never()).load(stale.getAbsoluteFilePath());
-    }
-
-    /**
-     * A resource written more often than the sync delay never flushes, so its blob object keeps an
-     * arbitrarily old timestamp while Redis holds the current body. The cutoff must not reach it.
-     */
-    @Test
-    public void testLoadServesCachedResourceRegardlessOfCutoff() {
-        ResourceDescriptor cached = resource("hot_key");
-        service.putResource(cached, "current", EtagHeader.NEW_ONLY);
-
-        List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
-        service.loadRecentlyUpdated(List.of(item(cached, 1_000L)), loaded, System.currentTimeMillis());
-
-        assertEquals(Map.of(cached, "current"), bodies(loaded));
-    }
-
-    /**
      * A failing blob read must surface rather than be swallowed into a partial result. It arrives wrapped,
      * as it always has on this path - the bulk read deliberately does not cancel its siblings, because
      * interrupting an in-flight blob read can leave the underlying handle open.
@@ -348,12 +311,8 @@ public class ResourceServiceTest {
 
     private static Map<ResourceDescriptor, String> load(ResourceService target, List<ResourceDescriptor> descriptors) {
         List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
-        target.load(descriptors.stream().map(descriptor -> item(descriptor, null)).toList(), loaded);
+        target.load(descriptors.stream().map(ResourceItemMetadata::new).toList(), loaded);
         return bodies(loaded);
-    }
-
-    private static ResourceItemMetadata item(ResourceDescriptor descriptor, Long updatedAt) {
-        return new ResourceItemMetadata(descriptor).setUpdatedAt(updatedAt);
     }
 
     private static Map<ResourceDescriptor, String> bodies(List<Pair<ResourceItemMetadata, String>> loaded) {

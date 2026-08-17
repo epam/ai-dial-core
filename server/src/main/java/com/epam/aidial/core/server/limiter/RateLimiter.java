@@ -257,13 +257,15 @@ public class RateLimiter {
      * Lists the caller's {@code limits/} folder and reads the bodies of the records that belong to the
      * response, ignoring any other name the listing turns up. A record last written before the widest
      * window opened is left unread: {@link RateWindow#MONTH} keeps 30 one-day intervals, so nothing older
-     * can still project to a non-zero figure.
+     * can still project to a non-zero figure. The age comes from the listing entry, so skipping one costs
+     * nothing extra.
      */
     private List<Pair<ResourceItemMetadata, String>> readCounters(
             String bucketLocation, Set<String> wanted, long timestamp) {
         ResourceDescriptor folder = ResourceDescriptorFactory
                 .fromEncoded(ResourceTypes.LIMIT, bucketLocation, bucketLocation, null);
 
+        long updatedAfter = timestamp - RateWindow.MONTH.window();
         List<ResourceItemMetadata> items = new ArrayList<>();
         String nextToken = null;
         do {
@@ -275,7 +277,8 @@ public class RateLimiter {
             }
             for (MetadataBase item : page.getItems()) {
                 if (item instanceof ResourceItemMetadata metadata
-                        && wanted.contains(metadata.getDescriptor().getAbsoluteFilePath())) {
+                        && wanted.contains(metadata.getDescriptor().getAbsoluteFilePath())
+                        && isWithinWidestWindow(metadata, updatedAfter)) {
                     items.add(metadata);
                 }
             }
@@ -287,9 +290,14 @@ public class RateLimiter {
         } while (nextToken != null);
 
         List<Pair<ResourceItemMetadata, String>> loaded = new ArrayList<>();
-        long updatedAfter = timestamp - RateWindow.MONTH.window();
-        resourceService.loadRecentlyUpdated(items, loaded, updatedAfter);
+        resourceService.load(items, loaded);
         return loaded;
+    }
+
+    private static boolean isWithinWidestWindow(ResourceItemMetadata metadata, long updatedAfter) {
+        Long updatedAt = metadata.getUpdatedAt();
+        // a provider that reports no timestamp is read rather than dropped
+        return updatedAt == null || updatedAt >= updatedAfter;
     }
 
     private static boolean hasUsage(LimitStats stats) {

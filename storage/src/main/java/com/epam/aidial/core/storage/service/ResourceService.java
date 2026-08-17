@@ -328,34 +328,8 @@ public class ResourceService implements AutoCloseable {
     /**
      * Loads content of resource metadata into the result.
      */
-    public void load(List<ResourceItemMetadata> items, List<Pair<ResourceItemMetadata, String>> result) {
-        readInBatches(items, result, Long.MIN_VALUE, false);
-    }
-
-    /**
-     * Loads content of resource metadata into the result, for resources mutated through
-     * {@link #computeResource}.
-     *
-     * <p>The blob fallback takes the resource lock: it writes the blob value back into Redis marking the key
-     * synced, which both replaces the body and drops the key from the sync queue, so racing a concurrent
-     * update would overwrite the newer value and discard its pending flush.
-     *
-     * <p>A cache miss whose {@link ResourceItemMetadata#getUpdatedAt()} predates {@code updatedAfter} is
-     * skipped instead of being fetched, so a caller reading rolling counters does not pay for bodies that
-     * cannot hold anything within its window. The timestamp comes from the listing that produced
-     * {@code items}, so this costs no extra request. It is meaningful for a miss only: a resource written
-     * more often than {@link Settings#syncDelay} keeps deferring its own flush, so it stays in Redis behind
-     * an arbitrarily stale blob object - which is why Redis is consulted first and the cutoff never judges a
-     * cached resource.
-     */
-    public void loadRecentlyUpdated(List<ResourceItemMetadata> items,
-                                    List<Pair<ResourceItemMetadata, String>> result, long updatedAfter) {
-        readInBatches(items, result, updatedAfter, true);
-    }
-
     @SneakyThrows
-    private void readInBatches(List<ResourceItemMetadata> items, List<Pair<ResourceItemMetadata, String>> result,
-                               long blobCutoff, boolean lockOnFallback) {
+    public void load(List<ResourceItemMetadata> items, List<Pair<ResourceItemMetadata, String>> result) {
         final int size = items.size();
         int batches = size / BATCH_SIZE;
         int rem = size % BATCH_SIZE;
@@ -366,7 +340,7 @@ public class ResourceService implements AutoCloseable {
             int end = cur + BATCH_SIZE;
             int start = cur;
             Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
-                    .submit(() -> runReadBatch(start, end, items, blobCutoff, lockOnFallback));
+                    .submit(() -> runReadBatch(start, end, items));
             futures.add(future);
             cur = end;
         }
@@ -374,7 +348,7 @@ public class ResourceService implements AutoCloseable {
             int end = cur + rem;
             int start = cur;
             Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
-                    .submit(() -> runReadBatch(start, end, items, blobCutoff, lockOnFallback));
+                    .submit(() -> runReadBatch(start, end, items));
             futures.add(future);
         }
 
@@ -384,8 +358,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     @SneakyThrows
-    private List<Pair<ResourceItemMetadata, String>> runReadBatch(
-            int start, int end, List<ResourceItemMetadata> items, long blobCutoff, boolean lockOnFallback) {
+    private List<Pair<ResourceItemMetadata, String>> runReadBatch(int start, int end, List<ResourceItemMetadata> items) {
         if (end - start <= 0) {
             return List.of();
         }
@@ -422,22 +395,18 @@ public class ResourceService implements AutoCloseable {
         log.debug("Number of missing resources in Redis cache: {}", missed.size());
         List<Future<Pair<ResourceItemMetadata, String>>> futures = new ArrayList<>();
         for (ResourceItemMetadata metadata : missed) {
-            Long updatedAt = metadata.getUpdatedAt();
-            if (updatedAt != null && updatedAt < blobCutoff) {
-                continue;
-            }
             Future<Pair<ResourceItemMetadata, String>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
-                    .submit(() -> getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, lockOnFallback));
+                    .submit(() -> getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, false));
             futures.add(future);
         }
-        log.debug("Start loading missing resources from blob storage: {}", futures.size());
+        log.debug("Start loading missing resources from blob storage: {}", missed.size());
         for (Future<Pair<ResourceItemMetadata, String>> future : futures) {
             Pair<ResourceItemMetadata, String> res = future.get();
             if (res != null) {
                 result.add(res);
             }
         }
-        log.debug("Finish loading missed resources from blob storage: {}", futures.size());
+        log.debug("Finish loading missed resources from blob storage: {}", missed.size());
         return result;
     }
 

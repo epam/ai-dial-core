@@ -22,6 +22,9 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
+import com.epam.aidial.core.storage.data.MetadataBase;
+import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -38,6 +41,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.Redisson;
 import org.redisson.api.RKeys;
@@ -48,6 +52,7 @@ import redis.embedded.RedisServer;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -57,6 +62,8 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -866,6 +873,54 @@ public class RateLimiterTest {
         LimitStats stats = future.result().getDeployments().get("corrupt-model");
         assertNotNull(stats);
         // the unreadable window reports zero, and the intact one still reports its usage
+        assertEquals(0, stats.getMinuteTokenStats().getUsed());
+        assertEquals(1, stats.getHourRequestStats().getUsed());
+    }
+
+    /**
+     * A record's age comes from the listing of its blob object, so one last written before the widest
+     * window opened is never read. Only the token record is aged here: it drops out of the report while
+     * the request record, listed as current, still reports its usage.
+     */
+    @Test
+    public void testGetUserStats_SkipsRecordsOlderThanWidestWindow() {
+        Config config = new Config();
+        Role role = new Role();
+        role.setLimits(Map.of());
+        config.setRoles(Map.of("role", role));
+
+        ProxyContext proxyContext = userContext(config, List.of("role"));
+        Model model = model("aged-model");
+        stubInlineExecutor();
+
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setTotalTokens(42);
+        String bucket = BucketBuilder.buildInitiatorBucket(proxyContext);
+        assertEquals(HttpStatus.OK, rateLimiter.limit(proxyContext, model).result().status());
+        assertNull(rateLimiter.increase(model, bucket, tokenUsage, null, null).cause());
+
+        // age the token record's listing entry past RateWindow.MONTH, leaving its counter untouched
+        ResourceDescriptor tokens = ResourceDescriptorFactory
+                .fromEncoded(ResourceTypes.LIMIT, bucket, bucket, "aged-model/tokens");
+        long agedOut = System.currentTimeMillis() - Duration.ofDays(60).toMillis();
+        ResourceService listingWithAgedRecord = Mockito.spy(resourceService);
+        Mockito.doAnswer(invocation -> {
+            ResourceFolderMetadata page = (ResourceFolderMetadata) invocation.callRealMethod();
+            for (MetadataBase item : page.getItems()) {
+                if (item instanceof ResourceItemMetadata metadata
+                        && tokens.getAbsoluteFilePath().equals(metadata.getDescriptor().getAbsoluteFilePath())) {
+                    metadata.setUpdatedAt(agedOut);
+                }
+            }
+            return page;
+        }).when(listingWithAgedRecord).getFolderMetadata(any(), any(), anyInt(), anyBoolean());
+        RateLimiter limiter = new RateLimiter(taskExecutor, listingWithAgedRecord);
+
+        Future<UserLimitStats> future = limiter.getUserStats(proxyContext, List.of(model), false);
+
+        assertNull(future.cause(), String.valueOf(future.cause()));
+        LimitStats stats = future.result().getDeployments().get("aged-model");
+        assertNotNull(stats);
         assertEquals(0, stats.getMinuteTokenStats().getUsed());
         assertEquals(1, stats.getHourRequestStats().getUsed());
     }
