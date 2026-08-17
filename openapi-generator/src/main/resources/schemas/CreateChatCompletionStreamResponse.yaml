@@ -1,23 +1,74 @@
 type: object
+description: Represents a streamed chunk of a chat completion response returned by model, based on the provided input.
 properties:
   id:
     type: string
-  model:
-    type: string
-  created:
-    type: integer
-    format: int64
+    description: A unique identifier for the chat completion. Each chunk has the same ID.
   object:
     type: string
-    enum:
-      - chat.completion.chunk
+    description: The object type, which is always `chat.completion.chunk`.
+    enum: [chat.completion.chunk]
+  created:
+    type: integer
+    description: The Unix timestamp (in seconds) of when the chat completion was created. Each chunk has the same timestamp.
+  model:
+    type: string
+    description: The model name that generated the response. May not be the same as the deployment name.
+  system_fingerprint:
+    type: string
+    description: |
+      This fingerprint represents the backend configuration that the model runs with.
+      Can be used in conjunction with the `seed` request parameter to understand when backend changes have been made that might impact determinism.
   choices:
     type: array
+    description: A list of generated chunks.
     items:
-      $ref: '#/components/schemas/CreateChatCompletionStreamChoice'
+      type: object
+      properties:
+        index:
+          type: integer
+          description: The index of the choice from 0 to _n - 1_
+        delta:
+          type: object
+          $ref: "#/components/schemas/ChatCompletionStreamResponseDelta"
+        finish_reason:
+          type: string
+          nullable: true
+          description: |-
+            The reason the model stopped generating tokens. This will be `stop` if the model hit a natural stop point or a provided stop sequence,
+            
+            `length` if the maximum number of tokens specified in the request was reached,
+            
+            `content_filter` if content was omitted due to a flag from our content filters,
+            
+            `tool_calls` if the model called a tool, or `function_call` (deprecated) if the model called a function.
+      required:
+        - index
+        - delta
+        - finish_reason
   usage:
-    $ref: '#/components/schemas/Usage'
-    nullable: true
+    type: object
+    description: This field contains information about used models tokens for generation of the response. In case of streaming, the usage is published fully in one chunk.
+    properties:
+      prompt_tokens:
+        type: integer
+        description: The number of tokens in the request to the model.
+      completion_tokens:
+        type: integer
+        description: The number of tokens in the response from the model.
+      total_tokens:
+        type: integer
+        description: The sum of prompt and completion tokens.
+    required:
+      - prompt_tokens
+      - completion_tokens
+      - total_tokens
   statistics:
-    $ref: '#/components/schemas/Statistics'
-    nullable: true
+    type: object
+    $ref: "#/components/schemas/ChatCompletionResponseStatistics"
+required:
+  - choices
+  - created
+  - id
+  - model
+  - object

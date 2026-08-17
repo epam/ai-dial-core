@@ -1,28 +1,60 @@
 type: object
-required:
-  - id
-  - object
-  - created
-  - model
-  - choices
 properties:
   id:
     type: string
+    description: The ID of the response.
   object:
     type: string
-    enum:
-      - chat.completion
+    description: Object type. Always is `chat.completion` for non-streaming.
   created:
     type: integer
-    format: int64
+    description: The response timestamp. The time in seconds since the epoch.
   model:
     type: string
+    description: The name of the model that generated the response. May not be the same as the deployment name.
   choices:
     type: array
+    description: List of generated messages. Contains _n_ items.
     items:
-      $ref: "#/components/schemas/ChatCompletionChoice"
+      type: object
+      properties:
+        index:
+          type: integer
+          description: The index of the choice from `0` to `n - 1`.
+        message:
+          type: object
+          $ref: "#/components/schemas/ChatCompletionResponseMessage"
+        finish_reason:
+          nullable: true
+          type: string
+          description: |-
+            The reason indicating the completion of the choice generation process. The possible reasons:
+            
+            * `stop`: Successful generation.
+            * `length`: The generation was stopped because it surpassed the available number of tokens.
+            * `function_call`: The Assistant decided to call a function.
+            * `tool_calls`: The Assistant decided to call a tool.
+            * `content_filter`: Omitted content due to a flag from content filters.
+      required:
+        - index
+        - message
+        - finish_reason
   usage:
-    $ref: "#/components/schemas/CompletionUsage"
+    type: object
+    description: This field contains information about the tokens from the model that were used to generate the response.
+    properties:
+      prompt_tokens:
+        type: integer
+        description: The number of tokens in the request to the model.
+      completion_tokens:
+        type: integer
+        description: The number of tokens in the response from the model.
+      total_tokens:
+        type: integer
+        description: The sum of prompt and completion tokens.
   statistics:
-    $ref: "#/components/schemas/Statistics"
-    nullable: true
+    type: object
+    $ref: "#/components/schemas/ChatCompletionResponseStatistics"
+  system_fingerprint:
+    type: string
+    description: Can be used in conjunction with the `seed` request parameter to understand when backend changes have been made that might impact determinism.

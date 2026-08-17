@@ -74,6 +74,8 @@ allprojects {
                 substitute module('com.google.guava:guava:31.0.1-jre') using module("com.google.guava:guava:${guava_version}") because "CVE in 31.0.1-jre pulled transitively via com.google.inject:guice:7.0.0"
             }
             force 'commons-beanutils:commons-beanutils:1.11.0'
+            force "org.apache.httpcomponents.core5:httpcore5:${apache_httpcore5_version}"
+            force "org.apache.httpcomponents.core5:httpcore5-h2:${apache_httpcore5_version}"
         }
     }
 

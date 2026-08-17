@@ -1,0 +1,17 @@
+type: object
+description: The custom content of a message.
+properties:
+  attachments:
+    type: array
+    items:
+      $ref: "#/components/schemas/ChatCompletionResponseAttachment"
+    description: List of attachments.
+  stages:
+    type: array
+    readOnly: true
+    items:
+      $ref: "#/components/schemas/ChatCompletionResponseStage"
+    description: The intermediate stages that the Assistant went through to generate the response.
+  state:
+    type: object
+    description: The internal state of the Assistant. This field can have an arbitrary set of fields with an arbitrary structure. In case of a streaming, the state is published fully in one chunk.

@@ -1,0 +1,36 @@
+type: object
+title: Developer message
+description: >
+  Developer-provided instructions that the model should follow, regardless
+  of
+  messages sent by the user. With o1 models and newer, `developer`
+  messages
+  replace the previous `system` messages.
+properties:
+  content:
+    description: The contents of the developer message.
+    oneOf:
+      - type: string
+        description: The contents of the developer message.
+        title: Text content
+      - type: array
+        description: An array of content parts with a defined type. For developer
+          messages, only type `text` is supported.
+        title: Array of content parts
+        items:
+          $ref: "#/components/schemas/ChatCompletionRequestDeveloperMessageContentPart"
+        minItems: 1
+  custom_fields:
+    $ref: "#/components/schemas/ChatCompletionRequestCustomFields"
+  role:
+    type: string
+    enum:
+      - developer
+    description: The role of the messages author, in this case `developer`.
+  name:
+    type: string
+    description: An optional name for the participant. Provides the model
+      information to differentiate between participants of the same role.
+required:
+  - content
+  - role

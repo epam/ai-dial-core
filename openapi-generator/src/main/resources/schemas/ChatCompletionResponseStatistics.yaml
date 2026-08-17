@@ -1,0 +1,38 @@
+type: object
+description: The Assistant work statistics.
+properties:
+  usage_per_model:
+    type: array
+    description: Statistics of tokens used in models by the Assistant. In case of streaming, the statistics is published fully in one chunk.
+    items:
+      type: object
+      properties:
+        index:
+          type: integer
+          description: |-
+            In *streaming* chat completion responses, each model usage includes an `index` field
+            indicating its position in the final ordered list. This field is required because
+            model usages may arrive out of order, and the client must reconstruct the correct
+            sequence using `index`.
+            <br><br>
+            In *non-streaming* responses, the `index` field is omitted because the position of a model usage is already determined by its place in the returned list.
+        model:
+          type: string
+          description: The model name.
+        prompt_tokens:
+          type: integer
+          description: The number of tokens in the request to the model.
+        completion_tokens:
+          type: integer
+          description: The number of tokens in the response from the model.
+        total_tokens:
+          type: integer
+          description: The sum of prompt and completion tokens.
+  discarded_messages:
+    type: array
+    items:
+      type: integer
+    description: |
+      The list of indices of messages that were discarded by the Assistant.
+      
+      Returned only when `max_prompt_tokens` was set in the request.

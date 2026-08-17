@@ -1,0 +1,4 @@
+type: string
+enum:
+  - function
+description: The type of the `tool` call, in this case `function`.

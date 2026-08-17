@@ -1,0 +1,30 @@
+type: object
+title: User message
+properties:
+  content:
+    description: |
+      The contents of the user message.
+    oneOf:
+      - type: string
+        description: The text contents of the message.
+        title: Text content
+      - type: array
+        description: An array of content parts with a defined type, each can be of type `text` or `image_url` when passing in images. You can pass multiple images by adding multiple `image_url` content parts. Image input is only supported when using the `gpt-4o` model.
+        title: Array of content parts
+        items:
+          $ref: "#/components/schemas/ChatCompletionRequestUserMessageContentPart"
+        minItems: 1
+  custom_content:
+    $ref: "#/components/schemas/ChatCompletionRequestUserMessageCustomContent"
+  custom_fields:
+    $ref: "#/components/schemas/ChatCompletionRequestCustomFields"
+  role:
+    type: string
+    enum: ["user"]
+    description: The role of the messages author, in this case `user`.
+  name:
+    type: string
+    description: An optional name for the participant. Provides the model information to differentiate between participants of the same role.
+required:
+  - content
+  - role
