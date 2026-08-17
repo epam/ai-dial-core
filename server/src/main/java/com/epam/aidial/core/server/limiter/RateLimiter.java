@@ -38,7 +38,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.TreeMap;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -182,7 +181,7 @@ public class RateLimiter {
         // one instant for the age cutoff and the projection alike, so no window can disagree with another
         long timestamp = System.currentTimeMillis();
 
-        Map<String, LimitStats> statsByDeployment = new TreeMap<>();
+        Map<String, LimitStats> statsByDeployment = new LinkedHashMap<>();
         Map<String, StatsTarget> targetsByRecordPath = new HashMap<>();
         for (RoleBasedEntity deployment : deployments) {
             String name = deployment.getName();
@@ -194,27 +193,16 @@ public class RateLimiter {
             // DEFAULT_COST_LIMIT leaves every cost window at the unlimited sentinel: an entry reports the
             // deployment's attributed spend, and only the global budget can cap it
             LimitStats limitStats = create(limit, DEFAULT_COST_LIMIT);
-            Map<String, StatsTarget> deploymentTargets = new HashMap<>();
-            try {
-                String tokensPath = getPathToTokens(name);
-                String requestsPath = getPathToRequests(name);
-                String costsPath = getPathToDeploymentCosts(name);
-                String tokensRecord = getLimitAbsolutePath(bucketLocation, tokensPath);
-                String requestsRecord = getLimitAbsolutePath(bucketLocation, requestsPath);
-                String costsRecord = getLimitAbsolutePath(bucketLocation, costsPath);
-                deploymentTargets.put(tokensRecord, new StatsTarget(limitStats, LimitType.TOKENS));
-                deploymentTargets.put(requestsRecord, new StatsTarget(limitStats, LimitType.REQUESTS));
-                deploymentTargets.put(costsRecord, new StatsTarget(limitStats, LimitType.COSTS));
-            } catch (RuntimeException e) {
-                // A name that cannot form a resource path: a brace or a quote fails URL decoding, an
-                // over-long one fails the path-size check. Its counters were never written either, so skip
-                // it rather than fail the response for every other deployment. Broad on purpose - the only
-                // thing these calls do is build a path
-                log.warn("Skipping deployment {}: its limit records have no valid path", name, e);
-                continue;
-            }
+            String tokensPath = getPathToTokens(name);
+            String requestsPath = getPathToRequests(name);
+            String costsPath = getPathToDeploymentCosts(name);
+            String tokensRecord = getLimitAbsolutePath(bucketLocation, tokensPath);
+            String requestsRecord = getLimitAbsolutePath(bucketLocation, requestsPath);
+            String costsRecord = getLimitAbsolutePath(bucketLocation, costsPath);
+            targetsByRecordPath.put(tokensRecord, new StatsTarget(limitStats, LimitType.TOKENS));
+            targetsByRecordPath.put(requestsRecord, new StatsTarget(limitStats, LimitType.REQUESTS));
+            targetsByRecordPath.put(costsRecord, new StatsTarget(limitStats, LimitType.COSTS));
             statsByDeployment.put(name, limitStats);
-            targetsByRecordPath.putAll(deploymentTargets);
         }
 
         // the caller's budget and the spend against it, held apart from the per-deployment entries; its
@@ -227,16 +215,11 @@ public class RateLimiter {
         targetsByRecordPath.put(userCostsRecord, new StatsTarget(costStats, LimitType.COSTS));
 
         Set<String> recordPaths = targetsByRecordPath.keySet();
-        for (Pair<ResourceItemMetadata, String> loaded : readCounters(bucketLocation, recordPaths, timestamp)) {
+        List<Pair<ResourceItemMetadata, String>> counters = readCounters(bucketLocation, recordPaths, timestamp);
+        for (Pair<ResourceItemMetadata, String> loaded : counters) {
             String path = loaded.getKey().getDescriptor().getAbsoluteFilePath();
             StatsTarget target = targetsByRecordPath.get(path);
-            try {
-                target.type().collect(loaded.getValue(), target.stats(), timestamp);
-            } catch (RuntimeException e) {
-                // A document that no longer parses leaves that one window at zero rather than failing the
-                // whole report for every other deployment
-                log.warn("Ignoring unreadable limit record {}", path, e);
-            }
+            target.type().collect(loaded.getValue(), target.stats(), timestamp);
         }
 
         UserLimitStats userLimitStats = new UserLimitStats();
@@ -248,7 +231,7 @@ public class RateLimiter {
         if (dropEmpty) {
             statsByDeployment.values().removeIf(stats -> !hasUsage(stats));
         }
-        userLimitStats.setDeployments(new LinkedHashMap<>(statsByDeployment));
+        userLimitStats.setDeployments(statsByDeployment);
 
         return userLimitStats;
     }
@@ -282,10 +265,9 @@ public class RateLimiter {
                     items.add(metadata);
                 }
             }
-            // decoded before being fed back: the token is percent-encoded for HTTP clients, while the blob
-            // provider takes the marker verbatim. Re-sending it encoded resumes past the true marker for any
-            // key holding an escapable character - a space encodes to %20, which sorts after it - silently
-            // skipping the records in between
+            // getFolderMetadata percent-encodes the marker for HTTP clients, while the blob provider takes
+            // it verbatim: re-sending it encoded resumes past the true marker for any key holding an
+            // escapable character - a space encodes to %20, which sorts after it
             nextToken = UrlUtil.decodePath(page.getNextToken());
         } while (nextToken != null);
 

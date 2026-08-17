@@ -546,11 +546,11 @@ public class RateLimiterTest {
         tokenUsage.setTotalTokens(90);
         assertNull(rateLimiter.increase(usedModel, BucketBuilder.buildInitiatorBucket(proxyContext), tokenUsage, null, null).cause());
 
-        // deliberately passed out of order - the response must come back keyed and iterable by id
         UserLimitStats stats = rateLimiter.getUserStats(proxyContext, List.of(usedModel, unusedModel), false).result();
 
         assertNotNull(stats);
-        assertEquals(List.of("unused-model", "used-model"), List.copyOf(stats.getDeployments().keySet()));
+        // reported in the order the deployments were passed in
+        assertEquals(List.of("used-model", "unused-model"), List.copyOf(stats.getDeployments().keySet()));
 
         LimitStats used = stats.getDeployments().get("used-model");
         assertEquals(100, used.getMinuteTokenStats().getTotal());
@@ -647,38 +647,6 @@ public class RateLimiterTest {
         assertNotNull(stats);
         assertEquals(List.of("reported-model"), List.copyOf(stats.getDeployments().keySet()));
         assertEquals(70, stats.getDeployments().get("reported-model").getMinuteTokenStats().getUsed());
-    }
-
-    /**
-     * A name that cannot form a resource path must not take the whole response down with it. A config key may
-     * hold characters a resource path cannot: a brace fails URL decoding, and an over-long name fails the
-     * 900-byte path check with an {@link IllegalArgumentException} - which the controller maps to 401, since
-     * that is what an unresolvable caller throws. Neither may reach it.
-     */
-    @Test
-    public void testGetUserStats_SkipsDeploymentWhoseNameHasNoValidPath() {
-        Config config = new Config();
-        Role role = new Role();
-        role.setLimits(Map.of());
-        config.setRoles(Map.of("role", role));
-
-        ProxyContext proxyContext = userContext(config, List.of("role"));
-        stubInlineExecutor();
-
-        Model usable = model("usable-model");
-        // a brace fails URL decoding; an over-long name fails the path-size check with the same
-        // IllegalArgumentException the controller maps to 401
-        Model braced = model("chat{v1}");
-        Model tooLong = model("m".repeat(1024));
-        Future<UserLimitStats> future = rateLimiter
-                .getUserStats(proxyContext, List.of(braced, tooLong, usable), false);
-        assertNull(future.cause(), String.valueOf(future.cause()));
-        UserLimitStats stats = future.result();
-
-        assertNotNull(stats);
-        assertEquals(List.of("usable-model"), List.copyOf(stats.getDeployments().keySet()));
-        // the caller's budget is still reported, so the response stays usable
-        assertNotNull(stats.getDayCostStats());
     }
 
     /**
@@ -839,13 +807,12 @@ public class RateLimiterTest {
     }
 
     /**
-     * A counter document that no longer parses must leave that one window at zero, not fail the report -
-     * and above all must not escape as the {@link IllegalArgumentException} that
-     * {@code ProxyUtil.convertToObject} raises, since the controller reads that as an unresolvable caller
-     * and answers 401, which clients treat as an expired session.
+     * A counter document that no longer parses is a corrupted record, not a reportable state: the read must
+     * fail with the {@link IllegalArgumentException} {@code ProxyUtil.convertToObject} raises rather than
+     * quietly report zero usage for that window. The controller answers 500.
      */
     @Test
-    public void testGetUserStats_IgnoresUnreadableCounterRecord() {
+    public void testGetUserStats_FailsOnUnreadableCounterRecord() {
         Config config = new Config();
         Role role = new Role();
         role.setLimits(Map.of());
@@ -869,12 +836,7 @@ public class RateLimiterTest {
 
         Future<UserLimitStats> future = rateLimiter.getUserStats(proxyContext, List.of(model), false);
 
-        assertNull(future.cause(), String.valueOf(future.cause()));
-        LimitStats stats = future.result().getDeployments().get("corrupt-model");
-        assertNotNull(stats);
-        // the unreadable window reports zero, and the intact one still reports its usage
-        assertEquals(0, stats.getMinuteTokenStats().getUsed());
-        assertEquals(1, stats.getHourRequestStats().getUsed());
+        assertInstanceOf(IllegalArgumentException.class, future.cause());
     }
 
     /**
