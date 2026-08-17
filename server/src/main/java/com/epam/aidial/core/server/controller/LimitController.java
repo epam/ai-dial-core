@@ -12,7 +12,6 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.data.UserLimitStats;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
@@ -95,21 +94,10 @@ public class LimitController {
     }
 
     private Future<?> respondWithUserStats(boolean dropEmpty) {
-        // Resolved here rather than inferred from the failure below: an unresolvable caller is the only 401,
-        // and it is the only condition this can tell apart. Deeper in, IllegalArgumentException means
-        // something else entirely - a corrupt counter document, or unparsable blob metadata - and answering
-        // 401 to those would sign the user out over a server-side data problem.
-        try {
-            BucketBuilder.buildInitiatorBucket(context);
-        } catch (IllegalArgumentException e) {
-            context.respond(HttpStatus.UNAUTHORIZED, e.getMessage());
-            log.warn("LimitController. Can't resolve the request initiator", e);
-            return Future.succeededFuture();
-        }
-
         // no executor hop: listAccessibleModels only streams over the in-memory config, and
         // getUserStats submits the blocking part itself
-        proxy.getRateLimiter().getUserStats(context, listAccessibleModels(), dropEmpty)
+        List<Model> models = listAccessibleModels();
+        proxy.getRateLimiter().getUserStats(context, models, dropEmpty)
                 .onSuccess(stats -> {
                     if (stats == null) {
                         context.respond(HttpStatus.SERVICE_UNAVAILABLE, "Limit storage is not available");
@@ -132,7 +120,8 @@ public class LimitController {
     }
 
     private void handleUserLimitsError(Throwable error) {
-        // the caller was already resolved before dispatch, so anything reaching here is a server-side fault
+        // every authenticated caller has an initiator bucket - a project key without a project is rejected at
+        // load time and a token carries a subject - so anything reaching here is a server-side fault
         context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to get user limit stats");
         log.error("LimitController. Failed to get user limit stats", error);
     }

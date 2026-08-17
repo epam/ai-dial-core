@@ -209,9 +209,7 @@ public class RateLimiter {
                 // A name that cannot form a resource path: a brace or a quote fails URL decoding, an
                 // over-long one fails the path-size check. Its counters were never written either, so skip
                 // it rather than fail the response for every other deployment. Broad on purpose - the only
-                // thing these three calls do is build a path, and the size check reports an
-                // IllegalArgumentException, which the controller otherwise maps to 401 for an unresolvable
-                // caller
+                // thing these calls do is build a path
                 log.warn("Skipping deployment {}: its limit records have no valid path", name, e);
                 continue;
             }
@@ -236,9 +234,7 @@ public class RateLimiter {
                 target.type().collect(loaded.getValue(), target.stats(), timestamp);
             } catch (RuntimeException e) {
                 // A document that no longer parses leaves that one window at zero rather than failing the
-                // whole report. It must not propagate: ProxyUtil.convertToObject reports a parse failure as
-                // an IllegalArgumentException, which the controller maps to 401 for an unresolvable caller,
-                // so one corrupt record would otherwise log the caller out
+                // whole report for every other deployment
                 log.warn("Ignoring unreadable limit record {}", path, e);
             }
         }

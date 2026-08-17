@@ -147,20 +147,19 @@ public class LimitApiTest extends ResourceBaseTest {
     }
 
     /**
-     * A token with neither a subject nor a project leaves no principal to report limits for, so there is
-     * no bucket to read the counters from. An api-key cannot reach this branch - the config rejects a key
-     * without a project at startup.
+     * A token with neither a subject nor a project leaves no principal to report limits for, which takes a
+     * misconfigured identity provider - a key without a project is rejected at load time. It is a
+     * server-side fault, so it must not sign the caller out.
      */
     @Test
     public void testGetUserLimits_UnresolvableInitiator() {
         Response response = send(HttpMethod.GET, "/v1/user/limits", null, null,
                 "authorization", "no-subject");
-        // the message proves the 401 came from resolving the initiator, not from the auth layer
-        verifyNotExact(response, 401, "Can't find user bucket");
+        verifyNotExact(response, 500, "Failed to get user limit stats");
 
-        // the usage endpoint answers identically - both resolve the caller before doing any work
+        // the usage endpoint answers identically - the two share the whole path
         verifyNotExact(send(HttpMethod.GET, "/v1/user/usage", null, null, "authorization", "no-subject"),
-                401, "Can't find user bucket");
+                500, "Failed to get user limit stats");
     }
 
     /**
