@@ -1,0 +1,3 @@
+oneOf:
+  - $ref: "#/components/schemas/ChatCompletionRequestMessageContentPartText"
+  - $ref: "#/components/schemas/ChatCompletionRequestMessageContentPartImage"

@@ -1,89 +1,191 @@
 type: object
-additionalProperties: true
-required: [messages]
 properties:
-  model: { type: string }
-  messages:
-    type: array
-    items:
-      $ref: '#/components/schemas/Message'
-  functions:
-    type: array
-    items:
-      $ref: '#/components/schemas/Function'
-  function_call:
-    oneOf:
-      - type: string
-        enum: [auto, none]
-      - $ref: '#/components/schemas/FunctionChoice'
-  tools:
-    type: array
-    items:
+    model:
+      type: string
+      description: The name of the model to use.
+
+    messages:
+      type: array
+      minItems: 1
+      description: A list of messages comprising the conversation so far.
+      items:
+        $ref: "#/components/schemas/ChatCompletionRequestMessage"
+
+    functions:
+      deprecated: true
+      description: |
+        Deprecated in favor of `tools`.
+
+        A list of functions the model may generate JSON inputs for.
+      type: array
+      minItems: 1
+      maxItems: 128
+      items:
+        $ref: "#/components/schemas/ChatCompletionFunction"
+
+    function_call:
+      deprecated: true
+      description: |
+        Deprecated in favor of `tool_choice`.
+
+        Controls which (if any) `function` is called by the model.
       oneOf:
-        - $ref: '#/components/schemas/Tool'
-        - $ref: '#/components/schemas/StaticTool'
-  tool_choice:
-    oneOf:
-      - type: string
-        enum: [auto, none, required]
-      - $ref: '#/components/schemas/ToolChoice'
-  stream:
-    type: boolean
-    default: false
-  stream_options:
-    $ref: '#/components/schemas/StreamOptions'
-  temperature:
-    type: number
-    minimum: 0
-    maximum: 2
-  top_p:
-    type: number
-    minimum: 0
-    maximum: 1
-  n:
-    type: integer
-    minimum: 1
-    maximum: 128
-  stop:
-    oneOf:
-      - type: string
-      - type: array
-        maxItems: 4
-        items:
-          type: string
-  max_tokens:
-    type: integer
-    minimum: 1
-  max_completion_tokens:
-    type: integer
-    minimum: 1
-  presence_penalty:
-    type: number
-    minimum: -2
-    maximum: 2
-  frequency_penalty:
-    type: number
-    minimum: -2
-    maximum: 2
-  logit_bias:
-    type: object
-    additionalProperties:
+        - type: string
+          description: |
+            `none` means the model will not call a function and instead
+            generates a message.
+
+            `auto` means the model can pick between generating a message
+            or calling a function.
+          enum:
+            - none
+            - auto
+        - $ref: "#/components/schemas/ChatCompletionFunctionCallOption"
+
+    tools:
+      type: array
+      description: |
+        A list of tools the model may call. Currently, only `functions`
+        are supported as a tool. Use this to provide a list of `functions`
+        the model may generate JSON inputs for. A max of 128 functions
+        are supported.
+      items:
+        $ref: "#/components/schemas/ChatCompletionTool"
+
+    tool_choice:
+      $ref: "#/components/schemas/ChatCompletionToolChoiceOption"
+
+    addons:
+      type: array
+      deprecated: true
+      description: A list of Addons the Assistant can use.
+      items:
+        $ref: "#/components/schemas/ChatCompletionAddon"
+
+    stream:
+      type: boolean
+      nullable: true
+      default: false
+      description: >
+        If set, partial message deltas will be sent. Tokens will be sent
+        as data-only server-sent events as they become available.
+
+    temperature:
       type: number
-  user: { type: string }
-  seed: { type: integer }
-  logprobs: { type: boolean }
-  top_logprobs: { type: integer }
-  reasoning_effort:
-    type: string
-    enum: [none, minimal, low, medium, high]
-  response_format:
-    oneOf:
-      - $ref: '#/components/schemas/ResponseFormatText'
-      - $ref: '#/components/schemas/ResponseFormatJsonObject'
-      - $ref: '#/components/schemas/ResponseFormatJsonSchema'
-  parallel_tool_calls: { type: boolean }
-  max_prompt_tokens:
-    type: integer
-    minimum: 1
-  custom_fields:
-    $ref: '#/components/schemas/ChatCompletionRequestCustomFields'
+      minimum: 0
+      maximum: 2
+      default: 1
+      description: >
+        What sampling temperature to use, between 0 and 2. Higher values
+        such as 0.8 make the output more random, while lower values such
+        as 0.2 make it more focused and deterministic.
+
+    top_p:
+      type: number
+      minimum: 0
+      maximum: 1
+      default: 1
+      description: >
+        An alternative to sampling with temperature, called nucleus sampling.
+
+    n:
+      type: integer
+      minimum: 1
+      maximum: 128
+      default: 1
+      nullable: true
+      example: 1
+      description: >
+        How many chat completion choices to generate for each input message.
+
+    parallel_tool_calls:
+      $ref: "#/components/schemas/ParallelToolCalls"
+
+    stop:
+      oneOf:
+        - type: string
+          nullable: true
+        - type: array
+          minItems: 1
+          maxItems: 4
+          items:
+            type: string
+      description: Up to 4 sequences where the Assistant will stop generating further tokens.
+
+    max_tokens:
+      type: integer
+      default: infinity
+      description: The maximum number of tokens to generate by the Assistant.
+
+    max_prompt_tokens:
+      type: integer
+      default: infinity
+      description: |
+        The maximum number of prompt tokens to handle in a request.
+        The feature is supported only by the model adapters and the Assistant.
+
+    max_completion_tokens:
+      type: integer
+      nullable: true
+      description: |
+        Note the parameter is only supported in OpenAI models.
+
+        An upper bound for the number of tokens that can be generated
+        for a completion, including visible output tokens and reasoning tokens.
+
+    presence_penalty:
+      type: number
+      minimum: -2
+      maximum: 2
+      default: 0
+      description: >
+        A number between -2.0 and 2.0. Positive values impose a penalty
+        on new tokens based on their appearance in the current text.
+
+    frequency_penalty:
+      type: number
+      minimum: -2
+      maximum: 2
+      default: 0
+      description: >
+        A number between -2.0 and 2.0. Positive values apply a penalty
+        to new tokens according to their existing frequency.
+
+    logit_bias:
+      type: object
+      nullable: true
+      default: null
+      description: |
+        Modifies the likelihood of specified tokens appearing in the completion.
+
+        Accepts a JSON object that maps tokens specified by their token ID
+        to an associated bias value from -100 to 100.
+
+    seed:
+      type: integer
+      minimum: -9223372036854775808
+      maximum: 9223372036854775807
+      nullable: true
+      description: |
+        This feature is in Beta.
+
+        If specified, our system will make a best effort to sample deterministically.
+        Determinism is not guaranteed.
+
+    user:
+      type: string
+      description: A unique identifier representing the end-user.
+
+    response_format:
+      description: >
+        An object specifying the format that the model must output.
+      oneOf:
+        - $ref: "#/components/schemas/ResponseFormatText"
+        - $ref: "#/components/schemas/ResponseFormatJsonObject"
+        - $ref: "#/components/schemas/ResponseFormatJsonSchema"
+
+    custom_fields:
+      $ref: "#/components/schemas/ChatCompletionsCustomFields"
+
+required:
+    - messages

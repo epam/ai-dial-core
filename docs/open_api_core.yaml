@@ -35,6 +35,22 @@ info:
     HTTP Authorization Scheme: `bearer`
 
     Bearer format: `JWT`
+
+    # Deployment features
+
+    DIAL Core adds the `X-DIAL-DEPLOYMENT-FEATURES` header to every request it forwards to a deployment, regardless of the API being called.
+
+    <br>
+
+    ```bash
+    X-DIAL-DEPLOYMENT-FEATURES: {"tools":true,"max_tokens_supported":false,"custom_temperature_supported":false,"chat_completion":true,"responses_api":false}
+    ```
+
+    <br>
+
+    The value is a JSON object with the features of the deployment: the flags configured in `features` of the model or application in the DIAL Core config.
+
+    DIAL Core always sets this header itself, so a value sent by a client is overwritten and never reaches the deployment.
   version: 0.0.0
   license:
     name: Apache-2.0
@@ -271,7 +287,8 @@ paths:
                     data:
                     - id: gpt-world
                       application: gpt-world
-                      display_name: GPT World
+                      display_name:
+                        plainValue: GPT World
                       icon_url: https://chat.<company>.com/gpt_world.svg
                       description: "This application producing answer based on the curated set of LLM related publications.\\n\\nThe source of publications is [arxiv.org](https://arxiv.org/). GPT World is classic example of conversational semantic search application.\\nOn every new user question, it performs summarization using GPT-4, calculates embedding using text-embedding-ada-002 model and then it uses chunks of text from curated set.\\n\\nThis is DIAL version of the [original demo](https://deltix.io/interactive-gpt-world-map.html) with [TSNE map](https://en.wikipedia.org/wiki/T-distributed_stochastic_neighbor_embedding)."
                       owner: organization-owner
@@ -340,7 +357,8 @@ paths:
                   value:
                     id: gpt-world
                     application: gpt-world
-                    display_name: GPT World
+                    display_name:
+                      plainValue: GPT World
                     icon_url: https://chat.<company>.com/gpt_world.svg
                     description: "This application producing answer based on the curated set of LLM related publications.\\n\\nThe source of publications is [arxiv.org](https://arxiv.org/). GPT World is classic example of conversational semantic search application.\\nOn every new user question, it performs summarization using GPT-4, calculates embedding using text-embedding-ada-002 model and then it uses chunks of text from curated set.\\n\\nThis is DIAL version of the [original demo](https://deltix.io/interactive-gpt-world-map.html) with [TSNE map](https://en.wikipedia.org/wiki/T-distributed_stochastic_neighbor_embedding)."
                     owner: organization-owner
@@ -404,7 +422,8 @@ paths:
                     data:
                     - id: text-embedding-ada-002
                       model: text-embedding-ada-002
-                      display_name: Embedding Ada
+                      display_name:
+                        plainValue: Embedding Ada
                       icon_url: https://chat.<company>.com/ada.svg
                       description: Symmetrical embedding model.
                       owner: organization-owner
@@ -425,7 +444,8 @@ paths:
                         folder_attachments: false
                     - id: gpt-4
                       model: gpt-4
-                      display_name: GPT 4
+                      display_name:
+                        plainValue: GPT 4
                       icon_url: https://chat.<company>.com/openai.svg
                       description: Chat completion model.
                       owner: organization-owner
@@ -501,7 +521,8 @@ paths:
                   value:
                     id: gpt-4
                     model: gpt-4
-                    display_name: GPT 4
+                    display_name:
+                      plainValue: GPT 4
                     icon_url: https://chat.<company>.com/openai.svg
                     description: Chat completion model.
                     owner: organization-owner
@@ -603,6 +624,24 @@ paths:
         required: false
         schema:
           type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+            examples:
+              Chat Model:
+                value:
+                  messages:
+                  - role: user
+                    content: Hello!
+              Chat Model Streaming:
+                value:
+                  stream: true
+                  messages:
+                  - role: user
+                    content: Hello!
+        required: true
       responses:
         "200":
           description: Success
@@ -610,11 +649,136 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CreateChatCompletionResponse"
+              examples:
+                Chat Model:
+                  value:
+                    id: chatcmpl-8mt8AF8xkczUdRv250bpmU6KqMfAb
+                    choices:
+                    - finish_reason: stop
+                      index: 0
+                      message:
+                        role: assistant
+                        content: "ChatGPT is an advanced conversational AI model built on the GPT-3.5 architecture. It is a Large Language Model (LLM) that can engage in context-aware, human-like interactions. It is a suitable testbed for creativity and has demonstrated remarkable capabilities in understanding and generating human-like text. It heavily relies on in-context examples and has a strong bias toward using or not using certain tools."
+                        refusal: null
+                    created: 1706662358
+                    model: gpt-4
+                    object: chat.completion
+                    usage:
+                      completion_tokens: 9
+                      prompt_tokens: 9
+                      total_tokens: 18
             text/event-stream:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/CreateChatCompletionStreamResponse"
+              examples:
+                Chat Model Streaming:
+                  value:
+                  - id: chatcmpl-8nCUKwNc1iEHEUuOhsU48eODcNWCL
+                    choices:
+                    - delta:
+                        content: ""
+                        role: assistant
+                      finish_reason: null
+                      index: 0
+                    created: 1706736768
+                    model: gpt-4
+                    object: chat.completion.chunk
+                  - id: chatcmpl-8nCUKwNc1iEHEUuOhsU48eODcNWCL
+                    choices:
+                    - delta:
+                        content: Hello
+                      finish_reason: null
+                      index: 0
+                    created: 1706736768
+                    model: gpt-4
+                    object: chat.completion.chunk
+                  - id: chatcmpl-8nCUKwNc1iEHEUuOhsU48eODcNWCL
+                    choices:
+                    - delta:
+                        content: '!'
+                      finish_reason: null
+                      index: 0
+                    created: 1706736768
+                    model: gpt-4
+                    object: chat.completion.chunk
+                  - id: chatcmpl-8nCUKwNc1iEHEUuOhsU48eODcNWCL
+                    choices:
+                    - delta:
+                        content: ' How'
+                      finish_reason: null
+                      index: 0
+                    created: 1706736768
+                    model: gpt-4
+                    object: chat.completion.chunk
+                  - id: chatcmpl-8nCUKwNc1iEHEUuOhsU48eODcNWCL
+                    choices:
+                    - delta:
+                        content: ' can'
+                      finish_reason: null
+                      index: 0
+                    created: 1706736768
+                    model: gpt-4
+                    object: chat.completion.chunk
+                  - id: chatcmpl-8nCUKwNc1iEHEUuOhsU48eODcNWCL
+                    choices:
+                    - delta:
+                        content: ' I'
+                      finish_reason: null
+                      index: 0
+                    created: 1706736768
+                    model: gpt-4
+                    object: chat.completion.chunk
+                  - id: chatcmpl-8nCUKwNc1iEHEUuOhsU48eODcNWCL
+                    choices:
+                    - delta:
+                        content: ' assist'
+                      finish_reason: null
+                      index: 0
+                    created: 1706736768
+                    model: gpt-4
+                    object: chat.completion.chunk
+                  - id: chatcmpl-8nCUKwNc1iEHEUuOhsU48eODcNWCL
+                    choices:
+                    - delta:
+                        content: ' you'
+                      finish_reason: null
+                      index: 0
+                    created: 1706736768
+                    model: gpt-4
+                    object: chat.completion.chunk
+                  - id: chatcmpl-8nCUKwNc1iEHEUuOhsU48eODcNWCL
+                    choices:
+                    - delta:
+                        content: ' today'
+                      finish_reason: null
+                      index: 0
+                    created: 1706736768
+                    model: gpt-4
+                    object: chat.completion.chunk
+                  - id: chatcmpl-8nCUKwNc1iEHEUuOhsU48eODcNWCL
+                    choices:
+                    - delta:
+                        content: '?'
+                      finish_reason: null
+                      index: 0
+                    created: 1706736768
+                    model: gpt-4
+                    object: chat.completion.chunk
+                  - id: chatcmpl-8nCUKwNc1iEHEUuOhsU48eODcNWCL
+                    choices:
+                    - delta:
+                        content: ""
+                      finish_reason: stop
+                      index: 0
+                    created: 1706736768
+                    model: gpt-4
+                    object: chat.completion.chunk
+                    usage:
+                      completion_tokens: 9
+                      prompt_tokens: 9
+                      total_tokens: 18
         "400":
           description: Bad request
           content:
@@ -674,12 +838,56 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ChatCompletionRequest"
-        required: true
+      x-codeSamples:
+      - lang: cURL
+        label: CURL
+        source: |
+          curl https://chat.<company>.com/openai/deployments/gpt-4/chat/completions?api-version=2023-12-01-preview \
+            -H "Content-Type: application/json" \
+            -H "Api-Key: DIAL_API_KEY" \
+            -d '{
+              "messages": [{"role": "user", "content": "Hello!"}]
+            }'
+      - lang: Python
+        label: Python (LangChain 0.1.4)
+        source: |
+          from langchain_openai import AzureChatOpenAI
+          from langchain.schema import HumanMessage
+
+          model = AzureChatOpenAI(
+              openai_api_version="2023-12-01-preview",
+              azure_deployment="gpt-4",
+              azure_endpoint="https://chat.<company>.com",
+              api_key="DIAL_API_KEY"
+          )
+
+          response = model.invoke(
+              [
+                  HumanMessage(
+                      content="Hello!"
+                  )
+              ]
+          )
+      - lang: Python
+        label: Python (OpenAI Library 1.10)
+        source: |
+          from openai import AzureOpenAI
+
+          client = AzureOpenAI(
+              api_version="2023-12-01-preview",
+              azure_endpoint="https://chat.<company>.com",
+              api_key="DIAL_API_KEY"
+          )
+
+          response = client.chat.completions.create(
+              model="gpt-4",
+              messages=[
+                  {
+                      "role": "user",
+                      "content": "Hello!",
+                  }
+              ]
+          )
   /openai/deployments/{deployment_name}/completions:
     post:
       tags:
@@ -818,6 +1026,40 @@ paths:
         required: true
         schema:
           type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbeddingsRequest"
+            examples:
+              Single string input:
+                value:
+                  input: Your text string goes here
+              Many string inputs:
+                value:
+                  input:
+                  - Input 1
+                  - Input 2
+              Image input (DIAL URL):
+                value:
+                  input: []
+                  custom_input:
+                  - type: image/png
+                    url: files/USER_BUCKET/dir1/dir2/image.png
+              Image input (base64):
+                value:
+                  input: []
+                  custom_input:
+                  - type: image/png
+                    data: iVBORw0KGgoAAA...
+              Image input (annotated):
+                value:
+                  input: []
+                  custom_input:
+                  - - Image title
+                    - type: image/png
+                      url: files/USER_BUCKET/dir1/dir2/image.png
       responses:
         "200":
           description: Success
@@ -884,12 +1126,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/EmbeddingsRequest"
-        required: true
+      x-codeSamples:
+      - lang: cURL
+        label: CURL
+        source: |
+          curl https://chat.<company>.com/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-12-01-preview \
+            -H "Content-Type: application/json" \
+            -H "Api-Key: DIAL_API_KEY" \
+            -d '{
+              "input": "Your text string goes here"
+            }'
+      - lang: Python
+        label: Python (LangChain 0.1.4)
+        source: |
+          from langchain_openai import AzureOpenAIEmbeddings
+          from langchain.schema import HumanMessage
+
+          model = AzureOpenAIEmbeddings(
+              openai_api_version="2023-12-01-preview",
+              azure_deployment="text-embedding-ada-002",
+              azure_endpoint="https://chat.<company>.com",
+              api_key="DIAL_API_KEY",
+              # Set the flag to False for models which do not support token ids in inputs
+              check_embedding_ctx_length=False,
+              model_kwargs={},
+          )
+
+          response = model.embed_query("Your text string goes here")
+      - lang: Python
+        label: Python (OpenAI Library 1.10)
+        source: |
+          from openai import AzureOpenAI
+
+          client = AzureOpenAI(
+              api_version="2023-12-01-preview",
+              azure_endpoint="https://chat.<company>.com",
+              api_key="DIAL_API_KEY"
+          )
+
+          response = client.embeddings.create(
+              input="Your text string goes here",
+              model="text-embedding-ada-002"
+          )
   /openai/models:
     get:
       tags:
@@ -911,7 +1189,8 @@ paths:
                     data:
                     - id: text-embedding-ada-002
                       model: text-embedding-ada-002
-                      display_name: Embedding Ada
+                      display_name:
+                        plainValue: Embedding Ada
                       icon_url: https://chat.<company>.com/ada.svg
                       description: Symmetrical embedding model.
                       owner: organization-owner
@@ -930,7 +1209,8 @@ paths:
                         inference: false
                     - id: gpt-4
                       model: gpt-4
-                      display_name: GPT 4
+                      display_name:
+                        plainValue: GPT 4
                       icon_url: https://chat.<company>.com/openai.svg
                       description: Chat completion model.
                       owner: organization-owner
@@ -1002,7 +1282,8 @@ paths:
                   value:
                     id: gpt-4
                     model: gpt-4
-                    display_name: GPT 4
+                    display_name:
+                      plainValue: GPT 4
                     icon_url: https://chat.<company>.com/openai.svg
                     description: Chat completion model.
                     owner: organization-owner
@@ -1073,7 +1354,8 @@ paths:
                     data:
                     - id: toolsets/encrypted-bucket/folder/toolset-name
                       toolset: toolsets/encrypted-bucket/folder/toolset-name
-                      display_name: Toolset display name
+                      display_name:
+                        plainValue: Toolset display name
                       display_version: 0.0.1
                       description: My toolset description
                       icon_url: http://toolset/icon.svg
@@ -1162,7 +1444,8 @@ paths:
                   value:
                     id: toolsets/encrypted-bucket/folder/toolset-name
                     toolset: toolsets/encrypted-bucket/folder/toolset-name
-                    display_name: Toolset display name
+                    display_name:
+                      plainValue: Toolset display name
                     display_version: 0.0.1
                     description: My toolset description
                     icon_url: http://toolset/icon.svg
@@ -3179,19 +3462,19 @@ paths:
         schema:
           type: string
       requestBody:
+        required: true
+        description: |
+          An arbitrary string in JSON format representing the structure of the application.
+
+          **Important**: Applications may or may not include an `application_type_schema_id`, which affects their creation and modification mechanics. If `application_type_schema_id` is absent or `NULL`, `application_properties` are not required. If you provide `application_type_schema_id` but `application_properties` are `NULL`, the application is a "stub" and can be updated later, but completion requests will not be possible. When you supply `application_properties`, they must be a valid JSON object that conforms to the schema specified by `application_type_schema_id`. An invalid JSON object will result in a bad request status.
+
+          If you do not provide `application_type_schema_id`, refer to [DIAL Core](https://github.com/epam/ai-dial-core/blob/development/docs/dynamic-settings/applications.md) documentation to learn about available properties of applications you can pass in the JSON object describing the structure of the application.
+
+          **Note**: When `applicationTypeSchemaId` and `applicationProperties` are specified, parameters defined in the corresponding JSON schema will take precedence and will override the corresponding parameters specified in the `application` object.
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/Application"
-              description: |
-                An arbitrary string in JSON format representing the structure of the application.
-
-                **Important**: Applications may or may not include an `application_type_schema_id`, which affects their creation and modification mechanics. If `application_type_schema_id` is absent or `NULL`, `application_properties` are not required. If you provide `application_type_schema_id` but `application_properties` are `NULL`, the application is a "stub" and can be updated later, but completion requests will not be possible. When you supply `application_properties`, they must be a valid JSON object that conforms to the schema specified by `application_type_schema_id`. An invalid JSON object will result in a bad request status.
-
-                If you do not provide `application_type_schema_id`, refer to [DIAL Core](https://github.com/epam/ai-dial-core/blob/development/docs/dynamic-settings/applications.md) documentation to learn about available properties of applications you can pass in the JSON object describing the structure of the application.
-
-                **Note**: When `applicationTypeSchemaId` and `applicationProperties` are specified, parameters defined in the corresponding JSON schema will take precedence and will override the corresponding parameters specified in the `application` object.
-        required: true
       responses:
         "200":
           description: Success
@@ -3199,6 +3482,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ResourceItemMetadata"
+              examples:
+                Example:
+                  value:
+                    name: application_name
+                    author: application_creator_name
+                    parentPath: folder1/folder2
+                    bucket: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST
+                    url: applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/application_name
+                    nodeType: ITEM
+                    resourceType: APPLICATION
+                    createdAt: 1707871723597
+                    updatedAt: 1707876304850
           headers:
             ETag:
               description: Entity tag for the saved application
@@ -4128,7 +4423,8 @@ paths:
                     model: text-embedding-ada-002
                     interfaces:
                     - embedding
-                    display_name: Embedding Ada
+                    display_name:
+                      plainValue: Embedding Ada
                     icon_url: https://chat.<company>.com/ada.svg
                     description: Symmetrical embedding model.
                     owner: organization-owner
@@ -4150,7 +4446,8 @@ paths:
                     interfaces:
                     - chat
                     - custom_ui
-                    display_name: GPT World
+                    display_name:
+                      plainValue: GPT World
                     icon_url: https://chat.<company>.com/gpt_world.svg
                     description: "This application producing answer based on the curated set of LLM related publications.\\n\\nThe source of publications is [arxiv.org](https://arxiv.org/). GPT World is classic example of conversational semantic search application.\\nOn every new user question, it performs summarization using GPT-4, calculates embedding using text-embedding-ada-002 model and then it uses chunks of text from curated set.\\n\\nThis is DIAL version of the [original demo](https://deltix.io/interactive-gpt-world-map.html) with [TSNE map](https://en.wikipedia.org/wiki/T-distributed_stochastic_neighbor_embedding)."
                     owner: organization-owner
@@ -4162,7 +4459,8 @@ paths:
                     toolset: toolsets/encrypted-bucket/folder/toolset-name
                     interfaces:
                     - mcp
-                    display_name: Toolset display name
+                    display_name:
+                      plainValue: Toolset display name
                     display_version: 0.0.1
                     description: My toolset description
                     icon_url: http://toolset/icon.svg
@@ -4378,11 +4676,11 @@ paths:
           type: string
       requestBody:
         required: true
+        description: "A JSON object satisfying [mcp specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-06-18/schema.json).       \n"
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/ProxyRequest"
-              description: "A JSON object satisfying [mcp specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-06-18/schema.json).       \n"
       responses:
         "200":
           description: Success
@@ -4390,7 +4688,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProxyResponse"
-                description: "A JSON object satisfying [mcp specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-06-18/schema.json)."
         "400":
           description: Bad request
           content:
@@ -5538,6 +5835,10 @@ paths:
       - Applications
       summary: "/v1/metadata/applications/platform/{path}"
       operationId: getPlatformApplicationMetadata
+      description: |
+        Call this endpoint to get metadata for a folder or an item.
+        If the path is a folder, it must end with a "/".
+        If it is called for a folder, there can be optional `nextToken` field in the response to be used to request next items if present.
       parameters:
       - name: path
         in: path
@@ -5570,6 +5871,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MetadataBase"
+              examples:
+                Folder:
+                  value:
+                    name: folder2
+                    parentPath: folder1
+                    bucket: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST
+                    url: applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/
+                    nodeType: FOLDER
+                    resourceType: APPLICATION
+                    permissions:
+                    - READ
+                    - WRITE
+                    items:
+                    - name: application_name
+                      parentPath: folder1/folder2
+                      bucket: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST
+                      url: applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/application_name
+                      nodeType: ITEM
+                      resourceType: APPLICATION
+                      updatedAt: 1707876435000
+                      permissions:
+                      - READ
+                      - WRITE
+                Application:
+                  value:
+                    name: application_name
+                    author: the name of the app creator
+                    parentPath: folder1/folder2
+                    bucket: 3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST
+                    url: applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/folder1/folder2/application_name
+                    nodeType: ITEM
+                    resourceType: APPLICATION
+                    etag: 7dfb93c3c62b88e9a75ff36a6af6c7eb
+                    updatedAt: 1707876435000
+                    createdAt: 1707876435000
+                    permissions:
+                    - READ
+                    - WRITE
         "400":
           description: Bad request
           content:
@@ -6988,11 +7327,15 @@ paths:
       description: Call this endpoint to deploy an application.
       operationId: deployApplication
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/ResourceLink"
-        required: true
+            examples:
+              ExampleUser:
+                value:
+                  url: applications/3CcedGxCx23EwiVbV/
       responses:
         "200":
           description: Success
@@ -7037,11 +7380,15 @@ paths:
       summary: /v1/ops/application/logs
       operationId: getApplicationLogs
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/ResourceLink"
-        required: true
+            examples:
+              ExampleUser:
+                value:
+                  url: applications/3CcedGxCx23EwiVbV/
       responses:
         "200":
           description: Success
@@ -7049,6 +7396,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApplicationLogs"
+              examples:
+                ApplicationLogs:
+                  value:
+                    logs:
+                    - instance: instance-name
+                      content: application instance logs will be printed here
         "400":
           description: Bad request
           content:
@@ -7086,6 +7439,7 @@ paths:
       summary: /v1/ops/application/redeploy
       operationId: redeployApplication
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -7094,7 +7448,6 @@ paths:
               ExampleUser:
                 value:
                   url: applications/3CcedGxCx23EwiVbV/
-        required: true
       responses:
         "200":
           description: Success
@@ -7140,11 +7493,15 @@ paths:
       description: "Call this endpoint to undeploy an application. After undeploying, the application will no longer be accessible until it is [deployed](#tag/Applications/operation/deployApplication) again. Use [redeploy](#tag/Applications/operation/redeployApplication) to apply changes without downtime."
       operationId: undeployApplication
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/ResourceLink"
-        required: true
+            examples:
+              ExampleUser:
+                value:
+                  url: applications/3CcedGxCx23EwiVbV/
       responses:
         "200":
           description: Success
@@ -11505,7 +11862,8 @@ paths:
                     interceptors: []
                     iconUrl: http://toolset/icon.svg
                     description: My toolset description
-                    displayName: My Toolset
+                    displayName:
+                      plainValue: My Toolset
                     userRoles:
                     - admin
                     descriptionKeywords:
@@ -11541,7 +11899,8 @@ paths:
                     interceptors: []
                     iconUrl: http://toolset/icon.svg
                     description: My toolset description
-                    displayName: My Toolset
+                    displayName:
+                      plainValue: My Toolset
                     userRoles:
                     - admin
                     descriptionKeywords:
@@ -11571,7 +11930,8 @@ paths:
                     interceptors: []
                     iconUrl: http://toolset/icon.svg
                     description: My toolset description
-                    displayName: My Toolset
+                    displayName:
+                      plainValue: My Toolset
                     userRoles:
                     - admin
                     descriptionKeywords:
@@ -11684,7 +12044,8 @@ paths:
                   endpoint: http://toolset/v1/mcp
                   iconUrl: http://toolset/icon.svg
                   description: My toolset description
-                  displayName: My Toolset
+                  displayName:
+                    plainValue: My Toolset
                   displayVersion: 1.1.0
                   forwardPerRequestKey: true
                   transport: HTTP
@@ -11706,7 +12067,8 @@ paths:
                   endpoint: http://toolset/v1/mcp
                   iconUrl: http://toolset/icon.svg
                   description: My toolset description
-                  displayName: My Toolset
+                  displayName:
+                    plainValue: My Toolset
                   displayVersion: 1.1.0
                   forwardPerRequestKey: true
                   transport: HTTP
@@ -11721,7 +12083,8 @@ paths:
                   endpoint: http://toolset/v1/mcp
                   iconUrl: http://toolset/icon.svg
                   description: My toolset description
-                  displayName: My Toolset
+                  displayName:
+                    plainValue: My Toolset
                   displayVersion: 1.1.0
                   forwardPerRequestKey: true
                   transport: HTTP
@@ -11736,7 +12099,8 @@ paths:
                   endpoint: http://toolset/v1/mcp
                   iconUrl: http://toolset/icon.svg
                   description: My toolset description
-                  displayName: My Toolset
+                  displayName:
+                    plainValue: My Toolset
                   displayVersion: 1.1.0
                   forwardPerRequestKey: true
                   transport: HTTP
@@ -12010,6 +12374,17 @@ paths:
         required: true
         schema:
           type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RateRequest"
+            examples:
+              Example:
+                value:
+                  rate: true
+                  responseId: chatcmpl-8mixpbdJ9S5Y3w8hRBVpPmFgNk0Li
       responses:
         "200":
           description: Success
@@ -12055,12 +12430,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RateRequest"
-        required: true
+      x-codeSamples:
+      - lang: cURL
+        label: CURL
+        source: |
+          curl -X POST https://chat.<company>.com/v1/gpt-4/rate \
+            -H "Content-Type: application/json" \
+            -H "Api-Key: DIAL_API_KEY" \
+            -d '{
+              "rate": true,
+              "responseId": "chatcmpl-8mixpbdJ9S5Y3w8hRBVpPmFgNk0Li"
   /v2/metadata/skills/{bucket}/{path}:
     get:
       tags:
@@ -13061,28 +13440,6 @@ components:
       enum:
       - HEADER
       - META
-    Attachment:
-      type: object
-      properties:
-        type:
-          type: string
-          default: text/markdown
-        title:
-          type: string
-        data:
-          type: string
-        url:
-          type: string
-        reference_type:
-          type: string
-        reference_url:
-          type: string
-      additionalProperties: true
-      oneOf:
-      - required:
-        - data
-      - required:
-        - url
     AuthenticationType:
       type: string
       enum:
@@ -13090,26 +13447,6 @@ components:
       - API_KEY
       - NONE
       - DIAL_NATIVE
-    AzureEmbeddingsRequest:
-      required:
-      - input
-      type: object
-      properties:
-        model:
-          type: string
-        input:
-          oneOf:
-          - type: string
-          - type: array
-        encoding_format:
-          type: string
-          enum:
-          - float
-          - base64
-        dimensions:
-          type: integer
-        user:
-          type: string
     Bucket:
       type: object
       properties:
@@ -13122,7 +13459,8 @@ components:
       properties:
         expire_at:
           type: string
-      additionalProperties: true
+          description: "An optional expiration time for the given cache breakpoint, e.g. '2025-10-02T15:01:23Z'"
+      description: "A manual cache breakpoint. The part of the chat completion request up to this breakpoint will be cached by the deployment. Follow-up requests sharing the same prefix have a chance of hitting the cache and reusing the input tokens associated with this prefix. The field only makes sense for the deployments that support [prompt caching](https://docs.dialx.ai/tutorials/developers/prompt-caching)."
     CapabilitiesData:
       type: object
       properties:
@@ -13140,37 +13478,132 @@ components:
           type: array
           items:
             type: string
-    ChatCompletionChoice:
+    ChatCompletionAddon:
+      oneOf:
+      - type: object
+        properties:
+          name:
+            type: string
+            description: The name of an addon defined in the DIAL Core config.
+      - type: object
+        properties:
+          url:
+            type: string
+            description: |
+              The URL pointing to an OpenAI Plugin Schema.
+              <br><br>
+              See for example the [to-do plugin](https://github.com/openai/plugins-quickstart/blob/main/.well-known/ai-plugin.json).
+    ChatCompletionFunction:
+      required:
+      - name
+      type: object
+      properties:
+        description:
+          type: string
+          description: "A description of what the function does, used by the model to choose when and how to call the function."
+        name:
+          type: string
+          description: "The name of the function to be called. Must be a-z, A-Z, 0-9, or contain underscores and dashes, with a maximum length of 64."
+        parameters:
+          $ref: "#/components/schemas/FunctionParameters"
+      deprecated: true
+    ChatCompletionFunctionCall:
+      required:
+      - arguments
+      - name
+      type: object
+      properties:
+        name:
+          type: string
+          description: The name of the `function` to call.
+        arguments:
+          type: string
+          description: "The arguments to call the `function` with, as generated by the model in JSON format. Note that the model does not always generate valid JSON, and may hallucinate parameters not defined by your `function` schema. Validate the arguments in your code before calling your `function`."
+      description: "Deprecated and replaced by `tool_calls`. The name and arguments of a `function` that should be called, as generated by the model."
+    ChatCompletionFunctionCallOption:
+      required:
+      - name
+      type: object
+      properties:
+        name:
+          type: string
+          description: The name of the function to call.
+      description: |
+        Specifying a particular function via `{"name": "my_function"}` forces the model to call that function.
+    ChatCompletionMessageToolCall:
+      required:
+      - function
+      - id
+      - type
+      type: object
+      properties:
+        id:
+          type: string
+          description: The ID of the `tool` call.
+        type:
+          $ref: "#/components/schemas/ToolCallType"
+        function:
+          required:
+          - arguments
+          - name
+          type: object
+          properties:
+            name:
+              type: string
+              description: The name of the `function` to call.
+            arguments:
+              type: string
+              description: "The arguments to call the `function` with, as generated by the model in JSON format. Note that the model does not always generate a valid JSON, and may hallucinate parameters not defined by your `function` schema. Validate the arguments in your code before calling your `function`."
+          description: The `function` that the model called.
+    ChatCompletionMessageToolCallChunk:
       required:
       - index
-      - message
       type: object
       properties:
         index:
           type: integer
-        message:
-          $ref: "#/components/schemas/ChatCompletionMessage"
-        finish_reason:
+        id:
           type: string
-          nullable: true
-    ChatCompletionMessage:
+          description: The ID of the tool call.
+        type:
+          type: string
+          description: "The type of the tool. Currently, only `function` is supported."
+          enum:
+          - function
+        function:
+          type: object
+          properties:
+            name:
+              type: string
+              description: The name of the function to call.
+            arguments:
+              type: string
+              description: "The arguments to call the function with, as generated by the model in JSON format. Note that the model does not always generate valid JSON, and may hallucinate parameters not defined by your function schema. Validate the arguments in your code before calling your function."
+    ChatCompletionMessageToolCalls:
+      type: array
+      description: "The `tool` calls generated by the model, such as `function` calls."
+      items:
+        $ref: "#/components/schemas/ChatCompletionMessageToolCall"
+    ChatCompletionNamedToolChoice:
       required:
-      - role
+      - function
+      - type
       type: object
       properties:
-        role:
+        type:
           type: string
+          description: "The type of the `tool`. Currently, only `function` is supported."
           enum:
-          - system
-          - user
-          - assistant
-          - tool
-        content:
-          nullable: true
-          type: string
-        refusal:
-          type: string
-          nullable: true
+          - function
+        function:
+          required:
+          - name
+          type: object
+          properties:
+            name:
+              type: string
+              description: The name of the `function` to call.
+      description: Specifies a `tool` the model should use. Use to force the model to call a specific `function`.
     ChatCompletionRequest:
       required:
       - messages
@@ -13178,115 +13611,732 @@ components:
       properties:
         model:
           type: string
+          description: The name of the model to use.
         messages:
+          minItems: 1
           type: array
+          description: A list of messages comprising the conversation so far.
           items:
-            $ref: "#/components/schemas/Message"
+            $ref: "#/components/schemas/ChatCompletionRequestMessage"
         functions:
+          maxItems: 128
+          minItems: 1
           type: array
+          description: |
+            Deprecated in favor of `tools`.
+
+            A list of functions the model may generate JSON inputs for.
+          deprecated: true
           items:
-            $ref: "#/components/schemas/Function"
+            $ref: "#/components/schemas/ChatCompletionFunction"
         function_call:
+          description: |
+            Deprecated in favor of `tool_choice`.
+
+            Controls which (if any) `function` is called by the model.
+          deprecated: true
           oneOf:
           - type: string
+            description: |
+              `none` means the model will not call a function and instead
+              generates a message.
+
+              `auto` means the model can pick between generating a message
+              or calling a function.
             enum:
-            - auto
             - none
-          - $ref: "#/components/schemas/FunctionChoice"
+            - auto
+          - $ref: "#/components/schemas/ChatCompletionFunctionCallOption"
         tools:
           type: array
+          description: |
+            A list of tools the model may call. Currently, only `functions`
+            are supported as a tool. Use this to provide a list of `functions`
+            the model may generate JSON inputs for. A max of 128 functions
+            are supported.
           items:
-            oneOf:
-            - $ref: "#/components/schemas/Tool"
-            - $ref: "#/components/schemas/StaticTool"
+            $ref: "#/components/schemas/ChatCompletionTool"
         tool_choice:
-          oneOf:
-          - type: string
-            enum:
-            - auto
-            - none
-            - required
-          - $ref: "#/components/schemas/ToolChoice"
+          $ref: "#/components/schemas/ChatCompletionToolChoiceOption"
+        addons:
+          type: array
+          description: A list of Addons the Assistant can use.
+          deprecated: true
+          items:
+            $ref: "#/components/schemas/ChatCompletionAddon"
         stream:
           type: boolean
+          description: |
+            If set, partial message deltas will be sent. Tokens will be sent as data-only server-sent events as they become available.
+          nullable: true
           default: false
-        stream_options:
-          $ref: "#/components/schemas/StreamOptions"
         temperature:
           maximum: 2
           minimum: 0
           type: number
+          description: |
+            What sampling temperature to use, between 0 and 2. Higher values such as 0.8 make the output more random, while lower values such as 0.2 make it more focused and deterministic.
+          default: 1
         top_p:
           maximum: 1
           minimum: 0
           type: number
+          description: |
+            An alternative to sampling with temperature, called nucleus sampling.
+          default: 1
         "n":
           maximum: 128
           minimum: 1
           type: integer
+          description: |
+            How many chat completion choices to generate for each input message.
+          nullable: true
+          default: 1
+        parallel_tool_calls:
+          $ref: "#/components/schemas/ParallelToolCalls"
         stop:
+          description: Up to 4 sequences where the Assistant will stop generating further tokens.
           oneOf:
           - type: string
+            nullable: true
           - maxItems: 4
+            minItems: 1
             type: array
             items:
               type: string
         max_tokens:
-          minimum: 1
           type: integer
+          description: The maximum number of tokens to generate by the Assistant.
+          default: infinity
+        max_prompt_tokens:
+          type: integer
+          description: |
+            The maximum number of prompt tokens to handle in a request.
+            The feature is supported only by the model adapters and the Assistant.
+          default: infinity
         max_completion_tokens:
-          minimum: 1
           type: integer
+          description: |
+            Note the parameter is only supported in OpenAI models.
+
+            An upper bound for the number of tokens that can be generated
+            for a completion, including visible output tokens and reasoning tokens.
+          nullable: true
         presence_penalty:
           maximum: 2
           minimum: -2
           type: number
+          description: |
+            A number between -2.0 and 2.0. Positive values impose a penalty on new tokens based on their appearance in the current text.
+          default: 0
         frequency_penalty:
           maximum: 2
           minimum: -2
           type: number
+          description: |
+            A number between -2.0 and 2.0. Positive values apply a penalty to new tokens according to their existing frequency.
+          default: 0
         logit_bias:
           type: object
-          additionalProperties:
-            type: number
+          description: |
+            Modifies the likelihood of specified tokens appearing in the completion.
+
+            Accepts a JSON object that maps tokens specified by their token ID
+            to an associated bias value from -100 to 100.
+          nullable: true
+          default: "null"
+        seed:
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          type: integer
+          description: |
+            This feature is in Beta.
+
+            If specified, our system will make a best effort to sample deterministically.
+            Determinism is not guaranteed.
+          nullable: true
         user:
           type: string
-        seed:
-          type: integer
-        logprobs:
-          type: boolean
-        top_logprobs:
-          type: integer
-        reasoning_effort:
-          type: string
-          enum:
-          - none
-          - minimal
-          - low
-          - medium
-          - high
+          description: A unique identifier representing the end-user.
         response_format:
+          description: |
+            An object specifying the format that the model must output.
           oneOf:
           - $ref: "#/components/schemas/ResponseFormatText"
           - $ref: "#/components/schemas/ResponseFormatJsonObject"
           - $ref: "#/components/schemas/ResponseFormatJsonSchema"
-        parallel_tool_calls:
-          type: boolean
-        max_prompt_tokens:
-          minimum: 1
-          type: integer
+        custom_fields:
+          $ref: "#/components/schemas/ChatCompletionsCustomFields"
+    ChatCompletionRequestAssistantMessage:
+      title: Assistant message
+      required:
+      - role
+      type: object
+      properties:
+        content:
+          description: |
+            The contents of the assistant message. Required unless `tool_calls` or `function_call` is specified.
+          nullable: true
+          oneOf:
+          - title: Text content
+            type: string
+            description: The contents of the assistant message.
+          - title: Array of content parts
+            minItems: 1
+            type: array
+            description: "An array of content parts with a defined type. Can be one or more of type `text`, or exactly one of type `refusal`."
+            items:
+              $ref: "#/components/schemas/ChatCompletionRequestAssistantMessageContentPart"
+          type: string
+        custom_content:
+          $ref: "#/components/schemas/ChatCompletionRequestAssistantMessageCustomContent"
         custom_fields:
           $ref: "#/components/schemas/ChatCompletionRequestCustomFields"
-      additionalProperties: true
+        refusal:
+          type: string
+          description: The refusal message by the assistant.
+          nullable: true
+        role:
+          type: string
+          description: "The role of the messages author, in this case `assistant`."
+          enum:
+          - assistant
+        name:
+          type: string
+          description: An optional name for the participant. Provides the model information to differentiate between participants of the same role.
+        tool_calls:
+          $ref: "#/components/schemas/ChatCompletionMessageToolCalls"
+        function_call:
+          required:
+          - arguments
+          - name
+          type: object
+          properties:
+            arguments:
+              type: string
+              description: "The arguments to call the function with, as generated by the model in JSON format. Note that the model does not always generate valid JSON, and may hallucinate parameters not defined by your function schema. Validate the arguments in your code before calling your function."
+            name:
+              type: string
+              description: The name of the function to call.
+          description: "Deprecated and replaced by `tool_calls`. The name and arguments of a function that should be called, as generated by the model."
+          nullable: true
+          deprecated: true
+    ChatCompletionRequestAssistantMessageContentPart:
+      oneOf:
+      - $ref: "#/components/schemas/ChatCompletionRequestMessageContentPartText"
+      - $ref: "#/components/schemas/ChatCompletionRequestMessageContentPartRefusal"
+    ChatCompletionRequestAssistantMessageCustomContent:
+      type: object
+      properties:
+        state:
+          type: object
+          description: The internal state of the Assistant. This field can have an arbitrary set of fields with an arbitrary structure.
+        attachments:
+          type: array
+          description: List of attachments used to supply an additional output from the model.
+          items:
+            $ref: "#/components/schemas/RequestAttachment"
+        form_schema:
+          type: object
+          description: |-
+            The JSON schema describing a form that the assistant prompts the user to fill in.
+            Given this schema, the user is expected to provide a JSON value in the next message in the `custom_content.form_value` field.
+      description: The custom content of the assistant message.
     ChatCompletionRequestCustomFields:
+      type: object
+      properties:
+        cache_breakpoint:
+          $ref: "#/components/schemas/CacheBreakpoint"
+      description: DIAL-specific extensions of the Chat Completions message.
+    ChatCompletionRequestDeveloperMessage:
+      title: Developer message
+      required:
+      - content
+      - role
+      type: object
+      properties:
+        content:
+          description: The contents of the developer message.
+          oneOf:
+          - title: Text content
+            type: string
+            description: The contents of the developer message.
+          - title: Array of content parts
+            minItems: 1
+            type: array
+            description: "An array of content parts with a defined type. For developer messages, only type `text` is supported."
+            items:
+              $ref: "#/components/schemas/ChatCompletionRequestDeveloperMessageContentPart"
+        custom_fields:
+          $ref: "#/components/schemas/ChatCompletionRequestCustomFields"
+        role:
+          type: string
+          description: "The role of the messages author, in this case `developer`."
+          enum:
+          - developer
+        name:
+          type: string
+          description: An optional name for the participant. Provides the model information to differentiate between participants of the same role.
+      description: |
+        Developer-provided instructions that the model should follow, regardless of messages sent by the user. With o1 models and newer, `developer` messages replace the previous `system` messages.
+    ChatCompletionRequestDeveloperMessageContentPart:
+      oneOf:
+      - $ref: "#/components/schemas/ChatCompletionRequestMessageContentPartText"
+    ChatCompletionRequestFunctionMessage:
+      title: Function message
+      required:
+      - content
+      - name
+      - role
+      type: object
+      properties:
+        role:
+          type: string
+          description: "The role of the messages author, in this case `function`."
+          enum:
+          - function
+        content:
+          description: The contents of the function message.
+          nullable: true
+          type: string
+        custom_fields:
+          $ref: "#/components/schemas/ChatCompletionRequestCustomFields"
+        name:
+          type: string
+          description: The name of the function to call.
+      deprecated: true
+    ChatCompletionRequestMessage:
+      oneOf:
+      - $ref: "#/components/schemas/ChatCompletionRequestDeveloperMessage"
+      - $ref: "#/components/schemas/ChatCompletionRequestSystemMessage"
+      - $ref: "#/components/schemas/ChatCompletionRequestAssistantMessage"
+      - $ref: "#/components/schemas/ChatCompletionRequestToolMessage"
+      - $ref: "#/components/schemas/ChatCompletionRequestFunctionMessage"
+      - $ref: "#/components/schemas/ChatCompletionRequestUserMessage"
+    ChatCompletionRequestMessageContentPartImage:
+      title: Image content part
+      required:
+      - image_url
+      - type
+      type: object
+      properties:
+        type:
+          type: string
+          description: The type of the content part.
+          enum:
+          - image_url
+        image_url:
+          required:
+          - url
+          type: object
+          properties:
+            url:
+              type: string
+              description: Either a URL of the image or the base64 encoded image data.
+              format: uri
+            detail:
+              type: string
+              description: "Specifies the detail level of the image. Learn more in the [Vision guide](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/gpt-with-vision?tabs=rest%2Csystem-assigned%2Cresource#detail-parameter-settings-in-image-processing-low-high-auto)."
+              enum:
+              - auto
+              - low
+              - high
+              default: auto
+    ChatCompletionRequestMessageContentPartRefusal:
+      title: Refusal content part
+      required:
+      - refusal
+      - type
+      type: object
+      properties:
+        type:
+          type: string
+          description: The type of the content part.
+          enum:
+          - refusal
+        refusal:
+          type: string
+          description: The refusal message generated by the model.
+    ChatCompletionRequestMessageContentPartText:
+      title: Text content part
+      required:
+      - text
+      - type
+      type: object
+      properties:
+        type:
+          type: string
+          description: The type of the content part.
+          enum:
+          - text
+        text:
+          type: string
+          description: The text content.
+    ChatCompletionRequestSystemMessage:
+      title: System message
+      required:
+      - content
+      - role
+      type: object
+      properties:
+        content:
+          description: The contents of the system message.
+          oneOf:
+          - title: Text content
+            type: string
+            description: The contents of the system message.
+          - title: Array of content parts
+            minItems: 1
+            type: array
+            description: "An array of content parts with a defined type. For system messages, only type `text` is supported."
+            items:
+              $ref: "#/components/schemas/ChatCompletionRequestSystemMessageContentPart"
+        custom_fields:
+          $ref: "#/components/schemas/ChatCompletionRequestCustomFields"
+        role:
+          type: string
+          description: "The role of the messages author, in this case `system`."
+          enum:
+          - system
+        name:
+          type: string
+          description: An optional name for the participant. Provides the model information to differentiate between participants of the same role.
+    ChatCompletionRequestSystemMessageContentPart:
+      oneOf:
+      - $ref: "#/components/schemas/ChatCompletionRequestMessageContentPartText"
+    ChatCompletionRequestToolMessage:
+      title: Tool message
+      required:
+      - content
+      - role
+      - tool_call_id
+      type: object
+      properties:
+        role:
+          type: string
+          description: "The role of the messages author, in this case `tool`."
+          enum:
+          - tool
+        content:
+          description: The contents of the tool message.
+          oneOf:
+          - title: Text content
+            type: string
+            description: The contents of the tool message.
+          - title: Array of content parts
+            minItems: 1
+            type: array
+            description: "An array of content parts with a defined type. For tool messages, only type `text` is supported."
+            items:
+              $ref: "#/components/schemas/ChatCompletionRequestToolMessageContentPart"
+        custom_fields:
+          $ref: "#/components/schemas/ChatCompletionRequestCustomFields"
+        tool_call_id:
+          type: string
+          description: Tool call that this message is responding to.
+    ChatCompletionRequestToolMessageContentPart:
+      oneOf:
+      - $ref: "#/components/schemas/ChatCompletionRequestMessageContentPartText"
+    ChatCompletionRequestUserMessage:
+      title: User message
+      required:
+      - content
+      - role
+      type: object
+      properties:
+        content:
+          description: |
+            The contents of the user message.
+          oneOf:
+          - title: Text content
+            type: string
+            description: The text contents of the message.
+          - title: Array of content parts
+            minItems: 1
+            type: array
+            description: "An array of content parts with a defined type, each can be of type `text` or `image_url` when passing in images. You can pass multiple images by adding multiple `image_url` content parts. Image input is only supported when using the `gpt-4o` model."
+            items:
+              $ref: "#/components/schemas/ChatCompletionRequestUserMessageContentPart"
+        custom_content:
+          $ref: "#/components/schemas/ChatCompletionRequestUserMessageCustomContent"
+        custom_fields:
+          $ref: "#/components/schemas/ChatCompletionRequestCustomFields"
+        role:
+          type: string
+          description: "The role of the messages author, in this case `user`."
+          enum:
+          - user
+        name:
+          type: string
+          description: An optional name for the participant. Provides the model information to differentiate between participants of the same role.
+    ChatCompletionRequestUserMessageContentPart:
+      oneOf:
+      - $ref: "#/components/schemas/ChatCompletionRequestMessageContentPartText"
+      - $ref: "#/components/schemas/ChatCompletionRequestMessageContentPartImage"
+    ChatCompletionRequestUserMessageCustomContent:
+      type: object
+      properties:
+        attachments:
+          type: array
+          description: List of attachments used to supply an additional input for the model.
+          items:
+            $ref: "#/components/schemas/RequestAttachment"
+        form_value:
+          type: object
+          description: The JSON value corresponding to the JSON schema sent by the assistant in the previous message in the `custom_content.form_schema` field.
+      description: The custom content of the user message.
+    ChatCompletionResponseAttachment:
+      required:
+      - index
+      type: object
+      properties:
+        index:
+          type: integer
+          description: |-
+            In *streaming* chat completion responses, each attachment includes an `index` field
+            indicating its position in the final ordered list. This field is required because
+            attachments may arrive out of order, and the client must reconstruct the correct
+            sequence using `index`.
+            <br><br>
+            In *non-streaming* responses, the `index` field is omitted because an attachment's
+            position is already determined by its place in the returned list.
+        type:
+          type: string
+          description: The content type of the attachment. Should be one of the MIME types.
+          default: text/markdown
+        title:
+          type: string
+          description: The title of the attachment.
+        data:
+          type: string
+          description: |-
+            Should follow the format described in the MIME standard for `type`.
+
+            It is <span style="color: #f604fe;">mandatory</span> for the attachment to have one of the following fields (never both): `data` or `url`.
+        url:
+          type: string
+          description: |-
+            The content of `url` should follow the format described in the MIME standard for `type`.
+
+            It is <span style="color: #f604fe;">mandatory</span> for the attachment to have one of the following fields (never both): `data` or `url`.
+        reference_type:
+          type: string
+          description: The content type of `reference_url`. Should be one of the MIME types.
+        reference_url:
+          type: string
+          description: "If `reference_type` is specified, the content of `reference_url` should follow the format described in the MIME standard for `reference_type`."
+    ChatCompletionResponseCustomContent:
+      type: object
+      properties:
+        attachments:
+          type: array
+          description: List of attachments.
+          items:
+            $ref: "#/components/schemas/ChatCompletionResponseAttachment"
+        stages:
+          type: array
+          description: The intermediate stages that the Assistant went through to generate the response.
+          readOnly: true
+          items:
+            $ref: "#/components/schemas/ChatCompletionResponseStage"
+        state:
+          type: object
+          description: "The internal state of the Assistant. This field can have an arbitrary set of fields with an arbitrary structure. In case of a streaming, the state is published fully in one chunk."
+      description: The custom content of a message.
+    ChatCompletionResponseMessage:
+      required:
+      - content
+      - refusal
+      - role
+      type: object
+      properties:
+        role:
+          type: string
+          description: The role of the author of the response message.
+          enum:
+          - assistant
+        refusal:
+          type: string
+          description: The refusal message generated by the model.
+          nullable: true
+        content:
+          description: "The contents of the message. `content` is set for all messages except messages with tool calls, function calls and refusals."
+          nullable: true
+          type: string
+        custom_content:
+          $ref: "#/components/schemas/ChatCompletionResponseCustomContent"
+        tool_calls:
+          type: array
+          description: "The tool calls generated by the model, such as function calls."
+          items:
+            $ref: "#/components/schemas/ChatCompletionMessageToolCall"
+        function_call:
+          $ref: "#/components/schemas/ChatCompletionFunctionCall"
+      description: The Assistant message.
+    ChatCompletionResponseStage:
+      required:
+      - index
+      - name
+      - status
+      type: object
+      properties:
+        index:
+          type: integer
+          description: |-
+            In *streaming* chat completion responses, each stage includes an `index` field
+            indicating its position in the final ordered list. This field is required because
+            stages may arrive out of order, and the client must reconstruct the correct
+            sequence using `index`.
+            <br><br>
+            In *non-streaming* responses, the `index` field is omitted because a stage's
+            position is already determined by its place in the returned list.
+        name:
+          type: string
+          description: The name of the stage.
+        content:
+          description: The contents of the stage.
+          type: string
+        attachments:
+          type: array
+          description: List of attachments to the stage.
+          items:
+            $ref: "#/components/schemas/ChatCompletionResponseAttachment"
+        status:
+          type: string
+          description: |-
+            The execution status of the stage. Available status values:
+
+            * `null`: The stage is in progress.
+            * `completed`: The stage is completed.
+            * `failed`: The stage is failed.
+          nullable: true
+    ChatCompletionResponseStatistics:
+      type: object
+      properties:
+        usage_per_model:
+          type: array
+          description: "Statistics of tokens used in models by the Assistant. In case of streaming, the statistics is published fully in one chunk."
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+                description: |-
+                  In *streaming* chat completion responses, each model usage includes an `index` field
+                  indicating its position in the final ordered list. This field is required because
+                  model usages may arrive out of order, and the client must reconstruct the correct
+                  sequence using `index`.
+                  <br><br>
+                  In *non-streaming* responses, the `index` field is omitted because the position of a model usage is already determined by its place in the returned list.
+              model:
+                type: string
+                description: The model name.
+              prompt_tokens:
+                type: integer
+                description: The number of tokens in the request to the model.
+              completion_tokens:
+                type: integer
+                description: The number of tokens in the response from the model.
+              total_tokens:
+                type: integer
+                description: The sum of prompt and completion tokens.
+        discarded_messages:
+          type: array
+          description: |
+            The list of indices of messages that were discarded by the Assistant.
+
+            Returned only when `max_prompt_tokens` was set in the request.
+          items:
+            type: integer
+      description: The Assistant work statistics.
+    ChatCompletionStreamResponseDelta:
+      type: object
+      properties:
+        role:
+          type: string
+          description: The role of the author of this message.
+          enum:
+          - assistant
+        refusal:
+          type: string
+          description: The refusal message generated by the model.
+          nullable: true
+        content:
+          description: The contents of the chunk message.
+          nullable: true
+          type: string
+        custom_content:
+          $ref: "#/components/schemas/ChatCompletionResponseCustomContent"
+        function_call:
+          type: object
+          properties:
+            arguments:
+              type: string
+              description: "The arguments to call the function with, as generated by the model in JSON format. Note that the model does not always generate valid JSON, and may hallucinate parameters not defined by your function schema. Validate the arguments in your code before calling your function."
+            name:
+              type: string
+              description: The name of the function to call.
+          description: "Deprecated and replaced by `tool_calls`. The name and arguments of a function that should be called, as generated by the model."
+          deprecated: true
+        tool_calls:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatCompletionMessageToolCallChunk"
+      description: A chat completion delta generated by streamed model responses.
+    ChatCompletionTool:
+      required:
+      - function
+      - type
+      type: object
+      properties:
+        type:
+          type: string
+          description: "The type of the tool. Currently, only `function` is supported."
+          enum:
+          - function
+        function:
+          $ref: "#/components/schemas/FunctionObject"
+        custom_fields:
+          $ref: "#/components/schemas/ToolCustomFields"
+    ChatCompletionToolChoiceOption:
+      description: |
+        Controls which (if any) tool is called by the model.
+
+        `none` means the model will not call any `tool` and instead generates a `message`.
+
+        `auto` means the model can pick between generating a `message` or calling one or more `tools`.
+        `required` means the model must call one or more `tools`.
+
+        Specifying a particular `tool` via `{"type": "function", "function": {"name": "my_function"}}` forces the model to call that `tool`.
+
+        `none` is the default when no `tools` are present.
+        `auto` is the default if `tools` are present.
+      oneOf:
+      - type: string
+        description: |
+          `none` means the model will not call any `tool` and instead generates a `message`. `auto` means the model can pick between generating a `message` or calling one or more `tools`. `required` means the model must call one or more `tools`.
+        enum:
+        - none
+        - auto
+        - required
+      - $ref: "#/components/schemas/ChatCompletionNamedToolChoice"
+    ChatCompletionsCustomFields:
       type: object
       properties:
         configuration:
           type: object
-          additionalProperties: true
-        cache_breakpoint:
-          $ref: "#/components/schemas/CacheBreakpoint"
-      additionalProperties: true
+          description: |-
+            The object that represents configuration of the deployment.
+            The schema of the object is specific for each deployment and provided by the endpoint
+            `GET /v1/deployments/{deployment_name}/configuration`.
+            <br><br>
+            A deployment supports configuration if its listing, retrieved by `GET /openai/deployments/{deployment_name}`, has a field `features.configuration` set to **true**.
+            <br><br>
+            Certain models connected via DIAL adapters are configurable. For detailed configuration information, refer to the documentation of each adapter:
+              - [OpenAI Adapter](https://github.com/epam/ai-dial-adapter-openai/?tab=readme-ov-file#configurable-models)
+              - [Google VertexAI Adapter](https://github.com/epam/ai-dial-adapter-vertexai/?tab=readme-ov-file#configurable-models)
+              - [AWS Bedrock Adapter](https://github.com/epam/ai-dial-adapter-bedrock/?tab=readme-ov-file#configurable-models)
+      description: Additional DIAL-specific parameters for a chat completion request.
     CodeInterpreterExecuteRequest:
       type: object
       properties:
@@ -13374,24 +14424,6 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/MetadataBase"
-    CompletionTokensDetails:
-      type: object
-      properties:
-        reasoning_tokens:
-          type: integer
-    CompletionUsage:
-      type: object
-      properties:
-        prompt_tokens:
-          type: integer
-        completion_tokens:
-          type: integer
-        total_tokens:
-          type: integer
-        prompt_tokens_details:
-          $ref: "#/components/schemas/PromptTokensDetails"
-        completion_tokens_details:
-          $ref: "#/components/schemas/CompletionTokensDetails"
     Config:
       type: object
       properties:
@@ -13519,6 +14551,65 @@ components:
         week:
           type: number
     CreateChatCompletionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The ID of the response.
+        object:
+          type: string
+          description: Object type. Always is `chat.completion` for non-streaming.
+        created:
+          type: integer
+          description: The response timestamp. The time in seconds since the epoch.
+        model:
+          type: string
+          description: The name of the model that generated the response. May not be the same as the deployment name.
+        choices:
+          type: array
+          description: List of generated messages. Contains _n_ items.
+          items:
+            required:
+            - finish_reason
+            - index
+            - message
+            type: object
+            properties:
+              index:
+                type: integer
+                description: The index of the choice from `0` to `n - 1`.
+              message:
+                $ref: "#/components/schemas/ChatCompletionResponseMessage"
+              finish_reason:
+                type: string
+                description: |-
+                  The reason indicating the completion of the choice generation process. The possible reasons:
+
+                  * `stop`: Successful generation.
+                  * `length`: The generation was stopped because it surpassed the available number of tokens.
+                  * `function_call`: The Assistant decided to call a function.
+                  * `tool_calls`: The Assistant decided to call a tool.
+                  * `content_filter`: Omitted content due to a flag from content filters.
+                nullable: true
+        usage:
+          type: object
+          properties:
+            prompt_tokens:
+              type: integer
+              description: The number of tokens in the request to the model.
+            completion_tokens:
+              type: integer
+              description: The number of tokens in the response from the model.
+            total_tokens:
+              type: integer
+              description: The sum of prompt and completion tokens.
+          description: This field contains information about the tokens from the model that were used to generate the response.
+        statistics:
+          $ref: "#/components/schemas/ChatCompletionResponseStatistics"
+        system_fingerprint:
+          type: string
+          description: Can be used in conjunction with the `seed` request parameter to understand when backend changes have been made that might impact determinism.
+    CreateChatCompletionStreamResponse:
       required:
       - choices
       - created
@@ -13529,97 +14620,75 @@ components:
       properties:
         id:
           type: string
+          description: A unique identifier for the chat completion. Each chunk has the same ID.
         object:
           type: string
-          enum:
-          - chat.completion
-        created:
-          type: integer
-          format: int64
-        model:
-          type: string
-        choices:
-          type: array
-          items:
-            $ref: "#/components/schemas/ChatCompletionChoice"
-        usage:
-          $ref: "#/components/schemas/CompletionUsage"
-        statistics:
-          $ref: "#/components/schemas/Statistics"
-    CreateChatCompletionStreamChoice:
-      required:
-      - delta
-      - index
-      type: object
-      properties:
-        index:
-          type: integer
-        finish_reason:
-          $ref: "#/components/schemas/FinishReason"
-        delta:
-          $ref: "#/components/schemas/CreateChatCompletionStreamDelta"
-    CreateChatCompletionStreamDelta:
-      type: object
-      properties:
-        role:
-          type: string
-          enum:
-          - assistant
-        content:
-          type: string
-        function_call:
-          $ref: "#/components/schemas/FunctionCall"
-        tool_calls:
-          type: array
-          items:
-            $ref: "#/components/schemas/StreamToolCall"
-        custom_content:
-          $ref: "#/components/schemas/CustomContent"
-    CreateChatCompletionStreamResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        model:
-          type: string
-        created:
-          type: integer
-          format: int64
-        object:
-          type: string
+          description: "The object type, which is always `chat.completion.chunk`."
           enum:
           - chat.completion.chunk
+        created:
+          type: integer
+          description: The Unix timestamp (in seconds) of when the chat completion was created. Each chunk has the same timestamp.
+        model:
+          type: string
+          description: The model name that generated the response. May not be the same as the deployment name.
+        system_fingerprint:
+          type: string
+          description: |
+            This fingerprint represents the backend configuration that the model runs with.
+            Can be used in conjunction with the `seed` request parameter to understand when backend changes have been made that might impact determinism.
         choices:
           type: array
+          description: A list of generated chunks.
           items:
-            $ref: "#/components/schemas/CreateChatCompletionStreamChoice"
+            required:
+            - delta
+            - finish_reason
+            - index
+            type: object
+            properties:
+              index:
+                type: integer
+                description: The index of the choice from 0 to _n - 1_
+              delta:
+                $ref: "#/components/schemas/ChatCompletionStreamResponseDelta"
+              finish_reason:
+                type: string
+                description: |-
+                  The reason the model stopped generating tokens. This will be `stop` if the model hit a natural stop point or a provided stop sequence,
+
+                  `length` if the maximum number of tokens specified in the request was reached,
+
+                  `content_filter` if content was omitted due to a flag from our content filters,
+
+                  `tool_calls` if the model called a tool, or `function_call` (deprecated) if the model called a function.
+                nullable: true
         usage:
-          $ref: "#/components/schemas/Usage"
+          required:
+          - completion_tokens
+          - prompt_tokens
+          - total_tokens
+          type: object
+          properties:
+            prompt_tokens:
+              type: integer
+              description: The number of tokens in the request to the model.
+            completion_tokens:
+              type: integer
+              description: The number of tokens in the response from the model.
+            total_tokens:
+              type: integer
+              description: The sum of prompt and completion tokens.
+          description: "This field contains information about used models tokens for generation of the response. In case of streaming, the usage is published fully in one chunk."
         statistics:
-          $ref: "#/components/schemas/Statistics"
+          $ref: "#/components/schemas/ChatCompletionResponseStatistics"
+      description: "Represents a streamed chunk of a chat completion response returned by model, based on the provided input."
     CredentialsLevel:
       type: string
       enum:
       - GLOBAL
       - APPLICATION
       - USER
-    CustomContent:
-      type: object
-      properties:
-        stages:
-          type: array
-          items:
-            $ref: "#/components/schemas/Stage"
-        attachments:
-          type: array
-          items:
-            $ref: "#/components/schemas/Attachment"
-        state:
-          type: object
-          additionalProperties: true
-        form_value: {}
-        form_schema: {}
-      additionalProperties: true
     DeleteNotificationRequest:
       type: object
       properties:
@@ -13645,62 +14714,145 @@ components:
       properties:
         base_url:
           type: string
-    Embedding:
-      required:
-      - embedding
-      - index
-      type: object
-      properties:
-        embedding:
-          oneOf:
-          - type: string
-          - type: array
-            items:
-              type: number
-        index:
-          type: integer
-        object:
-          type: string
-          enum:
-          - embedding
     EmbeddingResponse:
       required:
       - data
       - model
+      - object
       - usage
       type: object
       properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/Embedding"
-            description: The representation of an embedding vector corresponding to `index`-th input.
-          description: A list of generated vectors.
+        object:
+          type: string
+          description: Object type. Always is `list`.
         model:
           type: string
           description: The name of the model that generated the response.
-        object:
-          type: string
-          enum:
-          - list
-          description: Object type. Always is `list`.
+        data:
+          type: array
+          description: A list of generated vectors.
+          items:
+            required:
+            - embedding
+            - index
+            - object
+            type: object
+            properties:
+              index:
+                type: integer
+                description: The index of the embedding from `0` to `number of regular and custom inputs in the request - 1`.
+              object:
+                type: string
+                description: Object type. Always is `embedding`.
+              embedding:
+                description: Embedding output corresponding to the `index`-th embedding input. It's either an array of floats or base64-encoded vector depending on the value of `encoding_format` request parameter.
+                oneOf:
+                - type: array
+                  items:
+                    type: number
+                - type: string
+            description: The representation of an embedding vector corresponding to `index`-th input.
         usage:
-          $ref: "#/components/schemas/Usage"
+          required:
+          - prompt_tokens
+          - total_tokens
+          type: object
+          properties:
+            prompt_tokens:
+              type: integer
+              description: The number of tokens in the request to the model.
+            total_tokens:
+              type: integer
+              description: The number of tokens in the request to the model.
           description: This field contains information about the tokens from the model that were used to generate the response.
-    EmbeddingsRequest:
-      type: object
-      properties:
-        custom_fields:
-          $ref: "#/components/schemas/EmbeddingsRequestCustomFields"
-      allOf:
-      - $ref: "#/components/schemas/AzureEmbeddingsRequest"
-    EmbeddingsRequestCustomFields:
+    EmbeddingsCustomFields:
       type: object
       properties:
         type:
           type: string
+          description: |-
+            Type of embedding to embed an input with.
+
+            The particular values of this parameter are specific for particular models.
+
+            **Note:** embedding types may not be supported by some models.
         instruction:
           type: string
+          description: |-
+            Allows to specify an instruction prompt for an instructor-like embedding model.
+
+            **Note:** instruction may not be supported by some models.
+      description: Additional parameters for an embedding model.
+    EmbeddingsCustomInput:
+      type: array
+      description: The custom embedding inputs that represent multi-modal inputs (e.g. images and video) along with compound inputs (e.g. a title for an image and the image itself).
+      items:
+        $ref: "#/components/schemas/EmbeddingsCustomInputElement"
+    EmbeddingsCustomInputCompoundElement:
+      type: array
+      description: An embedding input composed of multiple strings and attachments.
+      items:
+        oneOf:
+        - type: string
+        - $ref: "#/components/schemas/RequestAttachment"
+    EmbeddingsCustomInputElement:
+      description: A particular embedding input which embeddings model translates to an embedding vector.
+      oneOf:
+      - type: string
+        description: "Input text to get embeddings for, encoded as a string."
+      - $ref: "#/components/schemas/RequestAttachment"
+      - $ref: "#/components/schemas/EmbeddingsCustomInputCompoundElement"
+    EmbeddingsRequest:
+      required:
+      - input
+      type: object
+      properties:
+        input:
+          description: |-
+            The input text to generate embeddings for. It can be either:
+            - a string,
+            - an array of strings,
+            - an array of token ids <i>(representing a single tokenized string)</i> and
+            - an array of arrays of token ids <i>(representing an array of tokenized strings)</i>.
+
+            **Note:** representation of strings as an array of token ids may not be supported by certain models.
+          anyOf:
+          - type: string
+            description: The string that will be turned into an embedding.
+          - type: array
+            description: The array of strings that will be turned into embeddings.
+            items:
+              type: string
+          - type: array
+            description: The array of token ids that will be turned into an embedding.
+            items:
+              type: integer
+          - type: array
+            description: The array of arrays of token ids that will be turned into embeddings.
+            items:
+              type: array
+              items:
+                type: integer
+        custom_input:
+          $ref: "#/components/schemas/EmbeddingsCustomInput"
+        user:
+          type: string
+          description: A unique identifier representing the end-user.
+        encoding_format:
+          type: string
+          description: The format in which the embeddings are returned.
+          default: float
+          enum:
+          - float
+          - base64
+        dimensions:
+          type: integer
+          description: |-
+            The number of dimensions the resulting output embeddings should have.
+
+            **Note:** instruction may not be supported by some models.
+        custom_fields:
+          $ref: "#/components/schemas/EmbeddingsCustomFields"
     EntityMetadata:
       type: object
       properties:
@@ -13924,45 +15076,6 @@ components:
           type: integer
         url:
           type: string
-    FinishReason:
-      type: string
-      enum:
-      - stop
-      - length
-      - function_call
-      - tool_calls
-      - content_filter
-    Function:
-      required:
-      - name
-      type: object
-      properties:
-        name:
-          type: string
-        strict:
-          type: boolean
-          default: false
-        description:
-          type: string
-        parameters:
-          type: object
-          additionalProperties: true
-      additionalProperties: true
-    FunctionCall:
-      type: object
-      properties:
-        name:
-          type: string
-        arguments:
-          type: string
-    FunctionChoice:
-      required:
-      - name
-      type: object
-      properties:
-        name:
-          type: string
-      additionalProperties: true
     FunctionMapping:
       type: object
       properties:
@@ -13976,6 +15089,27 @@ components:
           type: string
         truncate_prompt:
           type: string
+    FunctionObject:
+      required:
+      - name
+      type: object
+      properties:
+        description:
+          type: string
+          description: "A description of what the `function` does, used by the model to choose when and how to call the `function`."
+        name:
+          type: string
+          description: "The name of the `function` to be called. Must be a-z, A-Z, 0-9, or contain underscores and dashes, with a maximum length of 64."
+        parameters:
+          $ref: "#/components/schemas/FunctionParameters"
+        strict:
+          type: boolean
+          description: "Whether to enable strict schema adherence when generating the `function` call. If set to `true`, the model will follow the exact schema defined in the `parameters` field. Only a subset of JSON Schema is supported when `strict` is `true`. Learn more about Structured Outputs in the [function calling guide](docs/guides/function-calling)."
+          nullable: true
+          default: false
+    FunctionParameters:
+      type: object
+      description: "The parameters the `function` accepts, described as a JSON Schema object. See the [guide](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/function-calling) for examples, and the [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for documentation about the format. \n\nOmitting `parameters` defines a `function` with an empty parameter list."
     FunctionStatus:
       type: string
       enum:
@@ -14004,41 +15138,6 @@ components:
             $ref: "#/components/schemas/SkippedEntity"
         status:
           type: string
-    ImageURL:
-      required:
-      - url
-      type: object
-      properties:
-        url:
-          type: string
-        detail:
-          type: string
-          enum:
-          - auto
-          - low
-          - high
-      additionalProperties: true
-    InputAudio:
-      required:
-      - data
-      - format
-      type: object
-      properties:
-        data:
-          type: string
-        format:
-          type: string
-      additionalProperties: true
-    InputFile:
-      type: object
-      properties:
-        file_data:
-          type: string
-        file_id:
-          type: string
-        filename:
-          type: string
-      additionalProperties: true
     Interceptor:
       type: object
       properties:
@@ -14311,6 +15410,12 @@ components:
         with:
           type: string
     LocalizedValue:
+      type: object
+      properties:
+        localeMap:
+          $ref: "#/components/schemas/MapStringString"
+        plainValue:
+          type: string
       oneOf:
       - type: string
       - $ref: "#/components/schemas/MapStringString"
@@ -14404,123 +15509,6 @@ components:
         _meta:
           type: object
           additionalProperties: true
-    Message:
-      required:
-      - role
-      type: object
-      properties:
-        role:
-          type: string
-          enum:
-          - system
-          - developer
-          - user
-          - assistant
-          - function
-          - tool
-        content:
-          oneOf:
-          - type: string
-          - type: array
-            items:
-              $ref: "#/components/schemas/MessageContentPart"
-        custom_content:
-          $ref: "#/components/schemas/CustomContent"
-        custom_fields:
-          $ref: "#/components/schemas/MessageCustomFields"
-        name:
-          type: string
-        tool_calls:
-          type: array
-          items:
-            $ref: "#/components/schemas/ToolCall"
-        tool_call_id:
-          type: string
-        function_call:
-          $ref: "#/components/schemas/FunctionCall"
-        refusal:
-          type: string
-      additionalProperties: true
-    MessageContentAudioPart:
-      required:
-      - input_audio
-      - type
-      type: object
-      properties:
-        type:
-          type: string
-          enum:
-          - input_audio
-        input_audio:
-          $ref: "#/components/schemas/InputAudio"
-      additionalProperties: true
-    MessageContentFilePart:
-      required:
-      - file
-      - type
-      type: object
-      properties:
-        type:
-          type: string
-          enum:
-          - file
-        file:
-          $ref: "#/components/schemas/InputFile"
-      additionalProperties: true
-    MessageContentImagePart:
-      required:
-      - image_url
-      - type
-      type: object
-      properties:
-        type:
-          type: string
-          enum:
-          - image_url
-        image_url:
-          $ref: "#/components/schemas/ImageURL"
-      additionalProperties: true
-    MessageContentPart:
-      discriminator:
-        propertyName: type
-      oneOf:
-      - $ref: "#/components/schemas/MessageContentTextPart"
-      - $ref: "#/components/schemas/MessageContentImagePart"
-      - $ref: "#/components/schemas/MessageContentFilePart"
-      - $ref: "#/components/schemas/MessageContentAudioPart"
-      - $ref: "#/components/schemas/MessageContentRefusalPart"
-    MessageContentRefusalPart:
-      required:
-      - refusal
-      - type
-      type: object
-      properties:
-        type:
-          type: string
-          enum:
-          - refusal
-        refusal:
-          type: string
-      additionalProperties: true
-    MessageContentTextPart:
-      required:
-      - text
-      - type
-      type: object
-      properties:
-        type:
-          type: string
-          enum:
-          - text
-        text:
-          type: string
-      additionalProperties: true
-    MessageCustomFields:
-      type: object
-      properties:
-        cache_breakpoint:
-          $ref: "#/components/schemas/CacheBreakpoint"
-      additionalProperties: true
     MetadataBase:
       required:
       - nodeType
@@ -14772,6 +15760,10 @@ components:
           type: array
           items:
             type: string
+    ParallelToolCalls:
+      type: boolean
+      description: Whether to enable parallel `function` calling during the `tool` use.
+      default: true
     Pattern:
       type: object
     PerRequestReceiver:
@@ -14827,13 +15819,6 @@ components:
           type: string
         name:
           type: string
-    PromptTokensDetails:
-      type: object
-      properties:
-        cached_tokens:
-          type: integer
-        cache_write_tokens:
-          type: integer
     ProxyRequest:
       type: object
       additionalProperties: true
@@ -14914,6 +15899,34 @@ components:
           type: string
         url:
           type: string
+    RequestAttachment:
+      type: object
+      properties:
+        type:
+          type: string
+          description: The content type of the attachment. Should be one of the MIME types.
+          default: text/markdown
+        title:
+          type: string
+          description: The title of the attachment.
+        data:
+          type: string
+          description: |-
+            Should follow the format described in the MIME standard for `type`.
+
+            It is <span style="color: #f604fe;">mandatory</span> for the attachment to have exactly one of the following fields (never both): `data` or `url`.
+        url:
+          type: string
+          description: |-
+            The content of `url` should follow the format described in the MIME standard for `type`.
+
+            It is <span style="color: #f604fe;">mandatory</span> for the attachment to have exactly one of the following fields (never both): `data` or `url`.
+        reference_type:
+          type: string
+          description: The content type of `reference_url`. Should be one of the MIME types.
+        reference_url:
+          type: string
+          description: "If `reference_type` is specified, the content of `reference_url` should follow the format described in the MIME standard for `reference_type`."
     ResourceAccessType:
       type: string
       enum:
@@ -15438,84 +16451,6 @@ components:
           type: string
         reason:
           type: string
-    Stage:
-      required:
-      - name
-      - status
-      type: object
-      properties:
-        name:
-          type: string
-        status:
-          $ref: "#/components/schemas/Status"
-        content:
-          type: string
-        attachments:
-          type: array
-          items:
-            $ref: "#/components/schemas/Attachment"
-      additionalProperties: true
-    StaticFunction:
-      required:
-      - name
-      type: object
-      properties:
-        name:
-          type: string
-        description:
-          type: string
-        configuration:
-          type: object
-          additionalProperties: true
-      additionalProperties: true
-    StaticTool:
-      required:
-      - static_function
-      - type
-      type: object
-      properties:
-        type:
-          type: string
-          enum:
-          - static_function
-        static_function:
-          $ref: "#/components/schemas/StaticFunction"
-      additionalProperties: true
-    Statistics:
-      type: object
-      properties:
-        usage_per_model:
-          type: array
-          items:
-            $ref: "#/components/schemas/UsagePerModel"
-        discarded_messages:
-          type: array
-          items:
-            type: integer
-    Status:
-      type: string
-      enum:
-      - completed
-      - failed
-    StreamOptions:
-      type: object
-      properties:
-        include_usage:
-          type: boolean
-      additionalProperties: true
-    StreamToolCall:
-      type: object
-      properties:
-        index:
-          type: integer
-        id:
-          type: string
-        type:
-          type: string
-          enum:
-          - function
-        function:
-          $ref: "#/components/schemas/FunctionCall"
     SubscribeResourcesRequest:
       type: object
       properties:
@@ -15615,21 +16550,6 @@ components:
           - success
         token_count:
           type: integer
-    Tool:
-      required:
-      - function
-      - type
-      type: object
-      properties:
-        type:
-          type: string
-          enum:
-          - function
-        function:
-          $ref: "#/components/schemas/Function"
-        custom_fields:
-          $ref: "#/components/schemas/ToolCustomFields"
-      additionalProperties: true
     ToolAnnotations:
       type: object
       properties:
@@ -15650,39 +16570,11 @@ components:
         returnDirect:
           type: boolean
           description: Result should be returned directly to the caller.
-    ToolCall:
-      type: object
-      properties:
-        index:
-          type: integer
-        id:
-          type: string
-        type:
-          type: string
-          enum:
-          - function
-        function:
-          $ref: "#/components/schemas/ToolCallFunction"
-    ToolCallFunction:
-      type: object
-      properties:
-        name:
-          type: string
-        arguments:
-          type: string
-    ToolChoice:
-      required:
+    ToolCallType:
+      type: string
+      description: "The type of the `tool` call, in this case `function`."
+      enum:
       - function
-      - type
-      type: object
-      properties:
-        type:
-          type: string
-          enum:
-          - function
-        function:
-          $ref: "#/components/schemas/FunctionChoice"
-      additionalProperties: true
     ToolCustomFields:
       type: object
       properties:
@@ -15936,36 +16828,6 @@ components:
           type: integer
         weight:
           type: integer
-    Usage:
-      type: object
-      properties:
-        prompt_tokens:
-          type: integer
-        completion_tokens:
-          type: integer
-        total_tokens:
-          type: integer
-        prompt_tokens_details:
-          $ref: "#/components/schemas/PromptTokensDetails"
-        completion_tokens_details:
-          $ref: "#/components/schemas/CompletionTokensDetails"
-    UsagePerModel:
-      type: object
-      properties:
-        index:
-          type: integer
-        model:
-          type: string
-        prompt_tokens:
-          type: integer
-        completion_tokens:
-          type: integer
-        total_tokens:
-          type: integer
-        prompt_tokens_details:
-          $ref: "#/components/schemas/PromptTokensDetails"
-        completion_tokens_details:
-          $ref: "#/components/schemas/CompletionTokensDetails"
     UserInfoResponse:
       type: object
       properties:

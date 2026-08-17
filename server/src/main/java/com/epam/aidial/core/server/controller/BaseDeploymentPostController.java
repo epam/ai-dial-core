@@ -10,8 +10,8 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
-import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -319,6 +319,9 @@ public class BaseDeploymentPostController {
         ProxyUtil.setOverrideNameHeader(proxyRequest, context.getDeployment());
 
         proxyRequest.headers().add(Proxy.HEADER_API_KEY, context.getProxyApiKeyData().getPerRequestKey());
+
+        proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_FEATURES,
+                ProxyUtil.convertToString(FeaturesData.createDeploymentFeatures(context.getDeployment())));
 
         if (context.getDeployment() instanceof Model model && !model.getUpstreams().isEmpty()) {
             Upstream upstream = Objects.requireNonNull(context.getUpstreamRoute().get());

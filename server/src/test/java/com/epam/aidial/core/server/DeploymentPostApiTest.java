@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -12,6 +13,7 @@ import com.sun.net.httpserver.HttpServer;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.RecordedRequest;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
@@ -163,6 +165,30 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
             // The body delivered to the client is plaintext re-serialized SSE,
             // so the upstream gzip Content-Encoding header must not leak to the client.
             assertNull(response.headers().get("Content-Encoding"));
+        }
+    }
+
+    @Test
+    public void testDeploymentFeaturesHeaderSentForChatCompletions() {
+        String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-35-turbo\","
+                + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
+        MutableObject<RecordedRequest> captured = new MutableObject<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> {
+                captured.setValue(request);
+                return TestWebServer.createResponse(200, answer, "Content-Type", "application/json");
+            });
+
+            // a client-supplied value must not survive: the header is set by the core, not forwarded
+            Response response = send(HttpMethod.POST, "/openai/deployments/gpt-3-turbo/chat/completions", null,
+                    "{\"model\":\"gpt-3-turbo\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                    "content-type", "application/json", "X-DIAL-DEPLOYMENT-FEATURES", "spoofed");
+
+            verify(response, 200);
+            FeaturesData features = ProxyUtil.convertToObject(
+                    captured.getValue().getHeader("X-DIAL-DEPLOYMENT-FEATURES"), FeaturesData.class);
+            assertNotNull(features);
+            assertTrue(features.isMaxTokensSupported());
         }
     }
 

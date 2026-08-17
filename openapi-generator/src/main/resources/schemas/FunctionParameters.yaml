@@ -1,0 +1,2 @@
+type: object
+description: "The parameters the `function` accepts, described as a JSON Schema object. See the [guide](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/function-calling) for examples, and the [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for documentation about the format. \n\nOmitting `parameters` defines a `function` with an empty parameter list."
