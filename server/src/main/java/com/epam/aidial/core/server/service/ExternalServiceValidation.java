@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
+import com.epam.aidial.core.credentials.validation.ClientSecretValidation;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import lombok.experimental.UtilityClass;
@@ -47,6 +48,9 @@ public class ExternalServiceValidation {
                 : ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES;
         try {
             validator.validate(authSettings, mode);
+            // API writes only — config-file services go through ConfigPostProcessor, which drops rather than
+            // rejects, so a legacy short secret there must not take the whole service down.
+            ClientSecretValidation.validate(authSettings.getClientSecret());
         } catch (RuntimeException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST,
                     "External service '%s': invalid auth_settings: %s".formatted(serviceId, e.getMessage()));

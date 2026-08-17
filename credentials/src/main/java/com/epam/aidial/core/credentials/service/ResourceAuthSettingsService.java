@@ -13,6 +13,7 @@ import com.epam.aidial.core.credentials.service.registration.ResourceRegistratio
 import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactory;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
+import com.epam.aidial.core.credentials.validation.ClientSecretValidation;
 import com.nimbusds.oauth2.sdk.pkce.CodeChallenge;
 import com.nimbusds.oauth2.sdk.pkce.CodeChallengeMethod;
 import com.nimbusds.oauth2.sdk.pkce.CodeVerifier;
@@ -124,6 +125,9 @@ public class ResourceAuthSettingsService {
                                               ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode) {
         AuthSettingsValidator authSettingsValidator = validatorFactory.getValidator(resourceAuthSettings.getAuthenticationType());
         authSettingsValidator.validate(resourceAuthSettings, resourceAuthSettingsChangeMode);
+        // Runs before enrichResourceAuthSettings, so only the caller's own secret is checked — never one a
+        // dynamic client registration is about to return.
+        ClientSecretValidation.validate(resourceAuthSettings.getClientSecret());
     }
 
     /**

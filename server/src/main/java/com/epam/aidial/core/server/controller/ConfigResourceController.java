@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
@@ -1718,23 +1719,33 @@ public class ConfigResourceController implements Controller {
      * {@code @EncryptedField}-aware override), so WRITE_ONLY would also drop the field from the
      * blob write itself. Redact on the {@link ObjectNode} snapshot {@link #projectItem} already
      * produces instead — a fresh copy, so this never mutates the live {@link Config} entity.
+     *
+     * <p>{@code revealHint} replaces the removed secret with its {@code client_secret_hint}; admins only,
+     * matching the rule the resource APIs apply to callers with write access.</p>
      */
-    private static void redactSecretFields(JsonNode authSettings) {
+    private static void redactSecretFields(JsonNode authSettings, boolean revealHint) {
         if (authSettings instanceof ObjectNode settings) {
-            settings.remove("client_secret");
+            JsonNode clientSecret = settings.remove("client_secret");
             settings.remove("code_verifier");
+            if (revealHint && clientSecret != null && clientSecret.isTextual()) {
+                String hint = ResourceAuthSettings.hintFor(clientSecret.textValue());
+                if (hint != null) {
+                    settings.put("client_secret_hint", hint);
+                }
+            }
         }
     }
 
-    private static ObjectNode redactAuthSettingsSecrets(ObjectNode node) {
-        redactSecretFields(node.get("auth_settings"));
+    private ObjectNode redactAuthSettingsSecrets(ObjectNode node) {
+        redactSecretFields(node.get("auth_settings"), authorizationService.isAdmin(context));
         return node;
     }
 
-    private static ObjectNode redactExternalServiceSecrets(ObjectNode node) {
+    private ObjectNode redactExternalServiceSecrets(ObjectNode node) {
         JsonNode externalServices = node.get("external_services");
         if (externalServices != null && externalServices.isObject()) {
-            externalServices.forEach(service -> redactSecretFields(service.get("auth_settings")));
+            boolean admin = authorizationService.isAdmin(context);
+            externalServices.forEach(service -> redactSecretFields(service.get("auth_settings"), admin));
         }
         return node;
     }

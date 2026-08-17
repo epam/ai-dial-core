@@ -37,9 +37,13 @@ public class ToolSet extends SecuredResource {
 
     @JsonIgnore
     public void clearAuthSettings() {
+        clearAuthSettings(false);
+    }
+
+    @JsonIgnore
+    public void clearAuthSettings(boolean revealClientSecretHint) {
         if (authSettings != null && authSettings.getAuthenticationType().equals(AuthenticationType.OAUTH)) {
-            authSettings.setClientSecret(null);
-            authSettings.setCodeVerifier(null);
+            authSettings.redactSecrets(revealClientSecretHint);
         }
     }
 }

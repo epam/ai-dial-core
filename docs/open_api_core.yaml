@@ -15954,6 +15954,9 @@ components:
           $ref: "#/components/schemas/ResourceAuthStatus"
         dynamically_registered:
           type: boolean
+        client_secret_hint:
+          type: string
+          readOnly: true
     ResourceAuthSettingsData:
       type: object
       properties:

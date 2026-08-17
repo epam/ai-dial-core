@@ -186,9 +186,7 @@ public class UserExternalServiceService {
     private static void clearAuthStatuses(ExternalService service) {
         ResourceAuthSettings authSettings = service.getAuthSettings();
         if (authSettings != null) {
-            authSettings.setUserLevelAuthStatus(null);
-            authSettings.setAppLevelAuthStatus(null);
-            authSettings.setGlobalAuthStatus(null);
+            authSettings.clearComputedFields();
         }
     }
 }

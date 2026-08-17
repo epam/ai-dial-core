@@ -104,6 +104,26 @@ public class ToolSetService {
         return Pair.of(meta, toolSet);
     }
 
+    /**
+     * Strips secret material for a response, exposing {@code clientSecretHint} when {@code canManage}. Stored
+     * secrets are ciphertext, so the hint costs a decrypt; a value that fails to decrypt (legacy plaintext,
+     * rotated key) yields no hint instead of failing the read or hinting at ciphertext.
+     */
+    public void redactAuthSettings(ResourceDescriptor resource, ToolSet toolSet, boolean canManage) {
+        ResourceAuthSettings authSettings = toolSet.getAuthSettings();
+        boolean revealHint = false;
+        if (canManage && authSettings != null && authSettings.getClientSecret() != null) {
+            try {
+                resourceAuthSettingsEncryptionService.decrypt(resource.getUrl(),
+                        new BucketInfo(resource.getBucketName(), resource.getBucketLocation()), authSettings);
+                revealHint = true;
+            } catch (RuntimeException e) {
+                log.warn("Can't decrypt auth settings of toolset {}; omitting client secret hint", resource.getUrl(), e);
+            }
+        }
+        toolSet.clearAuthSettings(revealHint);
+    }
+
     public ToolSet extractFrom(String content, ResourceItemMetadata meta) {
         ToolSet toolSet = ProxyUtil.convertToObject(content, ToolSet.class);
 

@@ -1,0 +1,36 @@
+package com.epam.aidial.core.credentials.validation;
+
+import lombok.experimental.UtilityClass;
+
+/**
+ * Value checks for a caller-supplied {@code client_secret}.
+ *
+ * <p>Applied on API writes only — never to secrets obtained by dynamic client registration (the authorization
+ * server picks those) nor to config-file entries, which {@code ConfigPostProcessor} would drop rather than
+ * reject. A null secret means "keep the stored one" and passes.</p>
+ *
+ * <p>{@link #MIN_LENGTH} is far below what any real authorization server issues — RFC 6749 §10.10 requires
+ * ~128 bits for credentials of this kind, and issuers land at 32-64 characters — so it only catches
+ * placeholders. It also keeps the {@code client_secret_hint} from approaching the whole secret.</p>
+ */
+@UtilityClass
+public class ClientSecretValidation {
+
+    public static final int MIN_LENGTH = 8;
+
+    public static void validate(String clientSecret) {
+        if (clientSecret == null) {
+            return;
+        }
+        if (clientSecret.isBlank()) {
+            throw new IllegalArgumentException("Field 'CLIENT_SECRET' must not be blank");
+        }
+        if (clientSecret.chars().anyMatch(Character::isISOControl)) {
+            throw new IllegalArgumentException("Field 'CLIENT_SECRET' must not contain control characters");
+        }
+        if (clientSecret.length() < MIN_LENGTH) {
+            throw new IllegalArgumentException(
+                    "Field 'CLIENT_SECRET' must be at least %d characters long".formatted(MIN_LENGTH));
+        }
+    }
+}

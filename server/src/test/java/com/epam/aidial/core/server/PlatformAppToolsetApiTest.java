@@ -207,7 +207,7 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
                       "auth_settings": {
                         "authentication_type": "OAUTH",
                         "client_id": "cid",
-                        "client_secret": "csecret",
+                        "client_secret": "csecret-value",
                         "redirect_uri": "http://localhost:3000/auth/signin",
                         "authorization_endpoint": "http://localhost:9876/authorize",
                         "token_endpoint": "http://localhost:9876"
@@ -250,7 +250,7 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
                       "auth_settings": {
                         "authentication_type": "OAUTH",
                         "client_id": "cid",
-                        "client_secret": "csecret",
+                        "client_secret": "csecret-value",
                         "redirect_uri": "http://localhost:3000/auth/signin",
                         "authorization_endpoint": "http://localhost:9876/authorize",
                         "token_endpoint": "http://localhost:9876"

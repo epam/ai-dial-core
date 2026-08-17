@@ -558,9 +558,13 @@ public class ResourceController extends AccessControlBaseController {
             ResourceItemMetadata meta = result.getKey();
 
             Application application = result.getValue();
+            // Inline services are stored encrypted; decrypt before the overlay so both they and the
+            // (already plaintext) user-authored ones yield a hint from the same code path below.
+            boolean revealHint = hasWriteAccess
+                    && proxy.getExternalServiceService().tryDecryptSecrets(descriptor, application);
             overlayUserAuthoredServices(descriptor, application);
             enrichExternalServiceStatuses(descriptor, application);
-            clearExternalServiceSecrets(application);
+            clearExternalServiceSecrets(application, revealHint);
 
             if (!accessService.hasAdminAccess(context)) {
                 application.setAppIdentity(null);
@@ -608,14 +612,14 @@ public class ResourceController extends AccessControlBaseController {
         }
     }
 
-    private static void clearExternalServiceSecrets(Application application) {
+    private static void clearExternalServiceSecrets(Application application, boolean hasWriteAccess) {
         Map<String, ExternalService> services = application.getExternalServices();
         if (services == null) {
             return;
         }
         for (ExternalService service : services.values()) {
             if (service != null && service.getAuthSettings() != null) {
-                service.setAuthSettings(service.getAuthSettings().withoutSecrets());
+                service.setAuthSettings(service.getAuthSettings().withoutSecrets(hasWriteAccess));
             }
         }
     }
@@ -662,7 +666,7 @@ public class ResourceController extends AccessControlBaseController {
             ResourceItemMetadata meta = result.getKey();
             ToolSet toolSet = result.getValue();
             toolSetService.setResourceAuthStatuses(context, toolSet, descriptor.getUrl());
-            toolSet.clearAuthSettings();
+            toolSetService.redactAuthSettings(descriptor, toolSet, hasWriteAccess);
             if (!hasWriteAccess) {
                 toolSet.setEndpoint(null);
             }

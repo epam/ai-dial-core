@@ -173,6 +173,21 @@ public class ExternalServiceService {
         processSecrets(resource, application, false);
     }
 
+    /**
+     * Decrypts in place for a read that wants the {@code clientSecretHint} hint, reporting whether the secrets
+     * ended up in plaintext. A blob that fails to decrypt (legacy plaintext, rotated key) must not fail the read
+     * — the caller drops the hint instead of deriving one from ciphertext.
+     */
+    public boolean tryDecryptSecrets(ResourceDescriptor resource, Application application) {
+        try {
+            decryptSecrets(resource, application);
+            return true;
+        } catch (RuntimeException e) {
+            log.warn("Can't decrypt external service secrets of {}; omitting client secret hints", resource.getUrl(), e);
+            return false;
+        }
+    }
+
     private void validate(Application application, Application existing) {
         Map<String, ExternalService> services = application.getExternalServices();
         if (services == null || services.isEmpty()) {
@@ -244,9 +259,7 @@ public class ExternalServiceService {
     private static void clearAuthStatuses(ExternalService service) {
         ResourceAuthSettings authSettings = service == null ? null : service.getAuthSettings();
         if (authSettings != null) {
-            authSettings.setUserLevelAuthStatus(null);
-            authSettings.setAppLevelAuthStatus(null);
-            authSettings.setGlobalAuthStatus(null);
+            authSettings.clearComputedFields();
         }
     }
 
