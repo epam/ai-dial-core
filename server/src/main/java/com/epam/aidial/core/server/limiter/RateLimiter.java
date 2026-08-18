@@ -62,17 +62,7 @@ public class RateLimiter {
                     usage.setAggCost(cost);
                 }
 
-                String userCostsPath = getPathToCosts();
-                ResourceDescriptor userCostDescriptor = getResourceDescription(bucket, userCostsPath);
-                // the global document is what enforces; the deployment-scoped one only attributes the same
-                // figure, so that a bulk report can break spend down without re-deriving it from stored
-                // tokens - which is impossible anyway, since only total tokens are kept and pricing reloads
-                String deploymentCostsPath = getPathToDeploymentCosts(roleBasedEntity.getName());
-                ResourceDescriptor deploymentCostDescriptor = getResourceDescription(bucket, deploymentCostsPath);
-                Future<Void> enforcedCostFuture = taskExecutor.submit(() -> updateCostLimit(userCostDescriptor, cost));
-                Future<Void> attributedCostFuture =
-                        taskExecutor.submit(() -> updateCostLimit(deploymentCostDescriptor, cost));
-                costFuture = Future.all(enforcedCostFuture, attributedCostFuture).mapEmpty();
+                costFuture = updateCostLimits(roleBasedEntity, bucket, cost);
             } else {
                 costFuture = Future.succeededFuture();
             }
@@ -168,7 +158,7 @@ public class RateLimiter {
     private UserLimitStats collectUserStats(
             ProxyContext context, List<? extends RoleBasedEntity> deployments, boolean dropEmpty) {
         String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
-        // one instant for the age cutoff and the projection alike, so no window can disagree with another
+        // one instant for the whole projection, so no window can disagree with another
         long timestamp = System.currentTimeMillis();
 
         UserLimitStats userLimitStats = new UserLimitStats();
@@ -180,15 +170,12 @@ public class RateLimiter {
             // DEFAULT_COST_LIMIT leaves every cost window at the unlimited sentinel: an entry reports the
             // deployment's attributed spend, and only the global budget can cap it
             LimitStats limitStats = create(limit, DEFAULT_COST_LIMIT);
-            String tokensPath = getPathToTokens(name);
-            String requestsPath = getPathToRequests(name);
-            String costsPath = getPathToDeploymentCosts(name);
-            String tokensRecord = getLimitAbsolutePath(bucketLocation, tokensPath);
-            String requestsRecord = getLimitAbsolutePath(bucketLocation, requestsPath);
-            String costsRecord = getLimitAbsolutePath(bucketLocation, costsPath);
-            targetsByRecordPath.put(tokensRecord, new StatsTarget(limitStats, LimitType.TOKENS));
-            targetsByRecordPath.put(requestsRecord, new StatsTarget(limitStats, LimitType.REQUESTS));
-            targetsByRecordPath.put(costsRecord, new StatsTarget(limitStats, LimitType.COSTS));
+            String tokensPath = getLimitAbsolutePath(bucketLocation, getPathToTokens(name));
+            String requestsPath = getLimitAbsolutePath(bucketLocation, getPathToRequests(name));
+            String costsPath = getLimitAbsolutePath(bucketLocation, getPathToDeploymentCosts(name));
+            targetsByRecordPath.put(tokensPath, new StatsTarget(limitStats, LimitType.TOKENS));
+            targetsByRecordPath.put(requestsPath, new StatsTarget(limitStats, LimitType.REQUESTS));
+            targetsByRecordPath.put(costsPath, new StatsTarget(limitStats, LimitType.COSTS));
             statsByDeployment.put(name, limitStats);
         }
 
@@ -197,12 +184,11 @@ public class RateLimiter {
         // collide with it
         CostLimit userCostLimit = getCostLimitByUser(context);
         LimitStats costStats = create(DEFAULT_LIMIT, userCostLimit);
-        String userCostsPath = getPathToCosts();
-        String userCostsRecord = getLimitAbsolutePath(bucketLocation, userCostsPath);
-        targetsByRecordPath.put(userCostsRecord, new StatsTarget(costStats, LimitType.COSTS));
+        String userCostsPath = getLimitAbsolutePath(bucketLocation, getPathToCosts());
+        targetsByRecordPath.put(userCostsPath, new StatsTarget(costStats, LimitType.COSTS));
 
         Set<String> recordPaths = targetsByRecordPath.keySet();
-        List<Pair<ResourceItemMetadata, String>> records = loadLimitRecords(bucketLocation, recordPaths, timestamp);
+        List<Pair<ResourceItemMetadata, String>> records = loadLimitRecords(bucketLocation, recordPaths);
         for (Pair<ResourceItemMetadata, String> loaded : records) {
             String path = loaded.getKey().getDescriptor().getAbsoluteFilePath();
             StatsTarget target = targetsByRecordPath.get(path);
@@ -228,11 +214,10 @@ public class RateLimiter {
      * can still project to a non-zero figure. The age comes from the listing entry, so skipping one costs
      * nothing extra.
      */
-    private List<Pair<ResourceItemMetadata, String>> loadLimitRecords(
-            String bucketLocation, Set<String> wanted, long timestamp) {
+    private List<Pair<ResourceItemMetadata, String>> loadLimitRecords(String bucketLocation, Set<String> wanted) {
         ResourceDescriptor folder = ResourceDescriptorFactory
                 .fromEncoded(ResourceTypes.LIMIT, bucketLocation, bucketLocation, null);
-        long updatedAfter = timestamp - RateWindow.MONTH.window();
+        long updatedAfter = System.currentTimeMillis() - RateWindow.MONTH.window();
         // the page's item list is immutable, so the unwanted records are filtered out by replacing it
         return resourceService.listResources(folder, page -> page.setItems(page.getItems().stream()
                 .filter(item -> item instanceof ResourceItemMetadata metadata
@@ -468,6 +453,20 @@ public class RateLimiter {
         long timestamp = System.currentTimeMillis();
         rateLimit.add(timestamp, totalUsedTokens);
         return ProxyUtil.convertToString(rateLimit);
+    }
+
+    private Future<Void> updateCostLimits(RoleBasedEntity roleBasedEntity, String bucket, BigDecimal cost) {
+        ResourceDescriptor userCostDescriptor = getResourceDescription(bucket, getPathToCosts());
+        // the global document is what enforces; the deployment-scoped one only attributes the same
+        // figure, so that a bulk report can break spend down without re-deriving it from stored
+        // tokens - which is impossible anyway, since only total tokens are kept and pricing reloads
+        ResourceDescriptor deploymentCostDescriptor =
+                getResourceDescription(bucket, getPathToDeploymentCosts(roleBasedEntity.getName()));
+        // the enforcing document is written first, since the deployment-scoped one only reports
+        return taskExecutor.submit(() -> {
+            updateCostLimit(userCostDescriptor, cost);
+            return updateCostLimit(deploymentCostDescriptor, cost);
+        });
     }
 
     private Void updateCostLimit(ResourceDescriptor resourceDescription, BigDecimal cost) {
