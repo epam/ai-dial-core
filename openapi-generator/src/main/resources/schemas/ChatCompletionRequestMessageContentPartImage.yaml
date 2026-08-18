@@ -1,0 +1,24 @@
+type: object
+title: Image content part
+properties:
+  type:
+    type: string
+    enum: ["image_url"]
+    description: The type of the content part.
+  image_url:
+    type: object
+    properties:
+      url:
+        type: string
+        description: Either a URL of the image or the base64 encoded image data.
+        format: uri
+      detail:
+        type: string
+        description: Specifies the detail level of the image. Learn more in the [Vision guide](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/gpt-with-vision?tabs=rest%2Csystem-assigned%2Cresource#detail-parameter-settings-in-image-processing-low-high-auto).
+        enum: ["auto", "low", "high"]
+        default: "auto"
+    required:
+      - url
+required:
+  - type
+  - image_url

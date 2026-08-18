@@ -1,5 +1,7 @@
 type: object
-additionalProperties: true
+description: A manual cache breakpoint. The part of the chat completion request up to this breakpoint will be cached by the deployment. Follow-up requests sharing the same prefix have a chance of hitting the cache and reusing the input tokens associated with this prefix. The field only makes sense for the deployments that support [prompt caching](https://docs.dialx.ai/tutorials/developers/prompt-caching).
 properties:
   expire_at:
     type: string
+    description: "An optional expiration time for the given cache breakpoint, e.g. '2025-10-02T15:01:23Z'"
+    example: '2025-10-02T15:01:23Z'

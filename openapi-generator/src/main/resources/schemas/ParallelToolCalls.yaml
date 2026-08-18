@@ -1,0 +1,3 @@
+description: Whether to enable parallel `function` calling during the `tool` use.
+type: boolean
+default: true

@@ -1,0 +1,18 @@
+type: object
+description: |-
+  Additional parameters for an embedding model.
+properties:
+  type:
+    type: string
+    description: |-
+      Type of embedding to embed an input with.
+      
+      The particular values of this parameter are specific for particular models.
+      
+      **Note:** embedding types may not be supported by some models.
+  instruction:
+    type: string
+    description: |-
+      Allows to specify an instruction prompt for an instructor-like embedding model.
+      
+      **Note:** instruction may not be supported by some models.

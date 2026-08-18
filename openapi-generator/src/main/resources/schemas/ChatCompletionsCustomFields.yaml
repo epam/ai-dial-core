@@ -1,0 +1,19 @@
+type: object
+description: |-
+  Additional DIAL-specific parameters for a chat completion request.
+properties:
+  configuration:
+    type: object
+    description: |-
+      The object that represents configuration of the deployment.
+      The schema of the object is specific for each deployment and provided by the endpoint
+      `GET /v1/deployments/{deployment_name}/configuration`.
+      <br><br>
+      A deployment supports configuration if its listing, retrieved by `GET /openai/deployments/{deployment_name}`, has a field `features.configuration` set to **true**.
+      <br><br>
+      Certain models connected via DIAL adapters are configurable. For detailed configuration information, refer to the documentation of each adapter:
+        - [OpenAI Adapter](https://github.com/epam/ai-dial-adapter-openai/?tab=readme-ov-file#configurable-models)
+        - [Google VertexAI Adapter](https://github.com/epam/ai-dial-adapter-vertexai/?tab=readme-ov-file#configurable-models)
+        - [AWS Bedrock Adapter](https://github.com/epam/ai-dial-adapter-bedrock/?tab=readme-ov-file#configurable-models)
+    example:
+      $ref: ./examples/configuration_value.json
