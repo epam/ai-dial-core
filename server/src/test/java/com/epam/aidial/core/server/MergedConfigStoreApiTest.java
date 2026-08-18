@@ -225,11 +225,8 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
 
     @Test
     void testBlobAppTypeSchemaShadowsFileEntryByIdAfterReload() {
-        // App-type/catalog schemas are keyed by $id (file) vs. canonical id (blob), so the
-        // blob-shadows-file removal used for name-addressed types (by short name) doesn't apply
-        // directly — instead, the migrated blob entity's own $id is used to remove the file entry
-        // sharing it, so $id-keyed listings (ApplicationTypeSchemaController) don't surface the
-        // schema twice.
+        // Both file and blob schema entries are keyed by $id. A blob written with the same $id
+        // as a file entry overwrites it in the single map — no alias index needed.
         String fileSchemaId = "https://mydial.somewhere.com/custom_application_schemas/specific_application_type";
         String blobName = "blob-schema-1";
         String body = """
@@ -246,15 +243,17 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         assertEquals(200, reload.status());
 
         Config merged = dial.getProxy().getConfigStore().get();
+        // Blob entry is keyed by its $id — same key the file entry used — so it shadows the file entry.
+        assertTrue(merged.getApplicationTypeSchemas().containsKey(fileSchemaId),
+                () -> "Expected $id key in merged Config: " + merged.getApplicationTypeSchemas().keySet());
+        // No separate canonical-id key exists for schemas.
         String canonicalId = "schemas/platform/" + blobName;
-        assertTrue(merged.getApplicationTypeSchemas().containsKey(canonicalId),
-                () -> "Expected canonical-ID key in merged Config: " + merged.getApplicationTypeSchemas().keySet());
-        assertFalse(merged.getApplicationTypeSchemas().containsKey(fileSchemaId),
-                () -> "File entry keyed by $id must be shadowed by the migrated blob entity: "
-                        + merged.getApplicationTypeSchemas().keySet());
-        assertEquals(merged.getApplicationTypeSchemas().get(canonicalId),
+        assertFalse(merged.getApplicationTypeSchemas().containsKey(canonicalId),
+                () -> "Blob schemas must not be keyed by canonical id: " + merged.getApplicationTypeSchemas().keySet());
+        // Direct $id lookup works — no alias indirection needed.
+        assertEquals(merged.getApplicationTypeSchemas().get(fileSchemaId),
                 merged.getCustomApplicationSchema(URI.create(fileSchemaId)),
-                "getCustomApplicationSchema must still resolve the $id via the alias index");
+                "getCustomApplicationSchema must resolve the $id directly from the map");
     }
 
     @Test

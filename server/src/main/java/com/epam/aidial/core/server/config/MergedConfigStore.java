@@ -23,7 +23,6 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.micrometer.core.instrument.Counter;
@@ -49,8 +48,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import javax.annotation.Nullable;
-
-import static com.epam.aidial.core.server.util.PlatformCanonicalIdUtil.lastSegment;
 
 /**
  * {@link ConfigStore} implementation that builds the runtime {@link Config} as the
@@ -291,8 +288,9 @@ public final class MergedConfigStore implements ConfigStore {
             return;
         }
         ResourceEvent.Action action = event.getAction();
+        Map<String, String> eventMetadata = event.getMetadata();
         taskExecutor.submit(() -> {
-            applyReplicaEvent(descriptor, action);
+            applyReplicaEvent(descriptor, action, eventMetadata);
             return null;
         }).onFailure(error -> {
             log.warn("Replica event dispatch failed for {}; falling back to full rebuild",
@@ -335,17 +333,20 @@ public final class MergedConfigStore implements ConfigStore {
      * <p>Package-private for direct test invocation; production callsite is
      * {@link #onResourceEvent} via {@link AsyncTaskExecutor#submit}.
      */
-    void applyReplicaEvent(ResourceDescriptor descriptor, ResourceEvent.Action action) {
+    void applyReplicaEvent(ResourceDescriptor descriptor, ResourceEvent.Action action,
+                           @Nullable Map<String, String> eventMetadata) {
         try {
             ResourceTypes type = (ResourceTypes) descriptor.getType();
-            String mapKey = mapKeyFor(descriptor);
+            boolean isSchema = type == ResourceTypes.APP_TYPE_SCHEMA || type == ResourceTypes.CATALOG_SCHEMA;
+
             if (action == ResourceEvent.Action.DELETE) {
-                applyReplicaDelete(type, mapKey);
+                applyReplicaEventDelete(type, descriptor, isSchema, eventMetadata);
                 return;
             }
             String body = resourceService.getResource(descriptor);
             if (body == null) {
-                applyReplicaDelete(type, mapKey);
+                // Body race: writer deleted the resource before this replica fetched it.
+                applyReplicaEventDelete(type, descriptor, isSchema, eventMetadata);
                 return;
             }
             JsonNode node = ProxyUtil.BLOB_MAPPER.readTree(body);
@@ -365,6 +366,14 @@ public final class MergedConfigStore implements ConfigStore {
                 Object entity = deserializeReplicaEntity(type, node);
                 if (!(entity instanceof String)) {
                     decryptManagedEntity(type, entity, descriptor);
+                }
+                String mapKey = resolveReplicaMapKey(descriptor, node, isSchema, eventMetadata);
+                // Evict the old $id when a schema was updated with a different $id.
+                if (isSchema && eventMetadata != null) {
+                    String oldSchemaId = eventMetadata.get("old_$id");
+                    if (oldSchemaId != null && !oldSchemaId.equals(mapKey)) {
+                        applyEntityDeleteLocked(type, oldSchemaId);
+                    }
                 }
                 if (type == ResourceTypes.PROJECT_KEY) {
                     Key key = (Key) entity;
@@ -393,6 +402,29 @@ public final class MergedConfigStore implements ConfigStore {
                     descriptor.getUrl(), error);
             requestRebuild();
         }
+    }
+
+    private void applyReplicaEventDelete(ResourceTypes type, ResourceDescriptor descriptor,
+                                         boolean isSchema, @Nullable Map<String, String> eventMetadata) {
+        if (isSchema) {
+            applyReplicaSchemaDelete(type, eventMetadata);
+        } else {
+            applyReplicaDelete(type, mapKeyFor(descriptor));
+        }
+    }
+
+    /**
+     * Handles a schema-type replica delete, using the {@code $id} carried in {@code eventMetadata}
+     * when available. Falls back to a full rebuild when the metadata is absent — the blob body is
+     * gone at delete time so the map key cannot be derived any other way.
+     */
+    private void applyReplicaSchemaDelete(ResourceTypes type, @Nullable Map<String, String> eventMetadata) {
+        String schemaId = eventMetadata != null ? eventMetadata.get("$id") : null;
+        if (schemaId == null) {
+            requestRebuild();
+            return;
+        }
+        applyReplicaDelete(type, schemaId);
     }
 
     private void applyReplicaDelete(ResourceTypes type, String mapKey) {
@@ -988,6 +1020,11 @@ public final class MergedConfigStore implements ConfigStore {
         }
     }
 
+    public static String extractSchemaId(JsonNode node) {
+        JsonNode id = node.get("$id");
+        return id != null && id.isTextual() ? id.asText() : null;
+    }
+
     private static String schemaBody(Object entity) {
         if (entity instanceof String s) {
             return s;
@@ -1052,11 +1089,10 @@ public final class MergedConfigStore implements ConfigStore {
         Map<String, Key> apiKeysByCanonicalId = new HashMap<>();
         // For models/interceptors/roles/applications/toolsets, a blob entry's map key (its short
         // name) is indistinguishable in shape from a file entry's — both are bare, slash-free names.
-        // Schemas are locally-keyed too (by decoded $id); their $id always contains '/' so the
-        // shape-based check in the skip lambda already classifies them as "api", but they are
-        // tracked here for completeness. Track which (type, mapKey) pairs came from a blob this
-        // rebuild so the semantic pass can classify a skipped entity as "api" vs "file" correctly
-        // instead of guessing from key shape (which only works for the still-canonical-id-keyed types).
+        // Track which (type, mapKey) pairs came from a blob this rebuild so the semantic pass can
+        // classify a skipped entity as "api" vs "file" correctly. Only models, applications,
+        // interceptors, and toolsets actually trigger onSkip (roles, schemas, keys, routes do not),
+        // but we track all five short-name-keyed types for completeness.
         Map<ResourceTypes, Set<String>> apiSourcedKeys = new EnumMap<>(ResourceTypes.class);
 
         for (ResourceTypes type : MANAGED_TYPES) {
@@ -1077,7 +1113,6 @@ public final class MergedConfigStore implements ConfigStore {
                         continue;
                     }
                     String canonicalId = canonicalId(type, bucket, name);
-                    String mapKey = isLocallyKeyed(type) ? localKey(type, name) : canonicalId;
                     JsonNode node;
                     try {
                         // Parse once into JsonNode; reused below for typed deserialization and as the
@@ -1093,6 +1128,12 @@ public final class MergedConfigStore implements ConfigStore {
 
                     ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                             type, bucket, bucketLocation, name);
+
+                    // Schemas are keyed by their JSON-Schema $id, not by blob name or canonical id.
+                    String mapKey = resolveRebuildMapKey(descriptor, node, canonicalId);
+                    if (mapKey == null) {
+                        continue;
+                    }
                     Object added;
                     try {
                         added = addBlobEntity(merged, type, mapKey, node);
@@ -1120,7 +1161,7 @@ public final class MergedConfigStore implements ConfigStore {
                         if (type == ResourceTypes.PROJECT_KEY) {
                             apiKeysByCanonicalId.put(canonicalId, (Key) added);
                         }
-                        if (isLocallyKeyed(type)) {
+                        if (isShortNameKeyed(type)) {
                             apiSourcedKeys.computeIfAbsent(type, t -> new HashSet<>()).add(mapKey);
                         }
                     }
@@ -1249,6 +1290,11 @@ public final class MergedConfigStore implements ConfigStore {
         log.warn("Skipped {} '{}' from merged Config: {}", type.urlSegment(), canonicalId, reason);
     }
 
+    private static String lastSegment(String key) {
+        int slash = key.lastIndexOf('/');
+        return slash < 0 ? key : key.substring(slash + 1);
+    }
+
     public static String canonicalId(ResourceTypes type, String bucket, String name) {
         return type.urlSegment() + ResourceDescriptor.PATH_SEPARATOR + bucket + ResourceDescriptor.PATH_SEPARATOR + name;
     }
@@ -1259,45 +1305,76 @@ public final class MergedConfigStore implements ConfigStore {
     }
 
     /**
-     * The key {@code Config}'s in-memory maps use for {@code descriptor}'s entity.
+     * The Config map key for non-schema types.
      * <ul>
-     *   <li>Models/interceptors/roles/applications/toolsets → short name (last path segment), so
-     *       blob-sourced and file-sourced entries of the same logical entity share one map key.</li>
-     *   <li>Schemas ({@code APP_TYPE_SCHEMA}, {@code CATALOG_SCHEMA}) → the decoded JSON-Schema
-     *       {@code $id}, recovered from the blob name via {@link UrlUtil#unescapeSchemaId}.</li>
-     *   <li>Every other type → canonical id (unchanged).</li>
+     *   <li>Models/interceptors/roles/applications/toolsets → short name (last path segment)</li>
+     *   <li>Every other non-schema type → canonical id</li>
      * </ul>
-     * Callers that already have a {@link ResourceDescriptor} should use this instead of building
-     * the canonical id and then parsing the key back out of it.
+     * Throws {@link IllegalArgumentException} if called for a schema type — use
+     * {@link #mapKeyForSchema(JsonNode)} for {@code APP_TYPE_SCHEMA} / {@code CATALOG_SCHEMA}.
      */
     public static String mapKeyFor(ResourceDescriptor descriptor) {
         ResourceTypes type = (ResourceTypes) descriptor.getType();
-        return isLocallyKeyed(type) ? localKey(type, descriptor.getName()) : canonicalId(descriptor);
+        if (type == ResourceTypes.APP_TYPE_SCHEMA || type == ResourceTypes.CATALOG_SCHEMA) {
+            throw new IllegalArgumentException(
+                    "Use mapKeyForSchema(JsonNode) for schema types; descriptor: " + descriptor.getUrl());
+        }
+        return isShortNameKeyed(type) ? descriptor.getName() : canonicalId(descriptor);
     }
 
     /**
-     * Returns {@code true} for types whose {@code Config} map key is derived from the blob file
-     * name rather than from the full canonical id. For schema types the blob name is the
-     * {@link UrlUtil#escapeSchemaId escaped} {@code $id}; for the remaining types it is the short
-     * entity name directly.
+     * Resolves the Config map key for a blob entry during a full rebuild. For schema types, returns
+     * the {@code $id} extracted from the blob body, or {@code null} (and logs a warning) when the
+     * body has no textual {@code $id}. For all other types, delegates to
+     * {@link #mapKeyFor(ResourceDescriptor)}.
      */
-    private static boolean isLocallyKeyed(ResourceTypes type) {
+    @Nullable
+    private static String resolveRebuildMapKey(ResourceDescriptor descriptor, JsonNode node, String canonicalId) {
+        ResourceTypes type = (ResourceTypes) descriptor.getType();
+        if (type != ResourceTypes.APP_TYPE_SCHEMA && type != ResourceTypes.CATALOG_SCHEMA) {
+            return mapKeyFor(descriptor);
+        }
+        String schemaId = extractSchemaId(node);
+        if (schemaId == null) {
+            log.warn("Skipping schema blob '{}': missing or non-textual $id field", canonicalId);
+        }
+        return schemaId;
+    }
+
+    /**
+     * Resolves the Config map key for a replica CREATE/UPDATE event. For schema types, prefers the
+     * {@code $id} carried in {@code eventMetadata} (set by the writer) and falls back to extracting
+     * it from the blob body when metadata is absent (older-pod delivery). For all other types,
+     * delegates to {@link #mapKeyFor(ResourceDescriptor)}.
+     */
+    private static String resolveReplicaMapKey(ResourceDescriptor descriptor, JsonNode node,
+                                               boolean isSchema,
+                                               @Nullable Map<String, String> eventMetadata) {
+        if (!isSchema) {
+            return mapKeyFor(descriptor);
+        }
+        String metaId = eventMetadata != null ? eventMetadata.get("$id") : null;
+        return metaId != null ? metaId : mapKeyForSchema(node);
+    }
+
+    /**
+     * The Config map key for schema types ({@code APP_TYPE_SCHEMA}, {@code CATALOG_SCHEMA}):
+     * the JSON-Schema {@code $id} field extracted from the blob body.
+     * Throws {@link IllegalArgumentException} when {@code body} has no textual {@code $id}.
+     */
+    public static String mapKeyForSchema(JsonNode body) {
+        String schemaId = extractSchemaId(body);
+        if (schemaId == null) {
+            throw new IllegalArgumentException(
+                    "Schema body must contain a non-null textual $id field");
+        }
+        return schemaId;
+    }
+
+    private static boolean isShortNameKeyed(ResourceTypes type) {
         return switch (type) {
-            case MODEL, INTERCEPTOR, ROLE, APPLICATION, TOOL_SET,
-                    APP_TYPE_SCHEMA, CATALOG_SCHEMA -> true;
+            case MODEL, INTERCEPTOR, ROLE, APPLICATION, TOOL_SET -> true;
             default -> false;
-        };
-    }
-
-    /**
-     * Derives the {@code Config} map key from a blob file {@code name} for a locally-keyed type.
-     * Schema blob names are {@link UrlUtil#escapeSchemaId escaped} {@code $id} values and must be
-     * unescaped; all other locally-keyed types use the blob name verbatim.
-     */
-    private static String localKey(ResourceTypes type, String blobName) {
-        return switch (type) {
-            case APP_TYPE_SCHEMA, CATALOG_SCHEMA -> UrlUtil.unescapeSchemaId(blobName);
-            default -> blobName;
         };
     }
 

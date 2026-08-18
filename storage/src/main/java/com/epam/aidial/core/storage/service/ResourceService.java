@@ -607,8 +607,14 @@ public class ResourceService implements AutoCloseable {
 
     public ResourceItemMetadata putResource(
             ResourceDescriptor descriptor, String body, EtagHeader etag, String author, boolean lock) {
+        return putResource(descriptor, body, etag, author, lock, null);
+    }
+
+    public ResourceItemMetadata putResource(
+            ResourceDescriptor descriptor, String body, EtagHeader etag, String author, boolean lock,
+            @Nullable Map<String, String> eventMetadata) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        return putResource(descriptor, bytes, etag, "application/json", author, lock);
+        return putResource(descriptor, bytes, etag, "application/json", author, lock, eventMetadata);
     }
 
     private ResourceItemMetadata putResource(
@@ -618,6 +624,17 @@ public class ResourceService implements AutoCloseable {
             String contentType,
             String author,
             boolean lock) {
+        return putResource(descriptor, body, etagHeader, contentType, author, lock, null);
+    }
+
+    private ResourceItemMetadata putResource(
+            ResourceDescriptor descriptor,
+            byte[] body,
+            EtagHeader etagHeader,
+            String contentType,
+            String author,
+            boolean lock,
+            @Nullable Map<String, String> eventMetadata) {
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
@@ -653,7 +670,7 @@ public class ResourceService implements AutoCloseable {
             ResourceEvent.Action action = metadata == null
                     ? ResourceEvent.Action.CREATE
                     : ResourceEvent.Action.UPDATE;
-            publishEvent(descriptor, action, updatedAt, newEtag);
+            publishEvent(descriptor, action, updatedAt, newEtag, eventMetadata);
             return descriptor.getType().requireCompression()
                     ? toResourceItemMetadata(descriptor, result)
                     : toFileMetadata(descriptor, result);
@@ -869,6 +886,11 @@ public class ResourceService implements AutoCloseable {
     }
 
     public boolean deleteResource(ResourceDescriptor descriptor, EtagHeader etag, boolean lock) {
+        return deleteResource(descriptor, etag, lock, null);
+    }
+
+    public boolean deleteResource(ResourceDescriptor descriptor, EtagHeader etag, boolean lock,
+            @Nullable Map<String, String> eventMetadata) {
         String redisKey = redisKey(descriptor);
 
         try (var ignore = lock ? lockService.lock(redisKey) : null) {
@@ -884,7 +906,7 @@ public class ResourceService implements AutoCloseable {
             blobDelete(blobKey(descriptor));
             redisSync(redisKey);
 
-            publishEvent(descriptor, ResourceEvent.Action.DELETE, time(), null);
+            publishEvent(descriptor, ResourceEvent.Action.DELETE, time(), null, eventMetadata);
             return true;
         }
     }
@@ -935,12 +957,18 @@ public class ResourceService implements AutoCloseable {
     }
 
     private void publishEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp, String etag) {
+        publishEvent(descriptor, action, timestamp, etag, null);
+    }
+
+    private void publishEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp, String etag,
+            @Nullable Map<String, String> metadata) {
         ResourceEvent event = new ResourceEvent()
                 .setUrl(descriptor.getUrl())
                 .setAction(action)
                 .setTimestamp(timestamp)
                 .setEtag(etag)
-                .setSenderPodId(senderPodIdSupplier.get());
+                .setSenderPodId(senderPodIdSupplier.get())
+                .setMetadata(metadata);
 
         topic.publish(event);
     }

@@ -58,23 +58,6 @@ public class ResourceDescriptorFactory {
         return from(type, bucketName, bucketLocation, elements, ResourceUtil.isFolder(path));
     }
 
-    /**
-     * Like {@link #fromDecoded}, but treats {@code decodedName} as a single atomic resource name —
-     * never splits it on '/'. Use for identifiers (like a JSON-Schema {@code $id}) that are
-     * themselves URIs and therefore expected to contain '/', not folder-hierarchy separators.
-     * The name is escaped via {@link UrlUtil#escapeSchemaId} so the physical blob key is flat
-     * while keeping human-readable URI characters like ':' intact.
-     */
-    public static ResourceDescriptor fromDecodedAtomicName(ResourceType type, String bucketName,
-                                                           String bucketLocation, String decodedName) {
-        verify(bucketLocation.endsWith(ResourceDescriptor.PATH_SEPARATOR), "Bucket location must end with /");
-        String physicalName = UrlUtil.escapeSchemaId(decodedName);
-        ResourceDescriptor resource = from(type, bucketName, bucketLocation, List.of(physicalName), false);
-        verify(resource.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8).length <= MAX_PATH_SIZE,
-                "Resource path exceeds max allowed size: " + MAX_PATH_SIZE);
-        return resource;
-    }
-
     public static ResourceDescriptor fromPublicUrl(String url) {
         return fromUrl(url, ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, null);
     }

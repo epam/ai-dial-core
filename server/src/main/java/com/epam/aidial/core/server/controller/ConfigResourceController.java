@@ -46,7 +46,6 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -952,11 +951,7 @@ public class ConfigResourceController implements Controller {
         if (method == HttpMethod.GET || method == HttpMethod.HEAD) {
             return handleGet();
         }
-        ResourceTypes nameValidationType = resourceType();
-        boolean isSchemaType = nameValidationType == ResourceTypes.APP_TYPE_SCHEMA
-                || nameValidationType == ResourceTypes.CATALOG_SCHEMA;
         if ((method == HttpMethod.PUT || method == HttpMethod.DELETE)
-                && !isSchemaType
                 && !ENTITY_NAME_PATTERN.matcher(path == null ? "" : path).matches()) {
             context.respond(HttpStatus.BAD_REQUEST,
                     "Invalid entity name segment: must match " + ENTITY_NAME_PATTERN.pattern());
@@ -1227,9 +1222,9 @@ public class ConfigResourceController implements Controller {
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case ROUTE -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROUTE,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
-            case APP_TYPE_SCHEMA -> ResourceDescriptorFactory.fromDecodedAtomicName(ResourceTypes.APP_TYPE_SCHEMA,
+            case APP_TYPE_SCHEMA -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.APP_TYPE_SCHEMA,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
-            case CATALOG_SCHEMA -> ResourceDescriptorFactory.fromDecodedAtomicName(ResourceTypes.CATALOG_SCHEMA,
+            case CATALOG_SCHEMA -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.CATALOG_SCHEMA,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case APPLICATION -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
@@ -1240,10 +1235,6 @@ public class ConfigResourceController implements Controller {
     }
 
     private String canonicalId() {
-        ResourceTypes type = resourceType();
-        if (type == ResourceTypes.APP_TYPE_SCHEMA || type == ResourceTypes.CATALOG_SCHEMA) {
-            return entityType + "/" + bucket + "/" + UrlUtil.encodePathSegment(path);
-        }
         return entityType + "/" + bucket + "/" + path;
     }
 
@@ -1456,15 +1447,11 @@ public class ConfigResourceController implements Controller {
                 String keySecret = null;
                 String oldSecret = null;
                 Object entity = null;
+                Map<String, String> putEventMetadata = null;
                 if (spec.entityClass() == null) {
                     ResourceTypes schemaType = resourceType();
                     if (schemaType == ResourceTypes.APP_TYPE_SCHEMA || schemaType == ResourceTypes.CATALOG_SCHEMA) {
-                        // S3: override body.$id to match the decoded URL segment so the blob always
-                        // round-trips cleanly — canonicalId = type/platform/encode($id), $id = path.
-                        JsonNode idNode = requestNode.get("$id");
-                        if (idNode == null || !path.equals(idNode.asText())) {
-                            ((ObjectNode) requestNode).put("$id", path);
-                        }
+                        putEventMetadata = buildSchemaEventMetadata(schemaType, requestNode, existingBody);
                     }
                     blobBody = requestNode.toString();
                 } else {
@@ -1530,7 +1517,7 @@ public class ConfigResourceController implements Controller {
                 // Conditional headers were already validated above; persist with ANY so the
                 // blob layer doesn't re-validate against a stale snapshot.
                 ResourceItemMetadata meta = resourceService.putResource(
-                        descriptor, blobBody, EtagHeader.ANY, author, false);
+                        descriptor, blobBody, EtagHeader.ANY, author, false, putEventMetadata);
                 if (keySecret != null) {
                     apiKeyStore.addOrUpdateKey(keySecret, apiKeyData(keyEntity));
                     if (oldSecret != null && !oldSecret.isBlank() && !oldSecret.equals(keySecret)) {
@@ -1545,8 +1532,17 @@ public class ConfigResourceController implements Controller {
                 if (entity != null && spec.hasEncryptedFields()) {
                     secretFieldProcessor.decryptFields(entity, descriptor);
                 }
-                mergedConfigStore.applyEntityWrite(typeOf(descriptor),
-                        MergedConfigStore.mapKeyFor(descriptor),
+                ResourceTypes writeType = typeOf(descriptor);
+                // Evict old $id from Config before writing the new one (schema $id-change update).
+                String newSchemaId = putEventMetadata != null ? putEventMetadata.get("$id") : null;
+                String oldSchemaId = putEventMetadata != null ? putEventMetadata.get("old_$id") : null;
+                if (oldSchemaId != null) {
+                    mergedConfigStore.applyEntityDelete(writeType, oldSchemaId);
+                }
+                String mapKey = newSchemaId != null
+                        ? newSchemaId
+                        : MergedConfigStore.mapKeyFor(descriptor);
+                mergedConfigStore.applyEntityWrite(writeType, mapKey,
                         entity != null ? entity : requestNode);
                 return meta;
             }));
@@ -1555,6 +1551,39 @@ public class ConfigResourceController implements Controller {
                 .onFailure(this::handleWriteError);
 
         return Future.succeededFuture();
+    }
+
+    private Map<String, String> buildSchemaEventMetadata(ResourceTypes schemaType, JsonNode requestNode,
+                                                         String existingBody) {
+        String newSchemaId = MergedConfigStore.extractSchemaId(requestNode);
+        if (newSchemaId == null || newSchemaId.isBlank()) {
+            throw new HttpException(HttpStatus.BAD_REQUEST,
+                    "Schema body must contain a non-blank $id field");
+        }
+        // Derive old $id from existing blob (if any) to detect $id changes.
+        String oldSchemaId = null;
+        if (existingBody != null) {
+            try {
+                oldSchemaId = MergedConfigStore.extractSchemaId(
+                        ProxyUtil.BLOB_MAPPER.readTree(existingBody));
+            } catch (Exception e) {
+                // Treat as no prior $id — proceed without eviction.
+            }
+        }
+        // Uniqueness: reject if $id is already registered under a different blob.
+        if (!newSchemaId.equals(oldSchemaId)) {
+            Config snapshot = mergedConfigStore.get();
+            Map<String, String> schemaMap = schemaType == ResourceTypes.APP_TYPE_SCHEMA
+                    ? snapshot.getApplicationTypeSchemas()
+                    : snapshot.getCatalogSchemas();
+            if (schemaMap.containsKey(newSchemaId)) {
+                throw new HttpException(HttpStatus.CONFLICT,
+                        "Schema $id is already in use: " + newSchemaId);
+            }
+        }
+        return oldSchemaId != null && !oldSchemaId.equals(newSchemaId)
+                ? Map.of("$id", newSchemaId, "old_$id", oldSchemaId)
+                : Map.of("$id", newSchemaId);
     }
 
     private Future<?> handleDelete() {
@@ -1571,7 +1600,11 @@ public class ConfigResourceController implements Controller {
             // with a concurrent PUT swapping the key). The admin-write lock alone provides
             // this — admin-only types are never written by non-admin paths, and all admin
             // writes serialize cluster-wide on this lock. See 02-architecture.md §4.4.
+            ResourceTypes deleteType = typeOf(descriptor);
+            boolean isSchema = deleteType == ResourceTypes.APP_TYPE_SCHEMA
+                    || deleteType == ResourceTypes.CATALOG_SCHEMA;
             String deletedSecret = null;
+            String deletedSchemaId = null;
             if (spec.isKey()) {
                 String existing = resourceService.getResource(descriptor, EtagHeader.ANY, false);
                 if (existing != null) {
@@ -1602,8 +1635,21 @@ public class ConfigResourceController implements Controller {
                         }
                     }
                 }
+            } else if (isSchema) {
+                String existing = resourceService.getResource(descriptor, EtagHeader.ANY, false);
+                if (existing != null) {
+                    try {
+                        deletedSchemaId = MergedConfigStore.extractSchemaId(
+                                ProxyUtil.BLOB_MAPPER.readTree(existing));
+                    } catch (Exception e) {
+                        // Treat as no $id — applyEntityDelete will be skipped and the next
+                        // rebuild will clean up any stale entry.
+                    }
+                }
             }
-            boolean deleted = resourceService.deleteResource(descriptor, etag, false);
+            Map<String, String> deleteEventMetadata = deletedSchemaId != null
+                    ? Map.of("$id", deletedSchemaId) : null;
+            boolean deleted = resourceService.deleteResource(descriptor, etag, false, deleteEventMetadata);
             if (!deleted) {
                 throw new HttpException(HttpStatus.NOT_FOUND,
                         "Resource not found: " + descriptor.getUrl());
@@ -1611,7 +1657,10 @@ public class ConfigResourceController implements Controller {
             if (deletedSecret != null) {
                 apiKeyStore.removeKey(deletedSecret);
             }
-            mergedConfigStore.applyEntityDelete(typeOf(descriptor), MergedConfigStore.mapKeyFor(descriptor));
+            String deleteMapKey = deletedSchemaId != null
+                    ? deletedSchemaId
+                    : MergedConfigStore.mapKeyFor(descriptor);
+            mergedConfigStore.applyEntityDelete(deleteType, deleteMapKey);
             return true;
         })).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
 

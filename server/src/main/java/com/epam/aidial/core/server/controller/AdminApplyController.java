@@ -43,11 +43,9 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
-import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
@@ -60,7 +58,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.epam.aidial.core.server.util.PlatformCanonicalIdUtil.lastSegment;
 
 @Slf4j
 public class AdminApplyController {
@@ -431,17 +428,13 @@ public class AdminApplyController {
         if (!entry.spec().isObject()) {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Schema spec must be a JSON object");
         }
-        // parsed.name() is the percent-encoded $id segment from the manifest name; decode once.
-        String decodedSchemaId = UrlUtil.decodePath(parsed.name());
-        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecodedAtomicName(
-                type, parsed.bucket(), parsed.location(), decodedSchemaId);
-        // S3: ensure body.$id matches the derived $id from the canonical path.
         JsonNode spec = entry.spec();
-        JsonNode idNode = spec.get("$id");
-        if (idNode == null || !decodedSchemaId.equals(idNode.asText())) {
-            spec = spec.deepCopy();
-            ((ObjectNode) spec).put("$id", decodedSchemaId);
+        String schemaId = MergedConfigStore.extractSchemaId(spec);
+        if (schemaId == null || schemaId.isBlank()) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, "Schema spec must contain a non-blank $id field");
         }
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                type, parsed.bucket(), parsed.location(), parsed.name());
         String blobBody;
         try {
             blobBody = ProxyUtil.BLOB_MAPPER.writeValueAsString(spec);
@@ -450,8 +443,23 @@ public class AdminApplyController {
             // submitted secrets). Surface a generic failure tied to the entity id.
             return new EntityResult(id, AdminApplyStatus.FAILED, "Failed to serialize schema for " + id);
         }
-        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-        pending.add(new EntityChange(type, MergedConfigStore.mapKeyFor(descriptor), spec));
+        // Read the existing blob to detect an $id change; replicas use old_$id to evict the
+        // stale entry from their in-memory schema map without waiting for a full rebuild.
+        String oldSchemaId = null;
+        try {
+            String existingBody = resourceService.getResource(descriptor);
+            if (existingBody != null) {
+                oldSchemaId = MergedConfigStore.extractSchemaId(
+                        ProxyUtil.BLOB_MAPPER.readTree(existingBody));
+            }
+        } catch (Exception ignored) {
+            // If reading/parsing the existing blob fails, proceed without old_$id.
+        }
+        Map<String, String> eventMetadata = (oldSchemaId != null && !oldSchemaId.equals(schemaId))
+                ? Map.of("$id", schemaId, "old_$id", oldSchemaId)
+                : Map.of("$id", schemaId);
+        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY, null, true, eventMetadata);
+        pending.add(new EntityChange(type, schemaId, spec));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
@@ -631,19 +639,23 @@ public class AdminApplyController {
                     scratch.getToolsets().put(entry.name(), toolSet);
                 }
                 case "Schema" -> {
-                    String schemaId = UrlUtil.decodePath(lastSegment(entry.name()));
-                    try {
-                        scratch.getApplicationTypeSchemas().put(schemaId, ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec()));
-                    } catch (JsonProcessingException e) {
-                        return;
+                    String schemaId = MergedConfigStore.extractSchemaId(entry.spec());
+                    if (schemaId != null && !schemaId.isBlank()) {
+                        try {
+                            scratch.getApplicationTypeSchemas().put(schemaId, ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec()));
+                        } catch (JsonProcessingException e) {
+                            return;
+                        }
                     }
                 }
                 case "CatalogSchema" -> {
-                    String schemaId = UrlUtil.decodePath(lastSegment(entry.name()));
-                    try {
-                        scratch.getCatalogSchemas().put(schemaId, ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec()));
-                    } catch (JsonProcessingException e) {
-                        return;
+                    String schemaId = MergedConfigStore.extractSchemaId(entry.spec());
+                    if (schemaId != null && !schemaId.isBlank()) {
+                        try {
+                            scratch.getCatalogSchemas().put(schemaId, ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec()));
+                        } catch (JsonProcessingException e) {
+                            return;
+                        }
                     }
                 }
                 default -> { /* unknown kinds never reach this code path */ }
