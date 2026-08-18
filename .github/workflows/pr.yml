@@ -23,6 +23,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: true
+          ref: ${{ github.head_ref }}
       - uses: epam/ai-dial-ci/actions/java_prepare@4.8.0
         with:
           java-version: 21
@@ -48,5 +49,5 @@ jobs:
             echo "docs/open_api_core.yaml has changed — committing and pushing."
             git add docs/open_api_core.yaml
             git commit -m "chore: update generated OpenAPI specification"
-            git push
+            git push origin HEAD:${{ github.head_ref }}
           fi
