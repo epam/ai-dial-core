@@ -140,8 +140,7 @@ public class RateLimiter {
      * many models does not pay a lookup per model.
      *
      * <p>Reads are pipelined in chunks rather than issued as one round-trip, so this is not an atomic
-     * snapshot of the counters. One timestamp is shared across the projection instead, so every window in
-     * the response is computed against the same instant.
+     * snapshot of the counters: each record is projected against the instant it is collected at.
      *
      * @param dropEmpty omit deployments whose every window is zero, which is what separates
      *                  {@code GET /v1/user/usage} from {@code GET /v1/user/limits}
@@ -158,8 +157,6 @@ public class RateLimiter {
     private UserLimitStats collectUserStats(
             ProxyContext context, List<? extends RoleBasedEntity> deployments, boolean dropEmpty) {
         String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
-        // one instant for the whole projection, so no window can disagree with another
-        long timestamp = System.currentTimeMillis();
 
         UserLimitStats userLimitStats = new UserLimitStats();
         Map<String, LimitStats> statsByDeployment = userLimitStats.getDeployments();
@@ -192,7 +189,7 @@ public class RateLimiter {
         for (Pair<ResourceItemMetadata, String> loaded : records) {
             String path = loaded.getKey().getDescriptor().getAbsoluteFilePath();
             StatsTarget target = targetsByRecordPath.get(path);
-            target.type().collect(loaded.getValue(), target.stats(), timestamp);
+            target.type().collect(loaded.getValue(), target.stats());
         }
 
         userLimitStats.setMinuteCostStats(costStats.getMinuteCostStats());
@@ -260,24 +257,24 @@ public class RateLimiter {
     private enum LimitType {
         TOKENS {
             @Override
-            void collect(String json, LimitStats stats, long timestamp) {
-                collectTokenLimitStats(json, stats, timestamp);
+            void collect(String json, LimitStats stats) {
+                collectTokenLimitStats(json, stats, System.currentTimeMillis());
             }
         },
         REQUESTS {
             @Override
-            void collect(String json, LimitStats stats, long timestamp) {
-                collectRequestLimitStats(json, stats, timestamp);
+            void collect(String json, LimitStats stats) {
+                collectRequestLimitStats(json, stats, System.currentTimeMillis());
             }
         },
         COSTS {
             @Override
-            void collect(String json, LimitStats stats, long timestamp) {
-                collectCostLimitStats(json, stats, timestamp);
+            void collect(String json, LimitStats stats) {
+                collectCostLimitStats(json, stats, System.currentTimeMillis());
             }
         };
 
-        abstract void collect(String json, LimitStats stats, long timestamp);
+        abstract void collect(String json, LimitStats stats);
     }
 
     private void collectTokenLimitStats(ProxyContext context, LimitStats limitStats, long timestamp, String name) {
