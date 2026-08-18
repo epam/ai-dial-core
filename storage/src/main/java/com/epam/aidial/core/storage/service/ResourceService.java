@@ -384,11 +384,13 @@ public class ResourceService implements AutoCloseable {
             ResourceItemMetadata metadata = items.get(start + j);
             if (redisResult == null) {
                 missed.add(metadata);
-            } else {
+            } else if (redisResult.exists()) {
                 Pair<ResourceItemMetadata, String> pair = Pair.of(toResourceItemMetadata(metadata.getDescriptor(), redisResult),
                         new String(redisResult.body, StandardCharsets.UTF_8));
                 result.add(pair);
             }
+            // else: cached as absent, so omitted - its blob object can still be listed until the delete
+            // syncs, and a tombstone carries no body to decode
         }
         log.debug("Number of missing resources in Redis cache: {}", missed.size());
         List<Future<Pair<ResourceItemMetadata, String>>> futures = new ArrayList<>();

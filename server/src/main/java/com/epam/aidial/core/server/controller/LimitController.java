@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
@@ -9,11 +10,14 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.LimitStats;
+import com.epam.aidial.core.server.data.UserLimitStats;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
 
 @Slf4j
 public class LimitController {
@@ -43,7 +47,7 @@ public class LimitController {
                             description = OpenApiDescriptions.DEPLOYMENT_NAME)
             }
     )
-    public Future<?> getLimits(String deploymentId) {
+    public Future<?> getDeploymentLimits(String deploymentId) {
         proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId))
                 .compose(dep -> proxy.getRateLimiter().getLimitStats(dep, context))
                 .onSuccess(limitStats -> {
@@ -55,6 +59,64 @@ public class LimitController {
                 }).onFailure(error -> handleRequestError(deploymentId, error));
 
         return Future.succeededFuture();
+    }
+
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/user/limits",
+            operationId = "getUserLimits",
+            tags = {"Limits"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = UserLimitStats.class)),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 500)
+            }
+    )
+    public Future<?> getUserLimits() {
+        return respondWithUserStats(false);
+    }
+
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/user/usage",
+            operationId = "getUserUsage",
+            tags = {"Limits"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = UserLimitStats.class)),
+                    @ApiResponse(code = 401),
+                    @ApiResponse(code = 500)
+            }
+    )
+    public Future<?> getUserUsage() {
+        return respondWithUserStats(true);
+    }
+
+    private Future<?> respondWithUserStats(boolean dropEmpty) {
+        // no executor hop: listAccessibleModels only streams over the in-memory config, and
+        // getUserStats submits the blocking part itself
+        List<Model> models = listAccessibleModels();
+        proxy.getRateLimiter().getUserStats(context, models, dropEmpty)
+                .onSuccess(stats -> context.respond(HttpStatus.OK, stats))
+                .onFailure(this::handleUserLimitsError);
+
+        return Future.succeededFuture();
+    }
+
+    /**
+     * Only models are reported: DIAL never writes rate-limit counters for applications, toolsets or routes,
+     * so an entry for one would report zeros against a limit that cannot fire. See {@link UserLimitStats}.
+     */
+    private List<Model> listAccessibleModels() {
+        return context.getConfig().getModels().values().stream()
+                .filter(model -> model.hasAccess(context.getUserRoles()))
+                .toList();
+    }
+
+    private void handleUserLimitsError(Throwable error) {
+        // every authenticated caller has an initiator bucket - a project key without a project is rejected at
+        // load time and a token carries a subject - so anything reaching here is a server-side fault
+        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to get user limit stats");
+        log.error("LimitController. Failed to get user limit stats", error);
     }
 
     private void handleRequestError(String deploymentId, Throwable error) {
