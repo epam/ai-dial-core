@@ -52,6 +52,6 @@ jobs:
           else
             echo "docs/open_api_core.yaml has changed — committing and pushing."
             git add docs/open_api_core.yaml
-            git commit -m "[skip ci] chore: update generated OpenAPI specification"
+            git commit -m "chore: update generated OpenAPI specification"
             git push origin HEAD:${{ github.head_ref }}
           fi
