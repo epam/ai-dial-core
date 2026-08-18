@@ -24,7 +24,7 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class ResourceAuthSettings {
 
-    /** Wire names of the fields the JSON-level redaction in the admin config API has to keep in step. */
+    /** Wire names, for the JSON-level redaction in {@code ConfigResourceController}. */
     public static final String CLIENT_SECRET_FIELD = "client_secret";
     public static final String CODE_VERIFIER_FIELD = "code_verifier";
     public static final String CLIENT_SECRET_HINT_FIELD = "client_secret_hint";
@@ -92,10 +92,9 @@ public class ResourceAuthSettings {
     private Boolean dynamicallyRegistered;
 
     /**
-     * Returns a copy with credential material ({@code clientSecret}, {@code codeVerifier}) removed; the receiver
-     * is left unchanged. A newly added secret field has to be cleared here <em>and</em> in
-     * {@code ConfigResourceController.redactSecretFields}, which redacts the admin config API's JSON projection
-     * of the merged config rather than this object — see {@link #CLIENT_SECRET_FIELD} and its neighbours.
+     * Returns a copy with credential material removed; the receiver is left unchanged. A newly added secret
+     * field has to be cleared here <em>and</em> in {@code ConfigResourceController.redactSecretFields}, which
+     * redacts a JSON projection rather than this object.
      */
     public ResourceAuthSettings withoutSecrets() {
         ResourceAuthSettings copy = toBuilder().build();
@@ -104,9 +103,8 @@ public class ResourceAuthSettings {
     }
 
     /**
-     * As {@link #withoutSecrets()}, but keeps a {@code clientSecretHint} derived from the secret being removed.
-     * Reserved for callers that may manage the resource — they can overwrite the secret outright — which is why
-     * this is a separate method rather than a boolean: the risky call sites stay greppable.
+     * As {@link #withoutSecrets()}, but keeps a {@code clientSecretHint}. Separate method rather than a boolean
+     * so the call sites that expose the hint stay greppable.
      */
     public ResourceAuthSettings withoutSecretsKeepingHint() {
         ResourceAuthSettings copy = toBuilder().build();
@@ -114,18 +112,12 @@ public class ResourceAuthSettings {
         return copy;
     }
 
-    /**
-     * In-place {@link #withoutSecrets()} for callers that already hold a private copy of the settings.
-     */
     public void redactSecrets() {
         clientSecretHint = null;
         clientSecret = null;
         codeVerifier = null;
     }
 
-    /**
-     * In-place {@link #withoutSecretsKeepingHint()}.
-     */
     public void redactSecretsKeepingHint() {
         clientSecretHint = hintFor(clientSecret);
         clientSecret = null;
@@ -143,12 +135,11 @@ public class ResourceAuthSettings {
     }
 
     /**
-     * The trailing characters of the secret, letting a manager recognize which secret is stored without core ever
-     * revealing it. Scaled to the secret's length so the fragment never approaches the whole value (PCI DSS 4.0
-     * §3.4.1 caps partial disclosure the same way): nothing at all below {@value #HINT_MIN_SECRET_LENGTH},
-     * {@value #SHORT_HINT_LENGTH} characters up to {@value #FULL_HINT_SECRET_LENGTH}, {@value #HINT_LENGTH} beyond
-     * it. Every secret a real authorization server issues lands in the last band, so the width is constant in
-     * practice; the shorter bands only cover values stored before {@code ClientSecretValidation} existed.
+     * The trailing characters of the secret, so a manager can recognize which secret is stored. The fragment
+     * shrinks with the secret rather than approaching the whole value: nothing below
+     * {@value #HINT_MIN_SECRET_LENGTH} characters, {@value #SHORT_HINT_LENGTH} below
+     * {@value #FULL_HINT_SECRET_LENGTH}, {@value #HINT_LENGTH} from there on. Real authorization servers issue
+     * 32-64 characters, so the width is constant in practice and says nothing about the secret's size.
      */
     public static String hintFor(String secret) {
         if (secret == null || secret.length() < HINT_MIN_SECRET_LENGTH) {

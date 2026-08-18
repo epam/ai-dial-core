@@ -114,8 +114,7 @@ public class ToolSetService {
         if (authSettings == null) {
             return;
         }
-        // Redaction is not restricted to OAUTH: a blob of any authentication type that carries a clientSecret —
-        // written before the per-type validators existed, or hand-seeded — must not have it echoed back either.
+        // Deliberately not limited to OAUTH: a blob of any type may carry a hand-seeded clientSecret.
         if (canManage && authSettings.getClientSecret() != null && decryptForHint(resource, authSettings)) {
             authSettings.redactSecretsKeepingHint();
         } else {
@@ -129,7 +128,6 @@ public class ToolSetService {
                     new BucketInfo(resource.getBucketName(), resource.getBucketLocation()), authSettings);
             return true;
         } catch (RuntimeException e) {
-            // Expected for values stored before encryption-at-rest; not worth a stack trace on every read.
             log.warn("Can't decrypt auth settings of toolset {}, omitting client secret hint: {}",
                     resource.getUrl(), e.getMessage());
             return false;

@@ -32,8 +32,8 @@ public class ExternalServiceValidation {
     }
 
     /**
-     * {@code stored} is the definition this write replaces, with its secret already decrypted — a secret handed
-     * back unchanged is exempt from the value checks (see {@link ClientSecretValidation#validate(String, String)}).
+     * {@code stored} is the definition this write replaces, its secret already decrypted — see
+     * {@link ClientSecretValidation#validate(String, String)}.
      */
     public static void validate(String serviceId, ExternalService service, boolean isCreate, ExternalService stored) {
         validateServiceId(serviceId);
@@ -52,8 +52,6 @@ public class ExternalServiceValidation {
                 : ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES;
         try {
             validator.validate(authSettings, mode);
-            // API writes only — config-file services go through ConfigPostProcessor, which drops rather than
-            // rejects, so a legacy short secret there must not take the whole service down.
             ClientSecretValidation.validate(authSettings.getClientSecret(), storedClientSecret(stored));
         } catch (RuntimeException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST,

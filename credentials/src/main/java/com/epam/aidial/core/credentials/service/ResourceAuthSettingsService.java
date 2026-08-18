@@ -131,8 +131,8 @@ public class ResourceAuthSettingsService {
                                               String storedClientSecret) {
         AuthSettingsValidator authSettingsValidator = validatorFactory.getValidator(resourceAuthSettings.getAuthenticationType());
         authSettingsValidator.validate(resourceAuthSettings, resourceAuthSettingsChangeMode);
-        // Runs before enrichResourceAuthSettings, so only the caller's own secret is checked — never one a
-        // dynamic client registration is about to return, nor one handed back unchanged.
+        // Runs before enrichResourceAuthSettings, so a secret a dynamic registration is about to return is
+        // never checked — only the caller's own.
         ClientSecretValidation.validate(resourceAuthSettings.getClientSecret(), storedClientSecret);
     }
 

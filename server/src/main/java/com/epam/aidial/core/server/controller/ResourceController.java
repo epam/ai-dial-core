@@ -558,8 +558,8 @@ public class ResourceController extends AccessControlBaseController {
             ResourceItemMetadata meta = result.getKey();
 
             Application application = result.getValue();
-            // Inline services are stored encrypted; decrypt before the overlay so both they and the
-            // (already plaintext) user-authored ones yield a hint from the same code path below.
+            // Decrypt before the overlay so inline and (already plaintext) user-authored services both reach
+            // clearExternalServiceSecrets below with a hintable value.
             if (hasWriteAccess) {
                 proxy.getExternalServiceService().decryptSecretsForResponse(descriptor, application);
             }

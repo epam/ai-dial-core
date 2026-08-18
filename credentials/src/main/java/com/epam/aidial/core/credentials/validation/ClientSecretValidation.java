@@ -6,15 +6,12 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
 /**
- * Value checks for a caller-supplied {@code client_secret}.
+ * Value checks for a caller-supplied {@code client_secret}, on API writes only — never on secrets picked by
+ * dynamic client registration, nor on config-file entries, which {@code ConfigPostProcessor} drops rather than
+ * rejects. A null secret means "keep the stored one" and passes.
  *
- * <p>Applied on API writes only — never to secrets obtained by dynamic client registration (the authorization
- * server picks those) nor to config-file entries, which {@code ConfigPostProcessor} would drop rather than
- * reject. A null secret means "keep the stored one" and passes.</p>
- *
- * <p>{@link #MIN_LENGTH} is far below what any real authorization server issues — RFC 6749 §10.10 requires
- * ~128 bits for credentials of this kind, and issuers land at 32-64 characters — so it only catches
- * placeholders. It also keeps the {@code client_secret_hint} from approaching the whole secret.</p>
+ * <p>{@link #MIN_LENGTH} sits far below what any real authorization server issues (RFC 6749 §10.10 asks for
+ * ~128 bits; issuers land at 32-64 characters), so it only catches placeholders.</p>
  */
 @UtilityClass
 public class ClientSecretValidation {
@@ -22,10 +19,9 @@ public class ClientSecretValidation {
     public static final int MIN_LENGTH = 8;
 
     /**
-     * Checks {@code clientSecret} unless it is byte-identical to {@code storedClientSecret} — that request is
-     * re-writing an entity rather than introducing a secret. Server-initiated re-puts (publication rewriting an
-     * application's links, for one) hand back exactly what is stored, and must not start failing on a value that
-     * was accepted before these rules existed.
+     * Skips the checks when the secret is byte-identical to the stored one: that request re-writes an entity
+     * rather than introducing a secret. Server-initiated re-puts (publication rewriting an application's links)
+     * hand back exactly what is stored, and must not start failing on a value accepted before these rules.
      */
     public static void validate(String clientSecret, String storedClientSecret) {
         if (clientSecret != null && storedClientSecret != null

@@ -58,8 +58,7 @@ public class ExternalServiceService {
             application.setExternalServices(existing == null ? new LinkedHashMap<>() : existing.getExternalServices());
             return List.of();
         }
-        // Decrypt first: validation exempts a secret handed back unchanged, which it can only recognize
-        // against the stored plaintext.
+        // Decrypt first: validation exempts a secret handed back unchanged, which it can only see in plaintext.
         if (existing != null) {
             decryptSecrets(resource, existing);
         }
@@ -123,8 +122,8 @@ public class ExternalServiceService {
     }
 
     /**
-     * Writes the definition and returns it as persisted, with {@code clientSecret} in plaintext — the caller is
-     * expected to redact it (see {@link ResourceAuthSettings#withoutSecretsKeepingHint()}) before it leaves the process.
+     * Writes the definition and returns it as persisted, {@code clientSecret} in plaintext — the caller must
+     * redact it before it leaves the process.
      */
     public ExternalService putExternalService(ResourceDescriptor resource, String serviceId, ExternalService service, String author) {
         verifyApplication(resource);
@@ -153,9 +152,8 @@ public class ExternalServiceService {
             encryptSecrets(resource, app);
             return ProxyUtil.convertToString(app);
         });
-        // encryptSecrets left the returned copy holding ciphertext; restore the plaintext that was persisted so
-        // the caller redacts it like any other read. Matters for a write that omitted client_secret: the value
-        // preserved from storage is the one the response has to describe.
+        // encryptSecrets left `service` holding ciphertext; restore what was actually persisted, which for a
+        // write that omitted client_secret is the value preserved from storage.
         if (service.getAuthSettings() != null) {
             service.getAuthSettings().setClientSecret(storedSecret.getValue());
         }
@@ -189,16 +187,15 @@ public class ExternalServiceService {
     }
 
     /**
-     * Decrypts in place for a read that wants the {@code clientSecretHint}. A service whose secret fails to
-     * decrypt (legacy plaintext, rotated key) has the value dropped rather than left as ciphertext, so it
-     * yields no hint while the read still succeeds and every other service keeps its own.
+     * Decrypts in place for a read that wants the {@code clientSecretHint}. A secret that fails to decrypt
+     * (legacy plaintext, rotated key) is dropped rather than left as ciphertext, so it yields no hint while
+     * the read still succeeds and every other service keeps its own.
      */
     public void decryptSecretsForResponse(ResourceDescriptor resource, Application application) {
         eachServiceWithSecret(resource, application, (serviceId, authSettings, bucketInfo) -> {
             try {
                 encryptionService.decrypt(secretAad(resource, serviceId), bucketInfo, authSettings);
             } catch (RuntimeException e) {
-                // Expected for values stored before encryption-at-rest; not worth a stack trace on every read.
                 log.warn("Can't decrypt secret of external service '{}' on {}, omitting its client secret hint: {}",
                         serviceId, resource.getUrl(), e.getMessage());
                 authSettings.setClientSecret(null);
@@ -230,10 +227,6 @@ public class ExternalServiceService {
         });
     }
 
-    /**
-     * Runs {@code action} for every service that actually holds a secret. The write paths let an encryption
-     * failure propagate; only {@link #decryptSecretsForResponse} swallows it, and it says so.
-     */
     private void eachServiceWithSecret(ResourceDescriptor resource, Application application, SecretAction action) {
         Map<String, ExternalService> services = application.getExternalServices();
         if (services == null || services.isEmpty()) {

@@ -51,8 +51,8 @@ class ResourceAuthSettingsTest {
 
     @Test
     void testHintWidthIsConstantForRealisticSecrets() {
-        // Every value at or beyond FULL_HINT_SECRET_LENGTH reveals the same count, so among realistic
-        // secrets (issuers land at 32-64 characters) the hint says nothing about the secret's size.
+        // Everything at or beyond FULL_HINT_SECRET_LENGTH reveals the same count, so among realistic secrets
+        // (32-64 characters) the hint says nothing about the secret's size.
         assertEquals(ResourceAuthSettings.HINT_LENGTH,
                 oauthSettings("0123456789ab").withoutSecretsKeepingHint().getClientSecretHint().length());
         assertEquals(ResourceAuthSettings.HINT_LENGTH,

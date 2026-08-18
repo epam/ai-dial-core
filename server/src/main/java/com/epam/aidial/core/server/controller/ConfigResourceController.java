@@ -1720,13 +1720,14 @@ public class ConfigResourceController implements Controller {
      * blob write itself. Redact on the {@link ObjectNode} snapshot {@link #projectItem} already
      * produces instead — a fresh copy, so this never mutates the live {@link Config} entity.
      *
-     * <p>{@code revealHint} replaces the removed secret with its {@code client_secret_hint}; admins only,
-     * matching the rule the resource APIs apply to callers with write access.</p>
+     * <p>{@code revealHint} replaces the removed secret with its {@code client_secret_hint}; admins only.</p>
      */
     private static void redactSecretFields(JsonNode authSettings, boolean revealHint) {
         if (authSettings instanceof ObjectNode settings) {
             JsonNode clientSecret = settings.remove(ResourceAuthSettings.CLIENT_SECRET_FIELD);
             settings.remove(ResourceAuthSettings.CODE_VERIFIER_FIELD);
+            // Drop unconditionally first: the hint is this method's to emit, never the projected node's.
+            settings.remove(ResourceAuthSettings.CLIENT_SECRET_HINT_FIELD);
             if (revealHint && clientSecret != null && clientSecret.isTextual()) {
                 String hint = ResourceAuthSettings.hintFor(clientSecret.textValue());
                 if (hint != null) {
