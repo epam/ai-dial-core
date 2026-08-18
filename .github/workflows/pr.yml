@@ -10,6 +10,7 @@ concurrency:
 
 jobs:
   run_tests:
+    if: github.actor != 'github-actions[bot]'
     uses: epam/ai-dial-ci/.github/workflows/java_pr.yml@4.8.0
     secrets: inherit
     with:
@@ -19,6 +20,7 @@ jobs:
 
   generate_openai_spec:
     runs-on: ubuntu-24.04
+    if: github.actor != 'github-actions[bot]'
     permissions:
       contents: write
     steps:
