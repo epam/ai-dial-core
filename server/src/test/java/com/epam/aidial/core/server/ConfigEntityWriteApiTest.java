@@ -83,6 +83,7 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     private static final String SCHEMA_BODY = """
             {
               "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "http://example.com/test-schema",
               "type": "object",
               "properties": {"name": {"type": "string"}}
             }
@@ -91,6 +92,7 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     private static final String SCHEMA_BODY_UPDATED = """
             {
               "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "http://example.com/test-schema",
               "type": "object",
               "properties": {"name": {"type": "string"}, "age": {"type": "integer"}}
             }

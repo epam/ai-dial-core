@@ -1108,18 +1108,30 @@ public class ConfigResourceController implements Controller {
             if (existing == null) {
                 return null;
             }
-            Object entity = deserializeBlob(resourceType, existing.getValue());
+            Object entity;
+            try {
+                entity = deserializeBlob(resourceType, existing.getValue());
+            } catch (HttpException e) {
+                // Malformed blob — fall through to the invalid-entity store so the caller sees
+                // status=invalid rather than a 500.
+                return null;
+            }
             return Pair.of(existing.getKey().getEtag(), projector.apply(path, entity));
         }).onSuccess(result -> {
+            Map<String, InvalidEntityRecord> invalid = mergedConfigStore.getInvalidEntities()
+                    .getOrDefault(resourceType, Map.of());
+            InvalidEntityRecord invalidRecord = invalid.get(canonicalId());
             if (result == null) {
-                Map<String, InvalidEntityRecord> invalid = mergedConfigStore.getInvalidEntities()
-                        .getOrDefault(resourceType, Map.of());
-                InvalidEntityRecord invalidRecord = invalid.get(canonicalId());
                 if (invalidRecord != null) {
                     context.respond(HttpStatus.OK, projectInvalidItem(invalidRecord, admin));
                 } else {
                     context.respond(HttpStatus.NOT_FOUND);
                 }
+                return;
+            }
+            if (invalidRecord != null) {
+                context.putHeader(HttpHeaders.ETAG, result.getKey())
+                        .respond(HttpStatus.OK, projectInvalidItem(invalidRecord, admin));
                 return;
             }
             context.putHeader(HttpHeaders.ETAG, result.getKey())
