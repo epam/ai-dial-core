@@ -61,7 +61,9 @@ public class ResourceAuthSettingsService {
 
         ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode = getResourceAuthSettingsChangeMode(
                 requiresClientRegistration, requiresDynamicClientRegistration);
-        validateResourceAuthSettings(resourceAuthSettings, resourceAuthSettingsChangeMode);
+        validateResourceAuthSettings(resourceAuthSettings, resourceAuthSettingsChangeMode,
+                existingResource == null || existingResource.getAuthSettings() == null
+                        ? null : existingResource.getAuthSettings().getClientSecret());
 
         if (resourceAuthSettingsChangeMode == ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT
                 || resourceAuthSettingsChangeMode == ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT) {
@@ -122,12 +124,13 @@ public class ResourceAuthSettingsService {
      * @param resourceAuthSettingsChangeMode The mode of authentication changes (e.g., CREATE_DYNAMIC_CLIENT)
      */
     private void validateResourceAuthSettings(ResourceAuthSettings resourceAuthSettings,
-                                              ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode) {
+                                              ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode,
+                                              String storedClientSecret) {
         AuthSettingsValidator authSettingsValidator = validatorFactory.getValidator(resourceAuthSettings.getAuthenticationType());
         authSettingsValidator.validate(resourceAuthSettings, resourceAuthSettingsChangeMode);
         // Runs before enrichResourceAuthSettings, so only the caller's own secret is checked — never one a
-        // dynamic client registration is about to return.
-        ClientSecretValidation.validate(resourceAuthSettings.getClientSecret());
+        // dynamic client registration is about to return, nor one handed back unchanged.
+        ClientSecretValidation.validate(resourceAuthSettings.getClientSecret(), storedClientSecret);
     }
 
     /**

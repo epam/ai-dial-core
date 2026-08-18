@@ -202,20 +202,17 @@ public class ExternalServiceManagementController {
                     if (service == null) {
                         throw new IllegalArgumentException("Request body is required");
                     }
-                    // The write encrypts the secret in place, so capture the submitted plaintext for the hint.
-                    String submittedSecret = service.getAuthSettings() == null
-                            ? null : service.getAuthSettings().getClientSecret();
                     ResolvedApp resolved = resolveApp(appId, false);
                     if (canManageInline(resolved)) {
                         requireDynamic(resolved);
                         ExternalService stored = externalServiceService.putExternalService(
                                 resolved.descriptor, serviceId, service, resolved.author);
-                        return withSubmittedSecretHint(toData(appId, serviceId, stored, false, false), submittedSecret);
+                        return withStoredSecretHint(toData(appId, serviceId, stored, false, false), stored);
                     }
                     requireUserAuthoringAllowed(resolved);
                     ExternalService stored = userExternalServiceService.put(
                             context.getUserId(), appId, serviceId, service, context.getUserDisplayName());
-                    return withSubmittedSecretHint(toData(appId, serviceId, stored, false, false), submittedSecret);
+                    return withStoredSecretHint(toData(appId, serviceId, stored, false, false), stored);
                 }))
                 .onSuccess(data -> context.respond(HttpStatus.OK, data))
                 .onFailure(error -> respondError("Can't create or update external service", error));
@@ -305,7 +302,11 @@ public class ExternalServiceManagementController {
             throw new ResourceNotFoundException("Application not found: " + appId);
         }
         // Blob-stored secrets are ciphertext; decrypt so read responses can derive the client_secret_hint.
-        boolean secretsPlain = decryptSecrets && externalServiceService.tryDecryptSecrets(descriptor, application);
+        // Per-service: one undecryptable definition loses only its own hint.
+        if (decryptSecrets) {
+            externalServiceService.decryptSecretsForResponse(descriptor, application);
+        }
+        boolean secretsPlain = decryptSecrets;
         return new ResolvedApp(application, descriptor, result.getKey().getAuthor(), false, secretsPlain);
     }
 
@@ -356,10 +357,12 @@ public class ExternalServiceManagementController {
                 .setAuthSettings(safe);
     }
 
-    // An update that omitted client_secret (keep the stored one) carries no hint until the next read.
-    private static ExternalServiceData withSubmittedSecretHint(ExternalServiceData data, String submittedSecret) {
-        if (data.getAuthSettings() != null && submittedSecret != null) {
-            data.getAuthSettings().setClientSecretHint(ResourceAuthSettings.hintFor(submittedSecret));
+    // The stored copy holds the encrypted secret by the time it comes back, so the hint is the one the write
+    // service stamped for the value it actually persisted — including a secret preserved from a request that
+    // omitted it, which the response would otherwise report as unconfigured.
+    private static ExternalServiceData withStoredSecretHint(ExternalServiceData data, ExternalService stored) {
+        if (data.getAuthSettings() != null && stored.getAuthSettings() != null) {
+            data.getAuthSettings().setClientSecretHint(stored.getAuthSettings().getClientSecretHint());
         }
         return data;
     }

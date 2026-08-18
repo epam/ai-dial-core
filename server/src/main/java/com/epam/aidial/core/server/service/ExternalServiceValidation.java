@@ -32,6 +32,14 @@ public class ExternalServiceValidation {
     }
 
     public static void validate(String serviceId, ExternalService service, boolean isCreate) {
+        validate(serviceId, service, isCreate, null);
+    }
+
+    /**
+     * {@code stored} is the definition this write replaces, with its secret already decrypted — a secret handed
+     * back unchanged is exempt from the value checks (see {@link ClientSecretValidation#validate(String, String)}).
+     */
+    public static void validate(String serviceId, ExternalService service, boolean isCreate, ExternalService stored) {
         validateServiceId(serviceId);
         ResourceAuthSettings authSettings = service == null ? null : service.getAuthSettings();
         if (authSettings == null || authSettings.getAuthenticationType() == null) {
@@ -50,10 +58,14 @@ public class ExternalServiceValidation {
             validator.validate(authSettings, mode);
             // API writes only — config-file services go through ConfigPostProcessor, which drops rather than
             // rejects, so a legacy short secret there must not take the whole service down.
-            ClientSecretValidation.validate(authSettings.getClientSecret());
+            ClientSecretValidation.validate(authSettings.getClientSecret(), storedClientSecret(stored));
         } catch (RuntimeException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST,
                     "External service '%s': invalid auth_settings: %s".formatted(serviceId, e.getMessage()));
         }
+    }
+
+    private static String storedClientSecret(ExternalService stored) {
+        return stored == null || stored.getAuthSettings() == null ? null : stored.getAuthSettings().getClientSecret();
     }
 }

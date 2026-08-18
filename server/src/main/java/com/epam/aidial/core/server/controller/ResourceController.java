@@ -560,11 +560,12 @@ public class ResourceController extends AccessControlBaseController {
             Application application = result.getValue();
             // Inline services are stored encrypted; decrypt before the overlay so both they and the
             // (already plaintext) user-authored ones yield a hint from the same code path below.
-            boolean revealHint = hasWriteAccess
-                    && proxy.getExternalServiceService().tryDecryptSecrets(descriptor, application);
+            if (hasWriteAccess) {
+                proxy.getExternalServiceService().decryptSecretsForResponse(descriptor, application);
+            }
             overlayUserAuthoredServices(descriptor, application);
             enrichExternalServiceStatuses(descriptor, application);
-            clearExternalServiceSecrets(application, revealHint);
+            clearExternalServiceSecrets(application, hasWriteAccess);
 
             if (!accessService.hasAdminAccess(context)) {
                 application.setAppIdentity(null);

@@ -21,6 +21,7 @@ import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.mutable.MutableBoolean;
+import org.apache.commons.lang3.mutable.MutableObject;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -57,11 +58,13 @@ public class ExternalServiceService {
             application.setExternalServices(existing == null ? new LinkedHashMap<>() : existing.getExternalServices());
             return List.of();
         }
-        validate(application, existing);
-        clearAuthStatuses(application);
+        // Decrypt first: validation exempts a secret handed back unchanged, which it can only recognize
+        // against the stored plaintext.
         if (existing != null) {
             decryptSecrets(resource, existing);
         }
+        validate(application, existing);
+        clearAuthStatuses(application);
         preserveOmittedSecrets(application, existing);
         encryptSecrets(resource, application);
         return findPurgeableServiceIds(application, existing);
@@ -122,6 +125,7 @@ public class ExternalServiceService {
     public ExternalService putExternalService(ResourceDescriptor resource, String serviceId, ExternalService service, String author) {
         verifyApplication(resource);
         MutableBoolean typeChanged = new MutableBoolean(false);
+        MutableObject<String> storedSecret = new MutableObject<>();
         resourceService.computeResource(resource, EtagHeader.ANY, author, json -> {
             Application app = ProxyUtil.convertToObject(json, Application.class);
             if (app == null) {
@@ -132,7 +136,7 @@ public class ExternalServiceService {
                 app.setExternalServices(new LinkedHashMap<>());
             }
             ExternalService existing = app.getExternalServices().get(serviceId);
-            validateOne(serviceId, service, existing == null);
+            validateOne(serviceId, service, existing == null, existing);
             clearAuthStatuses(service);
             typeChanged.setValue(authTypeChanged(existing, service));
             if (existing != null && !typeChanged.booleanValue() && existing.getAuthSettings() != null
@@ -141,9 +145,15 @@ public class ExternalServiceService {
                 service.getAuthSettings().setClientSecret(existing.getAuthSettings().getClientSecret());
             }
             app.getExternalServices().put(serviceId, service);
+            storedSecret.setValue(service.getAuthSettings() == null ? null : service.getAuthSettings().getClientSecret());
             encryptSecrets(resource, app);
             return ProxyUtil.convertToString(app);
         });
+        // After the commit, so the hint is never part of what was serialized: the caller needs it to describe a
+        // write that preserved the stored secret instead of supplying one.
+        if (service.getAuthSettings() != null) {
+            service.getAuthSettings().setClientSecretHint(ResourceAuthSettings.hintFor(storedSecret.getValue()));
+        }
         // After commit, like the application write path: the old-type record must not survive under the new type.
         if (typeChanged.booleanValue()) {
             purgeApplicationCredentials(resource, List.of(serviceId));
@@ -174,17 +184,29 @@ public class ExternalServiceService {
     }
 
     /**
-     * Decrypts in place for a read that wants the {@code clientSecretHint} hint, reporting whether the secrets
-     * ended up in plaintext. A blob that fails to decrypt (legacy plaintext, rotated key) must not fail the read
-     * — the caller drops the hint instead of deriving one from ciphertext.
+     * Decrypts in place for a read that wants the {@code clientSecretHint}. A service whose secret fails to
+     * decrypt (legacy plaintext, rotated key) has the value dropped rather than left as ciphertext, so it
+     * yields no hint while the read still succeeds and every other service keeps its own.
      */
-    public boolean tryDecryptSecrets(ResourceDescriptor resource, Application application) {
-        try {
-            decryptSecrets(resource, application);
-            return true;
-        } catch (RuntimeException e) {
-            log.warn("Can't decrypt external service secrets of {}; omitting client secret hints", resource.getUrl(), e);
-            return false;
+    public void decryptSecretsForResponse(ResourceDescriptor resource, Application application) {
+        Map<String, ExternalService> services = application.getExternalServices();
+        if (services == null || services.isEmpty()) {
+            return;
+        }
+        BucketInfo bucketInfo = new BucketInfo(resource.getBucketName(), resource.getBucketLocation());
+        for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
+            ExternalService service = entry.getValue();
+            if (service == null || service.getAuthSettings() == null || service.getAuthSettings().getClientSecret() == null) {
+                continue;
+            }
+            try {
+                encryptionService.decrypt(secretAad(resource, entry.getKey()), bucketInfo, service.getAuthSettings());
+            } catch (RuntimeException e) {
+                // Expected for values stored before encryption-at-rest; not worth a stack trace on every read.
+                log.warn("Can't decrypt secret of external service '{}' on {}, omitting its client secret hint: {}",
+                        entry.getKey(), resource.getUrl(), e.getMessage());
+                service.getAuthSettings().setClientSecret(null);
+            }
         }
     }
 
@@ -196,12 +218,13 @@ public class ExternalServiceService {
         Map<String, ExternalService> existingServices = existing == null || existing.getExternalServices() == null
                 ? Map.of() : existing.getExternalServices();
         for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
-            validateOne(entry.getKey(), entry.getValue(), !existingServices.containsKey(entry.getKey()));
+            validateOne(entry.getKey(), entry.getValue(), !existingServices.containsKey(entry.getKey()),
+                    existingServices.get(entry.getKey()));
         }
     }
 
-    private void validateOne(String serviceId, ExternalService service, boolean isCreate) {
-        ExternalServiceValidation.validate(serviceId, service, isCreate);
+    private void validateOne(String serviceId, ExternalService service, boolean isCreate, ExternalService stored) {
+        ExternalServiceValidation.validate(serviceId, service, isCreate, stored);
     }
 
     private void processSecrets(ResourceDescriptor resource, Application application, boolean encrypt) {

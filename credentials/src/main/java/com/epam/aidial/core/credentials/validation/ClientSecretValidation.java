@@ -18,6 +18,19 @@ public class ClientSecretValidation {
 
     public static final int MIN_LENGTH = 8;
 
+    /**
+     * Checks {@code clientSecret} unless it is byte-identical to {@code storedClientSecret} — that request is
+     * re-writing an entity rather than introducing a secret. Server-initiated re-puts (publication rewriting an
+     * application's links, for one) hand back exactly what is stored, and must not start failing on a value that
+     * was accepted before these rules existed.
+     */
+    public static void validate(String clientSecret, String storedClientSecret) {
+        if (clientSecret != null && clientSecret.equals(storedClientSecret)) {
+            return;
+        }
+        validate(clientSecret);
+    }
+
     public static void validate(String clientSecret) {
         if (clientSecret == null) {
             return;

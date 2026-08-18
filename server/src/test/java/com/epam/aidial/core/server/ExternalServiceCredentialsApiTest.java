@@ -1295,11 +1295,29 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
                 }
                 """, "authorization", "user");
         assertEquals(200, update.status(), () -> update.body());
+        // The PUT response describes what is stored, not only what was sent: the preserved secret still hints.
+        assertEquals("xy19", ProxyUtil.MAPPER.readTree(update.body())
+                .get("auth_settings").get("client_secret_hint").asText());
         mgmtGet = send(HttpMethod.GET, "/v1/" + appUrl + "/external-services/salesforce",
                 null, "", "authorization", "user");
         assertEquals(200, mgmtGet.status());
         assertEquals("xy19", ProxyUtil.MAPPER.readTree(mgmtGet.body())
                 .get("auth_settings").get("client_secret_hint").asText());
+
+        // Re-submitting the stored secret verbatim is exempt from the value checks — a re-write introduces
+        // nothing new, which is what keeps server-initiated re-puts (publication) working on legacy values.
+        Response resubmit = send(HttpMethod.PUT, "/v1/" + appUrl + "/external-services/salesforce", null, """
+                {
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "cid",
+                        "client_secret": "%s",
+                        "authorization_endpoint": "http://localhost:9876/authorize",
+                        "token_endpoint": "http://localhost:9876/token"
+                    }
+                }
+                """.formatted(plaintextSecret), "authorization", "user");
+        assertEquals(200, resubmit.status(), () -> resubmit.body());
     }
 
     @Test

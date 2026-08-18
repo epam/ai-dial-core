@@ -80,16 +80,22 @@ public class UserExternalServiceService {
         BucketInfo bucket = new BucketInfo(resource.getBucketName(), resource.getBucketLocation());
         String aad = resource.getAbsoluteFilePath();
         MutableObject<ExternalService> result = new MutableObject<>();
+        MutableObject<String> storedSecret = new MutableObject<>();
         resourceService.computeResource(resource, EtagHeader.ANY, author, json -> {
             ExternalService existing = json == null ? null : ProxyUtil.convertToObject(json, ExternalService.class);
             decryptSecret(aad, bucket, existing);
-            ExternalServiceValidation.validate(serviceId, service, existing == null);
+            ExternalServiceValidation.validate(serviceId, service, existing == null, existing);
             clearAuthStatuses(service);
             preserveOmittedSecret(service, existing);
+            storedSecret.setValue(service.getAuthSettings() == null ? null : service.getAuthSettings().getClientSecret());
             encryptSecret(aad, bucket, service);
             result.setValue(service);
             return ProxyUtil.convertToString(service);
         });
+        // After the commit, so the hint is never part of what was serialized — see ExternalServiceService.
+        if (service.getAuthSettings() != null) {
+            service.getAuthSettings().setClientSecretHint(ResourceAuthSettings.hintFor(storedSecret.getValue()));
+        }
         return result.getValue();
     }
 

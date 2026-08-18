@@ -118,7 +118,9 @@ public class ToolSetService {
                         new BucketInfo(resource.getBucketName(), resource.getBucketLocation()), authSettings);
                 revealHint = true;
             } catch (RuntimeException e) {
-                log.warn("Can't decrypt auth settings of toolset {}; omitting client secret hint", resource.getUrl(), e);
+                // Expected for values stored before encryption-at-rest; not worth a stack trace on every read.
+                log.warn("Can't decrypt auth settings of toolset {}, omitting client secret hint: {}",
+                        resource.getUrl(), e.getMessage());
             }
         }
         toolSet.clearAuthSettings(revealHint);

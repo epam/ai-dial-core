@@ -37,6 +37,22 @@ class ClientSecretValidationTest {
     }
 
     @Test
+    void testUnchangedSecretIsExempt() {
+        // A re-write hands back what is stored — including values accepted before these rules existed, as
+        // PublicationService does when it rewrites an application's links.
+        assertDoesNotThrow(() -> ClientSecretValidation.validate("short", "short"));
+        assertDoesNotThrow(() -> ClientSecretValidation.validate("  ", "  "));
+    }
+
+    @Test
+    void testChangedSecretIsStillChecked() {
+        assertThrows(IllegalArgumentException.class, () -> ClientSecretValidation.validate("short", "other-secret"));
+        assertThrows(IllegalArgumentException.class, () -> ClientSecretValidation.validate("short", null));
+        assertDoesNotThrow(() -> ClientSecretValidation.validate("a-new-long-secret", "short"));
+        assertDoesNotThrow(() -> ClientSecretValidation.validate(null, "short"));
+    }
+
+    @Test
     void testRejectsTooShort() {
         assertThrows(IllegalArgumentException.class, () -> ClientSecretValidation.validate("short"));
         assertDoesNotThrow(() -> ClientSecretValidation.validate("x".repeat(ClientSecretValidation.MIN_LENGTH)));
