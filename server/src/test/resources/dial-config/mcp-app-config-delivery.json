@@ -1,0 +1,33 @@
+{
+  "applications": {
+    "mcp-app": {
+      "endpoint": "http://localhost:9876",
+      "displayName": "MCP App",
+      "description": "Application exposing MCP tools, used to test aiDial config delivery",
+      "mcp": {
+        "endpoint": "http://localhost:9876"
+      },
+      "applicationProperties": {
+        "openapi": "openapi-spec-marker"
+      }
+    },
+    "mcp-app-header": {
+      "endpoint": "http://localhost:9876",
+      "displayName": "MCP App (header delivery)",
+      "description": "Application exposing MCP tools via header config delivery",
+      "mcp": {
+        "endpoint": "http://localhost:9876",
+        "configDelivery": "HEADER"
+      },
+      "applicationProperties": {
+        "openapi": "openapi-spec-marker"
+      }
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    }
+  }
+}

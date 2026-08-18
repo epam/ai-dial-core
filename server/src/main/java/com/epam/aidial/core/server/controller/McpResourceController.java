@@ -184,7 +184,7 @@ public class McpResourceController implements Controller {
                         endpoint,
                         Duration.ofMillis(proxy.getClientOptions().getIdleTimeout()),
                         mcpHttpClientBuilder.httpClientBuilder(),
-                        builder -> authHeaders.forEach(builder::header),
+                        (builder, body) -> authHeaders.forEach(builder::header),
                         client -> {
                             McpSchema.ReadResourceResult result = client.readResource(
                                     new McpSchema.ReadResourceRequest(resourceUri));
