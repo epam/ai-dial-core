@@ -540,6 +540,28 @@ public class ControllerSelectorTest {
     }
 
     @Test
+    public void testSelectGetUserLimitsController() {
+        when(request.path()).thenReturn("/v1/user/limits");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        assertInstanceOf(LimitController.class, lambda.getCapturedArg(0));
+    }
+
+    @Test
+    public void testSelectGetUserUsageController() {
+        when(request.path()).thenReturn("/v1/user/usage");
+        when(request.method()).thenReturn(HttpMethod.GET);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        assertInstanceOf(LimitController.class, lambda.getCapturedArg(0));
+    }
+
+    @Test
     public void testSelectGetFeatureController() {
         when(request.path()).thenReturn("/v1/deployments/name/configuration");
         when(request.method()).thenReturn(HttpMethod.GET);

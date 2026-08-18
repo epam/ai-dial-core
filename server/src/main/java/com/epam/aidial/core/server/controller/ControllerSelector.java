@@ -206,7 +206,7 @@ public class ControllerSelector {
         get(RouteTemplate.DEPLOYMENT_LIMITS, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             LimitController controller = new LimitController(proxy, context);
-            return () -> controller.getLimits(deploymentId);
+            return () -> controller.getDeploymentLimits(deploymentId);
         });
         get(RouteTemplate.CONFIGURATION, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
@@ -219,6 +219,14 @@ public class ControllerSelector {
             return () -> controller.handle(deploymentId, getter, false);
         });
         get(RouteTemplate.USER_INFO, (proxy, context, pathMatcher) -> new UserInfoController(context));
+        get(RouteTemplate.USER_LIMITS, (proxy, context, pathMatcher) -> {
+            LimitController controller = new LimitController(proxy, context);
+            return controller::getUserLimits;
+        });
+        get(RouteTemplate.USER_USAGE, (proxy, context, pathMatcher) -> {
+            LimitController controller = new LimitController(proxy, context);
+            return controller::getUserUsage;
+        });
         get(RouteTemplate.OFFLINE_CREDENTIALS, (proxy, context, pathMatcher) -> {
             OfflineCredentialsController controller = new OfflineCredentialsController(proxy, context);
             return controller::getStatus;

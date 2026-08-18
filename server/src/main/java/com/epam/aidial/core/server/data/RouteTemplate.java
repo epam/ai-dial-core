@@ -286,6 +286,14 @@ public enum RouteTemplate {
             "^/v1/user/info$",
             "/v1/user/info"
     ),
+    USER_LIMITS(
+            "^/v1/user/limits$",
+            "/v1/user/limits"
+    ),
+    USER_USAGE(
+            "^/v1/user/usage$",
+            "/v1/user/usage"
+    ),
     // The caller's own offline credentials: status plus the parameters chat needs to start the flow.
     OFFLINE_CREDENTIALS(
             "^/v1/user/offline-credentials$",
