@@ -96,10 +96,11 @@ public class ExternalServiceManagementController {
     )
     public Future<?> listExternalServices(String appId) {
         taskExecutor.submit(() -> {
-            ResolvedApp resolved = resolveApp(appId, true);
+            ResolvedApp resolved = resolveApp(appId);
             Map<String, ExternalService> services = manageableServices(resolved, appId);
+            revealSecretsOfManageableServices(resolved);
             List<ExternalServiceData> result = new ArrayList<>();
-            services.forEach((id, service) -> result.add(toData(appId, id, service, true, resolved.secretsPlain)));
+            services.forEach((id, service) -> result.add(toData(appId, id, service, true, true)));
             return result;
         }).onSuccess(result -> context.respond(HttpStatus.OK, result))
                 .onFailure(error -> respondError("Can't list external services", error));
@@ -128,9 +129,10 @@ public class ExternalServiceManagementController {
     )
     public Future<?> getExternalService(String appId, String serviceId) {
         taskExecutor.submit(() -> {
-            ResolvedApp resolved = resolveApp(appId, true);
+            ResolvedApp resolved = resolveApp(appId);
             ExternalService service = manageableService(resolved, appId, serviceId);
-            return toData(appId, serviceId, service, true, resolved.secretsPlain);
+            revealSecretsOfManageableServices(resolved);
+            return toData(appId, serviceId, service, true, true);
         }).onSuccess(data -> context.respond(HttpStatus.OK, data))
                 .onFailure(error -> respondError("Can't get external service", error));
         return Future.succeededFuture();
@@ -202,17 +204,17 @@ public class ExternalServiceManagementController {
                     if (service == null) {
                         throw new IllegalArgumentException("Request body is required");
                     }
-                    ResolvedApp resolved = resolveApp(appId, false);
+                    ResolvedApp resolved = resolveApp(appId);
                     if (canManageInline(resolved)) {
                         requireDynamic(resolved);
                         ExternalService stored = externalServiceService.putExternalService(
                                 resolved.descriptor, serviceId, service, resolved.author);
-                        return withStoredSecretHint(toData(appId, serviceId, stored, false, false), stored);
+                        return toData(appId, serviceId, stored, false, true);
                     }
                     requireUserAuthoringAllowed(resolved);
                     ExternalService stored = userExternalServiceService.put(
                             context.getUserId(), appId, serviceId, service, context.getUserDisplayName());
-                    return withStoredSecretHint(toData(appId, serviceId, stored, false, false), stored);
+                    return toData(appId, serviceId, stored, false, true);
                 }))
                 .onSuccess(data -> context.respond(HttpStatus.OK, data))
                 .onFailure(error -> respondError("Can't create or update external service", error));
@@ -241,7 +243,7 @@ public class ExternalServiceManagementController {
     )
     public Future<?> deleteExternalService(String appId, String serviceId) {
         taskExecutor.submit(() -> {
-            ResolvedApp resolved = resolveApp(appId, false);
+            ResolvedApp resolved = resolveApp(appId);
             if (canManageInline(resolved)) {
                 requireDynamic(resolved);
                 externalServiceService.deleteExternalService(resolved.descriptor, serviceId, resolved.author);
@@ -273,9 +275,7 @@ public class ExternalServiceManagementController {
                 + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + UrlUtil.encodePath(serviceId);
     }
 
-    // decryptSecrets is for read responses that want the client_secret_hint; write and consent paths
-    // re-read the blob themselves and have no use for the plaintext.
-    private ResolvedApp resolveApp(String appId, boolean decryptSecrets) {
+    private ResolvedApp resolveApp(String appId) {
         // See ExternalServiceCredentialsController.resolveApplication: appId omits the "applications/"
         // type prefix, so resolve verbatim first, then by canonical id so a platform-bucket app hits
         // its materialized in-memory entry ("applications/platform/my-app") — with decrypted secrets —
@@ -286,8 +286,7 @@ public class ExternalServiceManagementController {
             deployment = context.getConfig().selectDeployment(CredentialsLocatorFactory.APPLICATIONS_PREFIX + appId);
         }
         if (deployment instanceof Application configApp) {
-            // Config apps live in the merged Config, which already holds plaintext secrets.
-            return new ResolvedApp(configApp, null, null, true, true);
+            return new ResolvedApp(configApp, null, null, true);
         }
         ResourceDescriptor descriptor;
         try {
@@ -301,13 +300,7 @@ public class ExternalServiceManagementController {
         if (application == null) {
             throw new ResourceNotFoundException("Application not found: " + appId);
         }
-        // Blob-stored secrets are ciphertext; decrypt so read responses can derive the client_secret_hint.
-        // Per-service: one undecryptable definition loses only its own hint.
-        if (decryptSecrets) {
-            externalServiceService.decryptSecretsForResponse(descriptor, application);
-        }
-        boolean secretsPlain = decryptSecrets;
-        return new ResolvedApp(application, descriptor, result.getKey().getAuthor(), false, secretsPlain);
+        return new ResolvedApp(application, descriptor, result.getKey().getAuthor(), false);
     }
 
     private boolean canManageInline(ResolvedApp resolved) {
@@ -345,7 +338,8 @@ public class ExternalServiceManagementController {
         // Responses must never expose client_secret/code_verifier (encrypted or not). Every service reachable
         // through this controller is one the caller may manage (manageableService/manageableServices enforce it),
         // so the client_secret_hint is safe here whenever the secret at hand is plaintext.
-        ResourceAuthSettings safe = authSettings == null ? null : authSettings.withoutSecrets(revealHint);
+        ResourceAuthSettings safe = authSettings == null ? null
+                : revealHint ? authSettings.withoutSecretsKeepingHint() : authSettings.withoutSecrets();
         if (withStatus && safe != null) {
             CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId(appId, serviceId), context);
             statusEnricher.enrich(locator, safe);
@@ -357,14 +351,19 @@ public class ExternalServiceManagementController {
                 .setAuthSettings(safe);
     }
 
-    // The stored copy holds the encrypted secret by the time it comes back, so the hint is the one the write
-    // service stamped for the value it actually persisted — including a secret preserved from a request that
-    // omitted it, which the response would otherwise report as unconfigured.
-    private static ExternalServiceData withStoredSecretHint(ExternalServiceData data, ExternalService stored) {
-        if (data.getAuthSettings() != null && stored.getAuthSettings() != null) {
-            data.getAuthSettings().setClientSecretHint(stored.getAuthSettings().getClientSecretHint());
+    /**
+     * Puts the secrets of everything the caller may see into plaintext, so {@link #toData} can derive the hint
+     * from the same code path for every service. Call it only after the authorization checks in
+     * {@code manageableService(s)}: inline definitions belong to whoever manages the application, and a caller
+     * limited to their own user-authored services must not have them decrypted on its behalf.
+     *
+     * <p>Nothing to do for a config app (the merged {@link com.epam.aidial.core.config.Config} already holds
+     * plaintext) or for user-authored services ({@link UserExternalServiceService} decrypts per resource).</p>
+     */
+    private void revealSecretsOfManageableServices(ResolvedApp resolved) {
+        if (!resolved.staticApp && canManageInline(resolved)) {
+            externalServiceService.decryptSecretsForResponse(resolved.descriptor, resolved.application);
         }
-        return data;
     }
 
     private void respondError(String message, Throwable error) {
@@ -450,7 +449,7 @@ public class ExternalServiceManagementController {
 
     /** Consent is meaningful only for DIAL-native services; other types are authorized by a stored credential. */
     private ExternalService resolveDialNativeService(String appId, String serviceId) {
-        ResolvedApp resolved = resolveApp(appId, false);
+        ResolvedApp resolved = resolveApp(appId);
         ExternalService service = resolved.application.getExternalServices() == null
                 ? null : resolved.application.getExternalServices().get(serviceId);
         if (service == null || service.getAuthSettings() == null) {
@@ -484,7 +483,6 @@ public class ExternalServiceManagementController {
         return descriptor;
     }
 
-    private record ResolvedApp(Application application, ResourceDescriptor descriptor, String author, boolean staticApp,
-                               boolean secretsPlain) {
+    private record ResolvedApp(Application application, ResourceDescriptor descriptor, String author, boolean staticApp) {
     }
 }

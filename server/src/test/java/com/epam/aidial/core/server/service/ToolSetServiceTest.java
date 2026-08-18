@@ -38,6 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -63,6 +64,67 @@ class ToolSetServiceTest {
 
     @InjectMocks
     private ToolSetService toolSetService;
+
+    private static ToolSet toolSetWithSecret(AuthenticationType type) {
+        ToolSet toolSet = new ToolSet();
+        toolSet.setAuthSettings(ResourceAuthSettings.builder()
+                .authenticationType(type)
+                .clientSecret("cipher-text")
+                .codeVerifier("code-verifier")
+                .build());
+        return toolSet;
+    }
+
+    private static ResourceDescriptor resourceDescriptor() {
+        ResourceDescriptor resource = mock(ResourceDescriptor.class);
+        when(resource.getUrl()).thenReturn("url");
+        when(resource.getBucketName()).thenReturn("bucket");
+        when(resource.getBucketLocation()).thenReturn("location");
+        return resource;
+    }
+
+    // A blob of any type can carry a clientSecret — written before the per-type validators existed, or
+    // hand-seeded. The hint path decrypts it, so anything short of unconditional redaction returns plaintext.
+    @Test
+    void testRedactAuthSettingsStripsSecretOfNonOauthToolSet() {
+        ToolSet toolSet = toolSetWithSecret(AuthenticationType.API_KEY);
+        ResourceDescriptor resource = resourceDescriptor();
+        doAnswer(invocation -> {
+            invocation.getArgument(2, ResourceAuthSettings.class).setClientSecret("plaintext-secret");
+            return null;
+        }).when(resourceAuthSettingsEncryptionService).decrypt(any(), any(), any());
+
+        toolSetService.redactAuthSettings(resource, toolSet, true);
+
+        assertNull(toolSet.getAuthSettings().getClientSecret());
+        assertNull(toolSet.getAuthSettings().getCodeVerifier());
+        assertEquals("cret", toolSet.getAuthSettings().getClientSecretHint());
+    }
+
+    @Test
+    void testRedactAuthSettingsWithoutManageAccessNeitherDecryptsNorHints() {
+        ToolSet toolSet = toolSetWithSecret(AuthenticationType.OAUTH);
+        ResourceDescriptor resource = mock(ResourceDescriptor.class);
+
+        toolSetService.redactAuthSettings(resource, toolSet, false);
+
+        assertNull(toolSet.getAuthSettings().getClientSecret());
+        assertNull(toolSet.getAuthSettings().getClientSecretHint());
+        verifyNoInteractions(resourceAuthSettingsEncryptionService);
+    }
+
+    @Test
+    void testRedactAuthSettingsOmitsHintWhenSecretCannotBeDecrypted() {
+        ToolSet toolSet = toolSetWithSecret(AuthenticationType.OAUTH);
+        ResourceDescriptor resource = resourceDescriptor();
+        doThrow(new RuntimeException("boom"))
+                .when(resourceAuthSettingsEncryptionService).decrypt(any(), any(), any());
+
+        toolSetService.redactAuthSettings(resource, toolSet, true);
+
+        assertNull(toolSet.getAuthSettings().getClientSecret());
+        assertNull(toolSet.getAuthSettings().getClientSecretHint());
+    }
 
     @Test
     void testPutToolSet_ShouldEncryptAuthSettings() {

@@ -92,9 +92,9 @@ public class UserExternalServiceService {
             result.setValue(service);
             return ProxyUtil.convertToString(service);
         });
-        // After the commit, so the hint is never part of what was serialized — see ExternalServiceService.
+        // Return the persisted value in plaintext for the caller to redact — see ExternalServiceService.
         if (service.getAuthSettings() != null) {
-            service.getAuthSettings().setClientSecretHint(ResourceAuthSettings.hintFor(storedSecret.getValue()));
+            service.getAuthSettings().setClientSecret(storedSecret.getValue());
         }
         return result.getValue();
     }

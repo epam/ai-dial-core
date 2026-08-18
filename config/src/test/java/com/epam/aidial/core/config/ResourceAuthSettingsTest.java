@@ -34,7 +34,7 @@ class ResourceAuthSettingsTest {
     @Test
     void testWithoutSecretsLeavesReceiverUntouched() {
         ResourceAuthSettings settings = oauthSettings("my-client-secret");
-        settings.withoutSecrets(true);
+        settings.withoutSecretsKeepingHint();
 
         assertEquals("my-client-secret", settings.getClientSecret());
         assertNull(settings.getClientSecretHint());
@@ -42,7 +42,7 @@ class ResourceAuthSettingsTest {
 
     @Test
     void testHintIsTheTrailingCharactersOnly() {
-        ResourceAuthSettings safe = oauthSettings("my-client-secret").withoutSecrets(true);
+        ResourceAuthSettings safe = oauthSettings("my-client-secret").withoutSecretsKeepingHint();
 
         assertEquals("cret", safe.getClientSecretHint());
         assertNull(safe.getClientSecret());
@@ -54,28 +54,28 @@ class ResourceAuthSettingsTest {
         // Every value at or beyond FULL_HINT_SECRET_LENGTH reveals the same count, so among realistic
         // secrets (issuers land at 32-64 characters) the hint says nothing about the secret's size.
         assertEquals(ResourceAuthSettings.HINT_LENGTH,
-                oauthSettings("0123456789ab").withoutSecrets(true).getClientSecretHint().length());
+                oauthSettings("0123456789ab").withoutSecretsKeepingHint().getClientSecretHint().length());
         assertEquals(ResourceAuthSettings.HINT_LENGTH,
-                oauthSettings("x".repeat(64)).withoutSecrets(true).getClientSecretHint().length());
+                oauthSettings("x".repeat(64)).withoutSecretsKeepingHint().getClientSecretHint().length());
     }
 
     @Test
     void testShortSecretRevealsFewerCharacters() {
         // 8-11 characters: below what ClientSecretValidation lets in today, so only legacy values land here.
         // The fragment shrinks rather than approaching the whole secret.
-        assertEquals("ef", oauthSettings("012345ef").withoutSecrets(true).getClientSecretHint());
-        assertEquals("9a", oauthSettings("0123456789a").withoutSecrets(true).getClientSecretHint());
+        assertEquals("ef", oauthSettings("012345ef").withoutSecretsKeepingHint().getClientSecretHint());
+        assertEquals("9a", oauthSettings("0123456789a").withoutSecretsKeepingHint().getClientSecretHint());
     }
 
     @Test
     void testNoHintForSecretTooShortToPartiallyReveal() {
-        assertNull(oauthSettings("0123456").withoutSecrets(true).getClientSecretHint());
-        assertNull(oauthSettings("x").withoutSecrets(true).getClientSecretHint());
+        assertNull(oauthSettings("0123456").withoutSecretsKeepingHint().getClientSecretHint());
+        assertNull(oauthSettings("x").withoutSecretsKeepingHint().getClientSecretHint());
     }
 
     @Test
     void testNoHintWithoutStoredSecret() {
-        assertNull(oauthSettings(null).withoutSecrets(true).getClientSecretHint());
+        assertNull(oauthSettings(null).withoutSecretsKeepingHint().getClientSecretHint());
     }
 
     @Test
@@ -97,7 +97,7 @@ class ResourceAuthSettingsTest {
 
     @Test
     void testHintIsSerializedButNeverAcceptedFromClients() throws Exception {
-        JsonNode serialized = MAPPER.valueToTree(oauthSettings("my-client-secret").withoutSecrets(true));
+        JsonNode serialized = MAPPER.valueToTree(oauthSettings("my-client-secret").withoutSecretsKeepingHint());
         assertEquals("cret", serialized.get("client_secret_hint").asText());
         assertTrue(serialized.get("client_secret") == null || serialized.get("client_secret").isNull());
 

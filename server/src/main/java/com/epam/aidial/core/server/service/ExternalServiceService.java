@@ -122,6 +122,10 @@ public class ExternalServiceService {
         return new CredentialsLocator(resourceId, buckets);
     }
 
+    /**
+     * Writes the definition and returns it as persisted, with {@code clientSecret} in plaintext — the caller is
+     * expected to redact it (see {@link ResourceAuthSettings#withoutSecretsKeepingHint()}) before it leaves the process.
+     */
     public ExternalService putExternalService(ResourceDescriptor resource, String serviceId, ExternalService service, String author) {
         verifyApplication(resource);
         MutableBoolean typeChanged = new MutableBoolean(false);
@@ -136,7 +140,7 @@ public class ExternalServiceService {
                 app.setExternalServices(new LinkedHashMap<>());
             }
             ExternalService existing = app.getExternalServices().get(serviceId);
-            validateOne(serviceId, service, existing == null, existing);
+            ExternalServiceValidation.validate(serviceId, service, existing == null, existing);
             clearAuthStatuses(service);
             typeChanged.setValue(authTypeChanged(existing, service));
             if (existing != null && !typeChanged.booleanValue() && existing.getAuthSettings() != null
@@ -149,10 +153,11 @@ public class ExternalServiceService {
             encryptSecrets(resource, app);
             return ProxyUtil.convertToString(app);
         });
-        // After the commit, so the hint is never part of what was serialized: the caller needs it to describe a
-        // write that preserved the stored secret instead of supplying one.
+        // encryptSecrets left the returned copy holding ciphertext; restore the plaintext that was persisted so
+        // the caller redacts it like any other read. Matters for a write that omitted client_secret: the value
+        // preserved from storage is the one the response has to describe.
         if (service.getAuthSettings() != null) {
-            service.getAuthSettings().setClientSecretHint(ResourceAuthSettings.hintFor(storedSecret.getValue()));
+            service.getAuthSettings().setClientSecret(storedSecret.getValue());
         }
         // After commit, like the application write path: the old-type record must not survive under the new type.
         if (typeChanged.booleanValue()) {
@@ -189,25 +194,16 @@ public class ExternalServiceService {
      * yields no hint while the read still succeeds and every other service keeps its own.
      */
     public void decryptSecretsForResponse(ResourceDescriptor resource, Application application) {
-        Map<String, ExternalService> services = application.getExternalServices();
-        if (services == null || services.isEmpty()) {
-            return;
-        }
-        BucketInfo bucketInfo = new BucketInfo(resource.getBucketName(), resource.getBucketLocation());
-        for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
-            ExternalService service = entry.getValue();
-            if (service == null || service.getAuthSettings() == null || service.getAuthSettings().getClientSecret() == null) {
-                continue;
-            }
+        eachServiceWithSecret(resource, application, (serviceId, authSettings, bucketInfo) -> {
             try {
-                encryptionService.decrypt(secretAad(resource, entry.getKey()), bucketInfo, service.getAuthSettings());
+                encryptionService.decrypt(secretAad(resource, serviceId), bucketInfo, authSettings);
             } catch (RuntimeException e) {
                 // Expected for values stored before encryption-at-rest; not worth a stack trace on every read.
                 log.warn("Can't decrypt secret of external service '{}' on {}, omitting its client secret hint: {}",
-                        entry.getKey(), resource.getUrl(), e.getMessage());
-                service.getAuthSettings().setClientSecret(null);
+                        serviceId, resource.getUrl(), e.getMessage());
+                authSettings.setClientSecret(null);
             }
-        }
+        });
     }
 
     private void validate(Application application, Application existing) {
@@ -218,16 +214,27 @@ public class ExternalServiceService {
         Map<String, ExternalService> existingServices = existing == null || existing.getExternalServices() == null
                 ? Map.of() : existing.getExternalServices();
         for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
-            validateOne(entry.getKey(), entry.getValue(), !existingServices.containsKey(entry.getKey()),
-                    existingServices.get(entry.getKey()));
+            ExternalServiceValidation.validate(entry.getKey(), entry.getValue(),
+                    !existingServices.containsKey(entry.getKey()), existingServices.get(entry.getKey()));
         }
     }
 
-    private void validateOne(String serviceId, ExternalService service, boolean isCreate, ExternalService stored) {
-        ExternalServiceValidation.validate(serviceId, service, isCreate, stored);
+    private void processSecrets(ResourceDescriptor resource, Application application, boolean encrypt) {
+        eachServiceWithSecret(resource, application, (serviceId, authSettings, bucketInfo) -> {
+            String aad = secretAad(resource, serviceId);
+            if (encrypt) {
+                encryptionService.encrypt(aad, bucketInfo, authSettings);
+            } else {
+                encryptionService.decrypt(aad, bucketInfo, authSettings);
+            }
+        });
     }
 
-    private void processSecrets(ResourceDescriptor resource, Application application, boolean encrypt) {
+    /**
+     * Runs {@code action} for every service that actually holds a secret. The write paths let an encryption
+     * failure propagate; only {@link #decryptSecretsForResponse} swallows it, and it says so.
+     */
+    private void eachServiceWithSecret(ResourceDescriptor resource, Application application, SecretAction action) {
         Map<String, ExternalService> services = application.getExternalServices();
         if (services == null || services.isEmpty()) {
             return;
@@ -238,13 +245,13 @@ public class ExternalServiceService {
             if (service == null || service.getAuthSettings() == null || service.getAuthSettings().getClientSecret() == null) {
                 continue;
             }
-            String aad = secretAad(resource, entry.getKey());
-            if (encrypt) {
-                encryptionService.encrypt(aad, bucketInfo, service.getAuthSettings());
-            } else {
-                encryptionService.decrypt(aad, bucketInfo, service.getAuthSettings());
-            }
+            action.apply(entry.getKey(), service.getAuthSettings(), bucketInfo);
         }
+    }
+
+    @FunctionalInterface
+    private interface SecretAction {
+        void apply(String serviceId, ResourceAuthSettings authSettings, BucketInfo bucketInfo);
     }
 
     // AAD binds each secret to its owning application resource and external-service id.

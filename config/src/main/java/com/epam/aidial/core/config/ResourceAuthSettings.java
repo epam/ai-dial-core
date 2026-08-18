@@ -24,6 +24,11 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class ResourceAuthSettings {
 
+    /** Wire names of the fields the JSON-level redaction in the admin config API has to keep in step. */
+    public static final String CLIENT_SECRET_FIELD = "client_secret";
+    public static final String CODE_VERIFIER_FIELD = "code_verifier";
+    public static final String CLIENT_SECRET_HINT_FIELD = "client_secret_hint";
+
     public static final int HINT_LENGTH = 4;
     public static final int SHORT_HINT_LENGTH = 2;
     public static final int HINT_MIN_SECRET_LENGTH = 8;
@@ -87,29 +92,42 @@ public class ResourceAuthSettings {
     private Boolean dynamicallyRegistered;
 
     /**
-     * Returns a copy with credential material ({@code clientSecret}, {@code codeVerifier}) removed — the single
-     * place read responses strip secrets, so a newly added secret field only has to be cleared here. The
-     * receiver is left unchanged.
+     * Returns a copy with credential material ({@code clientSecret}, {@code codeVerifier}) removed; the receiver
+     * is left unchanged. A newly added secret field has to be cleared here <em>and</em> in
+     * {@code ConfigResourceController.redactSecretFields}, which redacts the admin config API's JSON projection
+     * of the merged config rather than this object — see {@link #CLIENT_SECRET_FIELD} and its neighbours.
      */
     public ResourceAuthSettings withoutSecrets() {
-        return withoutSecrets(false);
-    }
-
-    /**
-     * As {@link #withoutSecrets()}, additionally exposing {@code clientSecretHint} when {@code revealHint} —
-     * reserved for callers that may manage the resource (they can overwrite the secret outright).
-     */
-    public ResourceAuthSettings withoutSecrets(boolean revealHint) {
         ResourceAuthSettings copy = toBuilder().build();
-        copy.redactSecrets(revealHint);
+        copy.redactSecrets();
         return copy;
     }
 
     /**
-     * In-place variant for callers that already hold a private copy of the settings.
+     * As {@link #withoutSecrets()}, but keeps a {@code clientSecretHint} derived from the secret being removed.
+     * Reserved for callers that may manage the resource — they can overwrite the secret outright — which is why
+     * this is a separate method rather than a boolean: the risky call sites stay greppable.
      */
-    public void redactSecrets(boolean revealHint) {
-        clientSecretHint = revealHint ? hintFor(clientSecret) : null;
+    public ResourceAuthSettings withoutSecretsKeepingHint() {
+        ResourceAuthSettings copy = toBuilder().build();
+        copy.redactSecretsKeepingHint();
+        return copy;
+    }
+
+    /**
+     * In-place {@link #withoutSecrets()} for callers that already hold a private copy of the settings.
+     */
+    public void redactSecrets() {
+        clientSecretHint = null;
+        clientSecret = null;
+        codeVerifier = null;
+    }
+
+    /**
+     * In-place {@link #withoutSecretsKeepingHint()}.
+     */
+    public void redactSecretsKeepingHint() {
+        clientSecretHint = hintFor(clientSecret);
         clientSecret = null;
         codeVerifier = null;
     }

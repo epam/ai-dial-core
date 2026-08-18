@@ -51,6 +51,9 @@ public class ResourceAuthSettingsService {
             throw new IllegalArgumentException("ResourceAuthSettings is not defined for Resource: " + updatedResource.getName());
         }
 
+        // Statuses and the secret hint are computed per read; a client echoing them back must not persist them.
+        resourceAuthSettings.clearComputedFields();
+
         if (updatedResource.isForwardPerRequestKey() && resourceAuthSettings.getAuthenticationType() == AuthenticationType.API_KEY) {
             throw new IllegalArgumentException("Forward per request API key can't be along with authentication type %s"
                     .formatted(AuthenticationType.API_KEY.name()));

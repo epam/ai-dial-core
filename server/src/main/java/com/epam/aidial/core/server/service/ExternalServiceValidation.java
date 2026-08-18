@@ -31,10 +31,6 @@ public class ExternalServiceValidation {
         }
     }
 
-    public static void validate(String serviceId, ExternalService service, boolean isCreate) {
-        validate(serviceId, service, isCreate, null);
-    }
-
     /**
      * {@code stored} is the definition this write replaces, with its secret already decrypted — a secret handed
      * back unchanged is exempt from the value checks (see {@link ClientSecretValidation#validate(String, String)}).

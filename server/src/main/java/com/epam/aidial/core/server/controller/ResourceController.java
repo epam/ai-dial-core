@@ -620,7 +620,10 @@ public class ResourceController extends AccessControlBaseController {
         }
         for (ExternalService service : services.values()) {
             if (service != null && service.getAuthSettings() != null) {
-                service.setAuthSettings(service.getAuthSettings().withoutSecrets(hasWriteAccess));
+                ResourceAuthSettings authSettings = service.getAuthSettings();
+                service.setAuthSettings(hasWriteAccess
+                        ? authSettings.withoutSecretsKeepingHint()
+                        : authSettings.withoutSecrets());
             }
         }
     }

@@ -2,6 +2,9 @@ package com.epam.aidial.core.credentials.validation;
 
 import lombok.experimental.UtilityClass;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+
 /**
  * Value checks for a caller-supplied {@code client_secret}.
  *
@@ -25,7 +28,9 @@ public class ClientSecretValidation {
      * was accepted before these rules existed.
      */
     public static void validate(String clientSecret, String storedClientSecret) {
-        if (clientSecret != null && clientSecret.equals(storedClientSecret)) {
+        if (clientSecret != null && storedClientSecret != null
+                && MessageDigest.isEqual(clientSecret.getBytes(StandardCharsets.UTF_8),
+                        storedClientSecret.getBytes(StandardCharsets.UTF_8))) {
             return;
         }
         validate(clientSecret);

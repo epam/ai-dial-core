@@ -111,19 +111,29 @@ public class ToolSetService {
      */
     public void redactAuthSettings(ResourceDescriptor resource, ToolSet toolSet, boolean canManage) {
         ResourceAuthSettings authSettings = toolSet.getAuthSettings();
-        boolean revealHint = false;
-        if (canManage && authSettings != null && authSettings.getClientSecret() != null) {
-            try {
-                resourceAuthSettingsEncryptionService.decrypt(resource.getUrl(),
-                        new BucketInfo(resource.getBucketName(), resource.getBucketLocation()), authSettings);
-                revealHint = true;
-            } catch (RuntimeException e) {
-                // Expected for values stored before encryption-at-rest; not worth a stack trace on every read.
-                log.warn("Can't decrypt auth settings of toolset {}, omitting client secret hint: {}",
-                        resource.getUrl(), e.getMessage());
-            }
+        if (authSettings == null) {
+            return;
         }
-        toolSet.clearAuthSettings(revealHint);
+        // Redaction is not restricted to OAUTH: a blob of any authentication type that carries a clientSecret —
+        // written before the per-type validators existed, or hand-seeded — must not have it echoed back either.
+        if (canManage && authSettings.getClientSecret() != null && decryptForHint(resource, authSettings)) {
+            authSettings.redactSecretsKeepingHint();
+        } else {
+            authSettings.redactSecrets();
+        }
+    }
+
+    private boolean decryptForHint(ResourceDescriptor resource, ResourceAuthSettings authSettings) {
+        try {
+            resourceAuthSettingsEncryptionService.decrypt(resource.getUrl(),
+                    new BucketInfo(resource.getBucketName(), resource.getBucketLocation()), authSettings);
+            return true;
+        } catch (RuntimeException e) {
+            // Expected for values stored before encryption-at-rest; not worth a stack trace on every read.
+            log.warn("Can't decrypt auth settings of toolset {}, omitting client secret hint: {}",
+                    resource.getUrl(), e.getMessage());
+            return false;
+        }
     }
 
     public ToolSet extractFrom(String content, ResourceItemMetadata meta) {

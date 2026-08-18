@@ -1,7 +1,6 @@
 package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -35,15 +34,4 @@ public class ToolSet extends SecuredResource {
         HTTP, SSE;
     }
 
-    /**
-     * Strips credential material for a response. Deliberately not restricted to {@code OAUTH}: a blob of any
-     * authentication type that carries a {@code clientSecret} — written before the per-type validators existed,
-     * or hand-seeded — must not have it echoed back either.
-     */
-    @JsonIgnore
-    public void clearAuthSettings(boolean revealClientSecretHint) {
-        if (authSettings != null) {
-            authSettings.redactSecrets(revealClientSecretHint);
-        }
-    }
 }

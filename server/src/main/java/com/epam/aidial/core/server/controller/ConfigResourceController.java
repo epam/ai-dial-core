@@ -1031,10 +1031,10 @@ public class ConfigResourceController implements Controller {
             case CATALOG_SCHEMA -> handleSchemaGet(config.getCatalogSchemas(), ResourceTypes.CATALOG_SCHEMA, admin);
             case APPLICATION -> handleSingleGet(
                     config.getApplications(), ResourceTypes.APPLICATION,
-                    (key, application) -> redactExternalServiceSecrets(projectItem(application, key)));
+                    (key, application) -> redactExternalServiceSecrets(projectItem(application, key), admin));
             case TOOL_SET -> handleSingleGet(
                     config.getToolsets(), ResourceTypes.TOOL_SET,
-                    (key, toolSet) -> redactAuthSettingsSecrets(projectItem(toolSet, key)));
+                    (key, toolSet) -> redactAuthSettingsSecrets(projectItem(toolSet, key), admin));
             case GLOBAL_SETTINGS -> handleSettingsGet(config);
             default -> respondMethodNotAllowed();
         };
@@ -1725,26 +1725,25 @@ public class ConfigResourceController implements Controller {
      */
     private static void redactSecretFields(JsonNode authSettings, boolean revealHint) {
         if (authSettings instanceof ObjectNode settings) {
-            JsonNode clientSecret = settings.remove("client_secret");
-            settings.remove("code_verifier");
+            JsonNode clientSecret = settings.remove(ResourceAuthSettings.CLIENT_SECRET_FIELD);
+            settings.remove(ResourceAuthSettings.CODE_VERIFIER_FIELD);
             if (revealHint && clientSecret != null && clientSecret.isTextual()) {
                 String hint = ResourceAuthSettings.hintFor(clientSecret.textValue());
                 if (hint != null) {
-                    settings.put("client_secret_hint", hint);
+                    settings.put(ResourceAuthSettings.CLIENT_SECRET_HINT_FIELD, hint);
                 }
             }
         }
     }
 
-    private ObjectNode redactAuthSettingsSecrets(ObjectNode node) {
-        redactSecretFields(node.get("auth_settings"), authorizationService.isAdmin(context));
+    private static ObjectNode redactAuthSettingsSecrets(ObjectNode node, boolean admin) {
+        redactSecretFields(node.get("auth_settings"), admin);
         return node;
     }
 
-    private ObjectNode redactExternalServiceSecrets(ObjectNode node) {
+    private static ObjectNode redactExternalServiceSecrets(ObjectNode node, boolean admin) {
         JsonNode externalServices = node.get("external_services");
         if (externalServices != null && externalServices.isObject()) {
-            boolean admin = authorizationService.isAdmin(context);
             externalServices.forEach(service -> redactSecretFields(service.get("auth_settings"), admin));
         }
         return node;
