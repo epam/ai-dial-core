@@ -213,6 +213,10 @@ public class ResourceBaseTest {
                             return Future.succeededFuture(createAppidClaims(authorization.substring("appid:".length())));
                         }
 
+                        if (authorization.equals("no-subject")) {
+                            return Future.succeededFuture(createSubjectLessClaims());
+                        }
+
                         return Future.failedFuture("Not authorized");
                     });
 
@@ -248,6 +252,12 @@ public class ResourceBaseTest {
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
         claims.put("azp", azp);
         return new ExtractedClaims(azp, List.of(), azp, claims, null, null);
+    }
+
+    // A token with neither a user id (no "sub") nor a project claim: nothing identifies the caller, so
+    // features that need a per-principal bucket have nothing to work with.
+    static ExtractedClaims createSubjectLessClaims() {
+        return new ExtractedClaims(null, List.of(), "hash", ProxyUtil.MAPPER.createObjectNode(), null, null);
     }
 
     // Token carrying only Azure v1 appid (no azp) — used to assert the appid fallback is not honored.
