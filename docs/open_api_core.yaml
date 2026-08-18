@@ -16867,8 +16867,4 @@ components:
       - SKIPPED
     ValueNode:
       type: object
-  securitySchemes:
-    ApiKeyAuth:
-      type: apiKey
-      name: Api-Key
-      in: header
+
