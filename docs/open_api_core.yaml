@@ -16859,16 +16859,3 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/ValidationStatus"
-    ValidationStatus:
-      type: string
-      enum:
-      - VALID
-      - FAILED
-      - SKIPPED
-    ValueNode:
-      type: object
-  securitySchemes:
-    ApiKeyAuth:
-      type: apiKey
-      name: Api-Key
-      in: header
