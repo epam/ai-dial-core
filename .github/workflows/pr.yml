@@ -10,7 +10,6 @@ concurrency:
 
 jobs:
   run_tests:
-    if: ${{ github.actor != 'github-actions[bot]' }}
     uses: epam/ai-dial-ci/.github/workflows/java_pr.yml@4.8.0
     secrets: inherit
     with:
@@ -20,7 +19,6 @@ jobs:
 
   generate_openai_spec:
     runs-on: ubuntu-24.04
-    if:  ${{ github.actor != 'github-actions[bot]' }}
     permissions:
       contents: write
     steps:
@@ -52,6 +50,6 @@ jobs:
           else
             echo "docs/open_api_core.yaml has changed — committing and pushing."
             git add docs/open_api_core.yaml
-            git commit -m "chore: update generated OpenAPI specification"
+            git commit -m "chore: update generated OpenAPI specification [skip actions]"
             git push origin HEAD:${{ github.head_ref }}
           fi
