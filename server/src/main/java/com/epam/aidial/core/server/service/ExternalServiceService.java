@@ -192,15 +192,28 @@ public class ExternalServiceService {
      * the read still succeeds and every other service keeps its own.
      */
     public void decryptSecretsForResponse(ResourceDescriptor resource, Application application) {
-        eachServiceWithSecret(resource, application, (serviceId, authSettings, bucketInfo) -> {
-            try {
-                encryptionService.decrypt(secretAad(resource, serviceId), bucketInfo, authSettings);
-            } catch (RuntimeException e) {
-                log.warn("Can't decrypt secret of external service '{}' on {}, omitting its client secret hint: {}",
-                        serviceId, resource.getUrl(), e.getMessage());
-                authSettings.setClientSecret(null);
-            }
-        });
+        eachServiceWithSecret(resource, application,
+                (serviceId, authSettings, bucketInfo) -> decryptForResponse(resource, serviceId, authSettings, bucketInfo));
+    }
+
+    /** As {@link #decryptSecretsForResponse}, for a read that serves a single service. */
+    public void decryptSecretForResponse(ResourceDescriptor resource, String serviceId, ExternalService service) {
+        if (service == null || service.getAuthSettings() == null || service.getAuthSettings().getClientSecret() == null) {
+            return;
+        }
+        decryptForResponse(resource, serviceId, service.getAuthSettings(),
+                new BucketInfo(resource.getBucketName(), resource.getBucketLocation()));
+    }
+
+    private void decryptForResponse(ResourceDescriptor resource, String serviceId,
+                                    ResourceAuthSettings authSettings, BucketInfo bucketInfo) {
+        try {
+            encryptionService.decrypt(secretAad(resource, serviceId), bucketInfo, authSettings);
+        } catch (RuntimeException e) {
+            log.warn("Can't decrypt secret of external service '{}' on {}, omitting its client secret hint: {}",
+                    serviceId, resource.getUrl(), e.getMessage());
+            authSettings.setClientSecret(null);
+        }
     }
 
     private void validate(Application application, Application existing) {

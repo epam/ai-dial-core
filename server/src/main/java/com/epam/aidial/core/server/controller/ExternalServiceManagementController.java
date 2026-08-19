@@ -97,8 +97,9 @@ public class ExternalServiceManagementController {
     public Future<?> listExternalServices(String appId) {
         taskExecutor.submit(() -> {
             ResolvedApp resolved = resolveApp(appId);
-            Map<String, ExternalService> services = manageableServices(resolved, appId);
-            revealSecretsOfManageableServices(resolved);
+            boolean inline = canManageInline(resolved);
+            Map<String, ExternalService> services = manageableServices(resolved, appId, inline);
+            revealInlineSecrets(resolved, inline);
             List<ExternalServiceData> result = new ArrayList<>();
             services.forEach((id, service) -> result.add(toData(appId, id, service, true)));
             return result;
@@ -130,8 +131,8 @@ public class ExternalServiceManagementController {
     public Future<?> getExternalService(String appId, String serviceId) {
         taskExecutor.submit(() -> {
             ResolvedApp resolved = resolveApp(appId);
-            ExternalService service = manageableService(resolved, appId, serviceId);
-            revealSecretsOfManageableServices(resolved);
+            ExternalService service = manageableService(resolved, appId, serviceId, canManageInline(resolved));
+            revealInlineSecret(resolved, serviceId, service);
             return toData(appId, serviceId, service, true);
         }).onSuccess(data -> context.respond(HttpStatus.OK, data))
                 .onFailure(error -> respondError("Can't get external service", error));
@@ -140,9 +141,8 @@ public class ExternalServiceManagementController {
 
     // Callers see inline (admin) definitions when they can manage them, unioned with their own user-authored
     // ones (inline wins on id clash) — so a service authored before gaining write access stays visible.
-    private Map<String, ExternalService> manageableServices(ResolvedApp resolved, String appId) {
+    private Map<String, ExternalService> manageableServices(ResolvedApp resolved, String appId, boolean inline) {
         Map<String, ExternalService> services = new LinkedHashMap<>();
-        boolean inline = canManageInline(resolved);
         if (inline && resolved.application.getExternalServices() != null) {
             services.putAll(resolved.application.getExternalServices());
         }
@@ -156,8 +156,8 @@ public class ExternalServiceManagementController {
         return services;
     }
 
-    private ExternalService manageableService(ResolvedApp resolved, String appId, String serviceId) {
-        if (canManageInline(resolved)) {
+    private ExternalService manageableService(ResolvedApp resolved, String appId, String serviceId, boolean canManageInline) {
+        if (canManageInline) {
             ExternalService inline = resolved.application.getExternalServices() == null
                     ? null : resolved.application.getExternalServices().get(serviceId);
             if (inline != null) {
@@ -353,13 +353,27 @@ public class ExternalServiceManagementController {
 
     /**
      * Decrypts inline secrets so {@link #toData} derives the hint from the same code path for every service.
-     * Call only after the authorization checks in {@code manageableService(s)} — a caller limited to its own
+     * {@code inline} must be the same value {@code manageableServices} was given — a caller limited to its own
      * user-authored services must not have the inline ones decrypted on its behalf. Nothing to do for a config
      * app (the merged config already holds plaintext) or for user-authored services (decrypted per resource).
      */
-    private void revealSecretsOfManageableServices(ResolvedApp resolved) {
-        if (!resolved.staticApp && canManageInline(resolved)) {
+    private void revealInlineSecrets(ResolvedApp resolved, boolean inline) {
+        if (!resolved.staticApp && inline) {
             externalServiceService.decryptSecretsForResponse(resolved.descriptor, resolved.application);
+        }
+    }
+
+    /**
+     * Single-service counterpart, decrypting only what is being served. Keys off object identity rather than a
+     * second permission check: {@code service} is the inline definition exactly when {@code manageableService}
+     * returned it from the application, which it does only after authorizing the caller for it.
+     */
+    private void revealInlineSecret(ResolvedApp resolved, String serviceId, ExternalService service) {
+        if (resolved.staticApp || resolved.application.getExternalServices() == null) {
+            return;
+        }
+        if (resolved.application.getExternalServices().get(serviceId) == service) {
+            externalServiceService.decryptSecretForResponse(resolved.descriptor, serviceId, service);
         }
     }
 
