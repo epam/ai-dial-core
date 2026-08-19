@@ -385,7 +385,7 @@ public class McpProxyController implements Controller {
         future.onSuccess(result -> {
             context.setResponseBody(result);
             context.setResponseBodyTimestamp(System.currentTimeMillis());
-            respond(responseStatus, result);
+            respond(HttpStatus.fromStatusCode(responseStatus), result);
             logStore.save(AnalyticsLogContext.from(context, null));
         }).onFailure(error -> {
             log.error("Failed to handle MCP response body", error);
@@ -539,7 +539,7 @@ public class McpProxyController implements Controller {
         finalizeRequest();
     }
 
-    private void respond(int status, Buffer result) {
+    private void respond(HttpStatus status, Buffer result) {
         finalizeRequest();
         context.respond(status, result);
     }
