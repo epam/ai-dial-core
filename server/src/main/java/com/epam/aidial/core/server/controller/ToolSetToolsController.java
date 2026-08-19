@@ -14,6 +14,7 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.function.enhancement.InjectApplicationPropsToMcpRequest;
 import com.epam.aidial.core.server.mcp.McpClientUtils;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.security.AccessService;
@@ -34,6 +35,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.modelcontextprotocol.client.transport.McpHttpClientTransportAuthorizationException;
@@ -183,7 +185,7 @@ public class ToolSetToolsController implements Controller {
                     upstream.getEndpoint(),
                     Duration.ofMillis(proxy.getClientOptions().getIdleTimeout()),
                     mcpHttpClientBuilder.httpClientBuilder(),
-                    builder -> customizeRequest(builder, deployment),
+                    (builder, body) -> customizeRequest(builder, body, deployment),
                     client -> {
                         if (filterAllowed) {
                             // listTools() auto-paginates all pages via the SDK's expand() chain
@@ -209,11 +211,26 @@ public class ToolSetToolsController implements Controller {
         }
     }
 
-    private void customizeRequest(HttpRequest.Builder builder, Deployment deployment) {
+    private void customizeRequest(HttpRequest.Builder builder, String body, Deployment deployment) {
         if (deployment instanceof ToolSet toolSet) {
             authInjector.inject(builder::header, toolSet, context, credentialsLocator);
         } else if (deployment instanceof Application application) {
             authInjector.inject(builder::header, application, context);
+            injectAiDialConfig(builder, body, application);
+        }
+    }
+
+    private void injectAiDialConfig(HttpRequest.Builder builder, String body, Application application) {
+        if (body == null) {
+            return;
+        }
+        try {
+            ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(body);
+            if (InjectApplicationPropsToMcpRequest.injectAiDialConfig(tree, application)) {
+                builder.POST(HttpRequest.BodyPublishers.ofString(ProxyUtil.MAPPER.writeValueAsString(tree)));
+            }
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to inject application properties into MCP request body", e);
         }
     }
 

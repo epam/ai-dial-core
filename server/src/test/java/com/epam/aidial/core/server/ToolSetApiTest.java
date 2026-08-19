@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.RecordedRequest;
 import okio.Buffer;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
@@ -31,6 +32,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -48,8 +50,17 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     private static TestWebServer.Handler mcpToolsHandler(String toolsResponse, String contentType) {
+        return mcpToolsHandler(toolsResponse, contentType, (body, request) -> { });
+    }
+
+    // requestListener is invoked with the request body read exactly once - RecordedRequest's Buffer
+    // is consumed on read, so callers that need the body (e.g. to assert on it) must observe it here
+    // rather than reading request.getBody() again themselves.
+    private static TestWebServer.Handler mcpToolsHandler(String toolsResponse, String contentType,
+            BiConsumer<String, RecordedRequest> requestListener) {
         return request -> {
             String body = request.getBody().readString(StandardCharsets.UTF_8);
+            requestListener.accept(body, request);
             if ("GET".equals(request.getMethod())) {
                 // SSE stream connection - return 405 to signal no streaming support
                 return new MockResponse().setResponseCode(405);
@@ -2664,6 +2675,95 @@ public class ToolSetApiTest extends ResourceBaseTest {
         Response resp = send(HttpMethod.GET, "/v1/toolset/unknown-toolset/tools",
                 null, null, "authorization", "admin");
         assertEquals(404, resp.status());
+    }
+
+    @DialConfigLocation("dial-config/mcp-app-config-delivery.json")
+    @Test
+    void testGetAllTools_ApplicationMetaConfigDelivery_InjectsApplicationProperties() throws JsonProcessingException {
+        // "mcp-app" uses the default META config delivery: the application's custom properties
+        // (e.g. `openapi`) must be inlined into the tools/list JSON-RPC body at params._meta.ai_dial_config,
+        // otherwise App Runner falls back to its static default tools (#1837).
+        String mcpToolsListResponse = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 2,
+                   "result": {
+                     "tools": [
+                       {"name": "openapi_verify", "description": "Verify spec"},
+                       {"name": "custom_openapi_tool", "description": "Derived from openapi spec"}
+                     ]
+                   }
+                 }
+                """;
+        AtomicReference<String> toolsListBody = new AtomicReference<>();
+        TestWebServer.Handler handler = mcpToolsHandler(mcpToolsListResponse, "application/json", (body, request) -> {
+            if (body.contains("\"method\":\"tools/list\"") || body.contains("\"method\": \"tools/list\"")) {
+                toolsListBody.set(body);
+            }
+        });
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response resp = send(HttpMethod.GET, "/v1/toolset/mcp-app/tools",
+                    null, null, "authorization", "admin");
+
+            assertEquals(200, resp.status());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            assertEquals(2, tools.size());
+
+            assertNotNull(toolsListBody.get(), "tools/list request was not received by the MCP server");
+            JsonNode requestTree = ProxyUtil.MAPPER.readTree(toolsListBody.get());
+            JsonNode aiDialConfig = requestTree.at("/params/_meta/ai_dial_config");
+            assertFalse(aiDialConfig.isMissingNode(), "ai_dial_config was not injected into the tools/list body");
+            assertEquals("openapi-spec-marker", aiDialConfig.get("openapi").asText());
+        }
+    }
+
+    @DialConfigLocation("dial-config/mcp-app-config-delivery.json")
+    @Test
+    void testGetAllTools_ApplicationHeaderConfigDelivery_SetsHeaderNotBody() throws JsonProcessingException {
+        // "mcp-app-header" opts into HEADER config delivery: properties travel via the
+        // X-DIAL-APPLICATION-PROPERTIES header (already worked before #1837), not the request body.
+        String mcpToolsListResponse = """
+                {
+                   "jsonrpc": "2.0",
+                   "id": 2,
+                   "result": {
+                     "tools": [
+                       {"name": "custom_openapi_tool", "description": "Derived from openapi spec"}
+                     ]
+                   }
+                 }
+                """;
+        AtomicReference<String> toolsListBody = new AtomicReference<>();
+        AtomicReference<String> toolsListPropertiesHeader = new AtomicReference<>();
+        TestWebServer.Handler handler = mcpToolsHandler(mcpToolsListResponse, "application/json", (body, request) -> {
+            if (body.contains("\"method\":\"tools/list\"") || body.contains("\"method\": \"tools/list\"")) {
+                toolsListBody.set(body);
+                toolsListPropertiesHeader.set(request.getHeader("X-DIAL-APPLICATION-PROPERTIES"));
+            }
+        });
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response resp = send(HttpMethod.GET, "/v1/toolset/mcp-app-header/tools",
+                    null, null, "authorization", "admin");
+
+            assertEquals(200, resp.status());
+            var json = ProxyUtil.MAPPER.readTree(resp.body());
+            ArrayNode tools = Optional.ofNullable(json.get("tools"))
+                    .map(node -> (ArrayNode) node)
+                    .orElse(ProxyUtil.MAPPER.createArrayNode());
+            assertEquals(1, tools.size());
+
+            assertNotNull(toolsListBody.get(), "tools/list request was not received by the MCP server");
+            JsonNode requestTree = ProxyUtil.MAPPER.readTree(toolsListBody.get());
+            assertTrue(requestTree.at("/params/_meta/ai_dial_config").isMissingNode(),
+                    "ai_dial_config must not be injected into the body in HEADER delivery mode");
+
+            assertNotNull(toolsListPropertiesHeader.get(), "X-DIAL-APPLICATION-PROPERTIES header was not sent");
+            JsonNode headerProperties = ProxyUtil.MAPPER.readTree(toolsListPropertiesHeader.get());
+            assertEquals("openapi-spec-marker", headerProperties.get("openapi").asText());
+        }
     }
 
     @Test

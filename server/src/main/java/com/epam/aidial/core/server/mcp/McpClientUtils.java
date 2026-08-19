@@ -21,7 +21,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.time.Duration;
 import java.util.Map;
-import java.util.function.Consumer;
 
 /**
  * Shared helpers for talking to MCP servers, used by both the Vert.x-based MCP proxy path
@@ -95,11 +94,11 @@ public class McpClientUtils {
      */
     public static <T> T withSyncClient(String endpoint, Duration timeout,
             HttpClient.Builder clientBuilder,
-            Consumer<HttpRequest.Builder> requestCustomizer, McpAction<T> action) throws Exception {
+            RequestCustomizer requestCustomizer, McpAction<T> action) throws Exception {
         HttpClientStreamableHttpTransport transport = transportBuilder(endpoint)
                 .clientBuilder(clientBuilder)
                 .jsonMapper(MCP_JSON_MAPPER)
-                .httpRequestCustomizer((builder, method, ep, body, ctx) -> requestCustomizer.accept(builder))
+                .httpRequestCustomizer((builder, method, ep, body, ctx) -> requestCustomizer.customize(builder, body))
                 .build();
         try (McpSyncClient client = McpClient.sync(transport)
                 .clientInfo(new McpSchema.Implementation("DIAL", "1.0"))
@@ -114,6 +113,11 @@ public class McpClientUtils {
     @FunctionalInterface
     public interface McpAction<T> {
         T apply(McpSyncClient client) throws Exception;
+    }
+
+    @FunctionalInterface
+    public interface RequestCustomizer {
+        void customize(HttpRequest.Builder builder, String body);
     }
 
     private static McpJsonMapper createLenientMcpJsonMapper() {
