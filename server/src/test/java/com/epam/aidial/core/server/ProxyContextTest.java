@@ -1,12 +1,19 @@
 package com.epam.aidial.core.server;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -58,6 +65,45 @@ public class ProxyContextTest {
     @Test
     public void testUserClaimsAreAbsentForApiKeyAuthentication() {
         assertNull(context(null).getUserClaims());
+    }
+
+    @Test
+    public void testRespondWithNoContentDoesNotLogWarning() {
+        Logger logger = (Logger) LoggerFactory.getLogger(ProxyContext.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        Level previous = logger.getLevel();
+        logger.setLevel(Level.WARN);
+        try {
+            context(null).respond(HttpStatus.NO_CONTENT, Buffer.buffer());
+
+            assertTrue(appender.list.isEmpty(), appender.list::toString);
+        } finally {
+            logger.setLevel(previous);
+            logger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    public void testRespondWithErrorStatusLogsWarning() {
+        Logger logger = (Logger) LoggerFactory.getLogger(ProxyContext.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        Level previous = logger.getLevel();
+        logger.setLevel(Level.WARN);
+        try {
+            context(null).respond(HttpStatus.BAD_REQUEST, Buffer.buffer("boom"));
+
+            assertEquals(1, appender.list.size(), appender.list::toString);
+            ILoggingEvent event = appender.list.get(0);
+            assertEquals(Level.WARN, event.getLevel());
+            assertTrue(event.getFormattedMessage().contains("boom"), event.getFormattedMessage());
+        } finally {
+            logger.setLevel(previous);
+            logger.detachAppender(appender);
+        }
     }
 
     private static ProxyContext context(ExtractedClaims claims) {
