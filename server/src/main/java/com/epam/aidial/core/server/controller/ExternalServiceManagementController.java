@@ -335,7 +335,8 @@ public class ExternalServiceManagementController {
     /**
      * Responses must never expose client_secret/code_verifier (encrypted or not); the hint is kept because
      * {@code manageableService(s)} only ever hand back services the caller may manage. The secret must be
-     * plaintext by now, or the hint describes ciphertext — see {@link #revealSecretsOfManageableServices}.
+     * plaintext by now, or the hint describes ciphertext — see {@link #revealInlineSecrets} and
+     * {@link #revealInlineSecret}.
      */
     private ExternalServiceData toData(String appId, String serviceId, ExternalService service, boolean withStatus) {
         ResourceAuthSettings authSettings = service.getAuthSettings();
