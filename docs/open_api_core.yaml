@@ -35,6 +35,22 @@ info:
     HTTP Authorization Scheme: `bearer`
 
     Bearer format: `JWT`
+
+    # Deployment features
+
+    DIAL Core adds the `X-DIAL-DEPLOYMENT-FEATURES` header to every request it forwards to a deployment, regardless of the API being called.
+
+    <br>
+
+    ```bash
+    X-DIAL-DEPLOYMENT-FEATURES: {"tools":true,"max_tokens_supported":false,"custom_temperature_supported":false,"chat_completion":true,"responses_api":false}
+    ```
+
+    <br>
+
+    The value is a JSON object with the features of the deployment: the flags configured in `features` of the model or application in the DIAL Core config.
+
+    DIAL Core always sets this header itself, so a value sent by a client is overwritten and never reaches the deployment.
   version: 0.0.0
   license:
     name: Apache-2.0
@@ -12247,6 +12263,147 @@ paths:
       - lang: cURL
         label: Access Token
         source: "curl -X GET https://chat.<company>.com/v1/user/info \\\n  -H \"Authorization: Bearer YOUR_ACCESS_TOKEN\"          \n"
+  /v1/user/limits:
+    get:
+      tags:
+      - Limits
+      summary: /v1/user/limits
+      operationId: getUserLimits
+      description: |
+        Returns limits and current rolling usage for every deployment available to the authenticated caller -
+        a JWT user or an API-key project. It replaces calling `/v1/deployments/{deployment_name}/limits` once
+        per deployment, and one response labels an entire model picker, so switching model needs no refetch.
+
+        A deployment the caller has never used is reported, not omitted: its real limits arrive against zeros.
+        Use `/v1/user/usage` for the short list of deployments actually used.
+
+        Five things to know before rendering this response:
+
+        1. **Models only.** Applications, toolsets and routes are not listed. DIAL never writes rate-limit
+           counters for them, so an entry would report zeros against a limit that cannot fire. Tokens and
+           spend an application drives are reported against the model that incurred them.
+        2. **The cost budget is global; attributed spend is per deployment.** The top-level `*CostStats` are
+           the caller's money budget and the spend against it, because a budget cannot be scoped to a
+           deployment. The `*CostStats` inside a deployment entry are that deployment's own attributed spend,
+           with `total` at the unlimited sentinel since no per-deployment cap exists.
+        3. **`*CostStats` means something different on the legacy endpoint.**
+           `/v1/deployments/{deployment_name}/limits` returns the caller's *global* cost figures inside its
+           per-deployment response. The shape is identical, so re-read the scope, not just the parser.
+        4. **A limit is optional.** When no role configures one, `total` is `9223372036854775807`
+           (`Long.MAX_VALUE`), meaning unlimited. That value exceeds JavaScript's `Number.MAX_SAFE_INTEGER`
+           (`9007199254740991`), so treat any `total` at or above 2^53 as unlimited rather than rendering it
+           as a `used / total` ratio.
+        5. **Every window is trailing, not calendar-aligned.** `day` is the last 24 hours, `week` the last 7
+           days, `month` the last 30 days - never "since midnight" or "since the 1st". As a result `used`
+           decreases on its own as older activity ages out; there is no refund and no periodic reset.
+           Eviction happens in steps on UTC boundaries at each window's granularity (1 hour for `day`, 1 day
+           for `week` and `month`).
+
+        Per-deployment spend does not reconcile to the global figure. Attribution starts at rollout and does
+        not back-fill, and a model without `pricing` never contributes while still consuming tokens, so the
+        breakdown must not be presented as a decomposition of the global figure and "other" must not be
+        computed as the remainder.
+
+        Not to be confused with `limits` in the deployment listing, which is `TokenLimitsData`
+        (`maxTotalTokens`, `maxPromptTokens`, `maxCompletionTokens`) - context-window sizes, unrelated to
+        rate limits.
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserLimitStats"
+              examples:
+                Example:
+                  value:
+                    deployments:
+                      chat-gpt-35-turbo:
+                        minuteTokenStats:
+                          total: 100000
+                          used: 1200
+                        dayTokenStats:
+                          total: 10000000
+                          used: 42000
+                        weekTokenStats:
+                          total: 9223372036854775807
+                          used: 180000
+                        monthTokenStats:
+                          total: 9223372036854775807
+                          used: 640000
+                        hourRequestStats:
+                          total: 9223372036854775807
+                          used: 3
+                        dayRequestStats:
+                          total: 9223372036854775807
+                          used: 12
+                        minuteCostStats:
+                          total: 9223372036854775807
+                          used: 0.02
+                        dayCostStats:
+                          total: 9223372036854775807
+                          used: 1.85
+                        weekCostStats:
+                          total: 9223372036854775807
+                          used: 6.2
+                        monthCostStats:
+                          total: 9223372036854775807
+                          used: 21.4
+                      gpt-4:
+                        minuteTokenStats:
+                          total: 100000
+                          used: 0
+                        dayTokenStats:
+                          total: 10000000
+                          used: 0
+                        weekTokenStats:
+                          total: 9223372036854775807
+                          used: 0
+                        monthTokenStats:
+                          total: 9223372036854775807
+                          used: 0
+                        hourRequestStats:
+                          total: 9223372036854775807
+                          used: 0
+                        dayRequestStats:
+                          total: 9223372036854775807
+                          used: 0
+                        minuteCostStats:
+                          total: 9223372036854775807
+                          used: 0
+                        dayCostStats:
+                          total: 9223372036854775807
+                          used: 0
+                        weekCostStats:
+                          total: 9223372036854775807
+                          used: 0
+                        monthCostStats:
+                          total: 9223372036854775807
+                          used: 0
+                    minuteCostStats:
+                      total: 10.0
+                      used: 0.4
+                    dayCostStats:
+                      total: 100.0
+                      used: 14.5
+                    weekCostStats:
+                      total: 500.0
+                      used: 82.3
+                    monthCostStats:
+                      total: 2000.0
+                      used: 310.7
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/user/offline-credentials:
     get:
       tags:
@@ -12334,6 +12491,92 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/user/usage:
+    get:
+      tags:
+      - Limits
+      summary: /v1/user/usage
+      operationId: getUserUsage
+      description: |
+        The `/v1/user/limits` response with the all-zero entries dropped, leaving the deployments the caller
+        used within the trailing 30 days and can currently access. Same field names, same figures, same
+        top-level cost pairs - a client moving between the two endpoints changes nothing but the set it
+        iterates. Every caveat documented on `/v1/user/limits` applies here unchanged.
+
+        The 30 days is not a parameter: it is the widest window DIAL keeps, so a deployment absent from this
+        response has nothing to report in any window. Absence therefore means zero, not "unknown" - a client
+        that wants the whole accessible set should call `/v1/user/limits` rather than reconstruct it. A
+        deployment the caller used and then lost access to, or that was removed from config, is absent from
+        both, even though its spend still counted toward the global cost figures.
+
+        Intended for a client that renders only what was used - a "where is my budget going" panel, a report,
+        a mobile view. In an installation with many models the difference in payload size is large.
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserLimitStats"
+              examples:
+                Example:
+                  value:
+                    deployments:
+                      chat-gpt-35-turbo:
+                        minuteTokenStats:
+                          total: 100000
+                          used: 1200
+                        dayTokenStats:
+                          total: 10000000
+                          used: 42000
+                        weekTokenStats:
+                          total: 9223372036854775807
+                          used: 180000
+                        monthTokenStats:
+                          total: 9223372036854775807
+                          used: 640000
+                        hourRequestStats:
+                          total: 9223372036854775807
+                          used: 3
+                        dayRequestStats:
+                          total: 9223372036854775807
+                          used: 12
+                        minuteCostStats:
+                          total: 9223372036854775807
+                          used: 0.02
+                        dayCostStats:
+                          total: 9223372036854775807
+                          used: 1.85
+                        weekCostStats:
+                          total: 9223372036854775807
+                          used: 6.2
+                        monthCostStats:
+                          total: 9223372036854775807
+                          used: 21.4
+                    minuteCostStats:
+                      total: 10.0
+                      used: 0.4
+                    dayCostStats:
+                      total: 100.0
+                      used: 14.5
+                    weekCostStats:
+                      total: 500.0
+                      used: 82.3
+                    monthCostStats:
+                      total: 2000.0
+                      used: 310.7
         "401":
           description: Invalid Authentication
           content:
@@ -15431,6 +15674,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/Limit"
+    MapStringLimitStats:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/LimitStats"
     MapStringList:
       type: object
       additionalProperties:
@@ -16837,6 +17084,19 @@ components:
             items:
               type: string
           description: Normalized token claims. Present only for user-based session authentication.
+    UserLimitStats:
+      type: object
+      properties:
+        dayCostStats:
+          $ref: "#/components/schemas/CostItemLimitStats"
+        deployments:
+          $ref: "#/components/schemas/MapStringLimitStats"
+        minuteCostStats:
+          $ref: "#/components/schemas/CostItemLimitStats"
+        monthCostStats:
+          $ref: "#/components/schemas/CostItemLimitStats"
+        weekCostStats:
+          $ref: "#/components/schemas/CostItemLimitStats"
     ValidationResult:
       type: object
       properties:

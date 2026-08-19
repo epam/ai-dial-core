@@ -32,6 +32,10 @@ public enum HttpStatus {
 
     private final int code;
 
+    public boolean is2xx() {
+        return code >= 200 && code < 300;
+    }
+
     public boolean is5xx() {
         return code >= 500 && code < 600;
     }
