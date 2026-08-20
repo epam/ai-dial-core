@@ -546,6 +546,6 @@ public class ComplexResourceController extends AccessControlBaseController {
                 .putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(archive.length()))
                 .exposeHeaders();
 
-        context.respond(HttpStatus.OK, archive);
+        context.respond(HttpStatus.OK.getCode(), archive);
     }
 }
