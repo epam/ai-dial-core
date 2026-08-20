@@ -1200,7 +1200,7 @@ public final class MergedConfigStore implements ConfigStore {
 
         // ConfigPostProcessor sets entity.name = mapKey. For models/interceptors/roles/
         // applications/toolsets the map key is the short name ("gpt-4"); for schemas it is
-        // the decoded $id — in both cases file- and blob-sourced entries share the same map key.
+        // the $id — in both cases file- and blob-sourced entries share the same map key.
         // Keys and routes are unaffected — their map key stays the canonical id, as before.
 
         boolean overlayFromApi = applySettingsOverlay(merged, pendingInvalid);
