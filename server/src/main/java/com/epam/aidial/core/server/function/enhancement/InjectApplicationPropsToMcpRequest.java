@@ -22,27 +22,38 @@ public class InjectApplicationPropsToMcpRequest extends BaseRequestFunction<Obje
     @Override
     public Boolean apply(ObjectNode tree) {
         Deployment deployment = context.getDeployment();
-        if (deployment instanceof Application application
-                && application.getMcp().getConfigDelivery() == Application.McpConfigDelivery.META) {
-            Map<String, Object> props = application.getApplicationProperties();
-            if (props == null || props.isEmpty()) {
-                return false;
-            }
-            ObjectNode node = getApplicationPropsNode(tree);
-            put(node, application.getApplicationProperties());
-            return true;
+        if (deployment instanceof Application application) {
+            return injectAiDialConfig(tree, application);
         }
         return false;
     }
 
-    private void put(ObjectNode node, Map<String, Object> appProps) {
+    /**
+     * Injects the application's custom properties (e.g. {@code openapi}) into the JSON-RPC request
+     * body at {@code params._meta.ai_dial_config}, when the application uses {@code META} config
+     * delivery (the default). Returns {@code true} if the body was modified.
+     */
+    public static boolean injectAiDialConfig(ObjectNode tree, Application application) {
+        if (application.getMcp().getConfigDelivery() != Application.McpConfigDelivery.META) {
+            return false;
+        }
+        Map<String, Object> props = application.getApplicationProperties();
+        if (props == null || props.isEmpty()) {
+            return false;
+        }
+        ObjectNode node = getApplicationPropsNode(tree);
+        put(node, props);
+        return true;
+    }
+
+    private static void put(ObjectNode node, Map<String, Object> appProps) {
         for (Map.Entry<String, Object> e : appProps.entrySet()) {
             JsonNode val = ProxyUtil.MAPPER.valueToTree(e.getValue());
             node.set(e.getKey(), val);
         }
     }
 
-    private ObjectNode getApplicationPropsNode(ObjectNode tree) {
+    private static ObjectNode getApplicationPropsNode(ObjectNode tree) {
         ObjectNode root = tree;
         for (String field : APP_PROPS_PATH) {
             JsonNode node = root.get(field);
