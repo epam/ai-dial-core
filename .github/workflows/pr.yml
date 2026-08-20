@@ -17,22 +17,39 @@ jobs:
       java-version: 21
       trivy-limit-severities-for-sarif: false
 
-  validate_openai_spec_generation:
+  generate_openai_spec:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: true
+          ref: ${{ github.head_ref }}
       - uses: epam/ai-dial-ci/actions/java_prepare@4.8.0
         with:
           java-version: 21
           java-distribution: temurin
-      - name: validate_spec
+      - name: Regenerate and lint OpenAPI specification
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
         run: |
-          ./gradlew validateOpenApiSpec \
+          ./gradlew replaceSpec -Plint \
             -Pgpr.user=$GITHUB_ACTOR \
             -Pgpr.key=$GITHUB_TOKEN
+      - name: Commit updated OpenAPI specification if changed
+        shell: bash
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ -z "$(git status --short docs/open_api_core.yaml)" ]; then
+            echo "docs/open_api_core.yaml is up to date — nothing to commit."
+          else
+            echo "docs/open_api_core.yaml has changed — committing and pushing."
+            git add docs/open_api_core.yaml
+            git commit -m "chore: update generated OpenAPI specification"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
