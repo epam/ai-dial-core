@@ -208,7 +208,7 @@ public class AdminApplyController {
         if (precheck) {
             boolean anyFailure = false;
             for (AdminManifest entry : entries) {
-                ValidationResult result = validateOnly(entry, scratch, softValidation);
+                ValidationResult result = validateOnly(entry, scratch, softValidation, resourceService);
                 if (!ValidationStatus.VALID.equals(result.status())) {
                     anyFailure = true;
                     // Mirror /v1/admin/validate: the offending entry stays FAILED (carrying its
@@ -285,7 +285,8 @@ public class AdminApplyController {
         return scratch;
     }
 
-    static ValidationResult validateOnly(AdminManifest entry, Config scratch, boolean softValidation) {
+    static ValidationResult validateOnly(AdminManifest entry, Config scratch, boolean softValidation,
+                                         ResourceService resourceService) {
         String id = entry.name();
         ParsedName parsed;
         try {
@@ -356,13 +357,17 @@ public class AdminApplyController {
                     }
                 }
                 case "Schema" -> {
-                    if (!entry.spec().isObject()) {
-                        return new ValidationResult(id, ValidationStatus.FAILED, "Schema spec must be a JSON object");
+                    String schemaError = schemaValidationError(entry, parsed, scratch,
+                            ResourceTypes.APP_TYPE_SCHEMA, resourceService);
+                    if (schemaError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, schemaError);
                     }
                 }
                 case "CatalogSchema" -> {
-                    if (!entry.spec().isObject()) {
-                        return new ValidationResult(id, ValidationStatus.FAILED, "CatalogSchema spec must be a JSON object");
+                    String schemaError = schemaValidationError(entry, parsed, scratch,
+                            ResourceTypes.CATALOG_SCHEMA, resourceService);
+                    if (schemaError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, schemaError);
                     }
                 }
                 default -> {
@@ -384,6 +389,62 @@ public class AdminApplyController {
     private static String duplicateDeploymentIdMessage(Config scratch, ResourceTypes type, ParsedName parsed) {
         if (ConfigPostProcessor.isDeploymentIdTaken(scratch, type, parsed.name())) {
             return "Deployment ID '" + parsed.name() + "' is already used by a different entity";
+        }
+        return null;
+    }
+
+    /**
+     * Shared by {@code validateOnly} (precheck) and {@code applySchema} (real-apply): validates a
+     * Schema/CatalogSchema spec and, if it's well-formed, checks its {@code $id} for a collision
+     * against a different blob via {@link #schemaConflictMessage}.
+     */
+    private static String schemaValidationError(AdminManifest entry, ParsedName parsed, Config scratch,
+                                                ResourceTypes type, ResourceService resourceService) {
+        String kindLabel = switch (type) {
+            case APP_TYPE_SCHEMA -> "Schema";
+            case CATALOG_SCHEMA -> "CatalogSchema";
+            default -> throw new IllegalArgumentException("Unexpected schema type: " + type);
+        };
+        if (!entry.spec().isObject()) {
+            return kindLabel + " spec must be a JSON object";
+        }
+        String schemaId = MergedConfigStore.extractSchemaId(entry.spec());
+        if (schemaId == null || schemaId.isBlank()) {
+            return kindLabel + " spec must contain a non-blank $id field";
+        }
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                type, parsed.bucket(), parsed.location(), parsed.name());
+        String oldSchemaId = readOldSchemaId(resourceService, descriptor);
+        return schemaConflictMessage(scratch, type, schemaId, oldSchemaId);
+    }
+
+    private static String readOldSchemaId(ResourceService resourceService, ResourceDescriptor descriptor) {
+        try {
+            String existingBody = resourceService.getResource(descriptor);
+            if (existingBody != null) {
+                return MergedConfigStore.extractSchemaId(ProxyUtil.BLOB_MAPPER.readTree(existingBody));
+            }
+        } catch (Exception ignored) {
+            // If reading/parsing the existing blob fails, proceed without old_$id.
+        }
+        return null;
+    }
+
+    /**
+     * Mirrors {@link #duplicateDeploymentIdMessage}'s pattern for the schema $id namespace:
+     * non-null iff {@code schemaId} is already registered under a different blob than the one
+     * being written (i.e. {@code oldSchemaId} is unrelated to it).
+     */
+    private static String schemaConflictMessage(Config scratch, ResourceTypes type, String schemaId, String oldSchemaId) {
+        if (!schemaId.equals(oldSchemaId)) {
+            Map<String, String> schemaMap = switch (type) {
+                case APP_TYPE_SCHEMA -> scratch.getApplicationTypeSchemas();
+                case CATALOG_SCHEMA -> scratch.getCatalogSchemas();
+                default -> throw new IllegalArgumentException("Unexpected schema type: " + type);
+            };
+            if (schemaMap.containsKey(schemaId)) {
+                return "Schema $id is already in use: " + schemaId;
+            }
         }
         return null;
     }
@@ -445,27 +506,12 @@ public class AdminApplyController {
         }
         // Read the existing blob to detect an $id change; replicas use old_$id to evict the
         // stale entry from their in-memory schema map without waiting for a full rebuild.
-        String oldSchemaId = null;
-        try {
-            String existingBody = resourceService.getResource(descriptor);
-            if (existingBody != null) {
-                oldSchemaId = MergedConfigStore.extractSchemaId(
-                        ProxyUtil.BLOB_MAPPER.readTree(existingBody));
-            }
-        } catch (Exception ignored) {
-            // If reading/parsing the existing blob fails, proceed without old_$id.
-        }
+        String oldSchemaId = readOldSchemaId(resourceService, descriptor);
         // Uniqueness: reject if $id is already registered under a different blob — mirrors
         // ConfigResourceController#buildSchemaEventMetadata's check on the single-resource PUT path.
-        if (!schemaId.equals(oldSchemaId)) {
-            Map<String, String> schemaMap = switch (type) {
-                case APP_TYPE_SCHEMA -> scratch.getApplicationTypeSchemas();
-                case CATALOG_SCHEMA  -> scratch.getCatalogSchemas();
-                default -> throw new IllegalArgumentException("Unexpected schema type: " + type);
-            };
-            if (schemaMap.containsKey(schemaId)) {
-                return new EntityResult(id, AdminApplyStatus.FAILED, "Schema $id is already in use: " + schemaId);
-            }
+        String dupError = schemaConflictMessage(scratch, type, schemaId, oldSchemaId);
+        if (dupError != null) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
         }
         Map<String, String> eventMetadata = (oldSchemaId != null && !oldSchemaId.equals(schemaId))
                 ? Map.of("$id", schemaId, "old_$id", oldSchemaId)

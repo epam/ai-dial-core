@@ -493,14 +493,73 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                   ]
                 }
                 """;
+        // Caught at precheck (default precheck=true): the first entry registers the $id in
+        // scratch, the second collides with it — same skip/fail collapse as
+        // testApplyPrecheckMixedBatchRejectedAtomically, so nothing is actually written.
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertEquals("SKIPPED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        assertEquals("FAILED", parsed.get("results").get(1).get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(parsed.get("results").get(1).get("error").asText().contains("apply-dup-id"),
+                () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-dup-a", null, "",
+                "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-dup-b", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyCatalogSchemaDuplicateIdPrecheckFalsePartialResults() {
+        // precheck=false skips validateOnly entirely and writes entries as it goes: the first
+        // entry is really applied (and its $id lands in scratch), so the second one's real-apply
+        // conflict check (schemaConflictMessage, same helper the precheck path uses) rejects it.
+        // No batch-level atomicity — the first entry's write stands.
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-pf-a",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-pf-dup-id",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    },
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-pf-b",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-pf-dup-id",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    }
+                  ]
+                }
+                """;
         Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
         verify(response, 200);
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
         assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
-        assertEquals("FAILED", parsed.get("results").get(1).get("status").asText());
-        assertTrue(parsed.get("results").get(1).get("error").asText().contains("apply-dup-id"),
+        assertEquals("APPLIED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        assertEquals("FAILED", parsed.get("results").get(1).get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(parsed.get("results").get(1).get("error").asText().contains("apply-pf-dup-id"),
                 () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-pf-a", null, "",
+                "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-pf-b", null, "",
+                "authorization", "admin"), 404);
     }
 
     @Test
@@ -542,13 +601,17 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                   ]
                 }
                 """;
+
         Response response = send(HttpMethod.POST, "/v1/admin/apply", null, secondBody, "authorization", "admin");
-        verify(response, 200);
+        verify(response, 422);
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
         assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
         assertTrue(parsed.get("results").get(0).get("error").asText().contains("apply-existing-id"),
                 () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-conflict", null, "",
+                "authorization", "admin"), 404);
     }
 
     @Test

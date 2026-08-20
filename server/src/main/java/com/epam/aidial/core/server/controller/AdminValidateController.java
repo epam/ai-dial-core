@@ -17,6 +17,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.vertx.core.Future;
@@ -40,15 +41,18 @@ public class AdminValidateController implements Controller {
     private final ProxyContext context;
     private final ConfigAuthorizationService authorizationService;
     private final MergedConfigStore mergedConfigStore;
+    private final ResourceService resourceService;
     private final AsyncTaskExecutor taskExecutor;
 
     public AdminValidateController(ProxyContext context,
                                    ConfigAuthorizationService authorizationService,
                                    MergedConfigStore mergedConfigStore,
+                                   ResourceService resourceService,
                                    AsyncTaskExecutor taskExecutor) {
         this.context = context;
         this.authorizationService = authorizationService;
         this.mergedConfigStore = mergedConfigStore;
+        this.resourceService = resourceService;
         this.taskExecutor = taskExecutor;
     }
 
@@ -147,7 +151,7 @@ public class AdminValidateController implements Controller {
                 error = "Unknown kind: " + entry.kind();
             } else {
                 ValidationResult validation =
-                        AdminApplyController.validateOnly(entry, scratch, softValidation);
+                        AdminApplyController.validateOnly(entry, scratch, softValidation, resourceService);
                 if (!ValidationStatus.VALID.equals(validation.status())) {
                     error = validation.error();
                 }
