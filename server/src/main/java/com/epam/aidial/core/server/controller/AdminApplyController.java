@@ -398,8 +398,8 @@ public class AdminApplyController {
         }
         return switch (entry.kind()) {
             case "Settings" -> applySettings(entry, id, parsed);
-            case "Schema" -> applySchema(entry, id, parsed, pending, ResourceTypes.APP_TYPE_SCHEMA);
-            case "CatalogSchema" -> applySchema(entry, id, parsed, pending, ResourceTypes.CATALOG_SCHEMA);
+            case "Schema" -> applySchema(entry, id, parsed, pending, ResourceTypes.APP_TYPE_SCHEMA, scratch);
+            case "CatalogSchema" -> applySchema(entry, id, parsed, pending, ResourceTypes.CATALOG_SCHEMA, scratch);
             case "Interceptor" -> applyManagedEntity(entry, id, parsed, ResourceTypes.INTERCEPTOR, Interceptor.class, scratch, pending);
             case "Role" -> applyManagedEntity(entry, id, parsed, ResourceTypes.ROLE, Role.class, scratch, pending);
             case "Route" -> applyManagedEntity(entry, id, parsed, ResourceTypes.ROUTE, Route.class, scratch, pending);
@@ -423,8 +423,8 @@ public class AdminApplyController {
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applySchema(AdminManifest entry, String id, ParsedName parsed,
-                                     List<EntityChange> pending, ResourceTypes type) {
+    private EntityResult applySchema(AdminManifest entry, String id, ParsedName parsed, List<EntityChange> pending,
+                                     ResourceTypes type, Config scratch) {
         if (!entry.spec().isObject()) {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Schema spec must be a JSON object");
         }
@@ -454,6 +454,18 @@ public class AdminApplyController {
             }
         } catch (Exception ignored) {
             // If reading/parsing the existing blob fails, proceed without old_$id.
+        }
+        // Uniqueness: reject if $id is already registered under a different blob — mirrors
+        // ConfigResourceController#buildSchemaEventMetadata's check on the single-resource PUT path.
+        if (!schemaId.equals(oldSchemaId)) {
+            Map<String, String> schemaMap = switch (type) {
+                case APP_TYPE_SCHEMA -> scratch.getApplicationTypeSchemas();
+                case CATALOG_SCHEMA  -> scratch.getCatalogSchemas();
+                default -> throw new IllegalArgumentException("Unexpected schema type: " + type);
+            };
+            if (schemaMap.containsKey(schemaId)) {
+                return new EntityResult(id, AdminApplyStatus.FAILED, "Schema $id is already in use: " + schemaId);
+            }
         }
         Map<String, String> eventMetadata = (oldSchemaId != null && !oldSchemaId.equals(schemaId))
                 ? Map.of("$id", schemaId, "old_$id", oldSchemaId)

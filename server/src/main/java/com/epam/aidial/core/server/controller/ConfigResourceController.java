@@ -1585,9 +1585,11 @@ public class ConfigResourceController implements Controller {
         // Uniqueness: reject if $id is already registered under a different blob.
         if (!newSchemaId.equals(oldSchemaId)) {
             Config snapshot = mergedConfigStore.get();
-            Map<String, String> schemaMap = schemaType == ResourceTypes.APP_TYPE_SCHEMA
-                    ? snapshot.getApplicationTypeSchemas()
-                    : snapshot.getCatalogSchemas();
+            Map<String, String> schemaMap = switch (schemaType) {
+                case APP_TYPE_SCHEMA -> snapshot.getApplicationTypeSchemas();
+                case CATALOG_SCHEMA  -> snapshot.getCatalogSchemas();
+                default -> throw new IllegalArgumentException("Unexpected schema type: " + schemaType);
+            };
             if (schemaMap.containsKey(newSchemaId)) {
                 throw new HttpException(HttpStatus.CONFLICT,
                         "Schema $id is already in use: " + newSchemaId);
