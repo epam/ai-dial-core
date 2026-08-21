@@ -124,8 +124,12 @@ public class ConsentService {
                 && Boolean.TRUE.equals(deployment.getFeatures().getConsentRequired());
     }
 
+    /**
+     * The id is already decoded - a deployment name from the config, or a path parameter the route decoded -
+     * so it is not a url and cannot be validated as one.
+     */
     private static ResourceDescriptor getResourceDescription(ProxyContext context, String deploymentId) {
         String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
-        return ResourceDescriptorFactory.fromEncoded(ResourceTypes.USER_CONSENT, bucketLocation, bucketLocation, deploymentId);
+        return ResourceDescriptorFactory.fromEntityPath(ResourceTypes.USER_CONSENT, bucketLocation, bucketLocation, deploymentId);
     }
 }

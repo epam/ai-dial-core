@@ -159,17 +159,7 @@ public class ProxyContext {
     }
 
     public Future<?> respond(HttpStatus status, String body) {
-        if (body == null) {
-            body = "";
-        }
-
-        response.setStatusCode(status.getCode()).end(body);
-
-        if (status != HttpStatus.OK) {
-            log.warn("Responding with error. Body: {}", body);
-        }
-
-        return Future.succeededFuture();
+        return respond(status.getCode(), body == null ? null : Buffer.buffer(body));
     }
 
     public Future<?> respond(int status, Buffer body) {
@@ -179,7 +169,7 @@ public class ProxyContext {
 
         response.setStatusCode(status).end(body);
 
-        if (status != HttpStatus.OK.getCode()) {
+        if (status < 200 || status >= 300) {
             log.warn("Responding with error. Body: {}", body);
         }
 
@@ -253,7 +243,9 @@ public class ProxyContext {
 
     public boolean hasNextInterceptor() {
         // initial call to the deployment or the interceptor calls another deployment
-        String decodedName = UrlUtil.decodePath(deployment.getName());
+        // a name is url form for an application and plain config text for a model, so it is decoded the same
+        // lenient way as the source deployment above - a model named "claude-opus-4-8[1m]" is not a valid URI
+        String decodedName = UrlUtil.tryDecodePath(deployment.getName());
         if (apiKeyData.getInterceptors() == null || !decodedName.equals(getInitialDeployment())) {
             return !interceptors.isEmpty();
         } else { // make sure if a next interceptor is available from the list
