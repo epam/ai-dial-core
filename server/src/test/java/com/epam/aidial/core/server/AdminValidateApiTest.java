@@ -651,6 +651,64 @@ public class AdminValidateApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testV15gCatalogSchemaIdChangePrecheckRejected() {
+        // Precheck-side counterpart of AdminApplyApiTest#testApplyCatalogSchemaIdChangeRejected:
+        // the resource is committed via apply first, then validate at the same path with a
+        // different $id must report the conflict without applying it.
+        String existingBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/validate-catalog-schema-id-change",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/validate-id-change-original",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, existingBody, "authorization", "admin"), 200);
+
+        String changedBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/validate-catalog-schema-id-change",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/validate-id-change-different",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, changedBody, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(parsed.get("results").get(0).get("error").asText().contains("cannot be changed"),
+                () -> "Body: " + response.body());
+
+        Response get = send(HttpMethod.GET, "/v1/catalog_schemas/platform/validate-catalog-schema-id-change", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertTrue(get.body().contains("validate-id-change-original"),
+                () -> "Expected original $id to be unaffected by a rejected precheck: " + get.body());
+    }
+
+    @Test
+    @SneakyThrows
     void testValidateAndApplyCatalogSchemaDuplicateIdParity() {
         // Apply-parity: the same colliding-$id batch must 422 identically on both surfaces.
         String body = """

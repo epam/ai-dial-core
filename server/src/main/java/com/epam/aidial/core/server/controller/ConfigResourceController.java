@@ -1545,14 +1545,8 @@ public class ConfigResourceController implements Controller {
                     secretFieldProcessor.decryptFields(entity, descriptor);
                 }
                 ResourceTypes writeType = typeOf(descriptor);
-                // Evict old $id from Config before writing the new one (schema $id-change update).
-                String newSchemaId = putEventMetadata != null ? putEventMetadata.get("$id") : null;
-                String oldSchemaId = putEventMetadata != null ? putEventMetadata.get("old_$id") : null;
-                if (oldSchemaId != null) {
-                    mergedConfigStore.applyEntityDelete(writeType, oldSchemaId);
-                }
-                String mapKey = newSchemaId != null
-                        ? newSchemaId
+                String mapKey = putEventMetadata != null
+                        ? putEventMetadata.get("$id")
                         : MergedConfigStore.mapKeyFor(descriptor);
                 mergedConfigStore.applyEntityWrite(writeType, mapKey,
                         entity != null ? entity : requestNode);
@@ -1572,18 +1566,24 @@ public class ConfigResourceController implements Controller {
             throw new HttpException(HttpStatus.BAD_REQUEST,
                     "Schema body must contain a non-blank $id field");
         }
-        // Derive old $id from existing blob (if any) to detect $id changes.
-        String oldSchemaId = null;
         if (existingBody != null) {
+            // Update arm: $id is immutable once set — a mismatch (including an unparseable
+            // existing blob, which fails closed rather than silently allowing the change)
+            // is rejected outright. Renaming requires delete + recreate under the new id.
+            String oldSchemaId = null;
             try {
                 oldSchemaId = MergedConfigStore.extractSchemaId(
                         ProxyUtil.BLOB_MAPPER.readTree(existingBody));
             } catch (Exception e) {
-                // Treat as no prior $id — proceed without eviction.
+                // Leave oldSchemaId null — falls through to the mismatch rejection below.
             }
-        }
-        // Uniqueness: reject if $id is already registered under a different blob.
-        if (!newSchemaId.equals(oldSchemaId)) {
+            if (!newSchemaId.equals(oldSchemaId)) {
+                throw new HttpException(HttpStatus.CONFLICT,
+                        "Schema $id cannot be changed after creation (existing: '" + oldSchemaId
+                                + "', requested: '" + newSchemaId + "')");
+            }
+        } else {
+            // Create arm: reject if $id is already registered under a different blob.
             Config snapshot = mergedConfigStore.get();
             Map<String, String> schemaMap = switch (schemaType) {
                 case APP_TYPE_SCHEMA -> snapshot.getApplicationTypeSchemas();
@@ -1595,9 +1595,7 @@ public class ConfigResourceController implements Controller {
                         "Schema $id is already in use: " + newSchemaId);
             }
         }
-        return oldSchemaId != null && !oldSchemaId.equals(newSchemaId)
-                ? Map.of("$id", newSchemaId, "old_$id", oldSchemaId)
-                : Map.of("$id", newSchemaId);
+        return Map.of("$id", newSchemaId);
     }
 
     private Future<?> handleDelete() {

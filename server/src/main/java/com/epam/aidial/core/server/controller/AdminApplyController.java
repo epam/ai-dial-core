@@ -395,8 +395,8 @@ public class AdminApplyController {
 
     /**
      * Shared by {@code validateOnly} (precheck) and {@code applySchema} (real-apply): validates a
-     * Schema/CatalogSchema spec and, if it's well-formed, checks its {@code $id} for a collision
-     * against a different blob via {@link #schemaConflictMessage}.
+     * Schema/CatalogSchema spec and, if it's well-formed, checks its {@code $id} for an in-place
+     * change or a collision against a different blob via {@link #schemaConflictMessage}.
      */
     private static String schemaValidationError(AdminManifest entry, ParsedName parsed, Config scratch,
                                                 ResourceTypes type, ResourceService resourceService) {
@@ -425,26 +425,33 @@ public class AdminApplyController {
                 return MergedConfigStore.extractSchemaId(ProxyUtil.BLOB_MAPPER.readTree(existingBody));
             }
         } catch (Exception ignored) {
-            // If reading/parsing the existing blob fails, proceed without old_$id.
+            // If reading/parsing the existing blob fails, proceed as if no prior $id is known.
         }
         return null;
     }
 
     /**
-     * Mirrors {@link #duplicateDeploymentIdMessage}'s pattern for the schema $id namespace:
-     * non-null iff {@code schemaId} is already registered under a different blob than the one
-     * being written (i.e. {@code oldSchemaId} is unrelated to it).
+     * Shared by {@link #schemaValidationError} (precheck) and {@link #applySchema} (real-apply):
+     * non-null iff the write is rejected — either it changes an existing resource's $id (immutable
+     * once set; mirrors {@link ConfigResourceController#buildSchemaEventMetadata}'s single-PUT-path
+     * check), or (for a new resource) {@code schemaId} is already registered under a different blob,
+     * per {@link #duplicateDeploymentIdMessage}'s pattern for the schema $id namespace.
      */
     private static String schemaConflictMessage(Config scratch, ResourceTypes type, String schemaId, String oldSchemaId) {
-        if (!schemaId.equals(oldSchemaId)) {
-            Map<String, String> schemaMap = switch (type) {
-                case APP_TYPE_SCHEMA -> scratch.getApplicationTypeSchemas();
-                case CATALOG_SCHEMA -> scratch.getCatalogSchemas();
-                default -> throw new IllegalArgumentException("Unexpected schema type: " + type);
-            };
-            if (schemaMap.containsKey(schemaId)) {
-                return "Schema $id is already in use: " + schemaId;
+        if (oldSchemaId != null) {
+            if (!schemaId.equals(oldSchemaId)) {
+                return "Schema $id cannot be changed after creation (existing: '" + oldSchemaId
+                        + "', requested: '" + schemaId + "')";
             }
+            return null;
+        }
+        Map<String, String> schemaMap = switch (type) {
+            case APP_TYPE_SCHEMA -> scratch.getApplicationTypeSchemas();
+            case CATALOG_SCHEMA -> scratch.getCatalogSchemas();
+            default -> throw new IllegalArgumentException("Unexpected schema type: " + type);
+        };
+        if (schemaMap.containsKey(schemaId)) {
+            return "Schema $id is already in use: " + schemaId;
         }
         return null;
     }
@@ -504,18 +511,13 @@ public class AdminApplyController {
             // submitted secrets). Surface a generic failure tied to the entity id.
             return new EntityResult(id, AdminApplyStatus.FAILED, "Failed to serialize schema for " + id);
         }
-        // Read the existing blob to detect an $id change; replicas use old_$id to evict the
-        // stale entry from their in-memory schema map without waiting for a full rebuild.
+        // Read the existing blob to distinguish create from update — $id is immutable on update.
         String oldSchemaId = readOldSchemaId(resourceService, descriptor);
-        // Uniqueness: reject if $id is already registered under a different blob — mirrors
-        // ConfigResourceController#buildSchemaEventMetadata's check on the single-resource PUT path.
-        String dupError = schemaConflictMessage(scratch, type, schemaId, oldSchemaId);
-        if (dupError != null) {
-            return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
+        String conflictMessage = schemaConflictMessage(scratch, type, schemaId, oldSchemaId);
+        if (conflictMessage != null) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, conflictMessage);
         }
-        Map<String, String> eventMetadata = (oldSchemaId != null && !oldSchemaId.equals(schemaId))
-                ? Map.of("$id", schemaId, "old_$id", oldSchemaId)
-                : Map.of("$id", schemaId);
+        Map<String, String> eventMetadata = Map.of("$id", schemaId);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY, null, true, eventMetadata);
         pending.add(new EntityChange(type, schemaId, spec));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);

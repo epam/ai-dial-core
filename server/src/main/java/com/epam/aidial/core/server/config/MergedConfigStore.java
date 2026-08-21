@@ -368,13 +368,6 @@ public final class MergedConfigStore implements ConfigStore {
                     decryptManagedEntity(type, entity, descriptor);
                 }
                 String mapKey = resolveReplicaMapKey(descriptor, node, isSchema, eventMetadata);
-                // Evict the old $id when a schema was updated with a different $id.
-                if (isSchema && eventMetadata != null) {
-                    String oldSchemaId = eventMetadata.get("old_$id");
-                    if (oldSchemaId != null && !oldSchemaId.equals(mapKey)) {
-                        applyEntityDeleteLocked(type, oldSchemaId);
-                    }
-                }
                 if (type == ResourceTypes.PROJECT_KEY) {
                     Key key = (Key) entity;
                     String secret = key.getKey();
