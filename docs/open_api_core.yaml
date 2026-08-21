@@ -35,7 +35,7 @@ info:
     HTTP Authorization Scheme: `bearer`
 
     Bearer format: `JWT`
-  version: 0.46.0
+  version: 0.46.1
   license:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html

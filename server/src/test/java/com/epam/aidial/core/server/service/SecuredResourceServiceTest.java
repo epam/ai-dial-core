@@ -12,9 +12,11 @@ import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,11 +47,20 @@ class SecuredResourceServiceTest {
     @Mock
     private ResourceCredentialsService resourceCredentialsService;
 
+    private McpHttpClientBuilder mcpHttpClientBuilder;
     private SecuredResourceService service;
 
     @BeforeEach
     void setup() {
-        service = new SecuredResourceService(resourceCredentialsService);
+        McpHttpClientBuilder.Settings settings = new McpHttpClientBuilder.Settings();
+        settings.setConnectTimeout(1000);
+        mcpHttpClientBuilder = new McpHttpClientBuilder(settings);
+        service = new SecuredResourceService(resourceCredentialsService, mcpHttpClientBuilder);
+    }
+
+    @AfterEach
+    void tearDown() {
+        mcpHttpClientBuilder.close();
     }
 
     @Test

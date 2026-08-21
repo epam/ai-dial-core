@@ -72,6 +72,9 @@
     "activeBatches": 1,
     "gracePeriod": 3600000
   },
+  "mcpHttpClient": {
+    "connectTimeout": 10000
+  },
   "applications": {
     "includeCustomApps": true
   },

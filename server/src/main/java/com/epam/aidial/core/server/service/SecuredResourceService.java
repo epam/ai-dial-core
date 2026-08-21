@@ -9,8 +9,9 @@ import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.mcp.McpClientUtils;
+import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
-import com.epam.aidial.core.server.util.McpClientUtils;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceType;
@@ -37,6 +38,7 @@ public class SecuredResourceService {
     private static final Duration MCP_PROBE_TIMEOUT = Duration.ofSeconds(20);
 
     private final ResourceCredentialsService resourceCredentialsService;
+    private final McpHttpClientBuilder mcpHttpClientBuilder;
 
     public void signIn(ProxyContext context, SecuredResource securedResource, ResourceSignInRequest request) {
         if (AuthenticationType.API_KEY.equals(request.getAuthenticationType())) {
@@ -86,9 +88,9 @@ public class SecuredResourceService {
             return;
         }
 
-        HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
-                .builder(endpoint)
+        HttpClientStreamableHttpTransport transport = McpClientUtils.transportBuilder(endpoint)
                 .connectTimeout(MCP_PROBE_TIMEOUT)
+                .clientBuilder(mcpHttpClientBuilder.httpClientBuilder())
                 .jsonMapper(McpClientUtils.MCP_JSON_MAPPER)
                 .httpRequestCustomizer((builder, method, uri, body, transportContext) ->
                         builder.header(apiKeyHeader, apiKey))
