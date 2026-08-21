@@ -143,7 +143,7 @@ public class ProxyContext {
     }
 
     public Future<?> respond(HttpStatus status) {
-        return respond(status, Buffer.buffer());
+        return respond(status, null);
     }
 
     @SneakyThrows
@@ -159,17 +159,17 @@ public class ProxyContext {
     }
 
     public Future<?> respond(HttpStatus status, String body) {
-        return respond(status, body == null ? null : Buffer.buffer(body));
+        return respond(status.getCode(), body == null ? null : Buffer.buffer(body));
     }
 
-    public Future<?> respond(HttpStatus status, Buffer body) {
+    public Future<?> respond(int status, Buffer body) {
         if (body == null) {
             body = Buffer.buffer();
         }
 
-        response.setStatusCode(status.getCode()).end(body);
+        response.setStatusCode(status).end(body);
 
-        if (!status.is2xx()) {
+        if (status < 200 || status >= 300) {
             log.warn("Responding with error. Body: {}", body);
         }
 
