@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -520,6 +521,40 @@ public class ConsentServiceTest {
         root.setName("A");
 
         assertDoesNotThrow(() -> service.verifyUserConsent(context, application));
+    }
+
+    /**
+     * A deployment id is not a url. Here it is a config defined model name holding brackets, which are illegal
+     * in a URI path, so validating it as one used to fail before any storage access.
+     */
+    @Test
+    public void testAcceptConsent_DeploymentIdThatIsNotUriSafe() {
+        when(context.getUserId()).thenReturn("sub");
+
+        service.acceptConsent(context, "anthropic.claude-opus-4-8[1m]", new Consent());
+
+        assertEquals("anthropic.claude-opus-4-8[1m]", capturePutDescriptor().getName());
+    }
+
+    /**
+     * A custom application's id is an already encoded resource url, so the record path stays decoded the way it
+     * has always been - the read side derives it from that very same name.
+     */
+    @Test
+    public void testAcceptConsent_EncodedApplicationId() {
+        when(context.getUserId()).thenReturn("sub");
+
+        service.acceptConsent(context, "applications/buck/my%20app", new Consent());
+
+        ResourceDescriptor descriptor = capturePutDescriptor();
+        assertEquals("my app", descriptor.getName());
+        assertEquals(List.of("applications", "buck"), descriptor.getParentFolders());
+    }
+
+    private ResourceDescriptor capturePutDescriptor() {
+        ArgumentCaptor<ResourceDescriptor> captor = ArgumentCaptor.forClass(ResourceDescriptor.class);
+        verify(resourceService).putResource(captor.capture(), eq("{\"deployments\":{}}"), eq(EtagHeader.ANY));
+        return captor.getValue();
     }
 
     @SneakyThrows
