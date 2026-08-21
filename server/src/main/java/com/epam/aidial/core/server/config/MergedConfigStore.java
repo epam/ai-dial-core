@@ -66,6 +66,11 @@ import javax.annotation.Nullable;
  * initial rebuild, flips {@code initialized}) → {@link #requestRebuild} fires on
  * every subsequent file-poll callback (debounced 500 ms) and {@link #reload}
  * runs synchronously for the admin reload endpoint.
+ *
+ * <p>{@code mapKey} (threaded through most methods below) is the key an entity lives under
+ * in its {@code Config} type-map — the short name for models/interceptors/roles/applications/
+ * toolsets, the {@code $id} for schema types, and the canonical id for all other types (keys,
+ * routes). See {@link #resolveMapKeyFor} / {@link #resolveMapKeyForSchema} for the exact derivation.
  */
 @Slf4j
 public final class MergedConfigStore implements ConfigStore {
@@ -402,7 +407,7 @@ public final class MergedConfigStore implements ConfigStore {
         if (isSchema) {
             applyReplicaSchemaDelete(type, eventMetadata);
         } else {
-            applyReplicaDelete(type, mapKeyFor(descriptor));
+            applyReplicaDelete(type, resolveMapKeyFor(descriptor));
         }
     }
 
@@ -414,6 +419,7 @@ public final class MergedConfigStore implements ConfigStore {
     private void applyReplicaSchemaDelete(ResourceTypes type, @Nullable Map<String, String> eventMetadata) {
         String schemaId = eventMetadata != null ? eventMetadata.get("$id") : null;
         if (schemaId == null) {
+            log.warn("Schema $id is missing in delete event metadata: {}. Will proceed with full rebuild", eventMetadata);
             requestRebuild();
             return;
         }
@@ -1302,9 +1308,9 @@ public final class MergedConfigStore implements ConfigStore {
      *   <li>Every other non-schema type → canonical id</li>
      * </ul>
      * Throws {@link IllegalArgumentException} if called for a schema type — use
-     * {@link #mapKeyForSchema(JsonNode)} for {@code APP_TYPE_SCHEMA} / {@code CATALOG_SCHEMA}.
+     * {@link #resolveMapKeyForSchema(JsonNode)} for {@code APP_TYPE_SCHEMA} / {@code CATALOG_SCHEMA}.
      */
-    public static String mapKeyFor(ResourceDescriptor descriptor) {
+    public static String resolveMapKeyFor(ResourceDescriptor descriptor) {
         ResourceTypes type = (ResourceTypes) descriptor.getType();
         if (type == ResourceTypes.APP_TYPE_SCHEMA || type == ResourceTypes.CATALOG_SCHEMA) {
             throw new IllegalArgumentException(
@@ -1317,13 +1323,13 @@ public final class MergedConfigStore implements ConfigStore {
      * Resolves the Config map key for a blob entry during a full rebuild. For schema types, returns
      * the {@code $id} extracted from the blob body, or {@code null} (and logs a warning) when the
      * body has no textual {@code $id}. For all other types, delegates to
-     * {@link #mapKeyFor(ResourceDescriptor)}.
+     * {@link #resolveMapKeyFor(ResourceDescriptor)}.
      */
     @Nullable
     private static String resolveRebuildMapKey(ResourceDescriptor descriptor, JsonNode node, String canonicalId) {
         ResourceTypes type = (ResourceTypes) descriptor.getType();
         if (type != ResourceTypes.APP_TYPE_SCHEMA && type != ResourceTypes.CATALOG_SCHEMA) {
-            return mapKeyFor(descriptor);
+            return resolveMapKeyFor(descriptor);
         }
         String schemaId = extractSchemaId(node);
         if (schemaId == null) {
@@ -1336,16 +1342,16 @@ public final class MergedConfigStore implements ConfigStore {
      * Resolves the Config map key for a replica CREATE/UPDATE event. For schema types, prefers the
      * {@code $id} carried in {@code eventMetadata} (set by the writer) and falls back to extracting
      * it from the blob body when metadata is absent (older-pod delivery). For all other types,
-     * delegates to {@link #mapKeyFor(ResourceDescriptor)}.
+     * delegates to {@link #resolveMapKeyFor(ResourceDescriptor)}.
      */
     private static String resolveReplicaMapKey(ResourceDescriptor descriptor, JsonNode node,
                                                boolean isSchema,
                                                @Nullable Map<String, String> eventMetadata) {
         if (!isSchema) {
-            return mapKeyFor(descriptor);
+            return resolveMapKeyFor(descriptor);
         }
         String metaId = eventMetadata != null ? eventMetadata.get("$id") : null;
-        return metaId != null ? metaId : mapKeyForSchema(node);
+        return metaId != null ? metaId : resolveMapKeyForSchema(node);
     }
 
     /**
@@ -1353,7 +1359,7 @@ public final class MergedConfigStore implements ConfigStore {
      * the JSON-Schema {@code $id} field extracted from the blob body.
      * Throws {@link IllegalArgumentException} when {@code body} has no textual {@code $id}.
      */
-    public static String mapKeyForSchema(JsonNode body) {
+    private static String resolveMapKeyForSchema(JsonNode body) {
         String schemaId = extractSchemaId(body);
         if (schemaId == null) {
             throw new IllegalArgumentException(

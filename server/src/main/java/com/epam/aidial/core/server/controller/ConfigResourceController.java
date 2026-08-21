@@ -1380,7 +1380,7 @@ public class ConfigResourceController implements Controller {
                     }
                     default -> throw new IllegalArgumentException("Unexpected resource type: " + type);
                 };
-                mergedConfigStore.applyEntityWrite(type, MergedConfigStore.mapKeyFor(descriptor), decrypted);
+                mergedConfigStore.applyEntityWrite(type, MergedConfigStore.resolveMapKeyFor(descriptor), decrypted);
                 return resourceService.getResourceMetadata(descriptor);
             }));
         }).onSuccess(meta -> context.putHeader(HttpHeaders.ETAG, meta.getEtag())
@@ -1412,7 +1412,7 @@ public class ConfigResourceController implements Controller {
                 }
                 default -> throw new IllegalArgumentException("Unexpected resource type: " + type);
             }
-            mergedConfigStore.applyEntityDelete(type, MergedConfigStore.mapKeyFor(descriptor));
+            mergedConfigStore.applyEntityDelete(type, MergedConfigStore.resolveMapKeyFor(descriptor));
             return true;
         })).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
 
@@ -1547,7 +1547,7 @@ public class ConfigResourceController implements Controller {
                 ResourceTypes writeType = typeOf(descriptor);
                 String mapKey = putEventMetadata != null
                         ? putEventMetadata.get("$id")
-                        : MergedConfigStore.mapKeyFor(descriptor);
+                        : MergedConfigStore.resolveMapKeyFor(descriptor);
                 mergedConfigStore.applyEntityWrite(writeType, mapKey,
                         entity != null ? entity : requestNode);
                 return meta;
@@ -1671,7 +1671,7 @@ public class ConfigResourceController implements Controller {
             }
             String deleteMapKey = deletedSchemaId != null
                     ? deletedSchemaId
-                    : MergedConfigStore.mapKeyFor(descriptor);
+                    : MergedConfigStore.resolveMapKeyFor(descriptor);
             mergedConfigStore.applyEntityDelete(deleteType, deleteMapKey);
             return true;
         })).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
@@ -1689,14 +1689,14 @@ public class ConfigResourceController implements Controller {
      * Rejects a MODEL/INTERCEPTOR/APPLICATION/TOOL_SET write whose short name is already claimed
      * by a different deployment (of any of those four types) in the live merged Config — the
      * partial-update-path counterpart of {@code ConfigPostProcessor.skipOnDuplicate}, which only
-     * runs during a full rebuild. See {@link ConfigPostProcessor#isDeploymentIdTaken}.
+     * runs during a full rebuild. See {@link ConfigPostProcessor#isDeploymentIdTakenByAnotherDeploymentType}.
      */
     private void rejectDuplicateDeploymentId(ResourceTypes type, String shortName) {
         Config snapshot = mergedConfigStore.get();
         if (snapshot == null) {
             return;
         }
-        if (ConfigPostProcessor.isDeploymentIdTaken(snapshot, type, shortName)) {
+        if (ConfigPostProcessor.isDeploymentIdTakenByAnotherDeploymentType(snapshot, type, shortName)) {
             throw new HttpException(HttpStatus.CONFLICT,
                     "Deployment ID '" + shortName + "' is already used by a different entity");
         }

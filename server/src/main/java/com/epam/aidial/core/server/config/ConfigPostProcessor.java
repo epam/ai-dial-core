@@ -441,22 +441,24 @@ public final class ConfigPostProcessor {
         return true;
     }
 
-    public static boolean isDeploymentIdTaken(Config config, ResourceTypes type, String shortName) {
-        return switch (type) {
-            case MODEL -> config.getApplications().containsKey(shortName)
-                    || config.getToolsets().containsKey(shortName)
-                    || config.getInterceptors().containsKey(shortName);
-            case APPLICATION -> config.getModels().containsKey(shortName)
-                    || config.getToolsets().containsKey(shortName)
-                    || config.getInterceptors().containsKey(shortName);
-            case TOOL_SET -> config.getModels().containsKey(shortName)
-                    || config.getApplications().containsKey(shortName)
-                    || config.getInterceptors().containsKey(shortName);
-            case INTERCEPTOR -> config.getModels().containsKey(shortName)
-                    || config.getApplications().containsKey(shortName)
-                    || config.getToolsets().containsKey(shortName);
-            default -> throw new IllegalArgumentException("Not a deployment type: " + type);
-        };
+    /**
+     * Returns {@code true} if {@code shortName} is already claimed by a MODEL, APPLICATION,
+     * TOOL_SET, or INTERCEPTOR other than {@code type} — those four entity types share one
+     * flat deployment-id namespace.
+     */
+    public static boolean isDeploymentIdTakenByAnotherDeploymentType(Config config,
+                                                                     ResourceTypes type,
+                                                                     String shortName) {
+        Map<ResourceTypes, Map<String, ?>> deploymentIdSpaces = Map.of(
+                ResourceTypes.MODEL, config.getModels(),
+                ResourceTypes.APPLICATION, config.getApplications(),
+                ResourceTypes.TOOL_SET, config.getToolsets(),
+                ResourceTypes.INTERCEPTOR, config.getInterceptors());
+        if (!deploymentIdSpaces.containsKey(type)) {
+            throw new IllegalArgumentException("Not a deployment type: " + type);
+        }
+        return deploymentIdSpaces.entrySet().stream()
+                .anyMatch(entry -> entry.getKey() != type && entry.getValue().containsKey(shortName));
     }
 
     private static boolean isValidResourceKey(String resourceKey) {

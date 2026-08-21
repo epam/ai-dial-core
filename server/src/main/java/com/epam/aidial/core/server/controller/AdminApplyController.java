@@ -311,14 +311,14 @@ public class AdminApplyController {
                     if (!warnings.isEmpty() && !softValidation) {
                         return new ValidationResult(id, ValidationStatus.FAILED, joinWarnings(warnings));
                     }
-                    String dupError = duplicateDeploymentIdMessage(scratch, ResourceTypes.MODEL, parsed);
+                    String dupError = validateDeploymentIdUniqueness(scratch, ResourceTypes.MODEL, parsed);
                     if (dupError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, dupError);
                     }
                 }
                 case "Interceptor" -> {
                     ConfigResourceController.treeToEntity(entry.spec(), Interceptor.class);
-                    String dupError = duplicateDeploymentIdMessage(scratch, ResourceTypes.INTERCEPTOR, parsed);
+                    String dupError = validateDeploymentIdUniqueness(scratch, ResourceTypes.INTERCEPTOR, parsed);
                     if (dupError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, dupError);
                     }
@@ -341,7 +341,7 @@ public class AdminApplyController {
                 case "Application" -> {
                     ConfigResourceController.treeToEntity(entry.spec(), Application.class);
                     if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
-                        String dupError = duplicateDeploymentIdMessage(scratch, ResourceTypes.APPLICATION, parsed);
+                        String dupError = validateDeploymentIdUniqueness(scratch, ResourceTypes.APPLICATION, parsed);
                         if (dupError != null) {
                             return new ValidationResult(id, ValidationStatus.FAILED, dupError);
                         }
@@ -350,21 +350,21 @@ public class AdminApplyController {
                 case "ToolSet" -> {
                     ConfigResourceController.treeToEntity(entry.spec(), ToolSet.class);
                     if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
-                        String dupError = duplicateDeploymentIdMessage(scratch, ResourceTypes.TOOL_SET, parsed);
+                        String dupError = validateDeploymentIdUniqueness(scratch, ResourceTypes.TOOL_SET, parsed);
                         if (dupError != null) {
                             return new ValidationResult(id, ValidationStatus.FAILED, dupError);
                         }
                     }
                 }
                 case "Schema" -> {
-                    String schemaError = schemaValidationError(entry, parsed, scratch,
+                    String schemaError = validateSchema(entry, parsed, scratch,
                             ResourceTypes.APP_TYPE_SCHEMA, resourceService);
                     if (schemaError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, schemaError);
                     }
                 }
                 case "CatalogSchema" -> {
-                    String schemaError = schemaValidationError(entry, parsed, scratch,
+                    String schemaError = validateSchema(entry, parsed, scratch,
                             ResourceTypes.CATALOG_SCHEMA, resourceService);
                     if (schemaError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, schemaError);
@@ -384,10 +384,10 @@ public class AdminApplyController {
      * Shared by {@link #validateOnly} (precheck) and the real-apply {@code applyX} methods:
      * non-null iff {@code parsed}'s short name is already claimed by a different
      * model/application/interceptor/toolset in {@code scratch}. See
-     * {@link ConfigPostProcessor#isDeploymentIdTaken}.
+     * {@link ConfigPostProcessor#isDeploymentIdTakenByAnotherDeploymentType}.
      */
-    private static String duplicateDeploymentIdMessage(Config scratch, ResourceTypes type, ParsedName parsed) {
-        if (ConfigPostProcessor.isDeploymentIdTaken(scratch, type, parsed.name())) {
+    private static String validateDeploymentIdUniqueness(Config scratch, ResourceTypes type, ParsedName parsed) {
+        if (ConfigPostProcessor.isDeploymentIdTakenByAnotherDeploymentType(scratch, type, parsed.name())) {
             return "Deployment ID '" + parsed.name() + "' is already used by a different entity";
         }
         return null;
@@ -396,10 +396,10 @@ public class AdminApplyController {
     /**
      * Shared by {@code validateOnly} (precheck) and {@code applySchema} (real-apply): validates a
      * Schema/CatalogSchema spec and, if it's well-formed, checks its {@code $id} for an in-place
-     * change or a collision against a different blob via {@link #schemaConflictMessage}.
+     * change or a collision against a different blob via {@link #validateSchemaId}.
      */
-    private static String schemaValidationError(AdminManifest entry, ParsedName parsed, Config scratch,
-                                                ResourceTypes type, ResourceService resourceService) {
+    private static String validateSchema(AdminManifest entry, ParsedName parsed, Config scratch,
+                                         ResourceTypes type, ResourceService resourceService) {
         String kindLabel = switch (type) {
             case APP_TYPE_SCHEMA -> "Schema";
             case CATALOG_SCHEMA -> "CatalogSchema";
@@ -415,7 +415,7 @@ public class AdminApplyController {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 type, parsed.bucket(), parsed.location(), parsed.name());
         String oldSchemaId = readOldSchemaId(resourceService, descriptor);
-        return schemaConflictMessage(scratch, type, schemaId, oldSchemaId);
+        return validateSchemaId(scratch, type, schemaId, oldSchemaId);
     }
 
     private static String readOldSchemaId(ResourceService resourceService, ResourceDescriptor descriptor) {
@@ -431,13 +431,13 @@ public class AdminApplyController {
     }
 
     /**
-     * Shared by {@link #schemaValidationError} (precheck) and {@link #applySchema} (real-apply):
+     * Shared by {@link #validateSchema} (precheck) and {@link #applySchema} (real-apply):
      * non-null iff the write is rejected — either it changes an existing resource's $id (immutable
      * once set; mirrors {@link ConfigResourceController#buildSchemaEventMetadata}'s single-PUT-path
      * check), or (for a new resource) {@code schemaId} is already registered under a different blob,
-     * per {@link #duplicateDeploymentIdMessage}'s pattern for the schema $id namespace.
+     * per {@link #validateDeploymentIdUniqueness}'s pattern for the schema $id namespace.
      */
-    private static String schemaConflictMessage(Config scratch, ResourceTypes type, String schemaId, String oldSchemaId) {
+    private static String validateSchemaId(Config scratch, ResourceTypes type, String schemaId, String oldSchemaId) {
         if (oldSchemaId != null) {
             if (!schemaId.equals(oldSchemaId)) {
                 return "Schema $id cannot be changed after creation (existing: '" + oldSchemaId
@@ -513,7 +513,7 @@ public class AdminApplyController {
         }
         // Read the existing blob to distinguish create from update — $id is immutable on update.
         String oldSchemaId = readOldSchemaId(resourceService, descriptor);
-        String conflictMessage = schemaConflictMessage(scratch, type, schemaId, oldSchemaId);
+        String conflictMessage = validateSchemaId(scratch, type, schemaId, oldSchemaId);
         if (conflictMessage != null) {
             return new EntityResult(id, AdminApplyStatus.FAILED, conflictMessage);
         }
@@ -532,14 +532,14 @@ public class AdminApplyController {
         /// Deployment-id uniqueness only applies to INTERCEPTOR here — ROLE/ROUTE aren't deployments
         // resolved through Config.selectDeployment, so they don't share the short-name namespace.
         if (type == ResourceTypes.INTERCEPTOR) {
-            String dupError = duplicateDeploymentIdMessage(scratch, type, parsed);
+            String dupError = validateDeploymentIdUniqueness(scratch, type, parsed);
             if (dupError != null) {
                 return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
             }
         }
         String blobBody = ConfigResourceController.serializeForBlob(entity);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-        pending.add(new EntityChange(type, MergedConfigStore.mapKeyFor(descriptor), entity));
+        pending.add(new EntityChange(type, MergedConfigStore.resolveMapKeyFor(descriptor), entity));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
@@ -602,7 +602,7 @@ public class AdminApplyController {
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.MODEL, parsed.bucket(), parsed.location(), parsed.name());
-        String dupError = duplicateDeploymentIdMessage(scratch, ResourceTypes.MODEL, parsed);
+        String dupError = validateDeploymentIdUniqueness(scratch, ResourceTypes.MODEL, parsed);
         if (dupError != null) {
             return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
         }
@@ -611,7 +611,7 @@ public class AdminApplyController {
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
         // Slice 4S.4: decrypt-in-place so partial-update receives plaintext upstream secrets.
         secretFieldProcessor.decryptFields(model, descriptor);
-        pending.add(new EntityChange(ResourceTypes.MODEL, MergedConfigStore.mapKeyFor(descriptor), model));
+        pending.add(new EntityChange(ResourceTypes.MODEL, MergedConfigStore.resolveMapKeyFor(descriptor), model));
         return new EntityResult(id, invalid ? AdminApplyStatus.APPLIED_INVALID : AdminApplyStatus.APPLIED, null);
     }
 
@@ -626,7 +626,7 @@ public class AdminApplyController {
         // DeploymentController) until the next full rebuild.
         boolean platform = ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket());
         if (platform) {
-            String dupError = duplicateDeploymentIdMessage(scratch, ResourceTypes.APPLICATION, parsed);
+            String dupError = validateDeploymentIdUniqueness(scratch, ResourceTypes.APPLICATION, parsed);
             if (dupError != null) {
                 return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
             }
@@ -636,7 +636,7 @@ public class AdminApplyController {
                 AdminManagedFieldsWriteMode.AUTHORITATIVE);
         if (platform) {
             Application decrypted = applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
-            pending.add(new EntityChange(ResourceTypes.APPLICATION, MergedConfigStore.mapKeyFor(descriptor), decrypted));
+            pending.add(new EntityChange(ResourceTypes.APPLICATION, MergedConfigStore.resolveMapKeyFor(descriptor), decrypted));
         }
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
@@ -649,7 +649,7 @@ public class AdminApplyController {
         // MergedConfigStore / are subject to deployment-id uniqueness.
         boolean platform = ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket());
         if (platform) {
-            String dupError = duplicateDeploymentIdMessage(scratch, ResourceTypes.TOOL_SET, parsed);
+            String dupError = validateDeploymentIdUniqueness(scratch, ResourceTypes.TOOL_SET, parsed);
             if (dupError != null) {
                 return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
             }
@@ -657,7 +657,7 @@ public class AdminApplyController {
         toolSetService.putToolSet(descriptor, EtagHeader.ANY, null, toolSet, true);
         if (platform) {
             ToolSet decrypted = toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
-            pending.add(new EntityChange(ResourceTypes.TOOL_SET, MergedConfigStore.mapKeyFor(descriptor), decrypted));
+            pending.add(new EntityChange(ResourceTypes.TOOL_SET, MergedConfigStore.resolveMapKeyFor(descriptor), decrypted));
         }
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
