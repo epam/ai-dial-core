@@ -10,6 +10,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Role;
+import com.epam.aidial.core.config.RoleBasedEntity;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
@@ -144,14 +145,10 @@ public final class ConfigPostProcessor {
         onSkip.accept(ResourceTypes.MODEL, new InvalidEntityException(ResourceTypes.MODEL, mapKey, warnings));
     }
 
-    /**
-     * Targeted per-type helper. Sets {@code interceptor.name} from the map key. No cross-ref
-     * validation — interceptors have no outbound refs.
-     */
-    static void validateSingleInterceptor(Config config, String mapKey) {
-        Interceptor interceptor = config.getInterceptors().get(mapKey);
-        if (interceptor != null) {
-            interceptor.setName(mapKey);
+    static <T extends RoleBasedEntity> void setNameAsMapKey(Map<String, T> entities, String mapKey) {
+        T entity = entities.get(mapKey);
+        if (entity != null) {
+            entity.setName(mapKey);
         }
     }
 
@@ -159,33 +156,10 @@ public final class ConfigPostProcessor {
      * Targeted per-type helper. Sets {@code role.name} from the map key. {@code Role.limits}
      * keys are loose-refs (warning-only today) so no cross-ref validation runs.
      */
-    static void validateSingleRole(Config config, String mapKey) {
-        Role role = config.getRoles().get(mapKey);
+    static void setRoleNameAsMapKey(Map<String, Role> roles, String mapKey) {
+        Role role = roles.get(mapKey);
         if (role != null) {
             role.setName(mapKey);
-        }
-    }
-
-    /**
-     * Targeted per-type helper for {@link MergedConfigStore} partial-update path. Sets
-     * {@code application.name} from the map key. No cross-ref validation — applications have
-     * no outbound refs checked here.
-     */
-    static void validateSingleApplication(Config config, String mapKey) {
-        Application application = config.getApplications().get(mapKey);
-        if (application != null) {
-            application.setName(mapKey);
-        }
-    }
-
-    /**
-     * Targeted per-type helper for {@link MergedConfigStore} partial-update path. Sets
-     * {@code toolSet.name} from the map key.
-     */
-    static void validateSingleToolSet(Config config, String mapKey) {
-        ToolSet toolSet = config.getToolsets().get(mapKey);
-        if (toolSet != null) {
-            toolSet.setName(mapKey);
         }
     }
 
