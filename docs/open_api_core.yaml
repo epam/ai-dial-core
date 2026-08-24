@@ -16249,8 +16249,6 @@ components:
           type: integer
         url:
           type: string
-        metadata:
-          $ref: "#/components/schemas/MapStringString"
     ResourceEventAction:
       type: string
       enum:
