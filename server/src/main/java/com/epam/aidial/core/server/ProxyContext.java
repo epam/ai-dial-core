@@ -253,7 +253,9 @@ public class ProxyContext {
 
     public boolean hasNextInterceptor() {
         // initial call to the deployment or the interceptor calls another deployment
-        String decodedName = UrlUtil.decodePath(deployment.getName());
+        // a name is url form for an application and plain config text for a model, so it is decoded the same
+        // lenient way as the source deployment above - a model named "claude-opus-4-8[1m]" is not a valid URI
+        String decodedName = UrlUtil.tryDecodePath(deployment.getName());
         if (apiKeyData.getInterceptors() == null || !decodedName.equals(getInitialDeployment())) {
             return !interceptors.isEmpty();
         } else { // make sure if a next interceptor is available from the list
