@@ -1566,34 +1566,22 @@ public class ConfigResourceController implements Controller {
             throw new HttpException(HttpStatus.BAD_REQUEST,
                     "Schema body must contain a non-blank $id field");
         }
+        // isUpdate is existingBody != null, not oldSchemaId != null: an existing-but-unparseable
+        // blob must still fail closed on the immutability check below, not fall through to the
+        // create-time uniqueness check.
+        String oldSchemaId = null;
         if (existingBody != null) {
-            // Update arm: $id is immutable once set — a mismatch (including an unparseable
-            // existing blob, which fails closed rather than silently allowing the change)
-            // is rejected outright. Renaming requires delete + recreate under the new id.
-            String oldSchemaId = null;
             try {
                 oldSchemaId = MergedConfigStore.extractSchemaId(
                         ProxyUtil.BLOB_MAPPER.readTree(existingBody));
             } catch (Exception e) {
-                // Leave oldSchemaId null — falls through to the mismatch rejection below.
+                // Leave oldSchemaId null — the immutability check below fails closed on the mismatch.
             }
-            if (!newSchemaId.equals(oldSchemaId)) {
-                throw new HttpException(HttpStatus.CONFLICT,
-                        "Schema $id cannot be changed after creation (existing: '" + oldSchemaId
-                                + "', requested: '" + newSchemaId + "')");
-            }
-        } else {
-            // Create arm: reject if $id is already registered under a different blob.
-            Config snapshot = mergedConfigStore.get();
-            Map<String, String> schemaMap = switch (schemaType) {
-                case APP_TYPE_SCHEMA -> snapshot.getApplicationTypeSchemas();
-                case CATALOG_SCHEMA  -> snapshot.getCatalogSchemas();
-                default -> throw new IllegalArgumentException("Unexpected schema type: " + schemaType);
-            };
-            if (schemaMap.containsKey(newSchemaId)) {
-                throw new HttpException(HttpStatus.CONFLICT,
-                        "Schema $id is already in use: " + newSchemaId);
-            }
+        }
+        Map<String, String> schemaMap = MergedConfigStore.getSchemaMapOf(mergedConfigStore.get(), schemaType);
+        String error = MergedConfigStore.validateSchemaId(schemaMap, existingBody != null, newSchemaId, oldSchemaId);
+        if (error != null) {
+            throw new HttpException(HttpStatus.CONFLICT, error);
         }
         return Map.of("$id", newSchemaId);
     }
@@ -1669,10 +1657,17 @@ public class ConfigResourceController implements Controller {
             if (deletedSecret != null) {
                 apiKeyStore.removeKey(deletedSecret);
             }
-            String deleteMapKey = deletedSchemaId != null
-                    ? deletedSchemaId
-                    : MergedConfigStore.resolveMapKeyFor(descriptor);
-            mergedConfigStore.applyEntityDelete(deleteType, deleteMapKey);
+            if (isSchema) {
+                // No $id could be recovered (blob missing, corrupt, or already gone) — the blob
+                // delete above already succeeded; skip the in-memory removal rather than calling
+                // the schema-throwing resolveMapKeyFor fallback. The next full rebuild cleans up
+                // any stale in-memory entry.
+                if (deletedSchemaId != null) {
+                    mergedConfigStore.applyEntityDelete(deleteType, deletedSchemaId);
+                }
+            } else {
+                mergedConfigStore.applyEntityDelete(deleteType, MergedConfigStore.resolveMapKeyFor(descriptor));
+            }
             return true;
         })).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
 

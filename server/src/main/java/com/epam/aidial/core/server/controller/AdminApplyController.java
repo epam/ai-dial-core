@@ -396,7 +396,8 @@ public class AdminApplyController {
     /**
      * Shared by {@code validateOnly} (precheck) and {@code applySchema} (real-apply): validates a
      * Schema/CatalogSchema spec and, if it's well-formed, checks its {@code $id} for an in-place
-     * change or a collision against a different blob via {@link #validateSchemaId}.
+     * change or a collision against a different blob via
+     * {@link MergedConfigStore#validateSchemaId}.
      */
     private static String validateSchema(AdminManifest entry, ParsedName parsed, Config scratch,
                                          ResourceTypes type, ResourceService resourceService) {
@@ -415,45 +416,29 @@ public class AdminApplyController {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 type, parsed.bucket(), parsed.location(), parsed.name());
         String oldSchemaId = readOldSchemaId(resourceService, descriptor);
-        return validateSchemaId(scratch, type, schemaId, oldSchemaId);
+        Map<String, String> schemaMap = MergedConfigStore.getSchemaMapOf(scratch, type);
+        return MergedConfigStore.validateSchemaId(schemaMap, oldSchemaId != null, schemaId, oldSchemaId);
     }
 
     private static String readOldSchemaId(ResourceService resourceService, ResourceDescriptor descriptor) {
+        String existingBody;
         try {
-            String existingBody = resourceService.getResource(descriptor);
-            if (existingBody != null) {
-                return MergedConfigStore.extractSchemaId(ProxyUtil.BLOB_MAPPER.readTree(existingBody));
-            }
-        } catch (Exception ignored) {
-            // If reading/parsing the existing blob fails, proceed as if no prior $id is known.
+            existingBody = resourceService.getResource(descriptor);
+        } catch (Exception e) {
+            // A genuinely missing resource surfaces as null, not an exception — any exception here
+            // is a real read failure, so fail closed rather than silently treating it as "no prior $id".
+            throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to read existing resource: " + descriptor.getUrl());
         }
-        return null;
-    }
-
-    /**
-     * Shared by {@link #validateSchema} (precheck) and {@link #applySchema} (real-apply):
-     * non-null iff the write is rejected — either it changes an existing resource's $id (immutable
-     * once set; mirrors {@link ConfigResourceController#buildSchemaEventMetadata}'s single-PUT-path
-     * check), or (for a new resource) {@code schemaId} is already registered under a different blob,
-     * per {@link #validateDeploymentIdUniqueness}'s pattern for the schema $id namespace.
-     */
-    private static String validateSchemaId(Config scratch, ResourceTypes type, String schemaId, String oldSchemaId) {
-        if (oldSchemaId != null) {
-            if (!schemaId.equals(oldSchemaId)) {
-                return "Schema $id cannot be changed after creation (existing: '" + oldSchemaId
-                        + "', requested: '" + schemaId + "')";
-            }
+        if (existingBody == null) {
             return null;
         }
-        Map<String, String> schemaMap = switch (type) {
-            case APP_TYPE_SCHEMA -> scratch.getApplicationTypeSchemas();
-            case CATALOG_SCHEMA -> scratch.getCatalogSchemas();
-            default -> throw new IllegalArgumentException("Unexpected schema type: " + type);
-        };
-        if (schemaMap.containsKey(schemaId)) {
-            return "Schema $id is already in use: " + schemaId;
+        try {
+            return MergedConfigStore.extractSchemaId(ProxyUtil.BLOB_MAPPER.readTree(existingBody));
+        } catch (Exception e) {
+            throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to parse existing resource: " + descriptor.getUrl());
         }
-        return null;
     }
 
     private EntityResult applySingle(AdminManifest entry, Config scratch, List<EntityChange> pending) {
@@ -513,7 +498,8 @@ public class AdminApplyController {
         }
         // Read the existing blob to distinguish create from update — $id is immutable on update.
         String oldSchemaId = readOldSchemaId(resourceService, descriptor);
-        String conflictMessage = validateSchemaId(scratch, type, schemaId, oldSchemaId);
+        Map<String, String> schemaMap = MergedConfigStore.getSchemaMapOf(scratch, type);
+        String conflictMessage = MergedConfigStore.validateSchemaId(schemaMap, oldSchemaId != null, schemaId, oldSchemaId);
         if (conflictMessage != null) {
             return new EntityResult(id, AdminApplyStatus.FAILED, conflictMessage);
         }
@@ -672,11 +658,11 @@ public class AdminApplyController {
                 }
                 case "Interceptor" -> {
                     Interceptor interceptor = ConfigResourceController.treeToEntity(entry.spec(), Interceptor.class);
-                    scratch.getInterceptors().put(entry.name(), interceptor);
+                    scratch.getInterceptors().put(parseName(entry).name(), interceptor);
                 }
                 case "Role" -> {
                     Role role = ConfigResourceController.treeToEntity(entry.spec(), Role.class);
-                    scratch.getRoles().put(entry.name(), role);
+                    scratch.getRoles().put(parseName(entry).name(), role);
                 }
                 case "Route" -> {
                     Route route = ConfigResourceController.treeToEntity(entry.spec(), Route.class);
@@ -688,15 +674,21 @@ public class AdminApplyController {
                 }
                 case "Model" -> {
                     Model model = ConfigResourceController.treeToEntity(entry.spec(), Model.class);
-                    scratch.getModels().put(entry.name(), model);
+                    scratch.getModels().put(parseName(entry).name(), model);
                 }
                 case "Application" -> {
-                    Application application = ConfigResourceController.treeToEntity(entry.spec(), Application.class);
-                    scratch.getApplications().put(entry.name(), application);
+                    ParsedName parsed = parseName(entry);
+                    if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
+                        Application application = ConfigResourceController.treeToEntity(entry.spec(), Application.class);
+                        scratch.getApplications().put(parsed.name(), application);
+                    }
                 }
                 case "ToolSet" -> {
-                    ToolSet toolSet = ConfigResourceController.treeToEntity(entry.spec(), ToolSet.class);
-                    scratch.getToolsets().put(entry.name(), toolSet);
+                    ParsedName parsed = parseName(entry);
+                    if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
+                        ToolSet toolSet = ConfigResourceController.treeToEntity(entry.spec(), ToolSet.class);
+                        scratch.getToolsets().put(parsed.name(), toolSet);
+                    }
                 }
                 case "Schema" -> {
                     String schemaId = MergedConfigStore.extractSchemaId(entry.spec());

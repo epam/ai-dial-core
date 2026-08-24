@@ -368,7 +368,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
-                        "interceptors": ["interceptors/platform/validate-order-int"]
+                        "interceptors": ["validate-order-int"]
                       }
                     },
                     {
