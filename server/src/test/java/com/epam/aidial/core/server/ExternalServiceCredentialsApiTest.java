@@ -1282,6 +1282,17 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
         assertNull(rawAuth.get("client_secret"));
         assertFalse(rawApp.body().contains(plaintextSecret));
 
+        // The listing says which services exist, not which secret each holds: no hint, and no decrypt behind it.
+        Response list = send(HttpMethod.GET, "/v1/" + appUrl + "/external-services",
+                null, "", "authorization", "user");
+        assertEquals(200, list.status());
+        JsonNode listAuth = ProxyUtil.MAPPER.readTree(list.body()).get(0).get("auth_settings");
+        assertNull(listAuth.get("client_secret_hint"), () -> "listing must not carry the hint: " + list.body());
+        assertNull(listAuth.get("client_secret"));
+        assertFalse(list.body().contains(plaintextSecret));
+        // Status enrichment is unaffected by dropping the hint.
+        assertNotNull(listAuth.get("user_level_auth_status"), () -> list.body());
+
         // Preserve-on-omit still holds: an update without client_secret keeps the stored one, hint unchanged.
         Response update = send(HttpMethod.PUT, "/v1/" + appUrl + "/external-services/salesforce", null, """
                 {

@@ -97,11 +97,9 @@ public class ExternalServiceManagementController {
     public Future<?> listExternalServices(String appId) {
         taskExecutor.submit(() -> {
             ResolvedApp resolved = resolveApp(appId);
-            boolean inline = canManageInline(resolved);
-            Map<String, ExternalService> services = manageableServices(resolved, appId, inline);
-            revealInlineSecrets(resolved, inline);
+            Map<String, ExternalService> services = manageableServices(resolved, appId, canManageInline(resolved));
             List<ExternalServiceData> result = new ArrayList<>();
-            services.forEach((id, service) -> result.add(toData(appId, id, service, true)));
+            services.forEach((id, service) -> result.add(toListData(appId, id, service)));
             return result;
         }).onSuccess(result -> context.respond(HttpStatus.OK, result))
                 .onFailure(error -> respondError("Can't list external services", error));
@@ -133,7 +131,7 @@ public class ExternalServiceManagementController {
             ResolvedApp resolved = resolveApp(appId);
             ExternalService service = manageableService(resolved, appId, serviceId, canManageInline(resolved));
             revealInlineSecret(resolved, serviceId, service);
-            return toData(appId, serviceId, service, true);
+            return toDetailData(appId, serviceId, service, true);
         }).onSuccess(data -> context.respond(HttpStatus.OK, data))
                 .onFailure(error -> respondError("Can't get external service", error));
         return Future.succeededFuture();
@@ -209,12 +207,12 @@ public class ExternalServiceManagementController {
                         requireDynamic(resolved);
                         ExternalService stored = externalServiceService.putExternalService(
                                 resolved.descriptor, serviceId, service, resolved.author);
-                        return toData(appId, serviceId, stored, false);
+                        return toDetailData(appId, serviceId, stored, false);
                     }
                     requireUserAuthoringAllowed(resolved);
                     ExternalService stored = userExternalServiceService.put(
                             context.getUserId(), appId, serviceId, service, context.getUserDisplayName());
-                    return toData(appId, serviceId, stored, false);
+                    return toDetailData(appId, serviceId, stored, false);
                 }))
                 .onSuccess(data -> context.respond(HttpStatus.OK, data))
                 .onFailure(error -> respondError("Can't create or update external service", error));
@@ -333,14 +331,29 @@ public class ExternalServiceManagementController {
     }
 
     /**
-     * Responses must never expose client_secret/code_verifier (encrypted or not); the hint is kept because
-     * {@code manageableService(s)} only ever hand back services the caller may manage. The secret must be
-     * plaintext by now, or the hint describes ciphertext — see {@link #revealInlineSecrets} and
-     * {@link #revealInlineSecret}.
+     * Listing shape: no {@code clientSecretHint}. A listing answers which services exist, not which secret each
+     * one holds, so it neither decrypts nor carries a fragment of one — every response that does is another
+     * place the fragment reaches a log, a proxy cache or browser history. Callers wanting the hint read the
+     * single service.
      */
-    private ExternalServiceData toData(String appId, String serviceId, ExternalService service, boolean withStatus) {
+    private ExternalServiceData toListData(String appId, String serviceId, ExternalService service) {
         ResourceAuthSettings authSettings = service.getAuthSettings();
-        ResourceAuthSettings safe = authSettings == null ? null : authSettings.withoutSecretsKeepingHint();
+        return toData(appId, serviceId, service, authSettings == null ? null : authSettings.withoutSecrets(), true);
+    }
+
+    /**
+     * Single-service shape, keeping {@code clientSecretHint} — safe because {@code manageableService} only ever
+     * hands back services the caller may manage. The secret must be plaintext by now, or the hint would describe
+     * ciphertext; see {@link #revealInlineSecret}.
+     */
+    private ExternalServiceData toDetailData(String appId, String serviceId, ExternalService service, boolean withStatus) {
+        ResourceAuthSettings authSettings = service.getAuthSettings();
+        return toData(appId, serviceId, service,
+                authSettings == null ? null : authSettings.withoutSecretsKeepingHint(), withStatus);
+    }
+
+    private ExternalServiceData toData(String appId, String serviceId, ExternalService service,
+                                       ResourceAuthSettings safe, boolean withStatus) {
         if (withStatus && safe != null) {
             CredentialsLocator locator = CredentialsLocatorFactory.fromExternalServiceScope(scopeId(appId, serviceId), context);
             statusEnricher.enrich(locator, safe);
@@ -353,21 +366,11 @@ public class ExternalServiceManagementController {
     }
 
     /**
-     * Decrypts inline secrets so {@link #toData} derives the hint from the same code path for every service.
-     * {@code inline} must be the same value {@code manageableServices} was given — a caller limited to its own
-     * user-authored services must not have the inline ones decrypted on its behalf. Nothing to do for a config
-     * app (the merged config already holds plaintext) or for user-authored services (decrypted per resource).
-     */
-    private void revealInlineSecrets(ResolvedApp resolved, boolean inline) {
-        if (!resolved.staticApp && inline) {
-            externalServiceService.decryptSecretsForResponse(resolved.descriptor, resolved.application);
-        }
-    }
-
-    /**
-     * Single-service counterpart, decrypting only what is being served. Keys off object identity rather than a
-     * second permission check: {@code service} is the inline definition exactly when {@code manageableService}
-     * returned it from the application, which it does only after authorizing the caller for it.
+     * Decrypts the one service being served, so {@link #toDetailData} derives its hint from plaintext. Keys off
+     * object identity rather than a second permission check: {@code service} is the inline definition exactly
+     * when {@code manageableService} returned it from the application, which it does only after authorizing the
+     * caller for it. Nothing to do for a config app (the merged config already holds plaintext) or for a
+     * user-authored service ({@code UserExternalServiceService} decrypts per resource).
      */
     private void revealInlineSecret(ResolvedApp resolved, String serviceId, ExternalService service) {
         if (resolved.staticApp || resolved.application.getExternalServices() == null) {
