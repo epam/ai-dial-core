@@ -76,7 +76,7 @@ public class ProxyContextTest {
         Level previous = logger.getLevel();
         logger.setLevel(Level.WARN);
         try {
-            context(null).respond(HttpStatus.NO_CONTENT, Buffer.buffer());
+            context(null).respond(HttpStatus.NO_CONTENT.getCode(), Buffer.buffer());
 
             assertTrue(appender.list.isEmpty(), appender.list::toString);
         } finally {
@@ -94,7 +94,7 @@ public class ProxyContextTest {
         Level previous = logger.getLevel();
         logger.setLevel(Level.WARN);
         try {
-            context(null).respond(HttpStatus.BAD_REQUEST, Buffer.buffer("boom"));
+            context(null).respond(HttpStatus.BAD_REQUEST.getCode(), Buffer.buffer("boom"));
 
             assertEquals(1, appender.list.size(), appender.list::toString);
             ILoggingEvent event = appender.list.get(0);

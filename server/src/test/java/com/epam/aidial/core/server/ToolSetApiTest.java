@@ -1527,6 +1527,24 @@ public class ToolSetApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testCreateToolSetWithBlankApiKeyHeader() {
+        for (String apiKeyHeader : List.of("", "   ")) {
+            Response response = send(HttpMethod.PUT, "/v1/toolsets/4X25dj1mja51jykqxsXnCH/toolset@", null, """
+                    {
+                        "endpoint": "http://localhost:9876",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "API_KEY",
+                            "api_key_header": "%s"
+                        }
+                    }
+                    """.formatted(apiKeyHeader), "authorization", "admin");
+            verify(response, 400, "Field 'API_KEY_HEADER' is required for API_KEY authentication.");
+        }
+    }
+
+    @Test
     void testSignInWithIncorrectAuthType() {
         String globalSignInRequestJson = """
                 {

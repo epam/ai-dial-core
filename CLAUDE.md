@@ -86,4 +86,6 @@ See `sample/` for examples of both files; `server/src/main/resources/aidial.sett
 
 ## Code Style
 
-Use comments sparingly. Only comment complex code.
+Read [docs/CODE_STYLE.md](docs/CODE_STYLE.md) before writing or changing Java in this repo.
+It covers naming, Vert.x event-loop rules, scope discipline, error handling, completing
+cross-cutting changes, tests, and documentation.
