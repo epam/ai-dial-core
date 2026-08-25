@@ -187,7 +187,37 @@ public class LimitApiTest extends ResourceBaseTest {
         }
     }
 
+    /**
+     * A model name only has to be legal configuration, and brackets are - but they are illegal in a URI path, so
+     * a single such model used to fail the whole report with 500 for every user who could access it.
+     */
+    @Test
+    @DialConfigLocation("dial-config/bracket-named-model.json")
+    public void testGetUserLimits_DeploymentNameThatIsNotUriSafe() {
+        String deployment = "anthropic.claude-opus-4-8[1m]";
+        String encodedId = "anthropic.claude-opus-4-8%5B1m%5D";
+
+        assertEquals(List.of(), deploymentIds(getUserUsage()));
+        assertNotNull(deployment(getUserLimits(), deployment));
+
+        completion(deployment, encodedId);
+
+        JsonNode used = deployment(getUserUsage(), deployment);
+        assertEquals(100, used.get("minuteTokenStats").get("total").asLong());
+        assertEquals(30, used.get("minuteTokenStats").get("used").asLong());
+        assertEquals(1000, used.get("dayTokenStats").get("total").asLong());
+        assertEquals(1, used.get("hourRequestStats").get("used").asLong());
+
+        // the per-deployment endpoint agrees; its id is percent encoded in the request path
+        JsonNode single = readJson(send(HttpMethod.GET, "/v1/deployments/" + encodedId + "/limits", null, null));
+        assertEquals(30, single.get("minuteTokenStats").get("used").asLong());
+    }
+
     private void completion(String deployment) {
+        completion(deployment, deployment);
+    }
+
+    private void completion(String deployment, String encodedId) {
         String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"model\":\"" + deployment + "\","
                 + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}],"
                 + "\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20,\"total_tokens\":30}}";
@@ -195,7 +225,7 @@ public class LimitApiTest extends ResourceBaseTest {
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/chat/completions", 200, answer);
 
-            Response response = send(HttpMethod.POST, "/openai/deployments/" + deployment + "/chat/completions", null,
+            Response response = send(HttpMethod.POST, "/openai/deployments/" + encodedId + "/chat/completions", null,
                     "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
                     "content-type", "application/json");
             verify(response, 200);
