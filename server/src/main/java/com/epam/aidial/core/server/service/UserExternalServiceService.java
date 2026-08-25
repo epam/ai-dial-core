@@ -80,22 +80,19 @@ public class UserExternalServiceService {
         BucketInfo bucket = new BucketInfo(resource.getBucketName(), resource.getBucketLocation());
         String aad = resource.getAbsoluteFilePath();
         MutableObject<ExternalService> result = new MutableObject<>();
-        MutableObject<String> storedSecret = new MutableObject<>();
+        PersistedSecret persisted = new PersistedSecret();
         resourceService.computeResource(resource, EtagHeader.ANY, author, json -> {
             ExternalService existing = json == null ? null : ProxyUtil.convertToObject(json, ExternalService.class);
             decryptSecret(aad, bucket, existing);
             ExternalServiceValidation.validate(serviceId, service, existing == null, existing);
             clearAuthStatuses(service);
             preserveOmittedSecret(service, existing);
-            storedSecret.setValue(service.getAuthSettings() == null ? null : service.getAuthSettings().getClientSecret());
+            persisted.capture(service);
             encryptSecret(aad, bucket, service);
             result.setValue(service);
             return ProxyUtil.convertToString(service);
         });
-        // Return the persisted value in plaintext for the caller to redact — see ExternalServiceService.
-        if (service.getAuthSettings() != null) {
-            service.getAuthSettings().setClientSecret(storedSecret.getValue());
-        }
+        persisted.restoreOn(service);
         return result.getValue();
     }
 

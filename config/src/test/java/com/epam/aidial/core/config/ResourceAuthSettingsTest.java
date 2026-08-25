@@ -61,8 +61,8 @@ class ResourceAuthSettingsTest {
 
     @Test
     void testShortSecretRevealsFewerCharacters() {
-        // 8-11 characters: below what ClientSecretValidation lets in today, so only legacy values land here.
-        // The fragment shrinks rather than approaching the whole secret.
+        // 8-11 characters: the shortest ClientSecretValidation accepts (MIN_LENGTH is 8), plus legacy values
+        // stored before it existed. The fragment shrinks with the secret rather than approaching the whole of it.
         assertEquals("ef", oauthSettings("012345ef").withoutSecretsKeepingHint().getClientSecretHint());
         assertEquals("9a", oauthSettings("0123456789a").withoutSecretsKeepingHint().getClientSecretHint());
     }

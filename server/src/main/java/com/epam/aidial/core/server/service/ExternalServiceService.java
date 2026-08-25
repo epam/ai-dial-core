@@ -21,7 +21,6 @@ import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.mutable.MutableBoolean;
-import org.apache.commons.lang3.mutable.MutableObject;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -128,7 +127,7 @@ public class ExternalServiceService {
     public ExternalService putExternalService(ResourceDescriptor resource, String serviceId, ExternalService service, String author) {
         verifyApplication(resource);
         MutableBoolean typeChanged = new MutableBoolean(false);
-        MutableObject<String> storedSecret = new MutableObject<>();
+        PersistedSecret persisted = new PersistedSecret();
         resourceService.computeResource(resource, EtagHeader.ANY, author, json -> {
             Application app = ProxyUtil.convertToObject(json, Application.class);
             if (app == null) {
@@ -148,15 +147,11 @@ public class ExternalServiceService {
                 service.getAuthSettings().setClientSecret(existing.getAuthSettings().getClientSecret());
             }
             app.getExternalServices().put(serviceId, service);
-            storedSecret.setValue(service.getAuthSettings() == null ? null : service.getAuthSettings().getClientSecret());
+            persisted.capture(service);
             encryptSecrets(resource, app);
             return ProxyUtil.convertToString(app);
         });
-        // encryptSecrets left `service` holding ciphertext; restore what was actually persisted, which for a
-        // write that omitted client_secret is the value preserved from storage.
-        if (service.getAuthSettings() != null) {
-            service.getAuthSettings().setClientSecret(storedSecret.getValue());
-        }
+        persisted.restoreOn(service);
         // After commit, like the application write path: the old-type record must not survive under the new type.
         if (typeChanged.booleanValue()) {
             purgeApplicationCredentials(resource, List.of(serviceId));
@@ -198,7 +193,7 @@ public class ExternalServiceService {
 
     /** As {@link #decryptSecretsForResponse}, for a read that serves a single service. */
     public void decryptSecretForResponse(ResourceDescriptor resource, String serviceId, ExternalService service) {
-        if (service == null || service.getAuthSettings() == null || service.getAuthSettings().getClientSecret() == null) {
+        if (!hasSecret(service)) {
             return;
         }
         decryptForResponse(resource, serviceId, service.getAuthSettings(),
@@ -248,11 +243,16 @@ public class ExternalServiceService {
         BucketInfo bucketInfo = new BucketInfo(resource.getBucketName(), resource.getBucketLocation());
         for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
             ExternalService service = entry.getValue();
-            if (service == null || service.getAuthSettings() == null || service.getAuthSettings().getClientSecret() == null) {
+            if (!hasSecret(service)) {
                 continue;
             }
             action.apply(entry.getKey(), service.getAuthSettings(), bucketInfo);
         }
+    }
+
+    private static boolean hasSecret(ExternalService service) {
+        return service != null && service.getAuthSettings() != null
+                && service.getAuthSettings().getClientSecret() != null;
     }
 
     @FunctionalInterface
