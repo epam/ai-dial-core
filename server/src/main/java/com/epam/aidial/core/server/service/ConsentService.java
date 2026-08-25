@@ -7,7 +7,6 @@ import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;

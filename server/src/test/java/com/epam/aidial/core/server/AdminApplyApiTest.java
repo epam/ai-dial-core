@@ -35,7 +35,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
-                        "interceptors": ["interceptors/platform/apply-int-1"]
+                        "interceptors": ["apply-int-1"]
                       }
                     },
                     {
@@ -349,7 +349,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                       "spec": {
                         "type": "chat",
                         "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
-                        "interceptors": ["interceptors/platform/apply-order-int"]
+                        "interceptors": ["apply-order-int"]
                       }
                     },
                     {
@@ -460,6 +460,259 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         verify(response, 422);
         JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
         assertEquals("FAILED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyCatalogSchemaDuplicateIdWithinBatchRejected() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-dup-a",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-dup-id",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    },
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-dup-b",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-dup-id",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    }
+                  ]
+                }
+                """;
+        // Caught at precheck (default precheck=true): the first entry registers the $id in
+        // scratch, the second collides with it — same skip/fail collapse as
+        // testApplyPrecheckMixedBatchRejectedAtomically, so nothing is actually written.
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertEquals("SKIPPED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        assertEquals("FAILED", parsed.get("results").get(1).get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(parsed.get("results").get(1).get("error").asText().contains("apply-dup-id"),
+                () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-dup-a", null, "",
+                "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-dup-b", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyCatalogSchemaDuplicateIdPrecheckFalsePartialResults() {
+        // precheck=false skips validateOnly entirely and writes entries as it goes: the first
+        // entry is really applied (and its $id lands in scratch), so the second one's real-apply
+        // conflict check (schemaConflictMessage, same helper the precheck path uses) rejects it.
+        // No batch-level atomicity — the first entry's write stands.
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-pf-a",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-pf-dup-id",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    },
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-pf-b",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-pf-dup-id",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertEquals("APPLIED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        assertEquals("FAILED", parsed.get("results").get(1).get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(parsed.get("results").get(1).get("error").asText().contains("apply-pf-dup-id"),
+                () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-pf-a", null, "",
+                "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-pf-b", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyCatalogSchemaDuplicateIdAgainstExistingRejected() {
+        String firstBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-existing",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-existing-id",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, firstBody, "authorization", "admin"), 200);
+
+        String secondBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-conflict",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-existing-id",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    }
+                  ]
+                }
+                """;
+
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, secondBody, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(parsed.get("results").get(0).get("error").asText().contains("apply-existing-id"),
+                () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-conflict", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyCatalogSchemaReapplySameIdStillSucceeds() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-reapply",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-reapply-id",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin"), 200);
+
+        String updatedBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-reapply",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-reapply-id",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Updated model",
+                        "type": "object"
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, updatedBody, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(0, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyCatalogSchemaIdChangeRejected() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-id-change",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-id-change-original",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin"), 200);
+
+        String changedBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-id-change",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-id-change-different",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object"
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, changedBody, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(parsed.get("results").get(0).get("error").asText().contains("cannot be changed"),
+                () -> "Body: " + response.body());
+
+        Response get = send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-id-change", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertTrue(get.body().contains("apply-id-change-original"),
+                () -> "Expected original $id to be unaffected: " + get.body());
     }
 
     @Test

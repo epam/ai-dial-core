@@ -83,6 +83,7 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     private static final String SCHEMA_BODY = """
             {
               "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "http://example.com/test-schema",
               "type": "object",
               "properties": {"name": {"type": "string"}}
             }
@@ -91,8 +92,18 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     private static final String SCHEMA_BODY_UPDATED = """
             {
               "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "http://example.com/test-schema",
               "type": "object",
               "properties": {"name": {"type": "string"}, "age": {"type": "integer"}}
+            }
+            """;
+
+    private static final String SCHEMA_BODY_DIFFERENT_ID = """
+            {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "http://example.com/test-schema-different",
+              "type": "object",
+              "properties": {"name": {"type": "string"}}
             }
             """;
 
@@ -516,6 +527,24 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
                 "authorization", "admin");
         verify(get, 200);
         assertTrue(get.body().contains("\"age\""), () -> "Expected updated schema property: " + get.body());
+    }
+
+    @Test
+    void testSchemaPutIdChange409Conflict() {
+        verify(send(HttpMethod.PUT, "/v1/schemas/platform/test-schema-id-change", null,
+                SCHEMA_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response put = send(HttpMethod.PUT, "/v1/schemas/platform/test-schema-id-change", null,
+                SCHEMA_BODY_DIFFERENT_ID, "authorization", "admin");
+        verify(put, 409);
+        assertTrue(put.body().contains("cannot be changed"),
+                () -> "Expected $id-immutability message: " + put.body());
+
+        Response get = send(HttpMethod.GET, "/v1/schemas/platform/test-schema-id-change", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertTrue(get.body().contains("test-schema\""),
+                () -> "Expected original $id to be unaffected: " + get.body());
     }
 
     @Test

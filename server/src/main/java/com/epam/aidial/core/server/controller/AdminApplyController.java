@@ -45,6 +45,7 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
@@ -56,6 +57,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 
 @Slf4j
 public class AdminApplyController {
@@ -206,7 +208,7 @@ public class AdminApplyController {
         if (precheck) {
             boolean anyFailure = false;
             for (AdminManifest entry : entries) {
-                ValidationResult result = validateOnly(entry, scratch, softValidation);
+                ValidationResult result = validateOnly(entry, scratch, softValidation, resourceService);
                 if (!ValidationStatus.VALID.equals(result.status())) {
                     anyFailure = true;
                     // Mirror /v1/admin/validate: the offending entry stays FAILED (carrying its
@@ -283,7 +285,8 @@ public class AdminApplyController {
         return scratch;
     }
 
-    static ValidationResult validateOnly(AdminManifest entry, Config scratch, boolean softValidation) {
+    static ValidationResult validateOnly(AdminManifest entry, Config scratch, boolean softValidation,
+                                         ResourceService resourceService) {
         String id = entry.name();
         ParsedName parsed;
         try {
@@ -308,8 +311,18 @@ public class AdminApplyController {
                     if (!warnings.isEmpty() && !softValidation) {
                         return new ValidationResult(id, ValidationStatus.FAILED, joinWarnings(warnings));
                     }
+                    String dupError = validateDeploymentIdUniqueness(scratch, ResourceTypes.MODEL, parsed);
+                    if (dupError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, dupError);
+                    }
                 }
-                case "Interceptor" -> ConfigResourceController.treeToEntity(entry.spec(), Interceptor.class);
+                case "Interceptor" -> {
+                    ConfigResourceController.treeToEntity(entry.spec(), Interceptor.class);
+                    String dupError = validateDeploymentIdUniqueness(scratch, ResourceTypes.INTERCEPTOR, parsed);
+                    if (dupError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, dupError);
+                    }
+                }
                 case "Role" -> ConfigResourceController.treeToEntity(entry.spec(), Role.class);
                 case "Route" -> ConfigResourceController.treeToEntity(entry.spec(), Route.class);
                 case "Key" -> {
@@ -325,16 +338,36 @@ public class AdminApplyController {
                                 "Invalid key: at least one role must be assigned to the key " + key.getProject());
                     }
                 }
-                case "Application" -> ConfigResourceController.treeToEntity(entry.spec(), Application.class);
-                case "ToolSet" -> ConfigResourceController.treeToEntity(entry.spec(), ToolSet.class);
+                case "Application" -> {
+                    ConfigResourceController.treeToEntity(entry.spec(), Application.class);
+                    if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
+                        String dupError = validateDeploymentIdUniqueness(scratch, ResourceTypes.APPLICATION, parsed);
+                        if (dupError != null) {
+                            return new ValidationResult(id, ValidationStatus.FAILED, dupError);
+                        }
+                    }
+                }
+                case "ToolSet" -> {
+                    ConfigResourceController.treeToEntity(entry.spec(), ToolSet.class);
+                    if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
+                        String dupError = validateDeploymentIdUniqueness(scratch, ResourceTypes.TOOL_SET, parsed);
+                        if (dupError != null) {
+                            return new ValidationResult(id, ValidationStatus.FAILED, dupError);
+                        }
+                    }
+                }
                 case "Schema" -> {
-                    if (!entry.spec().isObject()) {
-                        return new ValidationResult(id, ValidationStatus.FAILED, "Schema spec must be a JSON object");
+                    String schemaError = validateSchema(entry, parsed, scratch,
+                            ResourceTypes.APP_TYPE_SCHEMA, resourceService);
+                    if (schemaError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, schemaError);
                     }
                 }
                 case "CatalogSchema" -> {
-                    if (!entry.spec().isObject()) {
-                        return new ValidationResult(id, ValidationStatus.FAILED, "CatalogSchema spec must be a JSON object");
+                    String schemaError = validateSchema(entry, parsed, scratch,
+                            ResourceTypes.CATALOG_SCHEMA, resourceService);
+                    if (schemaError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, schemaError);
                     }
                 }
                 default -> {
@@ -347,6 +380,67 @@ public class AdminApplyController {
         return new ValidationResult(id, ValidationStatus.VALID, null);
     }
 
+    /**
+     * Shared by {@link #validateOnly} (precheck) and the real-apply {@code applyX} methods:
+     * non-null iff {@code parsed}'s short name is already claimed by a different
+     * model/application/interceptor/toolset in {@code scratch}. See
+     * {@link ConfigPostProcessor#isDeploymentIdTakenByAnotherDeploymentType}.
+     */
+    private static String validateDeploymentIdUniqueness(Config scratch, ResourceTypes type, ParsedName parsed) {
+        if (ConfigPostProcessor.isDeploymentIdTakenByAnotherDeploymentType(scratch, type, parsed.name())) {
+            return "Deployment ID '" + parsed.name() + "' is already used by a different entity";
+        }
+        return null;
+    }
+
+    /**
+     * Shared by {@code validateOnly} (precheck) and {@code applySchema} (real-apply): validates a
+     * Schema/CatalogSchema spec and, if it's well-formed, checks its {@code $id} for an in-place
+     * change or a collision against a different blob via
+     * {@link MergedConfigStore#validateSchemaId}.
+     */
+    private static String validateSchema(AdminManifest entry, ParsedName parsed, Config scratch,
+                                         ResourceTypes type, ResourceService resourceService) {
+        String kindLabel = switch (type) {
+            case APP_TYPE_SCHEMA -> "Schema";
+            case CATALOG_SCHEMA -> "CatalogSchema";
+            default -> throw new IllegalArgumentException("Unexpected schema type: " + type);
+        };
+        if (!entry.spec().isObject()) {
+            return kindLabel + " spec must be a JSON object";
+        }
+        String schemaId = MergedConfigStore.extractSchemaId(entry.spec());
+        if (schemaId == null || schemaId.isBlank()) {
+            return kindLabel + " spec must contain a non-blank $id field";
+        }
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                type, parsed.bucket(), parsed.location(), parsed.name());
+        String oldSchemaId = readOldSchemaId(resourceService, descriptor);
+        Map<String, String> schemaMap = MergedConfigStore.getSchemaMapOf(scratch, type);
+        return MergedConfigStore.validateSchemaId(schemaMap, oldSchemaId != null, schemaId, oldSchemaId);
+    }
+
+    private static String readOldSchemaId(ResourceService resourceService, ResourceDescriptor descriptor) {
+        String existingBody;
+        try {
+            existingBody = resourceService.getResource(descriptor);
+        } catch (Exception e) {
+            // A genuinely missing resource surfaces as null, not an exception — any exception here
+            // is a real read failure, so fail closed rather than silently treating it as "no prior $id".
+            throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to read existing resource: " + descriptor.getUrl());
+        }
+        if (existingBody == null) {
+            return null;
+        }
+        try {
+            return MergedConfigStore.extractSchemaId(ProxyUtil.BLOB_MAPPER.readTree(existingBody));
+        } catch (Exception e) {
+            throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to parse existing resource: " + descriptor.getUrl());
+        }
+    }
+
     private EntityResult applySingle(AdminManifest entry, Config scratch, List<EntityChange> pending) {
         String id = entry.name();
         ParsedName parsed;
@@ -357,15 +451,15 @@ public class AdminApplyController {
         }
         return switch (entry.kind()) {
             case "Settings" -> applySettings(entry, id, parsed);
-            case "Schema" -> applySchema(entry, id, parsed, pending, ResourceTypes.APP_TYPE_SCHEMA);
-            case "CatalogSchema" -> applySchema(entry, id, parsed, pending, ResourceTypes.CATALOG_SCHEMA);
-            case "Interceptor" -> applyManagedEntity(entry, id, parsed, ResourceTypes.INTERCEPTOR, Interceptor.class, pending);
-            case "Role" -> applyManagedEntity(entry, id, parsed, ResourceTypes.ROLE, Role.class, pending);
-            case "Route" -> applyManagedEntity(entry, id, parsed, ResourceTypes.ROUTE, Route.class, pending);
+            case "Schema" -> applySchema(entry, id, parsed, pending, ResourceTypes.APP_TYPE_SCHEMA, scratch);
+            case "CatalogSchema" -> applySchema(entry, id, parsed, pending, ResourceTypes.CATALOG_SCHEMA, scratch);
+            case "Interceptor" -> applyManagedEntity(entry, id, parsed, ResourceTypes.INTERCEPTOR, Interceptor.class, scratch, pending);
+            case "Role" -> applyManagedEntity(entry, id, parsed, ResourceTypes.ROLE, Role.class, scratch, pending);
+            case "Route" -> applyManagedEntity(entry, id, parsed, ResourceTypes.ROUTE, Route.class, scratch, pending);
             case "Key" -> applyKey(entry, id, parsed, pending);
             case "Model" -> applyModel(entry, id, parsed, scratch, pending);
-            case "ToolSet" -> applyToolSet(entry, id, parsed, pending);
-            case "Application" -> applyApplication(entry, id, parsed, pending);
+            case "ToolSet" -> applyToolSet(entry, id, parsed, scratch, pending);
+            case "Application" -> applyApplication(entry, id, parsed, scratch, pending);
             default -> new EntityResult(id, AdminApplyStatus.FAILED, "Unknown kind: " + entry.kind());
         };
     }
@@ -383,33 +477,55 @@ public class AdminApplyController {
     }
 
     private EntityResult applySchema(AdminManifest entry, String id, ParsedName parsed, List<EntityChange> pending,
-                                     ResourceTypes type) {
+                                     ResourceTypes type, Config scratch) {
         if (!entry.spec().isObject()) {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Schema spec must be a JSON object");
+        }
+        JsonNode spec = entry.spec();
+        String schemaId = MergedConfigStore.extractSchemaId(spec);
+        if (schemaId == null || schemaId.isBlank()) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, "Schema spec must contain a non-blank $id field");
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 type, parsed.bucket(), parsed.location(), parsed.name());
         String blobBody;
         try {
-            blobBody = ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec());
+            blobBody = ProxyUtil.BLOB_MAPPER.writeValueAsString(spec);
         } catch (JsonProcessingException e) {
             // Drop e.getOriginalMessage() — it can echo verbatim schema content (potentially
             // submitted secrets). Surface a generic failure tied to the entity id.
             return new EntityResult(id, AdminApplyStatus.FAILED, "Failed to serialize schema for " + id);
         }
-        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-        pending.add(new EntityChange(type, MergedConfigStore.canonicalId(descriptor), entry.spec()));
+        // Read the existing blob to distinguish create from update — $id is immutable on update.
+        String oldSchemaId = readOldSchemaId(resourceService, descriptor);
+        Map<String, String> schemaMap = MergedConfigStore.getSchemaMapOf(scratch, type);
+        String conflictMessage = MergedConfigStore.validateSchemaId(schemaMap, oldSchemaId != null, schemaId, oldSchemaId);
+        if (conflictMessage != null) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, conflictMessage);
+        }
+        Map<String, String> eventMetadata = Map.of("$id", schemaId);
+        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY, null, true, eventMetadata);
+        pending.add(new EntityChange(type, schemaId, spec));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
     private <T> EntityResult applyManagedEntity(AdminManifest entry, String id, ParsedName parsed,
-                                                ResourceTypes type, Class<T> entityClass, List<EntityChange> pending) {
+                                                ResourceTypes type, Class<T> entityClass, Config scratch,
+                                                List<EntityChange> pending) {
         T entity = ConfigResourceController.treeToEntity(entry.spec(), entityClass);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 type, parsed.bucket(), parsed.location(), parsed.name());
+        /// Deployment-id uniqueness only applies to INTERCEPTOR here — ROLE/ROUTE aren't deployments
+        // resolved through Config.selectDeployment, so they don't share the short-name namespace.
+        if (type == ResourceTypes.INTERCEPTOR) {
+            String dupError = validateDeploymentIdUniqueness(scratch, type, parsed);
+            if (dupError != null) {
+                return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
+            }
+        }
         String blobBody = ConfigResourceController.serializeForBlob(entity);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
-        pending.add(new EntityChange(type, MergedConfigStore.canonicalId(descriptor), entity));
+        pending.add(new EntityChange(type, MergedConfigStore.resolveMapKeyFor(descriptor), entity));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
@@ -472,43 +588,62 @@ public class AdminApplyController {
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.MODEL, parsed.bucket(), parsed.location(), parsed.name());
+        String dupError = validateDeploymentIdUniqueness(scratch, ResourceTypes.MODEL, parsed);
+        if (dupError != null) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
+        }
         secretFieldProcessor.encryptFields(model, descriptor);
         String blobBody = ConfigResourceController.serializeForBlob(model);
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
         // Slice 4S.4: decrypt-in-place so partial-update receives plaintext upstream secrets.
         secretFieldProcessor.decryptFields(model, descriptor);
-        pending.add(new EntityChange(ResourceTypes.MODEL, MergedConfigStore.canonicalId(descriptor), model));
+        pending.add(new EntityChange(ResourceTypes.MODEL, MergedConfigStore.resolveMapKeyFor(descriptor), model));
         return new EntityResult(id, invalid ? AdminApplyStatus.APPLIED_INVALID : AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyApplication(AdminManifest entry, String id, ParsedName parsed, List<EntityChange> pending) {
+    private EntityResult applyApplication(AdminManifest entry, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
         Application application = ConfigResourceController.treeToEntity(entry.spec(), Application.class);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.APPLICATION, parsed.bucket(), parsed.location(), parsed.name());
+        // Only the platform bucket is materialized into MergedConfigStore (see EntityLocationStrategy) —
+        // public-bucket apps stay outside it and are served lazily by ApplicationService, so they're
+        // exempt from deployment-id uniqueness and pushing them into `pending` below would spuriously
+        // duplicate them in config.getApplications()-backed listings (e.g. ApplicationController/
+        // DeploymentController) until the next full rebuild.
+        boolean platform = ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket());
+        if (platform) {
+            String dupError = validateDeploymentIdUniqueness(scratch, ResourceTypes.APPLICATION, parsed);
+            if (dupError != null) {
+                return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
+            }
+        }
         // Bulk admin apply is always admin context — preserve forwardAuthToken if the manifest set it.
         applicationService.putApplication(descriptor, EtagHeader.ANY, null, application, true,
                 AdminManagedFieldsWriteMode.AUTHORITATIVE);
-        // Only the platform bucket is materialized into MergedConfigStore (see EntityLocationStrategy) —
-        // public-bucket apps stay outside it and are served lazily by ApplicationService, so pushing
-        // them into `pending` here would spuriously duplicate them in config.getApplications()-backed
-        // listings (e.g. ApplicationController/DeploymentController) until the next full rebuild.
-        if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
+        if (platform) {
             Application decrypted = applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
-            pending.add(new EntityChange(ResourceTypes.APPLICATION, MergedConfigStore.canonicalId(descriptor), decrypted));
+            pending.add(new EntityChange(ResourceTypes.APPLICATION, MergedConfigStore.resolveMapKeyFor(descriptor), decrypted));
         }
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyToolSet(AdminManifest entry, String id, ParsedName parsed, List<EntityChange> pending) {
+    private EntityResult applyToolSet(AdminManifest entry, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
         ToolSet toolSet = ConfigResourceController.treeToEntity(entry.spec(), ToolSet.class);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.TOOL_SET, parsed.bucket(), parsed.location(), parsed.name());
-        toolSetService.putToolSet(descriptor, EtagHeader.ANY, null, toolSet, true);
         // Same rationale as applyApplication above — only platform-bucket toolsets belong in
-        // MergedConfigStore.
-        if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
+        // MergedConfigStore / are subject to deployment-id uniqueness.
+        boolean platform = ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket());
+        if (platform) {
+            String dupError = validateDeploymentIdUniqueness(scratch, ResourceTypes.TOOL_SET, parsed);
+            if (dupError != null) {
+                return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
+            }
+        }
+        toolSetService.putToolSet(descriptor, EtagHeader.ANY, null, toolSet, true);
+        if (platform) {
             ToolSet decrypted = toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
-            pending.add(new EntityChange(ResourceTypes.TOOL_SET, MergedConfigStore.canonicalId(descriptor), decrypted));
+            pending.add(new EntityChange(ResourceTypes.TOOL_SET, MergedConfigStore.resolveMapKeyFor(descriptor), decrypted));
         }
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
@@ -523,11 +658,11 @@ public class AdminApplyController {
                 }
                 case "Interceptor" -> {
                     Interceptor interceptor = ConfigResourceController.treeToEntity(entry.spec(), Interceptor.class);
-                    scratch.getInterceptors().put(entry.name(), interceptor);
+                    scratch.getInterceptors().put(parseName(entry).name(), interceptor);
                 }
                 case "Role" -> {
                     Role role = ConfigResourceController.treeToEntity(entry.spec(), Role.class);
-                    scratch.getRoles().put(entry.name(), role);
+                    scratch.getRoles().put(parseName(entry).name(), role);
                 }
                 case "Route" -> {
                     Route route = ConfigResourceController.treeToEntity(entry.spec(), Route.class);
@@ -539,33 +674,41 @@ public class AdminApplyController {
                 }
                 case "Model" -> {
                     Model model = ConfigResourceController.treeToEntity(entry.spec(), Model.class);
-                    scratch.getModels().put(entry.name(), model);
+                    scratch.getModels().put(parseName(entry).name(), model);
                 }
                 case "Application" -> {
-                    Application application = ConfigResourceController.treeToEntity(entry.spec(), Application.class);
-                    scratch.getApplications().put(entry.name(), application);
+                    ParsedName parsed = parseName(entry);
+                    if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
+                        Application application = ConfigResourceController.treeToEntity(entry.spec(), Application.class);
+                        scratch.getApplications().put(parsed.name(), application);
+                    }
                 }
                 case "ToolSet" -> {
-                    ToolSet toolSet = ConfigResourceController.treeToEntity(entry.spec(), ToolSet.class);
-                    scratch.getToolsets().put(entry.name(), toolSet);
+                    ParsedName parsed = parseName(entry);
+                    if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.bucket())) {
+                        ToolSet toolSet = ConfigResourceController.treeToEntity(entry.spec(), ToolSet.class);
+                        scratch.getToolsets().put(parsed.name(), toolSet);
+                    }
                 }
                 case "Schema" -> {
-                    String json;
-                    try {
-                        json = ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec());
-                    } catch (JsonProcessingException e) {
-                        return;
+                    String schemaId = MergedConfigStore.extractSchemaId(entry.spec());
+                    if (schemaId != null && !schemaId.isBlank()) {
+                        try {
+                            scratch.getApplicationTypeSchemas().put(schemaId, ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec()));
+                        } catch (JsonProcessingException e) {
+                            return;
+                        }
                     }
-                    scratch.getApplicationTypeSchemas().put(entry.name(), json);
                 }
                 case "CatalogSchema" -> {
-                    String json;
-                    try {
-                        json = ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec());
-                    } catch (JsonProcessingException e) {
-                        return;
+                    String schemaId = MergedConfigStore.extractSchemaId(entry.spec());
+                    if (schemaId != null && !schemaId.isBlank()) {
+                        try {
+                            scratch.getCatalogSchemas().put(schemaId, ProxyUtil.BLOB_MAPPER.writeValueAsString(entry.spec()));
+                        } catch (JsonProcessingException e) {
+                            return;
+                        }
                     }
-                    scratch.getCatalogSchemas().put(entry.name(), json);
                 }
                 default -> { /* unknown kinds never reach this code path */ }
             }

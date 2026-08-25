@@ -64,8 +64,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         verify(get, 200);
         // U.1 (2026-05-21): source field retired entirely; URL itself discloses source (per-entity = blob).
         assertTrue(get.body().contains("\"status\":\"valid\""), () -> "Expected status=valid: " + get.body());
-        assertTrue(get.body().contains("\"name\":\"models/platform/test-model-create\""),
-                () -> "Expected canonical name in body: " + get.body());
+        assertTrue(get.body().contains("\"name\":\"test-model-create\""),
+                () -> "Expected name in body: " + get.body());
     }
 
     @Test
@@ -380,8 +380,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         Response get = send(HttpMethod.GET, "/v1/models/platform/test-model-immediate-post", null, "",
                 "authorization", "admin");
         verify(get, 200);
-        assertTrue(get.body().contains("\"name\":\"models/platform/test-model-immediate-post\""),
-                () -> "Expected immediate visibility of PUT (canonical name): " + get.body());
+        assertTrue(get.body().contains("\"name\":\"test-model-immediate-post\""),
+                () -> "Expected immediate visibility of PUT: " + get.body());
     }
 
     @Test
@@ -400,8 +400,8 @@ public class ModelWriteApiTest extends ResourceBaseTest {
         Response get = send(HttpMethod.GET, "/v1/models/platform/" + encoded, null, "",
                 "authorization", "admin");
         verify(get, 200);
-        assertTrue(get.body().contains("\"name\":\"models/platform/" + decoded + "\""),
-                () -> "Expected decoded canonical name in body: " + get.body());
+        assertTrue(get.body().contains("\"name\":\"" + decoded + "\""),
+                () -> "Expected decoded name in body: " + get.body());
     }
 
     @Test

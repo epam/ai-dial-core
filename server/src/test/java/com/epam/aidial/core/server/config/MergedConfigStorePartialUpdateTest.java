@@ -98,18 +98,19 @@ public class MergedConfigStorePartialUpdateTest {
     }
 
     @Test
-    public void cascadeClassifiesSourceByMapKeyShape() {
-        // Two models reference the same interceptor: one file-defined (bare simple-name key) and one
-        // API-defined (canonical-id key). Deleting the interceptor cross-ref-invalidates both; the
-        // recorded source must follow the key shape, mirroring the full rebuild() onSkip classifier.
-        Model fileModel = new Model();
-        fileModel.setInterceptors(List.of(INTERCEPTOR_ID));
-        Model apiModel = new Model();
-        apiModel.setInterceptors(List.of(INTERCEPTOR_ID));
+    public void cascadeClassifiesInvalidatedModelsAsApiSourced() {
+        // Models are keyed by short name uniformly now (file- and blob-sourced alike), so key
+        // shape can no longer tell them apart. The partial-update path never touches file config
+        // either way, so every survivor this cascade walks is classified "api" — regardless of
+        // which source the model itself originally came from.
+        Model firstModel = new Model();
+        firstModel.setInterceptors(List.of(INTERCEPTOR_ID));
+        Model secondModel = new Model();
+        secondModel.setInterceptors(List.of(INTERCEPTOR_ID));
         Config seeded = newConfig();
         Map<String, Model> models = new LinkedHashMap<>();
-        models.put("gpt-4-file", fileModel);       // bare simple name → file-sourced
-        models.put(MODEL_ID, apiModel);            // contains '/' → api-sourced
+        models.put("gpt-4-first", firstModel);
+        models.put("gpt-4-second", secondModel);
         seeded.setModels(models);
         seeded.setInterceptors(mutable(INTERCEPTOR_ID, new Interceptor()));
         MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_SKIP);
@@ -119,13 +120,15 @@ public class MergedConfigStorePartialUpdateTest {
         Map<String, InvalidEntityRecord> invalidModels = store.getInvalidEntities().get(ResourceTypes.MODEL);
         assertEquals(2, invalidModels.size(), "both cross-ref-invalidated models recorded");
 
-        InvalidEntityRecord fileRecord = invalidModels.get("models/platform/gpt-4-file");
-        assertEquals("file", fileRecord.getSource(), "bare-key model attributed to file source");
-        assertEquals("gpt-4-file", fileRecord.getSimpleName());
+        // invalidEntities is always keyed by (derived) canonical id, regardless of source —
+        // unaffected by short-name keying, which only concerns Config's live entity maps.
+        InvalidEntityRecord firstRecord = invalidModels.get("models/platform/gpt-4-first");
+        assertEquals("api", firstRecord.getSource());
+        assertEquals("gpt-4-first", firstRecord.getSimpleName());
 
-        InvalidEntityRecord apiRecord = invalidModels.get(MODEL_ID);
-        assertEquals("api", apiRecord.getSource(), "canonical-id-key model attributed to api source");
-        assertEquals("gpt-4", apiRecord.getSimpleName());
+        InvalidEntityRecord secondRecord = invalidModels.get("models/platform/gpt-4-second");
+        assertEquals("api", secondRecord.getSource());
+        assertEquals("gpt-4-second", secondRecord.getSimpleName());
     }
 
     @Test

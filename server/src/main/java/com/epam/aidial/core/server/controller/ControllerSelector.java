@@ -478,7 +478,7 @@ public class ControllerSelector {
             MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();
             AdminValidateController controller = new AdminValidateController(
                     context, authService, mergedConfigStore,
-                    proxy.getTaskExecutor());
+                    proxy.getResourceService(), proxy.getTaskExecutor());
             return controller::handle;
         });
         post(RouteTemplate.CONFIG_APPLY, (proxy, context, pathMatcher) -> {
