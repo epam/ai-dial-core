@@ -27,21 +27,30 @@ import java.util.Set;
 @CatalogPropertiesConformToSchemas(message = "All deployments with catalog_schema_id should conform to their catalog schema")
 public class Config {
     // maintain the order of routes defined in the config
+    // key: route name (file-sourced) or canonical id "routes/<bucket>/<name>" (blob/API-sourced)
     private LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
+    // key: deployment id (short name); shared namespace with applications/toolsets/interceptors
     private Map<String, Model> models = Map.of();
+    // key: deployment id (short name); shared namespace with models/toolsets/interceptors
     private Map<String, Application> applications = Map.of();
+    // key: deployment id (short name); shared namespace with models/applications/interceptors
     private Map<String, ToolSet> toolsets = Map.of();
+    // key: raw API key secret (file-sourced) or canonical id "keys/<bucket>/<name>" (blob/API-sourced)
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private Map<String, Key> keys = new HashMap<>();
+    // key: role name (short name); not part of the deployment-id namespace above
     private Map<String, Role> roles = new HashMap<>();
     private Set<Integer> retriableErrorCodes = Set.of();
+    // key: deployment id (short name); shared namespace with models/applications/toolsets
     private Map<String, Interceptor> interceptors = Map.of();
 
+    // key: schema $id (URI string)
     @JsonDeserialize(using = JsonArrayToSchemaMapDeserializer.class)
     @JsonSerialize(using = MapToJsonArraySerializer.class)
     @ConformToMetaSchema(message = "All custom application type schemas should conform to meta schema")
     private Map<String, String> applicationTypeSchemas = Map.of();
 
+    // key: schema $id (URI string)
     @JsonDeserialize(using = JsonArrayToSchemaMapDeserializer.class)
     @JsonSerialize(using = MapToJsonArraySerializer.class)
     @ConformToCatalogMetaSchema(message = "All catalog schemas should conform to the catalog meta schema")
