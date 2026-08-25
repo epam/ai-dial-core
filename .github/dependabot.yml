@@ -18,8 +18,8 @@ updates:
       day: "wednesday"
       time: "09:00"
     commit-message:
-      # Prefix all commit messages with "chore: "
-      prefix: "chore"
+      prefix: "ci"
+      include: scope
     groups:
       ai-dial-ci:
         applies-to: version-updates
