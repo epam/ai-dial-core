@@ -83,7 +83,7 @@ public class ConfigResourceController implements Controller {
 
     // Per design 02 §4 / 03 §3: conservative floor for admin-config entity names, extendable
     // on client request when a concrete workflow is broken. Applied to the URL-decoded segment.
-    private static final Pattern ENTITY_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9._%:-]+$");
+    public static final Pattern ENTITY_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9._%:-]+$");
 
     private final ProxyContext context;
     private final ConfigAuthorizationService authorizationService;

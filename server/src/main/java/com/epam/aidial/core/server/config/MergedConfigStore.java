@@ -1415,7 +1415,7 @@ public final class MergedConfigStore implements ConfigStore {
         return schemaId;
     }
 
-    private static boolean isShortNameKeyed(ResourceTypes type) {
+    public static boolean isShortNameKeyed(ResourceTypes type) {
         return switch (type) {
             case MODEL, INTERCEPTOR, ROLE, APPLICATION, TOOL_SET -> true;
             default -> false;

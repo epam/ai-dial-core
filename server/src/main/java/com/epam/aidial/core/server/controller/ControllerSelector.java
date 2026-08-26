@@ -513,7 +513,7 @@ public class ControllerSelector {
                     proxy.getLockService());
             ConfigFileMigrateController controller = new ConfigFileMigrateController(
                     context, authService, mergedConfigStore, proxy.getTaskExecutor(),
-                    proxy.getLockService(), applier);
+                    proxy.getLockService(), applier, proxy.getResourceService());
             return controller::handle;
         });
         get(RouteTemplate.CONFIG_HEALTH, (proxy, context, pathMatcher) -> {

@@ -130,10 +130,9 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testMigrateSchemasDisambiguatesSameDisplayName() {
-        // Three fixture schemas share the same dial:applicationTypeDisplayName ("Specific
-        // Application Type") but have distinct $id values; the hash suffix must keep their minted
-        // names distinct.
+    void testMigrateSchemasUseLastPathSegmentAsBlobName() {
+        // The 4 fixture schemas' $id values have distinct last path segments, so each migrates
+        // verbatim under that segment as its blob name — no disambiguation needed.
         String body = """
                 {"types": ["schemas"]}
                 """;
@@ -143,14 +142,12 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
         JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
 
         Set<String> migratedIds = idsWithStatus(results, "migrated");
-        assertEquals(4, migratedIds.size(), () -> "Body: " + response.body());
-
-        long specificApplicationTypeCount = migratedIds.stream()
-                .filter(migratedId -> migratedId.startsWith("schemas/platform/specific-application-type-"))
-                .count();
-        // migratedIds is a Set, so 3 distinct entries here already proves the hash suffix
-        // disambiguated all three same-display-name schemas.
-        assertEquals(3, specificApplicationTypeCount, () -> "Body: " + response.body());
+        Set<String> expectedIds = Set.of(
+                "schemas/platform/schema_endpoint",
+                "schemas/platform/specific_application_type",
+                "schemas/platform/specific_toolset_type",
+                "schemas/platform/chained_application_type");
+        assertEquals(expectedIds, migratedIds, () -> "Body: " + response.body());
 
         for (String migratedId : migratedIds) {
             String name = migratedId.substring("schemas/platform/".length());
