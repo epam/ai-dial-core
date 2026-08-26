@@ -190,6 +190,11 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
                 () -> "Plaintext client_secret must never appear on GET: " + get.body());
         assertFalse(get.body().contains("\"client_secret\""),
                 () -> "client_secret field must be absent from GET response: " + get.body());
+        // Pin the value, not just the absence of the secret: this read is blob-sourced and deserializeBlob does
+        // not decrypt, so without decryptExternalServiceSecretsForResponse the hint would be the tail of the
+        // base64 ciphertext — present and plausible, and invisible to an absence-only assertion.
+        assertTrue(get.body().contains("\"client_secret_hint\":\"cret\""),
+                () -> "hint must be derived from the plaintext secret: " + get.body());
     }
 
     @Test
