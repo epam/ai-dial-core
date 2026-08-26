@@ -1243,6 +1243,116 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testExternalServiceClientSecretHintForManager() throws Exception {
+        String appUrl = createPlainDynamicApp("user", "mgmt-hint-app");
+        String plaintextSecret = "external-service-secret-xy19";
+
+        Response put = send(HttpMethod.PUT, "/v1/" + appUrl + "/external-services/salesforce", null, """
+                {
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "cid",
+                        "client_secret": "%s",
+                        "authorization_endpoint": "http://localhost:9876/authorize",
+                        "token_endpoint": "http://localhost:9876/token"
+                    }
+                }
+                """.formatted(plaintextSecret), "authorization", "user");
+        assertEquals(200, put.status(), () -> put.body());
+        assertFalse(put.body().contains(plaintextSecret));
+        assertEquals("xy19", ProxyUtil.MAPPER.readTree(put.body())
+                .get("auth_settings").get("client_secret_hint").asText());
+
+        // Management GET: hint present, secret never.
+        Response mgmtGet = send(HttpMethod.GET, "/v1/" + appUrl + "/external-services/salesforce",
+                null, "", "authorization", "user");
+        assertEquals(200, mgmtGet.status());
+        JsonNode mgmtAuth = ProxyUtil.MAPPER.readTree(mgmtGet.body()).get("auth_settings");
+        assertEquals("xy19", mgmtAuth.get("client_secret_hint").asText());
+        assertNull(mgmtAuth.get("client_secret"));
+        assertFalse(mgmtGet.body().contains(plaintextSecret));
+
+        // Raw application GET by the owner (write access) exposes the same hint, computed from the
+        // decrypted value rather than the ciphertext at rest.
+        Response rawApp = send(HttpMethod.GET, "/v1/" + appUrl, null, "", "authorization", "user");
+        assertEquals(200, rawApp.status());
+        JsonNode rawAuth = ProxyUtil.MAPPER.readTree(rawApp.body())
+                .get("external_services").get("salesforce").get("auth_settings");
+        assertEquals("xy19", rawAuth.get("client_secret_hint").asText());
+        assertNull(rawAuth.get("client_secret"));
+        assertFalse(rawApp.body().contains(plaintextSecret));
+
+        // The listing says which services exist, not which secret each holds: no hint, and no decrypt behind it.
+        Response list = send(HttpMethod.GET, "/v1/" + appUrl + "/external-services",
+                null, "", "authorization", "user");
+        assertEquals(200, list.status());
+        JsonNode listAuth = ProxyUtil.MAPPER.readTree(list.body()).get(0).get("auth_settings");
+        assertNull(listAuth.get("client_secret_hint"), () -> "listing must not carry the hint: " + list.body());
+        assertNull(listAuth.get("client_secret"));
+        assertFalse(list.body().contains(plaintextSecret));
+        // Status enrichment is unaffected by dropping the hint.
+        assertNotNull(listAuth.get("user_level_auth_status"), () -> list.body());
+
+        // Preserve-on-omit still holds: an update without client_secret keeps the stored one, hint unchanged.
+        Response update = send(HttpMethod.PUT, "/v1/" + appUrl + "/external-services/salesforce", null, """
+                {
+                    "display_name": "Salesforce",
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "cid",
+                        "authorization_endpoint": "http://localhost:9876/authorize",
+                        "token_endpoint": "http://localhost:9876/token"
+                    }
+                }
+                """, "authorization", "user");
+        assertEquals(200, update.status(), () -> update.body());
+        // The PUT response describes what is stored, not only what was sent: the preserved secret still hints.
+        assertEquals("xy19", ProxyUtil.MAPPER.readTree(update.body())
+                .get("auth_settings").get("client_secret_hint").asText());
+        mgmtGet = send(HttpMethod.GET, "/v1/" + appUrl + "/external-services/salesforce",
+                null, "", "authorization", "user");
+        assertEquals(200, mgmtGet.status());
+        assertEquals("xy19", ProxyUtil.MAPPER.readTree(mgmtGet.body())
+                .get("auth_settings").get("client_secret_hint").asText());
+
+        // Re-submitting the stored secret verbatim is exempt from the value checks — a re-write introduces
+        // nothing new, which is what keeps server-initiated re-puts (publication) working on legacy values.
+        Response resubmit = send(HttpMethod.PUT, "/v1/" + appUrl + "/external-services/salesforce", null, """
+                {
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "cid",
+                        "client_secret": "%s",
+                        "authorization_endpoint": "http://localhost:9876/authorize",
+                        "token_endpoint": "http://localhost:9876/token"
+                    }
+                }
+                """.formatted(plaintextSecret), "authorization", "user");
+        assertEquals(200, resubmit.status(), () -> resubmit.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testExternalServiceRejectsTooShortClientSecret() throws Exception {
+        String appUrl = createPlainDynamicApp("user", "mgmt-short-secret-app");
+
+        Response put = send(HttpMethod.PUT, "/v1/" + appUrl + "/external-services/salesforce", null, """
+                {
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "cid",
+                        "client_secret": "short",
+                        "authorization_endpoint": "http://localhost:9876/authorize",
+                        "token_endpoint": "http://localhost:9876/token"
+                    }
+                }
+                """, "authorization", "user");
+        assertEquals(400, put.status(), () -> put.body());
+        assertTrue(put.body().contains("CLIENT_SECRET"), () -> put.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
     void testDeleteDynamicExternalServiceRemovesDefinitionAndCascadesAppCredentials() throws Exception {
         String appUrl = createPlainDynamicApp("user", "mgmt-del-app");
         String scope = appUrl + "/external_services/billing-api";

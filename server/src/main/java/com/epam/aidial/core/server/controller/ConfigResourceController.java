@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
@@ -1005,6 +1006,7 @@ public class ConfigResourceController implements Controller {
 
     private Future<?> handleGet() {
         Config config = context.getConfig();
+        boolean admin = authorizationService.isAdmin(context);
         // Per-entity GET is blob-only (slice U.1): only canonical-ID lookups resolve here.
         // File-sourced entries are inspected via /v1/admin/config/file/{type}[/{name}].
         // Slice U.4: secret fields drop on response via @JsonProperty(WRITE_ONLY) — there is no
@@ -1026,10 +1028,25 @@ public class ConfigResourceController implements Controller {
                     (schemaId, node) -> projectSchemaItem(schemaId, (JsonNode) node));
             case CATALOG_SCHEMA -> handleSingleGetFromBlob(ResourceTypes.CATALOG_SCHEMA,
                     (schemaId, node) -> projectSchemaItem(schemaId, (JsonNode) node));
+            // Blob-sourced, so secrets arrive encrypted (deserializeBlob does not decrypt). The hint has to be
+            // derived from plaintext or it describes ciphertext, so decrypt first — only for a caller that will
+            // actually be shown the hint.
             case APPLICATION -> handleSingleGetFromBlob(ResourceTypes.APPLICATION,
-                    (key, application) -> redactExternalServiceSecrets(projectItem(application, key)));
+                    (key, application) -> {
+                        if (admin) {
+                            applicationService.decryptExternalServiceSecretsForResponse(
+                                    descriptorFor(ResourceTypes.APPLICATION), (Application) application);
+                        }
+                        return redactExternalServiceSecrets(projectItem(application, key), admin);
+                    });
             case TOOL_SET -> handleSingleGetFromBlob(ResourceTypes.TOOL_SET,
-                    (key, toolSet) -> redactAuthSettingsSecrets(projectItem(toolSet, key)));
+                    (key, toolSet) -> {
+                        if (admin) {
+                            toolSetService.decryptAuthSettingsForResponse(
+                                    descriptorFor(ResourceTypes.TOOL_SET), (ToolSet) toolSet);
+                        }
+                        return redactAuthSettingsSecrets(projectItem(toolSet, key), admin);
+                    });
             case GLOBAL_SETTINGS -> handleSettingsGet(config);
             default -> respondMethodNotAllowed();
         };
@@ -1863,23 +1880,33 @@ public class ConfigResourceController implements Controller {
      * {@code @EncryptedField}-aware override), so WRITE_ONLY would also drop the field from the
      * blob write itself. Redact on the {@link ObjectNode} snapshot {@link #projectItem} already
      * produces instead — a fresh copy, so this never mutates the live {@link Config} entity.
+     *
+     * <p>{@code revealHint} replaces the removed secret with its {@code client_secret_hint}; admins only.</p>
      */
-    private static void redactSecretFields(JsonNode authSettings) {
+    private static void redactSecretFields(JsonNode authSettings, boolean revealHint) {
         if (authSettings instanceof ObjectNode settings) {
-            settings.remove("client_secret");
-            settings.remove("code_verifier");
+            JsonNode clientSecret = settings.remove(ResourceAuthSettings.CLIENT_SECRET_FIELD);
+            settings.remove(ResourceAuthSettings.CODE_VERIFIER_FIELD);
+            // Drop unconditionally first: the hint is this method's to emit, never the projected node's.
+            settings.remove(ResourceAuthSettings.CLIENT_SECRET_HINT_FIELD);
+            if (revealHint && clientSecret != null && clientSecret.isTextual()) {
+                String hint = ResourceAuthSettings.hintFor(clientSecret.textValue());
+                if (hint != null) {
+                    settings.put(ResourceAuthSettings.CLIENT_SECRET_HINT_FIELD, hint);
+                }
+            }
         }
     }
 
-    private static ObjectNode redactAuthSettingsSecrets(ObjectNode node) {
-        redactSecretFields(node.get("auth_settings"));
+    private static ObjectNode redactAuthSettingsSecrets(ObjectNode node, boolean admin) {
+        redactSecretFields(node.get("auth_settings"), admin);
         return node;
     }
 
-    private static ObjectNode redactExternalServiceSecrets(ObjectNode node) {
+    private static ObjectNode redactExternalServiceSecrets(ObjectNode node, boolean admin) {
         JsonNode externalServices = node.get("external_services");
         if (externalServices != null && externalServices.isObject()) {
-            externalServices.forEach(service -> redactSecretFields(service.get("auth_settings")));
+            externalServices.forEach(service -> redactSecretFields(service.get("auth_settings"), admin));
         }
         return node;
     }

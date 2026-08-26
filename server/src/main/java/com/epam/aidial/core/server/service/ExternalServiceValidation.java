@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
+import com.epam.aidial.core.credentials.validation.ClientSecretValidation;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import lombok.experimental.UtilityClass;
@@ -30,7 +31,11 @@ public class ExternalServiceValidation {
         }
     }
 
-    public static void validate(String serviceId, ExternalService service, boolean isCreate) {
+    /**
+     * {@code stored} is the definition this write replaces, its secret already decrypted — see
+     * {@link ClientSecretValidation#validate(String, String)}.
+     */
+    public static void validate(String serviceId, ExternalService service, boolean isCreate, ExternalService stored) {
         validateServiceId(serviceId);
         ResourceAuthSettings authSettings = service == null ? null : service.getAuthSettings();
         if (authSettings == null || authSettings.getAuthenticationType() == null) {
@@ -47,9 +52,14 @@ public class ExternalServiceValidation {
                 : ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES;
         try {
             validator.validate(authSettings, mode);
+            ClientSecretValidation.validate(authSettings.getClientSecret(), storedClientSecret(stored));
         } catch (RuntimeException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST,
                     "External service '%s': invalid auth_settings: %s".formatted(serviceId, e.getMessage()));
         }
+    }
+
+    private static String storedClientSecret(ExternalService stored) {
+        return stored == null || stored.getAuthSettings() == null ? null : stored.getAuthSettings().getClientSecret();
     }
 }
