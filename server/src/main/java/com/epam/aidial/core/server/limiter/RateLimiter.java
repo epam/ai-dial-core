@@ -373,8 +373,15 @@ public class RateLimiter {
         return getResourceDescription(bucketLocation, path);
     }
 
+    /**
+     * Builds a descriptor for a limit record from an internal relative path, which may carry an entity name.
+     * {@link RoleBasedEntity#getName()} is plain configuration text for a file defined model or route, but an
+     * already url encoded resource url for a custom application - so such a path can never be validated as a
+     * URI (a model named {@code claude-opus-4-8[1m]} is legal config), while it must still be decoded, or a
+     * record written for an application under its encoded name would not be found again.
+     */
     private ResourceDescriptor getResourceDescription(String bucketLocation, String path) {
-        return ResourceDescriptorFactory.fromEncoded(ResourceTypes.LIMIT, bucketLocation, bucketLocation, path);
+        return ResourceDescriptorFactory.fromEntityPath(ResourceTypes.LIMIT, bucketLocation, bucketLocation, path);
     }
 
     private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity) {

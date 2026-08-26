@@ -122,6 +122,21 @@ public class ToolSetService {
         }
     }
 
+    /**
+     * Decrypts in place for a caller that redacts the settings itself afterwards — the config API, which strips
+     * secrets from a JSON projection rather than from this object. A value that fails to decrypt is dropped, so
+     * it yields no hint rather than one describing ciphertext.
+     */
+    public void decryptAuthSettingsForResponse(ResourceDescriptor resource, ToolSet toolSet) {
+        ResourceAuthSettings authSettings = toolSet == null ? null : toolSet.getAuthSettings();
+        if (authSettings == null || authSettings.getClientSecret() == null) {
+            return;
+        }
+        if (!decryptForHint(resource, authSettings)) {
+            authSettings.setClientSecret(null);
+        }
+    }
+
     private boolean decryptForHint(ResourceDescriptor resource, ResourceAuthSettings authSettings) {
         try {
             resourceAuthSettingsEncryptionService.decrypt(resource.getUrl(),

@@ -124,7 +124,7 @@ public class MergedConfigStoreTest {
         store.init(fileConfigStore);
 
         Config config = store.get();
-        Application materialized = config.getApplications().get("applications/platform/my-app");
+        Application materialized = config.getApplications().get("my-app");
         assertEquals("http://localhost/completions", materialized.getEndpoint());
         verify(externalServiceService).decryptSecrets(
                 argThat(d -> "platform".equals(d.getBucketName())), eq(materialized));
@@ -147,7 +147,7 @@ public class MergedConfigStoreTest {
         store.init(fileConfigStore);
 
         Config config = store.get();
-        ToolSet materialized = config.getToolsets().get("toolsets/platform/my-toolset");
+        ToolSet materialized = config.getToolsets().get("my-toolset");
         assertEquals("http://localhost:9876", materialized.getEndpoint());
         verify(resourceAuthSettingsEncryptionService).decrypt(
                 eq(toolSetDescriptor.getUrl()), any(BucketInfo.class), eq(materialized.getAuthSettings()));

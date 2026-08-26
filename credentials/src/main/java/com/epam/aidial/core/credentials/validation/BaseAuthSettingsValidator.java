@@ -2,8 +2,10 @@ package com.epam.aidial.core.credentials.validation;
 
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
 
 public abstract class BaseAuthSettingsValidator implements AuthSettingsValidator {
@@ -28,41 +30,36 @@ public abstract class BaseAuthSettingsValidator implements AuthSettingsValidator
         }
     }
 
+    /**
+     * A blank string or an empty list carries no value: clients send them for fields they left empty, and a
+     * required field filled that way is unusable downstream. Treating them as absent makes such a request fail
+     * here with the required-field error instead of storing a broken configuration.
+     */
     private Set<ResourceAuthSettingsField> extractFields(ResourceAuthSettings resourceAuthSettings) {
         Set<ResourceAuthSettingsField> fieldsWithValues = EnumSet.noneOf(ResourceAuthSettingsField.class);
 
-        if (resourceAuthSettings.getClientId() != null) {
-            fieldsWithValues.add(ResourceAuthSettingsField.CLIENT_ID);
-        }
-        if (resourceAuthSettings.getClientSecret() != null) {
-            fieldsWithValues.add(ResourceAuthSettingsField.CLIENT_SECRET);
-        }
-        if (resourceAuthSettings.getRedirectUri() != null) {
-            fieldsWithValues.add(ResourceAuthSettingsField.REDIRECT_URI);
-        }
-        if (resourceAuthSettings.getAuthorizationEndpoint() != null) {
-            fieldsWithValues.add(ResourceAuthSettingsField.AUTHORIZATION_ENDPOINT);
-        }
-        if (resourceAuthSettings.getTokenEndpoint() != null) {
-            fieldsWithValues.add(ResourceAuthSettingsField.TOKEN_ENDPOINT);
-        }
-        if (resourceAuthSettings.getCodeChallenge() != null) {
-            fieldsWithValues.add(ResourceAuthSettingsField.CODE_CHALLENGE);
-        }
-        if (resourceAuthSettings.getCodeVerifier() != null) {
-            fieldsWithValues.add(ResourceAuthSettingsField.CODE_VERIFIER);
-        }
-        if (resourceAuthSettings.getCodeChallengeMethod() != null) {
-            fieldsWithValues.add(ResourceAuthSettingsField.CODE_CHALLENGE_METHOD);
-        }
-        if (resourceAuthSettings.getScopesSupported() != null) {
+        addIfHasValue(fieldsWithValues, ResourceAuthSettingsField.CLIENT_ID, resourceAuthSettings.getClientId());
+        addIfHasValue(fieldsWithValues, ResourceAuthSettingsField.CLIENT_SECRET, resourceAuthSettings.getClientSecret());
+        addIfHasValue(fieldsWithValues, ResourceAuthSettingsField.REDIRECT_URI, resourceAuthSettings.getRedirectUri());
+        addIfHasValue(fieldsWithValues, ResourceAuthSettingsField.AUTHORIZATION_ENDPOINT, resourceAuthSettings.getAuthorizationEndpoint());
+        addIfHasValue(fieldsWithValues, ResourceAuthSettingsField.TOKEN_ENDPOINT, resourceAuthSettings.getTokenEndpoint());
+        addIfHasValue(fieldsWithValues, ResourceAuthSettingsField.CODE_CHALLENGE, resourceAuthSettings.getCodeChallenge());
+        addIfHasValue(fieldsWithValues, ResourceAuthSettingsField.CODE_VERIFIER, resourceAuthSettings.getCodeVerifier());
+        addIfHasValue(fieldsWithValues, ResourceAuthSettingsField.CODE_CHALLENGE_METHOD, resourceAuthSettings.getCodeChallengeMethod());
+        addIfHasValue(fieldsWithValues, ResourceAuthSettingsField.API_KEY_HEADER, resourceAuthSettings.getApiKeyHeader());
+
+        List<String> scopesSupported = resourceAuthSettings.getScopesSupported();
+        if (scopesSupported != null && !scopesSupported.isEmpty()) {
             fieldsWithValues.add(ResourceAuthSettingsField.SCOPES_SUPPORTED);
-        }
-        if (resourceAuthSettings.getApiKeyHeader() != null) {
-            fieldsWithValues.add(ResourceAuthSettingsField.API_KEY_HEADER);
         }
 
         return fieldsWithValues;
+    }
+
+    private void addIfHasValue(Set<ResourceAuthSettingsField> fieldsWithValues, ResourceAuthSettingsField field, String value) {
+        if (StringUtils.isNotBlank(value)) {
+            fieldsWithValues.add(field);
+        }
     }
 
     protected abstract ResourceAuthSettingsValidationFields getValidationFields(ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode);

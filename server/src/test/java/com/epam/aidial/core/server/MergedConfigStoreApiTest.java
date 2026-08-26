@@ -11,6 +11,8 @@ import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
+import java.net.URI;
+
 import static com.epam.aidial.core.server.util.ResourceDescriptorFactory.fromDecoded;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -70,21 +72,20 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         assertEquals(200, reload.status());
 
         Config merged = dial.getProxy().getConfigStore().get();
-        Model blobModel = merged.getModels().get("models/platform/" + blobName);
-        assertNotNull(blobModel, () -> "Expected canonical-ID key in merged Config: " + merged.getModels().keySet());
-        // Slice 2S.15 / OQ-23: Model.name carries the canonical ID for API-managed entries so
-        // legacy /openai/models, /openai/deployments, and rate-limit role-limit lookups see the
-        // canonical form. Polish.1 (2026-05-08) extends this to the admin Configuration API GET
-        // / listing projection — canonical ID for API entries, simple name for file entries.
-        assertEquals("models/platform/" + blobName, blobModel.getName(),
-                "Entity.name carries the canonical ID for API-managed entries");
-        assertNotNull(merged.getModels().get("test-model-v1"), "File model must still coexist by simple name");
+        Model blobModel = merged.getModels().get(blobName);
+        assertNotNull(blobModel, () -> "Expected short-name key in merged Config: " + merged.getModels().keySet());
+        // Model.name is the map key — the short name, the same key a file entry for this
+        // logical entity would use.
+        assertEquals(blobName, blobModel.getName(), "Entity.name is the short name for API-managed entries too");
+        assertNotNull(merged.getModels().get("test-model-v1"), "File model must still coexist by its own short name");
 
+        // Admin GET reads blob storage directly (not the in-memory map), so the projected name is
+        // whatever the URL's short-name segment was.
         Response get = send(HttpMethod.GET, "/v1/models/platform/" + blobName, null, "",
                 "authorization", "admin");
         verify(get, 200);
-        assertTrue(get.body().contains("\"name\":\"models/platform/" + blobName + "\""),
-                () -> "Expected canonical name in projection: " + get.body());
+        assertTrue(get.body().contains("\"name\":\"" + blobName + "\""),
+                () -> "Expected short name in projection: " + get.body());
         assertTrue(get.body().contains("\"endpoint\""),
                 () -> "Expected endpoint field in projection: " + get.body());
     }
@@ -104,11 +105,155 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         assertEquals(200, reload.status());
 
         Config merged = dial.getProxy().getConfigStore().get();
-        Interceptor blob = merged.getInterceptors().get("interceptors/platform/" + blobName);
-        assertNotNull(blob, () -> "Expected canonical-ID key in merged Config: " + merged.getInterceptors().keySet());
-        // Slice 2S.15: API-managed entries carry the canonical ID as their name (per OQ-23).
-        assertEquals("interceptors/platform/" + blobName, blob.getName());
+        Interceptor blob = merged.getInterceptors().get(blobName);
+        assertNotNull(blob, () -> "Expected short-name key in merged Config: " + merged.getInterceptors().keySet());
+        assertEquals(blobName, blob.getName());
         assertNotNull(merged.getInterceptors().get("interceptor1"), "File interceptor must still coexist");
+    }
+
+    @Test
+    void testBlobModelOverwritesFileEntryAtSameShortNameAfterReload() {
+        // A blob model written under the SAME short name as an existing file-sourced model shares
+        // that single map key with it — both sources key by short name uniformly, so the blob
+        // write simply overwrites the slot in place; there's no separate canonical-id slot left
+        // over to shadow.
+        String shortName = "test-model-v1";
+        String body = """
+                {
+                    "type": "chat",
+                    "displayName": "Migrated Test Model",
+                    "endpoint": "http://localhost:7001/openai/deployments/migrated/chat/completions"
+                }
+                """;
+        putBlob(ResourceTypes.MODEL, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                shortName, body);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        Config merged = dial.getProxy().getConfigStore().get();
+        Model model = merged.getModels().get(shortName);
+        assertNotNull(model);
+        assertEquals("http://localhost:7001/openai/deployments/migrated/chat/completions", model.getEndpoint(),
+                "Blob entity must win over the file entry sharing its short name");
+        assertEquals(model, merged.selectDeployment(shortName),
+                "selectDeployment must resolve the short name directly to the blob entity");
+    }
+
+    @Test
+    void testBlobInterceptorOverwritesFileEntryAtSameShortNameAfterReload() {
+        String shortName = "interceptor1";
+        String body = """
+                {
+                    "endpoint": "http://localhost:9000/migrated-intercept"
+                }
+                """;
+        putBlob(ResourceTypes.INTERCEPTOR, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                shortName, body);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        Config merged = dial.getProxy().getConfigStore().get();
+        Interceptor interceptor = merged.getInterceptors().get(shortName);
+        assertNotNull(interceptor);
+        assertEquals("http://localhost:9000/migrated-intercept", interceptor.getEndpoint(),
+                "Blob entity must win over the file entry sharing its short name");
+    }
+
+    @Test
+    void testBlobRoleOverwritesFileEntryAtSameShortNameAfterReload() {
+        String shortName = "default";
+        String body = """
+                {
+                    "limits": {}
+                }
+                """;
+        putBlob(ResourceTypes.ROLE, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                shortName, body);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        Config merged = dial.getProxy().getConfigStore().get();
+        assertNotNull(merged.getRoles().get(shortName));
+        assertEquals(shortName, merged.getRoles().get(shortName).getName());
+    }
+
+    @Test
+    void testBlobApplicationOverwritesFileEntryAtSameShortNameAfterReload() {
+        String shortName = "app";
+        String body = """
+                {
+                    "endpoint": "http://application1/v1/completions",
+                    "display_name": "Migrated Platform App"
+                }
+                """;
+        putBlob(ResourceTypes.APPLICATION, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                shortName, body);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        Config merged = dial.getProxy().getConfigStore().get();
+        assertNotNull(merged.getApplications().get(shortName));
+        assertEquals(merged.getApplications().get(shortName), merged.selectDeployment(shortName),
+                "selectDeployment must resolve the short name directly to the blob entity");
+    }
+
+    @Test
+    void testBlobToolSetOverwritesFileEntryAtSameShortNameAfterReload() {
+        String shortName = "git";
+        String body = """
+                {
+                    "endpoint": "http://localhost:9876",
+                    "transport": "HTTP",
+                    "display_name": "Migrated Git Toolset"
+                }
+                """;
+        putBlob(ResourceTypes.TOOL_SET, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                shortName, body);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        Config merged = dial.getProxy().getConfigStore().get();
+        assertNotNull(merged.getToolsets().get(shortName));
+        assertEquals(merged.getToolsets().get(shortName), merged.selectDeployment(shortName),
+                "selectDeployment must resolve the short name directly to the blob entity");
+    }
+
+    @Test
+    void testBlobAppTypeSchemaShadowsFileEntryByIdAfterReload() {
+        // Both file and blob schema entries are keyed by $id. A blob written with the same $id
+        // as a file entry overwrites it in the single map — no alias index needed.
+        String fileSchemaId = "https://mydial.somewhere.com/custom_application_schemas/specific_application_type";
+        String blobName = "blob-schema-1";
+        String body = """
+                {
+                    "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+                    "$id": "%s",
+                    "display_name": "Blob-migrated schema"
+                }
+                """.formatted(fileSchemaId);
+        putBlob(ResourceTypes.APP_TYPE_SCHEMA, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                blobName, body);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        Config merged = dial.getProxy().getConfigStore().get();
+        // Blob entry is keyed by its $id — same key the file entry used — so it shadows the file entry.
+        assertTrue(merged.getApplicationTypeSchemas().containsKey(fileSchemaId),
+                () -> "Expected $id key in merged Config: " + merged.getApplicationTypeSchemas().keySet());
+        // No separate canonical-id key exists for schemas.
+        String canonicalId = "schemas/platform/" + blobName;
+        assertFalse(merged.getApplicationTypeSchemas().containsKey(canonicalId),
+                () -> "Blob schemas must not be keyed by canonical id: " + merged.getApplicationTypeSchemas().keySet());
+        // Direct $id lookup works — no alias indirection needed.
+        assertEquals(merged.getApplicationTypeSchemas().get(fileSchemaId),
+                merged.getCustomApplicationSchema(URI.create(fileSchemaId)),
+                "getCustomApplicationSchema must resolve the $id directly from the map");
     }
 
     @Test

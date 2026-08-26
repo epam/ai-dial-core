@@ -42,8 +42,8 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
         Response get = send(HttpMethod.GET, "/v1/applications/platform/my-platform-app", null, "",
                 "authorization", "admin");
         verify(get, 200);
-        assertTrue(get.body().contains("\"name\":\"applications/platform/my-platform-app\""),
-                () -> "Expected canonical name in body: " + get.body());
+        assertTrue(get.body().contains("\"name\":\"my-platform-app\""),
+                () -> "Expected short name in body: " + get.body());
         assertTrue(get.body().contains("\"endpoint\":\"http://application1/v1/completions\""),
                 () -> "Expected endpoint in body: " + get.body());
 
@@ -66,8 +66,8 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
         Response get = send(HttpMethod.GET, "/v1/toolsets/platform/my-platform-toolset", null, "",
                 "authorization", "admin");
         verify(get, 200);
-        assertTrue(get.body().contains("\"name\":\"toolsets/platform/my-platform-toolset\""),
-                () -> "Expected canonical name in body: " + get.body());
+        assertTrue(get.body().contains("\"name\":\"my-platform-toolset\""),
+                () -> "Expected short name in body: " + get.body());
         assertTrue(get.body().contains("\"endpoint\":\"http://localhost:9876\""),
                 () -> "Expected endpoint in body: " + get.body());
 
@@ -193,7 +193,7 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testPlatformAppExternalServiceAccessAllowedByUserRoles() throws Exception {
+    void testPlatformAppExternalServiceAccessAllowedByUserRoles() {
         // Regression (#1773 review): external-service access on a platform app must go through the
         // app's userRoles like a config app, not folder rules. This app is open (no user_roles), so a
         // non-admin user can sign in; before the fix the folder-rules branch returned 403.
@@ -225,7 +225,7 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
         try (TestWebServer ignore = new TestWebServer(9876, handler)) {
             Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
                     {
-                        "url": "applications/platform/extsvc-open-app/external_services/svc1",
+                        "url": "applications/extsvc-open-app/external_services/svc1",
                         "credentials_level": "USER",
                         "authentication_type": "OAUTH",
                         "code": "auth-code"
@@ -264,7 +264,7 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
 
         Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
                 {
-                    "url": "applications/platform/extsvc-restricted-app/external_services/svc1",
+                    "url": "applications/extsvc-restricted-app/external_services/svc1",
                     "credentials_level": "USER",
                     "authentication_type": "OAUTH",
                     "code": "auth-code"
