@@ -2104,6 +2104,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/admin/config/file/migrate:
+    post:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/migrate
+      operationId: migrateFileConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigFileMigrateRequest"
+        required: true
+      responses:
+        "200":
+          description: Migration report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigFileMigrateResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/models:
     get:
       tags:
@@ -14682,6 +14720,40 @@ components:
           $ref: "#/components/schemas/MapStringString"
         defaultLocale:
           type: string
+    ConfigFileMigrateRequest:
+      type: object
+      properties:
+        dryRun:
+          type: boolean
+        types:
+          type: array
+          items:
+            type: string
+    ConfigFileMigrateResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigFileMigrateResult"
+    ConfigFileMigrateResult:
+      type: object
+      properties:
+        id:
+          type: string
+        reason:
+          type: string
+        status:
+          $ref: "#/components/schemas/ConfigFileMigrateStatus"
+    ConfigFileMigrateStatus:
+      type: string
+      enum:
+      - migrated
+      - would_migrate
+      - skipped
+      - would_skip
+      - failed
+      - would_fail
     ConfigResourceControllerConfigWriteResponse:
       type: object
       properties:
