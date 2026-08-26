@@ -48,6 +48,7 @@ An object containing parameters for each [application](#applications).
 * `viewerUrl`: A string with URL of the application's [custom viewer UI](https://github.com/epam/ai-dial-chat/tree/development/docs). A custom UI, if enabled, will override the standard DIAL Chat UI.
 * `editorUrl`: A string with URL of the application's custom builder UI. Application builder allows DIAL Chat end-users to create instances of apps using a [UI wizards](https://docs.dialx.ai/tutorials/user-guide#application-builder).
 * `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.         
+* `defaultHeaders`: HTTP headers applied to a request that doesn't already carry them — the header counterpart of `defaults`. Works exactly as for models, including the per-interface overlay: refer to [models.<model_name>.defaultHeaders](./models.md#modelsmodel_namedefaultheaders).
 * `interceptors`: A list of local interceptors to be triggered for the given application. Refer to [Interceptors](./interceptors.md) to learn more.
 * `mcp`: MCP configuration. Refer to [MCP](#applicationsapplication_namemcp) to learn more.
 * `features`: A list of features supported by the application. Refer to [Features](#applicationsapplication_namefeatures) for more details.
@@ -154,6 +155,7 @@ Applications support only one interface type:
 Each value is an object with the following fields:
 
 * `base_url`: The application adapter root that the matching ingress path is appended to.
+* `defaultHeaders`: Headers applied to requests for this interface only, laid over the application-level `defaultHeaders`.
 
 **Example**
 

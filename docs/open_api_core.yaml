@@ -13531,6 +13531,8 @@ components:
           format: uri
         overrideName:
           type: string
+        defaultHeaders:
+          $ref: "#/components/schemas/MapStringString"
     ApplicationData:
       type: object
       properties:
@@ -14941,6 +14943,8 @@ components:
       properties:
         base_url:
           type: string
+        defaultHeaders:
+          $ref: "#/components/schemas/MapStringString"
     EmbeddingResponse:
       required:
       - data
@@ -15433,6 +15437,8 @@ components:
           format: uri
         overrideName:
           type: string
+        defaultHeaders:
+          $ref: "#/components/schemas/MapStringString"
     Invitation:
       type: object
       properties:
@@ -15837,6 +15843,8 @@ components:
         catalogSchemaId:
           type: string
           format: uri
+        defaultHeaders:
+          $ref: "#/components/schemas/MapStringString"
     ModelData:
       type: object
       properties:
@@ -16899,6 +16907,8 @@ components:
           format: uri
         overrideName:
           type: string
+        defaultHeaders:
+          $ref: "#/components/schemas/MapStringString"
     ToolSetData:
       type: object
       properties:

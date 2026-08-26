@@ -68,7 +68,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         super(proxy, context);
         this.enhancementFunctions = List.of(
                 new CollectRequestStandardAttachmentsFn(proxy, context),
-                new ApplyDefaultDeploymentSettingsFn(proxy, context),
+                new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.OPENAI_RESPONSES),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
                 new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_RESPONSES),

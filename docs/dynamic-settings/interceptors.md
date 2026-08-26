@@ -46,6 +46,7 @@ An object containing parameters for each [interceptor](#interceptors).
 * `features`: Features supported by the interceptors.
 *  `configurationEndpoint`: The URL that exposes the configuration of the interceptor.
 *  `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call.
+*  `defaultHeaders`: HTTP headers applied to a request that doesn't already carry them, on the hop that calls this interceptor. They take precedence over the `defaultHeaders` of the model or application the interceptor fronts, which are applied at the first interceptor of the chain and travel down it from there. Works as for models otherwise, including the per-interface overlay: refer to [models.<model_name>.defaultHeaders](./models.md#modelsmodel_namedefaultheaders).
 
 ### interceptors.<interceptor_name>.interfaces
 
@@ -59,9 +60,10 @@ Interceptors support only one interface type:
 
 > The Responses API (`openaiResponses`) and any other interface types are **not** supported for interceptors. If declared, they are dropped on config read with a warning.
 
-Each value is an object with a single field:
+Each value is an object with the following fields:
 
 * `base_url`: The interceptor service root that the matching ingress path is appended to.
+* `defaultHeaders`: Headers applied to requests for this interface only, laid over the interceptor-level `defaultHeaders`.
 
 **Example**
 

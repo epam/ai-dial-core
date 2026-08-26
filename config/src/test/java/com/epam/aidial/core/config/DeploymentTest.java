@@ -5,8 +5,10 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
+import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_RESPONSES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -78,6 +80,96 @@ public class DeploymentTest {
 
         assertEquals(source.getInterfaces(), copy.getInterfaces());
         assertEquals("http://adapter", copy.getInterfaces().get(OPENAI_RESPONSES.getValue()).getBaseUrl());
+    }
+
+    @Test
+    void defaultHeadersFallBackToDeploymentLevelForEveryInterface() {
+        Model model = new Model();
+        model.setDefaultHeaders(Map.of("x-dial-cache-policy", "cache-priority"));
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), new DeploymentInterface("http://anthropic")));
+
+        // declared without headers of its own, and not declared at all, resolve alike
+        assertEquals(Map.of("x-dial-cache-policy", "cache-priority"), model.resolveDefaultHeaders(ANTHROPIC_MESSAGES));
+        assertEquals(Map.of("x-dial-cache-policy", "cache-priority"), model.resolveDefaultHeaders(OPENAI_RESPONSES));
+    }
+
+    @Test
+    void interfaceDefaultHeadersOverrideAndExtendDeploymentLevel() {
+        DeploymentInterface anthropic = new DeploymentInterface("http://anthropic");
+        anthropic.setDefaultHeaders(Map.of("x-dial-custom-header", "foo-bar-2", "x-dial-custom-header-2", "some-value"));
+        Model model = new Model();
+        model.setDefaultHeaders(Map.of("x-dial-cache-policy", "cache-priority", "x-dial-custom-header", "foo-bar"));
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), anthropic));
+
+        assertEquals(
+                Map.of("x-dial-cache-policy", "cache-priority",
+                        "x-dial-custom-header", "foo-bar-2",
+                        "x-dial-custom-header-2", "some-value"),
+                model.resolveDefaultHeaders(ANTHROPIC_MESSAGES));
+        // the overlay is scoped to its own interface
+        assertEquals(
+                Map.of("x-dial-cache-policy", "cache-priority", "x-dial-custom-header", "foo-bar"),
+                model.resolveDefaultHeaders(OPENAI_RESPONSES));
+    }
+
+    @Test
+    void interfaceDefaultHeadersOverrideDeploymentLevelSpelledInAnotherCase() {
+        DeploymentInterface anthropic = new DeploymentInterface("http://anthropic");
+        anthropic.setDefaultHeaders(Map.of("x-dial-custom-header", "foo-bar-2"));
+        Model model = new Model();
+        model.setDefaultHeaders(Map.of("X-Dial-Custom-Header", "foo-bar"));
+        model.setInterfaces(Map.of(ANTHROPIC_MESSAGES.getValue(), anthropic));
+
+        Map<String, String> resolved = model.resolveDefaultHeaders(ANTHROPIC_MESSAGES);
+
+        assertEquals(1, resolved.size());
+        assertEquals("foo-bar-2", resolved.get("X-DIAL-CUSTOM-HEADER"));
+    }
+
+    @Test
+    void roundTripDefaultHeaders() throws Exception {
+        String json = """
+                {
+                    "endpoint": "http://host/chat/completions",
+                    "defaultHeaders": {"x-dial-cache-policy": "cache-priority"},
+                    "interfaces": {
+                        "anthropicMessages": {
+                            "base_url": "http://anthropic",
+                            "default_headers": {"x-dial-custom-header": "foo-bar-2"}
+                        }
+                    }
+                }
+                """;
+
+        Model restored = MAPPER.readValue(MAPPER.writeValueAsString(MAPPER.readValue(json, Model.class)), Model.class);
+
+        assertEquals(Map.of("x-dial-cache-policy", "cache-priority"), restored.getDefaultHeaders());
+        assertEquals(
+                Map.of("x-dial-cache-policy", "cache-priority", "x-dial-custom-header", "foo-bar-2"),
+                restored.resolveDefaultHeaders(ANTHROPIC_MESSAGES));
+    }
+
+    @Test
+    void defaultHeadersAreOmittedWhenEmpty() throws Exception {
+        Model model = new Model();
+        model.setEndpoint("http://host/chat/completions");
+        model.setInterfaces(Map.of(OPENAI_RESPONSES.getValue(), new DeploymentInterface("http://adapter")));
+
+        String json = MAPPER.writeValueAsString(model);
+
+        assertFalse(json.contains("defaultHeaders"), json);
+    }
+
+    @Test
+    void applicationCopyConstructorPreservesDefaultHeaders() {
+        Application source = new Application();
+        source.setName("app1");
+        source.setEndpoint("http://host/chat/completions");
+        source.setDefaultHeaders(Map.of("x-dial-cache-policy", "cache-priority"));
+
+        Application copy = new Application(source);
+
+        assertEquals(Map.of("x-dial-cache-policy", "cache-priority"), copy.getDefaultHeaders());
     }
 
     @Test

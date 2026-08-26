@@ -9,6 +9,7 @@ import lombok.EqualsAndHashCode;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -61,6 +62,14 @@ public abstract class Deployment extends RoleBasedEntity {
      * Default parameters are applied if a request doesn't contain them in OpenAI Responses API call.
      */
     private Map<String, Object> responsesDefaults = Map.of();
+    /**
+     * Headers added to a request that carries none under that name, for every interface the deployment
+     * serves. Overlaid per interface by {@code interfaces.<type>.defaultHeaders}, see
+     * {@link #resolveDefaultHeaders}.
+     */
+    @JsonAlias({"defaultHeaders", "default_headers"})
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map<String, String> defaultHeaders = Map.of();
     /**
      * List of interceptors to be called for the deployment
      */
@@ -117,5 +126,22 @@ public abstract class Deployment extends RoleBasedEntity {
     @JsonIgnore
     public String getTargetName() {
         return overrideName != null ? overrideName : getName();
+    }
+
+    /**
+     * The default headers in force for the interface type: the deployment-level {@link #defaultHeaders}
+     * with {@code interfaces.<type>.defaultHeaders} laid over them. Names are compared case-insensitively,
+     * so an interface entry overrides a deployment-level header however either spells it.
+     */
+    public Map<String, String> resolveDefaultHeaders(InterfaceType type) {
+        DeploymentInterface declared = interfaces == null ? null : interfaces.get(type.getValue());
+        Map<String, String> interfaceHeaders = declared == null ? Map.of() : declared.getDefaultHeaders();
+        if (interfaceHeaders.isEmpty()) {
+            return defaultHeaders;
+        }
+        Map<String, String> merged = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        merged.putAll(defaultHeaders);
+        merged.putAll(interfaceHeaders);
+        return merged;
     }
 }
