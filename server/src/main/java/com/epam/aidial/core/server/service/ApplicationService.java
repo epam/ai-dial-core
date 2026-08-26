@@ -238,6 +238,14 @@ public class ApplicationService {
         return result;
     }
 
+    /**
+     * Decrypts inline external-service secrets of an already-loaded application, for a caller that redacts them
+     * itself afterwards. See {@link ExternalServiceService#decryptSecretsForResponse}.
+     */
+    public void decryptExternalServiceSecretsForResponse(ResourceDescriptor resource, Application application) {
+        externalServiceService.decryptSecretsForResponse(resource, application);
+    }
+
     private static void verifySchemaRichApp(Application application, Application existing) {
         if (application.getApplicationTypeSchemaId() != null && existing != null
                 && existing.getApplicationProperties() != null && application.getApplicationProperties() == null) {
