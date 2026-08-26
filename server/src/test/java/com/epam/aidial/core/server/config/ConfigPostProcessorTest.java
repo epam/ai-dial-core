@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
@@ -121,7 +122,7 @@ public class ConfigPostProcessorTest {
         Model model = new Model();
         Pricing pricing = new Pricing();
         pricing.setUnit("char_without_whitespace");
-        pricing.setCacheRead("0.01");
+        pricing.setCacheRead(flatRate("0.01"));
         model.setPricing(pricing);
         config.getModels().put("model", model);
 
@@ -135,7 +136,7 @@ public class ConfigPostProcessorTest {
         Model model = new Model();
         Pricing pricing = new Pricing();
         pricing.setUnit("char_without_whitespace");
-        pricing.setCacheWrite("0.02");
+        pricing.setCacheWrite(flatRate("0.02"));
         model.setPricing(pricing);
         config.getModels().put("model", model);
 
@@ -158,8 +159,8 @@ public class ConfigPostProcessorTest {
         Model model = new Model();
         Pricing pricing = new Pricing();
         pricing.setUnit("token");
-        pricing.setCacheRead("0.01");
-        pricing.setCacheWrite("0.02");
+        pricing.setCacheRead(flatRate("0.01"));
+        pricing.setCacheWrite(flatRate("0.02"));
         model.setPricing(pricing);
         config.getModels().put("model", model);
 
@@ -194,6 +195,12 @@ public class ConfigPostProcessorTest {
         config.setInterceptors(new HashMap<>());
         config.setToolsets(new LinkedHashMap<>());
         return config;
+    }
+
+    private static PricingRate flatRate(String rate) {
+        PricingRate pricingRate = new PricingRate();
+        pricingRate.setRate(rate);
+        return pricingRate;
     }
 
     @Test

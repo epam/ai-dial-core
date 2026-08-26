@@ -190,7 +190,8 @@ public class BaseDeploymentPostController {
             String bucket = BucketBuilder.buildInitiatorBucket(context);
             TokenUsage usage = context.getTokenUsage();
             return proxy.getRateLimiter().increase(
-                    context.getDeployment(), bucket, usage, context.getRequestBody(), context.getResponseBody())
+                    context.getDeployment(), bucket, usage, context.getRequestBody(), context.getResponseBody(),
+                    interfaceType(), context.getPricingUsageNode())
                     .transform(result -> {
                         if (result.failed()) {
                             log.warn("Failed to increase limit", result.cause());
@@ -252,6 +253,15 @@ public class BaseDeploymentPostController {
      */
     protected TokenUsage parseTokenUsage(Buffer responseBody) {
         return TokenUsageParser.parse(responseBody);
+    }
+
+    /**
+     * Which upstream interface shape this controller's response is in, for pricing decision-tree
+     * evaluation. Overridable so provider-specific controllers (Anthropic Messages, OpenAI Responses)
+     * can report their own shape; the default covers the OpenAI Chat Completions path.
+     */
+    protected InterfaceType interfaceType() {
+        return InterfaceType.OPENAI_CHAT_COMPLETIONS;
     }
 
     /**
