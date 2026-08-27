@@ -25,7 +25,7 @@ public class ChatCompletionInterceptorController extends BaseInterceptorControll
 
     public ChatCompletionInterceptorController(Proxy proxy, ProxyContext context, int interceptorIndex) {
         super(proxy, context, interceptorIndex, List.of(
-                new ApplyDefaultDeploymentSettingsFn(proxy, context),
+                new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.OPENAI_CHAT_COMPLETIONS),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestStandardAttachmentsFn(proxy, context),
                 new AutoShareDeploymentFn(proxy, context)));
