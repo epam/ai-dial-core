@@ -139,6 +139,7 @@ public abstract class Deployment extends RoleBasedEntity {
         if (interfaceHeaders.isEmpty()) {
             return defaultHeaders;
         }
+        // TreeMap for its case-insensitive comparator, not for ordering: an interface entry has to override a deployment-level header spelled in another case
         Map<String, String> merged = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         merged.putAll(defaultHeaders);
         merged.putAll(interfaceHeaders);
