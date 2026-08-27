@@ -182,6 +182,23 @@
         {"endpoint": "http://chat/completions", "responsesEndpoint": "http://responses", "key": "modelKey", "id": "responses-upstream"}
       ]
     },
+    "default-headers-model": {
+      "type": "chat",
+      "endpoint" : "http://localhost:4848/chat/completions",
+      "defaultHeaders": {
+        "x-dial-cache-policy": "cache-priority",
+        "x-dial-custom-header": "foo-bar"
+      },
+      "interfaces": {
+        "anthropicMessages": {
+          "base_url": "http://localhost:4848",
+          "defaultHeaders": {
+            "x-dial-custom-header": "foo-bar-2",
+            "x-dial-custom-header-2": "some-value"
+          }
+        }
+      }
+    },
     "model-iface-only": {
       "type": "chat",
       "displayName": "Model configured via interfaces only",
@@ -239,6 +256,24 @@
       "type": "chat",
       "overrideName": "claude-sonnet-4-5-20250929",
       "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} }
+    },
+    "claude-header-spoof": {
+      "type": "chat",
+      "overrideName": "claude-sonnet-4-5-20250929",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} },
+      "defaultHeaders": {
+        "X-UPSTREAM-ENDPOINT": "http://spoofed",
+        "X-UPSTREAM-KEY": "spoofed-key",
+        "X-UPSTREAM-EXTRA-DATA": "spoofed-extra-data",
+        "Api-Key": "spoofed-api-key",
+        "X-DIAL-DEPLOYMENT-ID": "spoofed-deployment",
+        "X-DIAL-OVERRIDE-NAME": "spoofed-override",
+        "X-DIAL-DEPLOYMENT-FEATURES": "spoofed-features",
+        "x-dial-custom-header": "applied"
+      },
+      "upstreams": [
+        {"endpoint": "http://messages-upstream/v1/messages", "key": "modelKey", "extraData": {"a": 1}, "id": "messages-upstream"}
+      ]
     },
     "claude-no-iface": {
       "type": "chat",
@@ -337,6 +372,7 @@
         "calculator": {},
         "app": {},
         "gpt-3-turbo": {"minute": "100", "day": "1000"},
+        "default-headers-model": {"minute": "100000", "day": "10000000"},
         "claude-ns": {"minute": "100000", "day": "10000000"},
         "claude-stream": {"minute": "100000", "day": "10000000"},
         "claude-count": {"minute": "100000", "day": "10000000"},
@@ -344,6 +380,7 @@
         "claude-limited": {"minute": "10", "day": "10"},
         "claude-upstream": {"minute": "100000", "day": "10000000"},
         "claude-override": {"minute": "100000", "day": "10000000"},
+        "claude-header-spoof": {"minute": "100000", "day": "10000000"},
         "claude-no-iface": {"minute": "100000", "day": "10000000"},
         "claude-to-chat-completions": {"minute": "100000", "day": "10000000"},
         "claude-to-responses": {"minute": "100000", "day": "10000000"}

@@ -193,6 +193,73 @@ public class DeploymentPostApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testDefaultHeadersSentForChatCompletions() {
+        String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-35-turbo\","
+                + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
+        MutableObject<RecordedRequest> captured = new MutableObject<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> {
+                captured.setValue(request);
+                return TestWebServer.createResponse(200, answer, "Content-Type", "application/json");
+            });
+
+            Response response = send(HttpMethod.POST, "/openai/deployments/default-headers-model/chat/completions", null,
+                    "{\"model\":\"default-headers-model\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                    "content-type", "application/json");
+
+            verify(response, 200);
+            RecordedRequest upstream = captured.getValue();
+            assertEquals("cache-priority", upstream.getHeader("x-dial-cache-policy"));
+            assertEquals("foo-bar", upstream.getHeader("x-dial-custom-header"));
+            // the anthropicMessages overlay belongs to that interface only
+            assertNull(upstream.getHeader("x-dial-custom-header-2"));
+        }
+    }
+
+    @Test
+    public void testDefaultHeadersDoNotOverrideClientHeaders() {
+        String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-35-turbo\","
+                + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
+        MutableObject<RecordedRequest> captured = new MutableObject<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> {
+                captured.setValue(request);
+                return TestWebServer.createResponse(200, answer, "Content-Type", "application/json");
+            });
+
+            Response response = send(HttpMethod.POST, "/openai/deployments/default-headers-model/chat/completions", null,
+                    "{\"model\":\"default-headers-model\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                    "content-type", "application/json", "X-DIAL-CUSTOM-HEADER", "from-client");
+
+            verify(response, 200);
+            RecordedRequest upstream = captured.getValue();
+            // spelled in another case by the client, and still not defaulted over
+            assertEquals("from-client", upstream.getHeader("x-dial-custom-header"));
+            assertEquals("cache-priority", upstream.getHeader("x-dial-cache-policy"));
+        }
+    }
+
+    @Test
+    public void testDefaultHeadersSentForEmbeddings() {
+        String answer = "{\"object\":\"list\",\"model\":\"ada\",\"data\":[],\"usage\":{\"prompt_tokens\":5,\"total_tokens\":5}}";
+        MutableObject<RecordedRequest> captured = new MutableObject<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> {
+                captured.setValue(request);
+                return TestWebServer.createResponse(200, answer, "Content-Type", "application/json");
+            });
+
+            // the pre-interfaces endpoint serves embeddings too, and the deployment-level headers reach it
+            Response response = send(HttpMethod.POST, "/openai/deployments/default-headers-model/embeddings", null,
+                    "{\"input\":\"hello\"}", "content-type", "application/json");
+
+            verify(response, 200);
+            assertEquals("cache-priority", captured.getValue().getHeader("x-dial-cache-policy"));
+            assertEquals("foo-bar", captured.getValue().getHeader("x-dial-custom-header"));
+        }
+    }
+
+    @Test
     public void testEmbeddings_NotAffectedByUsagePerModelInjection() {
         String answer = "{\"object\":\"list\",\"model\":\"ada\",\"data\":[{\"object\":\"embedding\",\"index\":0,\"embedding\":[0.1,0.2]}],"
                 + "\"usage\":{\"prompt_tokens\":5,\"total_tokens\":5}}";

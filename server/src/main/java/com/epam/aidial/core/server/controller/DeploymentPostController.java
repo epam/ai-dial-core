@@ -62,12 +62,18 @@ import static com.epam.aidial.core.server.Proxy.HEADER_UPSTREAM_ID;
 
 @Slf4j
 public class DeploymentPostController extends BaseDeploymentPostController {
-    private final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
 
     public DeploymentPostController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
-        this.enhancementFunctions = List.of(new CollectRequestStandardAttachmentsFn(proxy, context),
-                new ApplyDefaultDeploymentSettingsFn(proxy, context),
+    }
+
+    /**
+     * Built when the request body is handled rather than at construction: the chain is parameterized by
+     * {@link #requestedInterface()}, which reads the request path.
+     */
+    private List<BaseRequestFunction<RequestObject>> buildEnhancementFunctions() {
+        return List.of(new CollectRequestStandardAttachmentsFn(proxy, context),
+                new ApplyDefaultDeploymentSettingsFn(proxy, context, requestedInterface()),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
                 new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_CHAT_COMPLETIONS),
@@ -317,7 +323,7 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         try {
             RequestObject request = new ChatCompletionRequest(ProxyUtil.parseObject(requestBody));
             context.setStreamingRequest(request.isStreaming());
-            if (ProxyUtil.processChain(request, enhancementFunctions)) {
+            if (ProxyUtil.processChain(request, buildEnhancementFunctions())) {
                 context.setRequestBody(Buffer.buffer(request.serialize()));
             }
             proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
