@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
+import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
@@ -18,6 +19,7 @@ import com.epam.aidial.core.server.data.ConfigFileMigrateStatus;
 import com.epam.aidial.core.server.data.ValidationResult;
 import com.epam.aidial.core.server.data.ValidationStatus;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
+import com.epam.aidial.core.server.util.HashUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -30,8 +32,10 @@ import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.nio.charset.StandardCharsets;
@@ -41,6 +45,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -52,6 +57,8 @@ import java.util.function.Function;
  */
 public class ConfigFileMigrateController {
 
+    public static final int KEY_HASH_LENGTH = 12;
+
     private static final List<String> ALL_TYPES = List.of(
             "settings", "schemas", "catalog_schemas", "interceptors", "roles", "keys", "routes",
             "models", "toolsets", "applications");
@@ -59,7 +66,6 @@ public class ConfigFileMigrateController {
     private static final List<ManagedTypeSpec> MANAGED_TYPE_SPECS = List.of(
             new ManagedTypeSpec("interceptors", "Interceptor", ResourceTypes.INTERCEPTOR, Config::getInterceptors),
             new ManagedTypeSpec("roles", "Role", ResourceTypes.ROLE, Config::getRoles),
-            new ManagedTypeSpec("keys", "Key", ResourceTypes.PROJECT_KEY, Config::getKeys),
             new ManagedTypeSpec("routes", "Route", ResourceTypes.ROUTE, Config::getRoutes),
             new ManagedTypeSpec("models", "Model", ResourceTypes.MODEL, Config::getModels),
             new ManagedTypeSpec("toolsets", "ToolSet", ResourceTypes.TOOL_SET, Config::getToolsets),
@@ -181,6 +187,9 @@ public class ConfigFileMigrateController {
         if (requestedTypes.contains("settings")) {
             collectSettings(fileConfig, scratch, dryRun, toApply, results);
         }
+        if (requestedTypes.contains("keys")) {
+            collectKeys(fileConfig, scratch, dryRun, toApply, results);
+        }
         for (SchemaTypeSpec spec : SCHEMA_TYPE_SPECS) {
             if (requestedTypes.contains(spec.typeKey())) {
                 collectSchemas(spec, fileConfig, scratch, dryRun, toApply, results);
@@ -243,6 +252,54 @@ public class ConfigFileMigrateController {
         }
     }
 
+    private void collectKeys(Config fileConfig, Config scratch, boolean dryRun,
+                             List<AdminManifest> toApply, List<ConfigFileMigrateResult> results) {
+        BlobKeySecrets blobKeySecrets = listBlobKeySecrets();
+        Set<String> existingSecrets = blobKeySecrets.secrets();
+        Map<String, String> secretByName = new HashMap<>(blobKeySecrets.secretByName());
+        for (Map.Entry<String, Key> entry : fileConfig.getKeys().entrySet()) {
+            String secret = entry.getKey();
+            Key fileKey = entry.getValue();
+            String hash = HashUtil.sha256Hex(secret).substring(0, KEY_HASH_LENGTH);
+            String project = fileKey.getProject();
+            String shortName = (project != null && ConfigResourceController.ENTITY_NAME_PATTERN.matcher(project).matches())
+                    ? project.toLowerCase(Locale.ROOT) + "-" + hash
+                    : hash;
+            String canonicalId = MergedConfigStore.canonicalId(ResourceTypes.PROJECT_KEY, ResourceDescriptor.PLATFORM_BUCKET, shortName);
+            // A matching secret may already live under an unrelated, admin-chosen blob name (e.g.
+            // created directly via the API) — a canonicalId/name check alone would miss that and
+            // create a duplicate blob for the same secret, so idempotency here is secret-based.
+            if (existingSecrets.contains(secret)) {
+                results.add(new ConfigFileMigrateResult(canonicalId, skippedStatus(dryRun), "already in blob"));
+                continue;
+            }
+            // Reaching here means `secret` isn't in existingSecrets, so any occupant found under
+            // shortName is necessarily a different secret — a genuine truncated-hash collision.
+            String occupant = secretByName.get(shortName);
+            if (occupant != null) {
+                results.add(new ConfigFileMigrateResult(canonicalId, failedStatus(dryRun),
+                        "Derived blob name collides with an existing key under a different secret"));
+                continue;
+            }
+            secretByName.put(shortName, secret);
+            // Key.key is @JsonProperty(WRITE_ONLY): MAPPER.valueToTree always drops it on
+            // serialization regardless of the Java object's field state — inject it directly.
+            ObjectNode specNode = ProxyUtil.MAPPER.valueToTree(fileKey);
+            specNode.put("key", secret);
+            collect(new AdminManifest("Key", canonicalId, specNode), scratch, dryRun, toApply, results);
+        }
+    }
+
+    private BlobKeySecrets listBlobKeySecrets() {
+        NamedValues values = listBlobValues(ResourceTypes.PROJECT_KEY, (body, name) -> {
+            Key key = ConfigResourceController.treeToEntity(ProxyUtil.BLOB_MAPPER.readTree(body), Key.class);
+            ResourceDescriptor descriptor = platformDescriptor(ResourceTypes.PROJECT_KEY, name);
+            mergedConfigStore.getSecretFieldProcessor().decryptFields(key, descriptor);
+            return StringUtils.isNotBlank(key.getKey()) ? key.getKey() : null;
+        });
+        return new BlobKeySecrets(values.values(), values.valuesByName());
+    }
+
     private void collectSchemas(SchemaTypeSpec spec, Config fileConfig, Config scratch, boolean dryRun,
                                 List<AdminManifest> toApply, List<ConfigFileMigrateResult> results) {
         Map<String, String> fileSchemas = spec.schemas().apply(fileConfig);
@@ -287,31 +344,33 @@ public class ConfigFileMigrateController {
         }
     }
 
-    private static ResourceDescriptor platformDescriptor(ResourceTypes type, String name) {
-        return ResourceDescriptorFactory.fromDecoded(type, ResourceDescriptor.PLATFORM_BUCKET,
-                ResourceDescriptor.PLATFORM_LOCATION, name);
+    private BlobSchemas listBlobSchemas(ResourceTypes type) {
+        NamedValues values = listBlobValues(type,
+                (body, name) -> MergedConfigStore.extractSchemaId(ProxyUtil.BLOB_MAPPER.readTree(body)));
+        return new BlobSchemas(values.values(), values.valuesByName());
     }
 
-    private BlobSchemas listBlobSchemas(ResourceTypes type) {
+    private NamedValues listBlobValues(ResourceTypes type, BlobValueExtractor extractor) {
         ResourceDescriptor folder = platformDescriptor(type, "");
-        Set<String> ids = new HashSet<>();
-        Map<String, String> idsByName = new HashMap<>();
+        Set<String> values = new HashSet<>();
+        Map<String, String> valuesByName = new HashMap<>();
         for (Pair<ResourceItemMetadata, String> item : resourceService.listResources(folder, ignored -> { })) {
             String body = item.getValue();
             if (body == null) {
                 continue;
             }
+            String name = item.getKey().getName();
             try {
-                String id = MergedConfigStore.extractSchemaId(ProxyUtil.BLOB_MAPPER.readTree(body));
-                if (id != null) {
-                    ids.add(id);
-                    idsByName.put(item.getKey().getName(), id);
+                String value = extractor.extract(body, name);
+                if (value != null) {
+                    values.add(value);
+                    valuesByName.put(name, value);
                 }
-            } catch (JsonProcessingException e) {
-                // Unparseable blob — ignore for idempotency purposes; it isn't a usable schema anyway.
+            } catch (Exception e) {
+                // Unparseable/undecryptable blob — ignore for idempotency purposes.
             }
         }
-        return new BlobSchemas(ids, idsByName);
+        return new NamedValues(values, valuesByName);
     }
 
     private void collectSettings(Config fileConfig, Config scratch, boolean dryRun,
@@ -357,6 +416,11 @@ public class ConfigFileMigrateController {
                 : "line " + e.getLocation().getLineNr() + ", column " + e.getLocation().getColumnNr();
     }
 
+    private static ResourceDescriptor platformDescriptor(ResourceTypes type, String name) {
+        return ResourceDescriptorFactory.fromDecoded(type, ResourceDescriptor.PLATFORM_BUCKET,
+                ResourceDescriptor.PLATFORM_LOCATION, name);
+    }
+
     /**
      * One accessor per managed, name-addressed type, applied to {@code fileConfig} for the entities to
      * migrate and to {@code live} for the canonical-id-keyed idempotency check — see
@@ -375,9 +439,28 @@ public class ConfigFileMigrateController {
                                   Function<Config, Map<String, String>> schemas) {}
 
     /**
-     * The blob name a migrated schema ends up under is derived from its {@code $id}, so unlike the
-     * short-name-keyed managed types this can't be a single-descriptor lookup — every platform-bucket
-     * blob of the type must be listed and parsed for its {@code $id}.
+     * Every {@code $id} found across the platform-bucket blobs of a schema type, indexed two ways for
+     * {@link #collectSchemas}: {@code ids} for the already-migrated check, {@code idsByName} since the
+     * blob name a migrated schema ends up under is derived from its {@code $id} rather than being a
+     * single-descriptor lookup.
      */
     private record BlobSchemas(Set<String> ids, Map<String, String> idsByName) {}
+
+    /**
+     * Every existing {@code PROJECT_KEY} blob's decrypted secret, indexed two ways for {@link
+     * #collectKeys}: {@code secrets} for the secret-based idempotency check, {@code secretByName}
+     * for the truncated-hash collision guard (which secret currently occupies a given blob name).
+     */
+    private record BlobKeySecrets(Set<String> secrets, Map<String, String> secretByName) {}
+
+    /**
+     * Generic result of {@link #listBlobValues}, before it's wrapped in the domain-specific {@link
+     * BlobSchemas}/{@link BlobKeySecrets} at each call site for readability.
+     */
+    private record NamedValues(Set<String> values, Map<String, String> valuesByName) {}
+
+    @FunctionalInterface
+    private interface BlobValueExtractor {
+        String extract(String body, String name) throws Exception;
+    }
 }
