@@ -173,7 +173,7 @@ Each value is an object with the following fields:
 
 An object of HTTP header names and values DIAL Core adds to a request that does not already carry a header of that name. A header sent by the client always wins, and so does one DIAL Core sets itself (`Api-Key`, `X-DIAL-DEPLOYMENT-ID`, ...). Names are matched case-insensitively.
 
-A default header behaves exactly as if the client had sent it: DIAL Core reads it as part of the incoming request and forwards it to the application under the same rules as a client header. Headers DIAL Core never forwards are not forwarded here either: hop-by-hop headers, `Api-Key`/`x-api-key`, and `Authorization` unless `forwardAuthToken` is set.
+A default header behaves exactly as if the client had sent it: DIAL Core reads it as part of the incoming request and forwards it to the application under the same rules as a client header. That cuts both ways: a name DIAL Core strips on the way to the application — a hop-by-hop header, `Api-Key`/`x-api-key`, `traceparent`/`tracestate`, or `Authorization` unless `forwardAuthToken` is set — is stripped when it comes from `defaultHeaders` too, even though DIAL Core itself still sees it on the incoming request.
 
 The application-level `defaultHeaders` apply to every interface the application serves. `interfaces.openaiChatCompletions.defaultHeaders` is laid over them for that interface only: a name it repeats is overridden, a new name is added, and every other application-level header still applies.
 
